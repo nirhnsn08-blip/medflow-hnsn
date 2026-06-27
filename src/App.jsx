@@ -7,8 +7,8 @@ import {
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
 // ═══════════════════════════════════════════════════════════
-const SUPABASE_URL = typeof window !== "undefined" ? (window.SUPABASE_URL || "") : "";
-const SUPABASE_KEY = typeof window !== "undefined" ? (window.SUPABASE_KEY || "") : "";
+const SUPABASE_URL = typeof window !== "undefined" ? (import.meta.env?.VITE_SUPABASE_URL || window.SUPABASE_URL || "") : "";
+const SUPABASE_KEY = typeof window !== "undefined" ? (import.meta.env?.VITE_SUPABASE_KEY || window.SUPABASE_KEY || "") : "";
 const USE_SUPABASE = SUPABASE_URL.length > 10 && SUPABASE_KEY.length > 10;
 
 async function sbFetch(path, opts = {}) {
