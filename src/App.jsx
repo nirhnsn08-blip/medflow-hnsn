@@ -119,13 +119,14 @@ function comparativo(db, ano, mes, specId) {
 const AUTH_KEY    = "hnsn_users_v1";
 const SESSION_KEY = "hnsn_session_v1";
 const ROLES = {
-  admin:        { label: "Administrador", color: "#ef4444", desc: "Acesso total" },
-  analista:     { label: "Analista",      color: "#22d3ee", desc: "Lança dados e visualiza" },
-  visualizador: { label: "Visualizador",  color: "#a78bfa", desc: "Somente leitura" },
+  adm_master:   { label: "ADM Master",   color: "#f59e0b", desc: "Acesso total — único que cria usuários, acessa banco e auditoria" },
+  adm_silver:   { label: "ADM Silver",   color: "#22d3ee", desc: "Insere dados, importa, auditoria e gera dashboard" },
+  analista:     { label: "Analista",     color: "#a78bfa", desc: "Visualiza e gera dashboard para impressão" },
+  visualizador: { label: "Visualizador", color: "#5a5a72", desc: "Somente leitura — sem gerar dashboard" },
 };
 const DEFAULT_USERS = [
-  { id: "1", name: "Laura",   username: "laura",   password: "hnsn2025",   role: "admin" },
-  { id: "2", name: "Diretor", username: "diretor", password: "diretor123", role: "visualizador" },
+  { id: "1", name: "Laura",   username: "laura",   password: "hnsn2025",   role: "adm_master" },
+  { id: "2", name: "Diretor", username: "diretor", password: "diretor123", role: "adm_silver" },
 ];
 const loadUsers   = () => { try { const u = localStorage.getItem(AUTH_KEY); return u ? JSON.parse(u) : DEFAULT_USERS; } catch { return DEFAULT_USERS; } };
 const saveUsers   = u  => localStorage.setItem(AUTH_KEY, JSON.stringify(u));
@@ -1067,6 +1068,8 @@ function UsersPage({ currentUser }) {
   function handleSave() {
     if (!form.name || !form.username || (!editId && !form.password)) { setMsg("⚠️ Preencha nome, usuário e senha."); return; }
     if (users.find(u => u.username === form.username.toLowerCase() && u.id !== editId)) { setMsg("⚠️ Usuário já existe."); return; }
+    // Protege: só adm_master pode criar outro adm_master
+    if (form.role === "adm_master" && currentUser.role !== "adm_master") { setMsg("⚠️ Apenas ADM Master pode criar outro ADM Master."); return; }
     let updated;
     if (editId) updated = users.map(u => u.id === editId ? { ...u, name: form.name, username: form.username.toLowerCase(), role: form.role, ...(form.password ? { password: form.password } : {}) } : u);
     else updated = [...users, { id: Date.now().toString(), name: form.name, username: form.username.toLowerCase(), password: form.password, role: form.role }];
@@ -1252,8 +1255,20 @@ export default function App() {
   const [db, setDb]     = useState(() => loadDB());
   const [active, setActive] = useState("overview");
   const handleSave = useCallback(newDb => setDb({ ...newDb }), []);
-  const isReadOnly = currentUser?.role === "visualizador";
-  const isAdmin    = currentUser?.role === "admin";
+
+  // Permissões por nível
+  const isMaster    = currentUser?.role === "adm_master";
+  const isSilver    = currentUser?.role === "adm_silver";
+  const isAnalista  = currentUser?.role === "analista";
+  const isReadOnly  = currentUser?.role === "visualizador";
+
+  const canEdit     = isMaster || isSilver || isAnalista === false && !isReadOnly; // silver e acima lançam dados
+  const canLaunch   = isMaster || isSilver;   // master e silver lançam dados
+  const canPrint    = isMaster || isSilver || isAnalista; // master, silver e analista geram dashboard
+  const canImport   = isMaster || isSilver;   // master e silver importam
+  const canAudit    = isMaster || isSilver;   // master e silver veem auditoria
+  const canSupabase = isMaster;               // só master acessa banco
+  const canUsers    = isMaster;               // só master gerencia usuários
 
   function handleLogout() { clearSession(); setCurrentUser(null); setActive("overview"); }
 
@@ -1266,11 +1281,11 @@ export default function App() {
     { id: "d1" },
     ...SPECS.map(s => ({ id: s.id, icon: "🏥", label: s.label, color: s.color })),
     { id: "d2" },
-    ...(isAdmin ? [{ id: "print",    icon: "🖨️",  label: "Imprimir Dashboard" }] : []),
-    ...(isAdmin ? [{ id: "auditoria",icon: "📋",  label: "Auditoria" }]          : []),
-    ...(!isReadOnly ? [{ id: "import", icon: "📂", label: "Importar Dados" }]    : []),
-    ...(isAdmin ? [{ id: "supabase", icon: "☁️",  label: "Banco de Dados" }]     : []),
-    ...(isAdmin ? [{ id: "users",    icon: "👥",  label: "Usuários" }]           : []),
+    ...(canPrint    ? [{ id: "print",     icon: "🖨️", label: "Imprimir Dashboard" }] : []),
+    ...(canAudit    ? [{ id: "auditoria", icon: "📋", label: "Auditoria" }]           : []),
+    ...(canImport   ? [{ id: "import",    icon: "📂", label: "Importar Dados" }]      : []),
+    ...(canSupabase ? [{ id: "supabase",  icon: "☁️", label: "Banco de Dados" }]      : []),
+    ...(canUsers    ? [{ id: "users",     icon: "👥", label: "Usuários" }]            : []),
   ];
   const currentSpec = SPECS.find(s => s.id === active);
 
@@ -1293,7 +1308,7 @@ export default function App() {
               <div style={{ fontSize: 10, color: role.color, fontWeight: 700 }}>{role.label}</div>
             </div>
             <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, background: role.color + "22", border: `1px solid ${role.color}44` }}>
-              {currentUser.role === "admin" ? "👑" : currentUser.role === "analista" ? "📊" : "👁"}
+              {currentUser.role === "adm_master" ? "👑" : currentUser.role === "adm_silver" ? "🥈" : currentUser.role === "analista" ? "📊" : "👁"}
             </div>
             <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid #2a2a38", borderRadius: 6, padding: "5px 10px", color: "#5a5a72", cursor: "pointer", fontSize: 12, fontFamily: "Inter, sans-serif" }}
               onMouseOver={e => { e.currentTarget.style.borderColor = "#fb7185"; e.currentTarget.style.color = "#fb7185"; }}
@@ -1310,7 +1325,7 @@ export default function App() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* SIDEBAR */}
         <nav style={{ width: 215, minWidth: 215, background: "#111118", borderRight: "1px solid #2a2a38", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
-          {isReadOnly && <div style={{ margin: "0 10px 8px", background: "#3b2f6e", border: "1px solid #a78bfa44", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#a78bfa", textAlign: "center" }}>👁 Somente visualização</div>}
+          {isReadOnly && <div style={{ margin: "0 10px 8px", background: "#1e1e28", border: "1px solid #3a3a4e", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#5a5a72", textAlign: "center" }}>👁 Somente visualização</div>}
           {sidebarItems.map((item, i) => {
             if (item.id?.startsWith("d")) return <div key={i} style={{ height: 1, background: "#1e1e28", margin: ".5rem 0" }} />;
             const isActive = active === item.id;
@@ -1325,12 +1340,12 @@ export default function App() {
         {/* CONTENT */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active === "overview"  && <Overview db={db} />}
-          {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={isReadOnly} currentUser={currentUser} />}
-          {active === "print"     && isAdmin       && <PrintDashboard db={db} />}
-          {active === "auditoria" && isAdmin       && <AuditoriaPage />}
-          {active === "import"    && !isReadOnly   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
-          {active === "supabase"  && isAdmin       && <SupabasePage />}
-          {active === "users"     && isAdmin       && <UsersPage currentUser={currentUser} />}
+          {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
+          {active === "print"     && canPrint    && <PrintDashboard db={db} />}
+          {active === "auditoria" && canAudit    && <AuditoriaPage />}
+          {active === "import"    && canImport   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
+          {active === "supabase"  && canSupabase && <SupabasePage />}
+          {active === "users"     && canUsers    && <UsersPage currentUser={currentUser} />}
         </div>
       </div>
     </div>
