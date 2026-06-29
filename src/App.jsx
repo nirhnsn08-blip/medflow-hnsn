@@ -95,17 +95,26 @@ function aggregateMes(db, ano, mes, specId) {
 function aggregateAno(db, ano, specId) {
   return Array.from({ length: 12 }, (_, m) => {
     const d = aggregateMes(db, ano, m, specId);
-    return { mes: m, ...d, total: d.primeiras + d.retornos };
+    return { mes: m, ...d, total: d.primeiras + d.retornos + d.emergencias };
   });
+}
+// Aggregate acumulado — todos os dados disponíveis
+function aggregateTotal(db, specId) {
+  let r = { primeiras: 0, retornos: 0, ofertadas: 0, realizadas: 0, livres: 0, emergencias: 0, faltas: 0 };
+  Object.entries(db).forEach(([, day]) => {
+    const s = day[specId]; if (!s) return;
+    Object.keys(r).forEach(k => { r[k] += s[k] || 0; });
+  });
+  return { ...r, total: r.primeiras + r.retornos + r.emergencias };
 }
 // Comparativo mês vs mês anterior e mesmo mês ano anterior
 function comparativo(db, ano, mes, specId) {
   const cur  = aggregateMes(db, ano, mes, specId);
   const prev = mes > 0 ? aggregateMes(db, ano, mes - 1, specId) : aggregateMes(db, ano - 1, 11, specId);
   const ly   = aggregateMes(db, ano - 1, mes, specId);
-  const total    = cur.primeiras + cur.retornos;
-  const prevTotal = prev.primeiras + prev.retornos;
-  const lyTotal   = ly.primeiras + ly.retornos;
+  const total     = cur.primeiras + cur.retornos + cur.emergencias;
+  const prevTotal = prev.primeiras + prev.retornos + prev.emergencias;
+  const lyTotal   = ly.primeiras + ly.retornos + ly.emergencias;
   return {
     mesAtual: total, mesAnterior: prevTotal, mesAnteriorLabel: mes > 0 ? MONTHS[mes-1] : MONTHS[11],
     mesAnoAnterior: lyTotal, variacaoMes: prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0,
@@ -316,18 +325,19 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
   }, [date, db, spec.id]);
 
   const f = k => parseInt(form[k]) || 0;
-  const totalDia = f("primeiras") + f("retornos");
+  const totalDia = f("primeiras") + f("retornos") + f("emergencias");
 
   async function handleSave() {
     const data = { primeiras: f("primeiras"), retornos: f("retornos"), ofertadas: f("ofertadas"), realizadas: f("realizadas"), livres: f("livres"), emergencias: f("emergencias"), faltas: f("faltas") };
     await saveRecord(date, spec.id, data, currentUser);
-    onSave(loadDB());
+    const newDb = loadDB();
+    onSave(newDb);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
 
   const mesData   = aggregateMes(db, ano, mes, spec.id);
-  const totalMes  = mesData.primeiras + mesData.retornos;
+  const totalMes  = mesData.primeiras + mesData.retornos + mesData.emergencias;
   const pctMes    = spec.metaM > 0 ? (totalMes / spec.metaM) * 100 : 0;
   const faltaMes  = Math.max(spec.metaM - totalMes, 0);
   const diaAtual  = date.startsWith(`${ano}-${String(mes+1).padStart(2,"0")}`) ? parseInt(date.slice(8)) : new Date(ano, mes+1, 0).getDate();
@@ -349,7 +359,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
     const m = (mes - 11 + i + 12) % 12;
     const a = mes - 11 + i < 0 ? ano - 1 : ano;
     const d = aggregateMes(db, a, m, spec.id);
-    return { name: MONTHS[m], total: d.primeiras + d.retornos, meta: spec.metaM, primeiras: d.primeiras };
+    return { name: MONTHS[m], total: d.primeiras + d.retornos + d.emergencias, meta: spec.metaM, primeiras: d.primeiras };
   });
 
   const barData = anoData.map((m, i) => ({ name: MONTHS[i], Total: m.total, Meta: spec.metaM, "1ª Consulta": m.primeiras }));
@@ -621,21 +631,34 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 // ═══════════════════════════════════════════════════════════
 function Overview({ db }) {
   const now = new Date();
-  const [mes, setMes] = useState(now.getMonth());
-  const [ano, setAno] = useState(now.getFullYear());
+  const [mes, setMes]     = useState(now.getMonth());
+  const [ano, setAno]     = useState(now.getFullYear());
+  const [vista, setVista] = useState("mensal"); // "mensal" | "acumulado"
   const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "5px 8px", color: "#e8e8f0", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none" };
 
   const rows = SPECS.map(spec => {
     const m       = aggregateMes(db, ano, mes, spec.id);
-    const total   = m.primeiras + m.retornos;
+    const total   = m.primeiras + m.retornos + m.emergencias;
     const pctM    = spec.metaM > 0 ? (total / spec.metaM) * 100 : 0;
     const anoArr  = aggregateAno(db, ano, spec.id);
     const totalA  = anoArr.reduce((a, x) => a + x.total, 0);
     const total1a = anoArr.reduce((a, x) => a + x.primeiras, 0);
     const pctA    = spec.metaA > 0 ? (totalA / spec.metaA) * 100 : 0;
     const comp    = comparativo(db, ano, mes, spec.id);
-    return { spec, total, pctM, totalA, pctA, total1a, m, comp };
+    const acum    = aggregateTotal(db, spec.id);
+    return { spec, total, pctM, totalA, pctA, total1a, m, comp, acum };
   });
+
+  // Acumulado total (todos os dados)
+  const acumRows = rows.map(r => r.acum);
+  const acumTotal      = acumRows.reduce((a, r) => a + r.total, 0);
+  const acumPrimeiras  = acumRows.reduce((a, r) => a + r.primeiras, 0);
+  const acumRetornos   = acumRows.reduce((a, r) => a + r.retornos, 0);
+  const acumEmerg      = acumRows.reduce((a, r) => a + r.emergencias, 0);
+  const acumOfertadas  = acumRows.reduce((a, r) => a + r.ofertadas, 0);
+  const acumRealizadas = acumRows.reduce((a, r) => a + r.realizadas, 0);
+  const acumFaltas     = acumRows.reduce((a, r) => a + r.faltas, 0);
+  const acumLivres     = acumRows.reduce((a, r) => a + r.livres, 0);
 
   const totalGeral       = rows.reduce((a, r) => a + r.total, 0);
   const totalGeralAno    = rows.reduce((a, r) => a + r.totalA, 0);
@@ -647,6 +670,11 @@ function Overview({ db }) {
   const txReal           = totalOfertadas > 0 ? ((totalRealizadas / totalOfertadas) * 100) : 0;
   const overviewBar      = SPECS.map(s => ({ name: s.label, total: rows.find(r => r.spec.id === s.id)?.total || 0, meta: s.metaM }));
 
+  // Datas min/max dos dados
+  const allDates = Object.keys(db).sort();
+  const dataInicio = allDates[0] ? allDates[0].split("-").reverse().join("/") : "—";
+  const dataFim    = allDates[allDates.length-1] ? allDates[allDates.length-1].split("-").reverse().join("/") : "—";
+
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem" }}>
@@ -655,15 +683,95 @@ function Overview({ db }) {
           <div style={{ fontSize: 12, color: "#5a5a72" }}>Visão geral de todas as especialidades</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 18 }}>📅</span>
-          <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>
-            {MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}
-          </select>
-          <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80 }} />
+          {/* Toggle Mensal / Acumulado */}
+          <div style={{ display: "flex", background: "#18181f", border: "1px solid #2a2a38", borderRadius: 7, overflow: "hidden" }}>
+            <button onClick={() => setVista("mensal")} style={{ padding: "6px 14px", border: "none", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600, background: vista === "mensal" ? "#22d3ee" : "transparent", color: vista === "mensal" ? "#000" : "#9090a8", transition: "all .15s" }}>
+              📅 Mensal
+            </button>
+            <button onClick={() => setVista("acumulado")} style={{ padding: "6px 14px", border: "none", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600, background: vista === "acumulado" ? "#a78bfa" : "transparent", color: vista === "acumulado" ? "#000" : "#9090a8", transition: "all .15s" }}>
+              📊 Acumulado
+            </button>
+          </div>
+          {vista === "mensal" && <>
+            <span style={{ fontSize: 18 }}>📅</span>
+            <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>
+              {MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80 }} />
+          </>}
         </div>
       </div>
 
-      {/* KPIs principais */}
+      {/* ═══ VISTA ACUMULADA ═══ */}
+      {vista === "acumulado" && (
+        <div>
+          <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1rem" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".85rem" }}>
+              📊 Acumulado Total — {dataInicio} até {dataFim}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: "1rem" }}>
+              <StatCard label="Total de Atendimentos" value={fmt(acumTotal)}      color="#22d3ee" big />
+              <StatCard label="1ªs Consultas"         value={fmt(acumPrimeiras)}  color="#a78bfa" big />
+              <StatCard label="Retornos"               value={fmt(acumRetornos)}   color="#60a5fa" big />
+              <StatCard label="Emergências"            value={fmt(acumEmerg)}      color="#fb7185" big />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: "1rem" }}>
+              <StatCard label="Ofertadas (Gercon)"    value={fmt(acumOfertadas)}  color="#22d3ee" />
+              <StatCard label="Realizadas"            value={fmt(acumRealizadas)} color="#34d399" />
+              <StatCard label="Livres"                value={fmt(acumLivres)}     color="#60a5fa" />
+              <StatCard label="Faltas"                value={fmt(acumFaltas)}     color="#fbbf24" />
+            </div>
+
+            {/* Tabela acumulada por especialidade */}
+            <div style={{ borderTop: "1px solid #2a2a38", paddingTop: ".75rem" }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Detalhamento por especialidade — período completo</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <thead><tr>{["Especialidade","Total","1ª Cons.","Retorno","Emergências","Ofertadas","Realizadas","Livres","Faltas","% Meta Anual"].map(h => <th key={h} style={{ textAlign: "left", padding: "4px 8px", color: "#5a5a72", fontSize: 10, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38" }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {rows.map(({ spec, acum }) => {
+                    const pctA = spec.metaA > 0 ? Math.round((acum.total / spec.metaA) * 100) : 0;
+                    const c = pctA >= 100 ? "#34d399" : pctA >= 70 ? spec.color : "#fb7185";
+                    return (
+                      <tr key={spec.id} style={{ borderBottom: "1px solid #1e1e28" }}>
+                        <td style={{ padding: "5px 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: spec.color, display: "inline-block", flexShrink: 0 }} />
+                          <span style={{ color: spec.color, fontWeight: 600 }}>{spec.label}</span>
+                        </td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#e8e8f0", fontWeight: 700 }}>{fmt(acum.total)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#a78bfa" }}>{fmt(acum.primeiras)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{fmt(acum.retornos)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fb7185" }}>{fmt(acum.emergencias)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee" }}>{fmt(acum.ofertadas)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#34d399" }}>{fmt(acum.realizadas)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{fmt(acum.livres)}</td>
+                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fbbf24" }}>{fmt(acum.faltas)}</td>
+                        <td style={{ padding: "5px 8px" }}>
+                          <span style={{ background: c + "22", color: c, borderRadius: 99, padding: "1px 7px", fontSize: 10, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctA}%</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr style={{ borderTop: "1px solid #2a2a38", background: "#111118" }}>
+                    <td style={{ padding: "5px 8px", fontWeight: 700, color: "#e8e8f0" }}>TOTAL</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#e8e8f0", fontWeight: 700 }}>{fmt(acumTotal)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#a78bfa", fontWeight: 700 }}>{fmt(acumPrimeiras)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa", fontWeight: 700 }}>{fmt(acumRetornos)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fb7185", fontWeight: 700 }}>{fmt(acumEmerg)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700 }}>{fmt(acumOfertadas)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#34d399", fontWeight: 700 }}>{fmt(acumRealizadas)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa", fontWeight: 700 }}>{fmt(acumLivres)}</td>
+                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fbbf24", fontWeight: 700 }}>{fmt(acumFaltas)}</td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ VISTA MENSAL ═══ */}
+      {vista === "mensal" && (<>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: ".75rem" }}>
         <StatCard label={`Atendimentos — ${MONTHS_FULL[mes]}`} value={fmt(totalGeral)}    color="#22d3ee" big />
         <StatCard label={`Acumulado — ${ano}`}                  value={fmt(totalGeralAno)} color="#a78bfa" big />
@@ -821,6 +929,8 @@ function Overview({ db }) {
         })}
       </div>
     </div>
+    </>)}
+    </div>
   );
 }
 
@@ -836,7 +946,7 @@ function PrintDashboard({ db }) {
 
   const aggAll = SPECS.map(spec => {
     const m = aggregateMes(db, ano, mes, spec.id);
-    const total = m.primeiras + m.retornos;
+    const total = m.primeiras + m.retornos + m.emergencias;
     const blocoTotal = Object.entries(db).filter(([d]) => d.startsWith(`${ano}-${String(mes+1).padStart(2,"0")}`)).reduce((a,[,day]) => a + (day?.bloco?.[spec.id] || 0), 0);
     return { spec, m, total, blocoTotal, diff: total - spec.metaM, pct: spec.metaM > 0 ? ((total / spec.metaM) * 100) : 0 };
   });
