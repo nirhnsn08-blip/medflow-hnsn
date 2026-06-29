@@ -631,305 +631,193 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 // ═══════════════════════════════════════════════════════════
 function Overview({ db }) {
   const now = new Date();
-  const [mes, setMes]     = useState(now.getMonth());
-  const [ano, setAno]     = useState(now.getFullYear());
-  const [vista, setVista] = useState("mensal"); // "mensal" | "acumulado"
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
   const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "5px 8px", color: "#e8e8f0", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none" };
 
   const rows = SPECS.map(spec => {
-    const m       = aggregateMes(db, ano, mes, spec.id);
-    const total   = m.primeiras + m.retornos + m.emergencias;
-    const pctM    = spec.metaM > 0 ? (total / spec.metaM) * 100 : 0;
-    const anoArr  = aggregateAno(db, ano, spec.id);
-    const totalA  = anoArr.reduce((a, x) => a + x.total, 0);
-    const total1a = anoArr.reduce((a, x) => a + x.primeiras, 0);
-    const pctA    = spec.metaA > 0 ? (totalA / spec.metaA) * 100 : 0;
-    const comp    = comparativo(db, ano, mes, spec.id);
-    const acum    = aggregateTotal(db, spec.id);
-    return { spec, total, pctM, totalA, pctA, total1a, m, comp, acum };
+    const m      = aggregateMes(db, ano, mes, spec.id);
+    const total  = m.primeiras + m.retornos + m.emergencias;
+    const pctM   = spec.metaM > 0 ? (total / spec.metaM) * 100 : 0;
+    const anoArr = aggregateAno(db, ano, spec.id);
+    const totalA = anoArr.reduce((a, x) => a + x.total, 0);
+    const pctA   = spec.metaA > 0 ? (totalA / spec.metaA) * 100 : 0;
+    const acum   = aggregateTotal(db, spec.id);
+    // Tendência 6 meses para gráfico
+    const trend6 = Array.from({ length: 6 }, (_, i) => {
+      const mIdx = (mes - 5 + i + 12) % 12;
+      const aIdx = (mes - 5 + i < 0) ? ano - 1 : ano;
+      const d = aggregateMes(db, aIdx, mIdx, spec.id);
+      return { name: MONTHS[mIdx], total: d.primeiras + d.retornos + d.emergencias, meta: spec.metaM };
+    });
+    return { spec, total, pctM, totalA, pctA, m, acum, trend6 };
   });
 
-  // Acumulado total (todos os dados)
-  const acumRows = rows.map(r => r.acum);
-  const acumTotal      = acumRows.reduce((a, r) => a + r.total, 0);
-  const acumPrimeiras  = acumRows.reduce((a, r) => a + r.primeiras, 0);
-  const acumRetornos   = acumRows.reduce((a, r) => a + r.retornos, 0);
-  const acumEmerg      = acumRows.reduce((a, r) => a + r.emergencias, 0);
-  const acumOfertadas  = acumRows.reduce((a, r) => a + r.ofertadas, 0);
-  const acumRealizadas = acumRows.reduce((a, r) => a + r.realizadas, 0);
-  const acumFaltas     = acumRows.reduce((a, r) => a + r.faltas, 0);
-  const acumLivres     = acumRows.reduce((a, r) => a + r.livres, 0);
-
-  const totalGeral       = rows.reduce((a, r) => a + r.total, 0);
-  const totalGeralAno    = rows.reduce((a, r) => a + r.totalA, 0);
-  const totalOfertadas   = rows.reduce((a, r) => a + (r.m.ofertadas   || 0), 0);
-  const totalRealizadas  = rows.reduce((a, r) => a + (r.m.realizadas  || 0), 0);
-  const totalEmerg       = rows.reduce((a, r) => a + (r.m.emergencias || 0), 0);
-  const totalFaltas      = rows.reduce((a, r) => a + (r.m.faltas      || 0), 0);
-  const totalLivres      = rows.reduce((a, r) => a + (r.m.livres      || 0), 0);
-  const txReal           = totalOfertadas > 0 ? ((totalRealizadas / totalOfertadas) * 100) : 0;
-  const overviewBar      = SPECS.map(s => ({ name: s.label, total: rows.find(r => r.spec.id === s.id)?.total || 0, meta: s.metaM }));
-
-  // Datas min/max dos dados
-  const allDates = Object.keys(db).sort();
-  const dataInicio = allDates[0] ? allDates[0].split("-").reverse().join("/") : "—";
-  const dataFim    = allDates[allDates.length-1] ? allDates[allDates.length-1].split("-").reverse().join("/") : "—";
+  const totalGeral     = rows.reduce((a, r) => a + r.total, 0);
+  const totalGeralAno  = rows.reduce((a, r) => a + r.totalA, 0);
+  const totalOfertadas = rows.reduce((a, r) => a + (r.m.ofertadas || 0), 0);
+  const totalRealizadas= rows.reduce((a, r) => a + (r.m.realizadas || 0), 0);
+  const totalEmerg     = rows.reduce((a, r) => a + (r.m.emergencias || 0), 0);
+  const totalFaltas    = rows.reduce((a, r) => a + (r.m.faltas || 0), 0);
+  const totalLivres    = rows.reduce((a, r) => a + (r.m.livres || 0), 0);
+  const txReal         = totalOfertadas > 0 ? ((totalRealizadas / totalOfertadas) * 100) : 0;
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      {/* Cabeçalho */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem" }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>Ambulatório HNSN</div>
           <div style={{ fontSize: 12, color: "#5a5a72" }}>Visão geral de todas as especialidades</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Toggle Mensal / Acumulado */}
-          <div style={{ display: "flex", background: "#18181f", border: "1px solid #2a2a38", borderRadius: 7, overflow: "hidden" }}>
-            <button onClick={() => setVista("mensal")} style={{ padding: "6px 14px", border: "none", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600, background: vista === "mensal" ? "#22d3ee" : "transparent", color: vista === "mensal" ? "#000" : "#9090a8", transition: "all .15s" }}>
-              📅 Mensal
-            </button>
-            <button onClick={() => setVista("acumulado")} style={{ padding: "6px 14px", border: "none", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 12, fontWeight: 600, background: vista === "acumulado" ? "#a78bfa" : "transparent", color: vista === "acumulado" ? "#000" : "#9090a8", transition: "all .15s" }}>
-              📊 Acumulado
-            </button>
-          </div>
-          {vista === "mensal" && <>
-            <span style={{ fontSize: 18 }}>📅</span>
-            <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>
-              {MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}
-            </select>
-            <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80 }} />
-          </>}
+          <span style={{ fontSize: 18 }}>📅</span>
+          <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>
+            {MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80 }} />
         </div>
       </div>
 
-      {/* ═══ VISTA ACUMULADA ═══ */}
-      {vista === "acumulado" && (
-        <div>
-          <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1rem" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".85rem" }}>
-              📊 Acumulado Total — {dataInicio} até {dataFim}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: "1rem" }}>
-              <StatCard label="Total de Atendimentos" value={fmt(acumTotal)}      color="#22d3ee" big />
-              <StatCard label="1ªs Consultas"         value={fmt(acumPrimeiras)}  color="#a78bfa" big />
-              <StatCard label="Retornos"               value={fmt(acumRetornos)}   color="#60a5fa" big />
-              <StatCard label="Emergências"            value={fmt(acumEmerg)}      color="#fb7185" big />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: "1rem" }}>
-              <StatCard label="Ofertadas (Gercon)"    value={fmt(acumOfertadas)}  color="#22d3ee" />
-              <StatCard label="Realizadas"            value={fmt(acumRealizadas)} color="#34d399" />
-              <StatCard label="Livres"                value={fmt(acumLivres)}     color="#60a5fa" />
-              <StatCard label="Faltas"                value={fmt(acumFaltas)}     color="#fbbf24" />
-            </div>
-
-            {/* Tabela acumulada por especialidade */}
-            <div style={{ borderTop: "1px solid #2a2a38", paddingTop: ".75rem" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Detalhamento por especialidade — período completo</div>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                <thead><tr>{["Especialidade","Total","1ª Cons.","Retorno","Emergências","Ofertadas","Realizadas","Livres","Faltas","% Meta Anual"].map(h => <th key={h} style={{ textAlign: "left", padding: "4px 8px", color: "#5a5a72", fontSize: 10, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38" }}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {rows.map(({ spec, acum }) => {
-                    const pctA = spec.metaA > 0 ? Math.round((acum.total / spec.metaA) * 100) : 0;
-                    const c = pctA >= 100 ? "#34d399" : pctA >= 70 ? spec.color : "#fb7185";
-                    return (
-                      <tr key={spec.id} style={{ borderBottom: "1px solid #1e1e28" }}>
-                        <td style={{ padding: "5px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: spec.color, display: "inline-block", flexShrink: 0 }} />
-                          <span style={{ color: spec.color, fontWeight: 600 }}>{spec.label}</span>
-                        </td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#e8e8f0", fontWeight: 700 }}>{fmt(acum.total)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#a78bfa" }}>{fmt(acum.primeiras)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{fmt(acum.retornos)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fb7185" }}>{fmt(acum.emergencias)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee" }}>{fmt(acum.ofertadas)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#34d399" }}>{fmt(acum.realizadas)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{fmt(acum.livres)}</td>
-                        <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fbbf24" }}>{fmt(acum.faltas)}</td>
-                        <td style={{ padding: "5px 8px" }}>
-                          <span style={{ background: c + "22", color: c, borderRadius: 99, padding: "1px 7px", fontSize: 10, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctA}%</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  <tr style={{ borderTop: "1px solid #2a2a38", background: "#111118" }}>
-                    <td style={{ padding: "5px 8px", fontWeight: 700, color: "#e8e8f0" }}>TOTAL</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#e8e8f0", fontWeight: 700 }}>{fmt(acumTotal)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#a78bfa", fontWeight: 700 }}>{fmt(acumPrimeiras)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa", fontWeight: 700 }}>{fmt(acumRetornos)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fb7185", fontWeight: 700 }}>{fmt(acumEmerg)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700 }}>{fmt(acumOfertadas)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#34d399", fontWeight: 700 }}>{fmt(acumRealizadas)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa", fontWeight: 700 }}>{fmt(acumLivres)}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fbbf24", fontWeight: 700 }}>{fmt(acumFaltas)}</td>
-                    <td />
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ VISTA MENSAL ═══ */}
-      {vista === "mensal" && (<>
+      {/* KPIs principais */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: ".75rem" }}>
         <StatCard label={`Atendimentos — ${MONTHS_FULL[mes]}`} value={fmt(totalGeral)}    color="#22d3ee" big />
-        <StatCard label={`Acumulado — ${ano}`}                  value={fmt(totalGeralAno)} color="#a78bfa" big />
+        <StatCard label={`Acumulado — ${ano}`}                  value={fmt(rows.reduce((a,r)=>a+r.totalA,0))} color="#a78bfa" big />
         <StatCard label="Especialidades ativas"                  value={SPECS.length}       color="#34d399" big />
-        <StatCard label="Taxa de realização"                     value={`${txReal.toFixed(1)}%`} color={txReal >= 80 ? "#34d399" : txReal >= 60 ? "#fbbf24" : "#fb7185"} big />
+        <StatCard label="Taxa de realização"                     value={`${txReal.toFixed(1)}%`} color={txReal>=80?"#34d399":txReal>=60?"#fbbf24":"#fb7185"} big />
       </div>
 
-      {/* Bloco consolidado */}
+      {/* Bloco consolidado mensal */}
       <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1rem" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".85rem" }}>
-          📅 Consolidado de Consultas — {MONTHS_FULL[mes]}/{ano}
+          📅 Consolidado — {MONTHS_FULL[mes]}/{ano}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: ".75rem", marginBottom: ".85rem" }}>
           {[
-            { icon: "📋", label: "Ofertadas",   value: totalOfertadas,  color: "#22d3ee", sub: "vagas abertas no Gercon" },
+            { icon: "📋", label: "Ofertadas",   value: totalOfertadas,  color: "#22d3ee", sub: "vagas Gercon" },
             { icon: "✅", label: "Realizadas",  value: totalRealizadas, color: "#34d399", sub: `${txReal.toFixed(1)}% das ofertadas` },
-            { icon: "🔓", label: "Livres",      value: totalLivres,     color: "#60a5fa", sub: "vagas não utilizadas" },
-            { icon: "🚨", label: "Emergências", value: totalEmerg,      color: "#fb7185", sub: "entradas não programadas" },
+            { icon: "🔓", label: "Livres",      value: totalLivres,     color: "#60a5fa", sub: "não utilizadas" },
+            { icon: "🚨", label: "Emergências", value: totalEmerg,      color: "#fb7185", sub: "contam na meta" },
             { icon: "❌", label: "Faltas",      value: totalFaltas,     color: "#fbbf24", sub: "pacientes ausentes" },
           ].map(({ icon, label, value, color, sub }) => (
             <div key={label} style={{ background: "#111118", border: "1px solid #2a2a38", borderLeft: `3px solid ${color}`, borderRadius: 8, padding: "10px 12px" }}>
               <div style={{ fontSize: 11, color: "#5a5a72", marginBottom: 4 }}>{icon} {label}</div>
-              <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 24, fontWeight: 700, color, lineHeight: 1 }}>{fmt(value)}</div>
+              <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{fmt(value)}</div>
               <div style={{ fontSize: 10, color: "#5a5a72", marginTop: 4 }}>{sub}</div>
-              {totalOfertadas > 0 && label !== "Ofertadas" && (
-                <div style={{ background: "#1e1e28", borderRadius: 99, height: 3, marginTop: 6 }}>
-                  <div style={{ width: `${Math.min((value / totalOfertadas) * 100, 100)}%`, height: "100%", background: color, borderRadius: 99, transition: "width .5s" }} />
-                </div>
-              )}
             </div>
           ))}
         </div>
-        {/* Tabela por especialidade */}
-        <div style={{ borderTop: "1px solid #2a2a38", paddingTop: ".75rem" }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Detalhamento por especialidade</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-            <thead><tr>{["Especialidade","Ofertadas","Realizadas","% Real.","Livres","Emerg.","Faltas","vs Mês Ant.","vs Ano Ant."].map(h => <th key={h} style={{ textAlign: "left", padding: "4px 8px", color: "#5a5a72", fontSize: 10, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38" }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {rows.map(({ spec, m, comp }) => {
-                const tx = m.ofertadas > 0 ? ((m.realizadas / m.ofertadas) * 100) : 0;
-                const tc = tx >= 80 ? "#34d399" : tx >= 60 ? "#fbbf24" : "#fb7185";
-                return (
-                  <tr key={spec.id} style={{ borderBottom: "1px solid #1e1e28" }}>
-                    <td style={{ padding: "5px 8px", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: spec.color, display: "inline-block", flexShrink: 0 }} />
-                      <span style={{ color: spec.color, fontWeight: 600 }}>{spec.label}</span>
-                    </td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee" }}>{m.ofertadas}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#34d399" }}>{m.realizadas}</td>
-                    <td style={{ padding: "5px 8px" }}><span style={{ background: tc + "22", color: tc, borderRadius: 99, padding: "1px 7px", fontSize: 10, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{tx.toFixed(1)}%</span></td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{m.livres}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fb7185" }}>{m.emergencias}</td>
-                    <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fbbf24" }}>{m.faltas}</td>
-                    <td style={{ padding: "5px 8px" }}>
-                      <span style={{ color: comp.variacaoMes >= 0 ? "#34d399" : "#fb7185", fontSize: 11, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
-                        {comp.variacaoMes >= 0 ? "▲" : "▼"}{Math.abs(comp.variacaoMes).toFixed(0)}%
-                      </span>
-                    </td>
-                    <td style={{ padding: "5px 8px" }}>
-                      <span style={{ color: comp.variacaoAno >= 0 ? "#34d399" : "#fb7185", fontSize: 11, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>
-                        {comp.variacaoAno >= 0 ? "▲" : "▼"}{Math.abs(comp.variacaoAno).toFixed(0)}%
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr style={{ borderTop: "1px solid #2a2a38", background: "#111118" }}>
-                <td style={{ padding: "5px 8px", fontWeight: 700, color: "#e8e8f0" }}>TOTAL</td>
-                <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700 }}>{totalOfertadas}</td>
-                <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#34d399", fontWeight: 700 }}>{totalRealizadas}</td>
-                <td style={{ padding: "5px 8px" }}><span style={{ background: (txReal >= 80 ? "#34d399" : txReal >= 60 ? "#fbbf24" : "#fb7185") + "22", color: txReal >= 80 ? "#34d399" : txReal >= 60 ? "#fbbf24" : "#fb7185", borderRadius: 99, padding: "1px 7px", fontSize: 10, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{txReal.toFixed(1)}%</span></td>
-                <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa", fontWeight: 700 }}>{totalLivres}</td>
-                <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fb7185", fontWeight: 700 }}>{totalEmerg}</td>
-                <td style={{ padding: "5px 8px", fontFamily: "JetBrains Mono, monospace", color: "#fbbf24", fontWeight: 700 }}>{totalFaltas}</td>
-                <td colSpan={2} />
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </div>
 
-      {/* Gráfico + cards especialidade */}
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem", marginBottom: "1rem" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Realizado vs Meta — {MONTHS_FULL[mes]}/{ano}</div>
-        <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={overviewBar} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-            <XAxis dataKey="name" tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
-            <Tooltip content={customTooltip} />
-            <Bar dataKey="total" name="Realizado" radius={[4, 4, 0, 0]}>
-              {overviewBar.map((entry, i) => <Cell key={i} fill={SPECS[i].color} fillOpacity={entry.total >= entry.meta ? 1 : .6} />)}
-            </Bar>
-            <Bar dataKey="meta" name="Meta" fill="#2a2a38" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      {/* Cards por especialidade com gráfico de tendência */}
+      <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".75rem" }}>
+        Especialidades — Meta Mensal + Tendência 6 Meses
       </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: ".75rem" }}>
-        {rows.map(({ spec, total, pctM, totalA, pctA, total1a, m }) => {
-          const faltaM = Math.max(spec.metaM - total, 0);
-          const bc = pctM >= 100 ? "#34d399" : pctM >= 70 ? spec.color : pctM >= 40 ? "#fbbf24" : "#fb7185";
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(1,1fr)", gap: "1rem" }}>
+        {rows.map(({ spec, total, pctM, totalA, pctA, m, acum, trend6 }) => {
+          const faltaM  = Math.max(spec.metaM - total, 0);
+          const bc      = pctM >= 100 ? "#34d399" : pctM >= 70 ? spec.color : pctM >= 40 ? "#fbbf24" : "#fb7185";
+          const faltaA  = Math.max(spec.metaA - totalA, 0);
           return (
-            <div key={spec.id} style={{ background: "#18181f", border: "1px solid #2a2a38", borderTop: `2px solid ${spec.color}`, borderRadius: 10, padding: "1rem", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: spec.color }}>{spec.label}</div>
+            <div key={spec.id} style={{ background: "#18181f", border: `1px solid #2a2a38`, borderLeft: `4px solid ${spec.color}`, borderRadius: 10, padding: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr 320px", gap: "1.25rem", alignItems: "start" }}>
+
+              {/* Coluna 1: KPIs mensais */}
               <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 10, color: "#5a5a72" }}>MENSAL</span>
-                  <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: bc, fontWeight: 700 }}>{pctM.toFixed(1)}%</span>
-                </div>
-                <div style={{ background: "#0e0e14", borderRadius: 99, height: 5 }}>
-                  <div style={{ width: `${Math.min(pctM, 100)}%`, height: "100%", background: bc, borderRadius: 99, transition: "width .5s" }} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#5a5a72", marginTop: 3 }}>
-                  <span>{fmt(total)}</span><span>meta: {fmt(spec.metaM)}</span>
-                </div>
-                {faltaM > 0 && <div style={{ fontSize: 10, color: "#fb7185" }}>Faltam {fmt(faltaM)}</div>}
-              </div>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 10, color: "#5a5a72" }}>ANUAL {ano}</span>
-                  <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: spec.color, fontWeight: 700 }}>{pctA.toFixed(1)}%</span>
-                </div>
-                <div style={{ background: "#0e0e14", borderRadius: 99, height: 5 }}>
-                  <div style={{ width: `${Math.min(pctA, 100)}%`, height: "100%", background: spec.color, borderRadius: 99, transition: "width .5s" }} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#5a5a72", marginTop: 3 }}>
-                  <span>{fmt(totalA)}</span><span>meta: {fmt(spec.metaA)}</span>
-                </div>
-              </div>
-              <div style={{ background: "#0e0e14", borderRadius: 6, padding: "5px 8px" }}>
-                <div style={{ fontSize: 10, color: "#5a5a72" }}>1ª consulta / ano</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 13, color: "#a78bfa" }}>{fmt(total1a)}</span>
-                  <span style={{ fontSize: 10, color: "#5a5a72" }}>meta {fmt(spec.meta1a)}</span>
-                </div>
-                <div style={{ background: "#1e1e28", borderRadius: 99, height: 3, marginTop: 4 }}>
-                  <div style={{ width: `${Math.min((total1a / spec.meta1a) * 100, 100)}%`, height: "100%", background: "#a78bfa", borderRadius: 99 }} />
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                {[
-                  { label: "Emerg.", v: m.emergencias, c: "#fb7185" },
-                  { label: "Faltas", v: m.faltas,      c: "#fbbf24" },
-                  { label: "Real.",  v: m.realizadas,  c: "#34d399" },
-                  { label: "Livres", v: m.livres,      c: "#22d3ee" },
-                ].map(({ label, v, c }) => (
-                  <div key={label} style={{ background: "#0e0e14", borderRadius: 5, padding: "4px 6px", textAlign: "center" }}>
-                    <div style={{ fontSize: 9, color: "#5a5a72" }}>{label}</div>
-                    <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 13, color: c }}>{v}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: spec.color, marginBottom: 10 }}>{spec.label}</div>
+                {/* Barra mensal */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: "#9090a8" }}>Meta Mensal</span>
+                    <DeltaBadge value={total} meta={spec.metaM} />
                   </div>
-                ))}
+                  <div style={{ background: "#0e0e14", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 4 }}>
+                    <div style={{ width: `${Math.min(pctM,100)}%`, height: "100%", background: bc, borderRadius: 99, transition: "width .5s" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#5a5a72" }}>
+                    <span>Realizado: <strong style={{ color: "#e8e8f0" }}>{fmt(total)}</strong></span>
+                    <span style={{ color: bc, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctM.toFixed(1)}%</span>
+                    <span>Meta: <strong style={{ color: "#e8e8f0" }}>{fmt(spec.metaM)}</strong></span>
+                  </div>
+                  {faltaM > 0 && <div style={{ fontSize: 11, color: "#fb7185", marginTop: 3 }}>Faltam <strong>{fmt(faltaM)}</strong> para a meta</div>}
+                </div>
+                {/* Mini stats */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                  {[
+                    { label: "1ª Cons.", v: m.primeiras,   c: "#a78bfa" },
+                    { label: "Retorno",  v: m.retornos,    c: "#60a5fa" },
+                    { label: "Emerg.",   v: m.emergencias, c: "#fb7185" },
+                    { label: "Ofert.",   v: m.ofertadas,   c: "#22d3ee" },
+                    { label: "Realiz.",  v: m.realizadas,  c: "#34d399" },
+                    { label: "Faltas",   v: m.faltas,      c: "#fbbf24" },
+                  ].map(({ label, v, c }) => (
+                    <div key={label} style={{ background: "#111118", borderRadius: 6, padding: "5px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: "#5a5a72" }}>{label}</div>
+                      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 14, color: c, fontWeight: 700 }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              {/* Coluna 2: KPIs anuais */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Anual {ano}</div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: "#9090a8" }}>Meta Anual</span>
+                    <DeltaBadge value={totalA} meta={spec.metaA} />
+                  </div>
+                  <div style={{ background: "#0e0e14", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 4 }}>
+                    <div style={{ width: `${Math.min(pctA,100)}%`, height: "100%", background: spec.color, borderRadius: 99, transition: "width .5s" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#5a5a72" }}>
+                    <span>Realizado: <strong style={{ color: "#e8e8f0" }}>{fmt(totalA)}</strong></span>
+                    <span style={{ color: spec.color, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctA.toFixed(1)}%</span>
+                    <span>Meta: <strong style={{ color: "#e8e8f0" }}>{fmt(spec.metaA)}</strong></span>
+                  </div>
+                  {faltaA > 0 && <div style={{ fontSize: 11, color: "#fb7185", marginTop: 3 }}>Faltam <strong>{fmt(faltaA)}</strong> para a meta anual</div>}
+                </div>
+                {/* Acumulado */}
+                <div style={{ background: "#111118", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 10, color: "#5a5a72", marginBottom: 6 }}>ACUMULADO TOTAL</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                    {[
+                      { label: "Total",   v: acum.total,      c: spec.color },
+                      { label: "1ª Cons.",v: acum.primeiras,  c: "#a78bfa" },
+                      { label: "Emerg.",  v: acum.emergencias,c: "#fb7185" },
+                      { label: "Faltas",  v: acum.faltas,     c: "#fbbf24" },
+                    ].map(({ label, v, c }) => (
+                      <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                        <span style={{ color: "#5a5a72" }}>{label}:</span>
+                        <span style={{ fontFamily: "JetBrains Mono, monospace", color: c, fontWeight: 700 }}>{fmt(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Coluna 3: Gráfico tendência 6 meses */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                  Tendência — últimos 6 meses
+                </div>
+                <ResponsiveContainer width="100%" height={130}>
+                  <ComposedChart data={trend6} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis hide />
+                    <Tooltip content={customTooltip} />
+                    <ReferenceLine y={spec.metaM} stroke="#3a3a4e" strokeDasharray="3 3" />
+                    <Area type="monotone" dataKey="total" name="Atendimentos" fill={spec.color + "22"} stroke={spec.color} strokeWidth={2} dot={{ fill: spec.color, r: 3 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <div style={{ fontSize: 10, color: "#5a5a72", textAlign: "center", marginTop: 2 }}>
+                  linha tracejada = meta {fmt(spec.metaM)}/mês
+                </div>
+              </div>
+
             </div>
           );
         })}
       </div>
-    </div>
-    </>)}
     </div>
   );
 }
@@ -1362,9 +1250,12 @@ function LoginScreen({ onLogin }) {
 // ═══════════════════════════════════════════════════════════
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => loadSession());
-  const [db, setDb]     = useState(() => loadDB());
+  const [db, setDb] = useState(() => loadDB());
   const [active, setActive] = useState("overview");
-  const handleSave = useCallback(newDb => setDb({ ...newDb }), []);
+  
+  const handleSave = useCallback(newDb => {
+    setDb(prev => ({ ...newDb }));
+  }, []);
 
   // Permissões por nível
   const isMaster    = currentUser?.role === "adm_master";
