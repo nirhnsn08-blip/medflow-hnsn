@@ -1,0 +1,3 @@
+# Normaliza quebras de linha: evita que edições no Windows (CRLF)
+# apareçam como o arquivo inteiro "modificado".
+* text=auto eol=lf

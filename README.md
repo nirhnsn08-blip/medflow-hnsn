@@ -2,46 +2,70 @@
 ### Plataforma de Gestão de Atendimentos Ambulatoriais
 Hospital Nossa Senhora de Navegantes
 
----
-
-## 🚀 Como publicar no Vercel (passo a passo)
-
-### Opção A — Pelo site do Vercel (mais fácil, sem instalar nada)
-
-1. Acesse **https://vercel.com** e crie uma conta gratuita (pode entrar com Google)
-2. No painel, clique em **"Add New → Project"**
-3. Clique em **"Import Third-Party Git Repository"** → ou use o método abaixo sem Git
-
-### Opção B — Upload direto (recomendado para você)
-
-1. Acesse **https://vercel.com/new**
-2. Faça login ou crie uma conta gratuita
-3. Clique em **"Deploy from CLI"** ou use o drag-and-drop:
-   - Acesse https://vercel.com/docs/cli
-   - Instale o Vercel CLI: `npm install -g vercel`
-   - Na pasta do projeto, rode: `vercel`
-   - Siga as instruções — em 2 minutos estará no ar
-
-### Opção C — Via GitHub (mais profissional)
-
-1. Crie uma conta no **https://github.com**
-2. Crie um repositório novo chamado `medflow-hnsn`
-3. Faça upload de todos os arquivos desta pasta
-4. Acesse **https://vercel.com**, conecte sua conta GitHub
-5. Importe o repositório `medflow-hnsn`
-6. Clique em **Deploy** — pronto!
+App em **React + Vite**. Dados no **Supabase**, deploy automático na **Vercel**,
+código versionado no **GitHub**.
 
 ---
 
-## 🔗 Seu link ficará assim
+## 🔄 Fluxo de publicação (automatizado)
+
 ```
-https://medflow-hnsn.vercel.app
+editar o código  →  git push  →  GitHub recebe  →  Vercel publica sozinho ✅
 ```
-(ou personalize em Settings → Domains dentro do Vercel)
+
+No dia a dia, depois de mexer no código, basta:
+
+```bash
+git add .
+git commit -m "descreva a mudança"
+git push
+```
+
+Em ~1 min a Vercel publica a nova versão em https://medflow-hnsn.vercel.app
+(não precisa mais subir arquivo na mão pelo site do GitHub nem pela Vercel).
 
 ---
 
-## 👥 Credenciais padrão
+## 📁 Estrutura
+```
+medflow-hnsn/
+├── index.html              ← Página principal (contém as chaves do Supabase)
+├── package.json            ← Dependências
+├── vite.config.js          ← Build (Vite)
+├── vercel.json             ← Config da Vercel
+├── .gitignore / .gitattributes
+├── .env.example            ← Modelo de credenciais (uso local opcional)
+├── src/
+│   ├── main.jsx            ← Ponto de entrada React
+│   └── App.jsx             ← Aplicação completa
+├── supabase/
+│   └── schema.sql          ← Tabelas do banco (referência)
+└── .github/workflows/
+    └── ci.yml              ← Valida o build a cada push (opcional)
+```
+
+---
+
+## 💻 Rodar localmente
+```bash
+npm install
+npm run dev      # abre em http://localhost:5173
+npm run build    # gera a versão de produção em /dist
+```
+> As chaves do Supabase já vêm embutidas no `index.html`, então o app conecta
+> ao banco tanto local quanto publicado. (Para usar chaves diferentes em
+> desenvolvimento, copie `.env.example` para `.env`.)
+
+---
+
+## 🗄️ Banco de dados (Supabase)
+O schema das tabelas (`atendimentos`, `auditoria`) está em
+[`supabase/schema.sql`](supabase/schema.sql) — serve de referência/backup.
+Rode no **SQL Editor** do Supabase apenas se precisar recriar as tabelas.
+
+---
+
+## 👥 Credenciais padrão do app
 
 | Usuário   | Senha       | Perfil          |
 |-----------|-------------|-----------------|
@@ -49,20 +73,6 @@ https://medflow-hnsn.vercel.app
 | diretor   | diretor123  | Visualizador    |
 
 **Altere as senhas após o primeiro acesso pela aba 👥 Usuários.**
-
----
-
-## 📁 Estrutura do projeto
-```
-medflow-hnsn/
-├── index.html          ← Página principal
-├── package.json        ← Dependências
-├── vite.config.js      ← Configuração do build
-├── vercel.json         ← Configuração do Vercel
-└── src/
-    ├── main.jsx        ← Ponto de entrada React
-    └── App.jsx         ← Aplicação completa
-```
 
 ---
 
