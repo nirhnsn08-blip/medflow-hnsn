@@ -69,21 +69,26 @@ async function loadFromSupabase() {
   return db;
 }
 
+// Retorna "cloud" se o dado foi confirmado no Supabase, "local" caso contrário —
+// para a interface avisar quando o registro ficou salvo só neste aparelho.
 async function saveRecord(date, specId, data, user) {
   const db = loadDB();
   if (!db[date]) db[date] = {};
   db[date][specId] = data;
   saveDB(db);
   // Supabase
+  let syncStatus = "local";
   if (USE_SUPABASE) {
-    await sbFetch("atendimentos?on_conflict=data,especialidade", {
+    const res = await sbFetch("atendimentos?on_conflict=data,especialidade", {
       method: "POST",
       headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify({ data: date, especialidade: specId, ...data, usuario: user?.name || null }),
     });
+    if (res) syncStatus = "cloud";
   }
   // Auditoria
   addAuditLog(user, "salvar", `${date} / ${specId}`, data);
+  return syncStatus;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -350,11 +355,11 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 
   async function handleSave() {
     const data = { primeiras: f("primeiras"), retornos: f("retornos"), ofertadas: f("ofertadas"), realizadas: f("realizadas"), livres: f("livres"), emergencias: f("emergencias"), faltas: f("faltas") };
-    await saveRecord(date, spec.id, data, currentUser);
+    const syncStatus = await saveRecord(date, spec.id, data, currentUser);
     const newDb = loadDB();
     onSave(newDb);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setSaved(syncStatus); // "cloud" | "local"
+    setTimeout(() => setSaved(false), 4000);
   }
 
   const mesData   = aggregateMes(db, ano, mes, spec.id);
@@ -444,7 +449,8 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
               <button onClick={handleSave} style={{ background: spec.color, color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", flex: 1 }}>💾 Salvar</button>
-              {saved && <span style={{ color: "#34d399", fontSize: 12, fontWeight: 700 }}>✓ Salvo!</span>}
+              {saved === "cloud" && <span style={{ color: "#34d399", fontSize: 12, fontWeight: 700 }}>☁️ Salvo e sincronizado!</span>}
+              {saved === "local" && <span style={{ color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>⚠️ Salvo SÓ neste aparelho</span>}
             </div>
           )}
           <div style={{ display: "flex", gap: 8 }}>
@@ -1278,23 +1284,35 @@ export default function App() {
     setDb(prev => ({ ...newDb }));
   }, []);
 
-  // Ao abrir o app, busca os dados no Supabase (fonte compartilhada entre os
-  // computadores) e FUNDE com o que já existe localmente — sem apagar nada.
-  // O Supabase tem prioridade por (data, especialidade); dados locais que ainda
-  // não estão na nuvem são preservados. Se falhar/offline, mantém o localStorage.
+  // Busca os dados no Supabase (fonte compartilhada entre os computadores) e
+  // FUNDE com o que já existe localmente — sem apagar nada. O Supabase tem
+  // prioridade por (data, especialidade); dados locais que ainda não estão na
+  // nuvem são preservados. Se falhar/offline, mantém o localStorage.
+  // Roda ao abrir E sempre que a janela volta ao foco (troca de aba/computador),
+  // pra ver os números novos sem precisar apertar F5.
   useEffect(() => {
     if (!USE_SUPABASE) return;
     let cancelled = false;
-    loadFromSupabase().then(cloud => {
-      if (cancelled || !cloud) return;
-      setDb(prev => {
-        const merged = { ...prev };
-        for (const d in cloud) merged[d] = { ...(merged[d] || {}), ...cloud[d] };
-        saveDB(merged);
-        return merged;
+    const syncFromCloud = () => {
+      loadFromSupabase().then(cloud => {
+        if (cancelled || !cloud) return;
+        setDb(prev => {
+          const merged = { ...prev };
+          for (const d in cloud) merged[d] = { ...(merged[d] || {}), ...cloud[d] };
+          saveDB(merged);
+          return merged;
+        });
       });
-    });
-    return () => { cancelled = true; };
+    };
+    syncFromCloud();
+    const onFocus = () => syncFromCloud();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
   }, []);
 
   // Permissões por nível
