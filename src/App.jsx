@@ -1296,12 +1296,28 @@ export default function App() {
     const syncFromCloud = () => {
       loadFromSupabase().then(cloud => {
         if (cancelled || !cloud) return;
-        setDb(prev => {
-          const merged = { ...prev };
-          for (const d in cloud) merged[d] = { ...(merged[d] || {}), ...cloud[d] };
-          saveDB(merged);
-          return merged;
-        });
+        const prev = loadDB();
+        const merged = { ...prev };
+        for (const d in cloud) merged[d] = { ...(merged[d] || {}), ...cloud[d] };
+        saveDB(merged);
+        setDb(merged);
+        // MIGRAÇÃO AUTOMÁTICA: registros que só existem neste aparelho
+        // (digitados antes da nuvem, ou salvos offline) sobem para o Supabase.
+        const pendentes = [];
+        for (const d in merged) {
+          for (const s in merged[d]) {
+            if (!cloud[d] || !cloud[d][s]) {
+              pendentes.push({ data: d, especialidade: s, ...merged[d][s], usuario: "migracao-auto" });
+            }
+          }
+        }
+        if (pendentes.length > 0) {
+          sbFetch("atendimentos?on_conflict=data,especialidade", {
+            method: "POST",
+            headers: { "Prefer": "resolution=merge-duplicates" },
+            body: JSON.stringify(pendentes),
+          });
+        }
       });
     };
     syncFromCloud();
