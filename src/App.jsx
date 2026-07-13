@@ -1278,13 +1278,21 @@ export default function App() {
     setDb(prev => ({ ...newDb }));
   }, []);
 
-  // Ao abrir o app, busca os dados no Supabase (fonte da verdade compartilhada
-  // entre todos os computadores). Se falhar/offline, mantém o localStorage.
+  // Ao abrir o app, busca os dados no Supabase (fonte compartilhada entre os
+  // computadores) e FUNDE com o que já existe localmente — sem apagar nada.
+  // O Supabase tem prioridade por (data, especialidade); dados locais que ainda
+  // não estão na nuvem são preservados. Se falhar/offline, mantém o localStorage.
   useEffect(() => {
     if (!USE_SUPABASE) return;
     let cancelled = false;
     loadFromSupabase().then(cloud => {
-      if (!cancelled && cloud) { setDb(cloud); saveDB(cloud); }
+      if (cancelled || !cloud) return;
+      setDb(prev => {
+        const merged = { ...prev };
+        for (const d in cloud) merged[d] = { ...(merged[d] || {}), ...cloud[d] };
+        saveDB(merged);
+        return merged;
+      });
     });
     return () => { cancelled = true; };
   }, []);
