@@ -48,6 +48,27 @@ const loadDB  = () => { try { return JSON.parse(localStorage.getItem(K) || "{}")
 const saveDB  = d  => localStorage.setItem(K, JSON.stringify(d));
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+// Lê TODOS os atendimentos do Supabase e reconstrói o formato db[data][especialidade].
+// É o que faz os números aparecerem em qualquer computador (não só onde foram digitados).
+async function loadFromSupabase() {
+  const rows = await sbFetch("atendimentos?select=*");
+  if (!Array.isArray(rows)) return null;
+  const db = {};
+  for (const r of rows) {
+    if (!db[r.data]) db[r.data] = {};
+    db[r.data][r.especialidade] = {
+      primeiras:   r.primeiras   || 0,
+      retornos:    r.retornos    || 0,
+      ofertadas:   r.ofertadas   || 0,
+      realizadas:  r.realizadas  || 0,
+      livres:      r.livres      || 0,
+      emergencias: r.emergencias || 0,
+      faltas:      r.faltas      || 0,
+    };
+  }
+  return db;
+}
+
 async function saveRecord(date, specId, data, user) {
   const db = loadDB();
   if (!db[date]) db[date] = {};
@@ -58,7 +79,7 @@ async function saveRecord(date, specId, data, user) {
     await sbFetch("atendimentos?on_conflict=data,especialidade", {
       method: "POST",
       headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({ data: date, especialidade: specId, ...data, usuario: user }),
+      body: JSON.stringify({ data: date, especialidade: specId, ...data, usuario: user?.name || null }),
     });
   }
   // Auditoria
@@ -1255,6 +1276,17 @@ export default function App() {
   
   const handleSave = useCallback(newDb => {
     setDb(prev => ({ ...newDb }));
+  }, []);
+
+  // Ao abrir o app, busca os dados no Supabase (fonte da verdade compartilhada
+  // entre todos os computadores). Se falhar/offline, mantém o localStorage.
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    let cancelled = false;
+    loadFromSupabase().then(cloud => {
+      if (!cancelled && cloud) { setDb(cloud); saveDB(cloud); }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // Permissões por nível
