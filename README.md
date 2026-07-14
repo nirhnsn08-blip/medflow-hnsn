@@ -67,12 +67,19 @@ Rode no **SQL Editor** do Supabase apenas se precisar recriar as tabelas.
 
 ## 👥 Credenciais padrão do app
 
-| Usuário   | Senha       | Perfil          |
-|-----------|-------------|-----------------|
-| laura     | hnsn2025    | Administrador   |
-| diretor   | diretor123  | Visualizador    |
+O login usa **Supabase Auth** (senhas nunca ficam no código nem no navegador).
+Usuários iniciais: `laura` (ADM Master) e `diretor` (ADM Silver) — troque a senha
+no primeiro acesso pela aba **👥 Usuários → 🔑 Trocar minha senha**.
 
-**Altere as senhas após o primeiro acesso pela aba 👥 Usuários.**
+**Adicionar / remover usuários:** painel do Supabase → *Authentication → Users*.
+Crie com e-mail no formato `usuario@hnsn.local` e defina o papel em *User Metadata*,
+ex.: `{ "role": "adm_silver" }`. Papéis: `adm_master`, `adm_silver`, `analista`,
+`visualizador`.
+
+## 🔒 Segurança
+- Acesso ao banco exige usuário autenticado (RLS por papel) — a chave publishable
+  sozinha não lê nem grava nada.
+- Auditoria é imutável (não pode ser editada/apagada pelo app).
 
 ---
 
