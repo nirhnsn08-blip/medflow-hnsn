@@ -17,7 +17,7 @@ async function sbFetch(path, opts = {}) {
     ...opts,
     headers: {
       "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
       "Content-Type": "application/json",
       "Prefer": opts.method === "POST" ? "return=representation" : undefined,
       ...opts.headers,
@@ -151,23 +151,79 @@ function comparativo(db, ano, mes, specId) {
 // ═══════════════════════════════════════════════════════════
 // AUTH
 // ═══════════════════════════════════════════════════════════
-const AUTH_KEY    = "hnsn_users_v1";
-const SESSION_KEY = "hnsn_session_v1";
+const SESSION_KEY = "hnsn_auth_v2";   // { access_token, refresh_token, user }
+const AUTH_DOMAIN = "@hnsn.local";    // "laura" -> laura@hnsn.local (o Supabase Auth exige formato de e-mail)
 const ROLES = {
   adm_master:   { label: "ADM Master",   color: "#f59e0b", desc: "Acesso total — único que cria usuários, acessa banco e auditoria" },
   adm_silver:   { label: "ADM Silver",   color: "#22d3ee", desc: "Insere dados, importa, auditoria e gera dashboard" },
   analista:     { label: "Analista",     color: "#a78bfa", desc: "Visualiza e gera dashboard para impressão" },
   visualizador: { label: "Visualizador", color: "#5a5a72", desc: "Somente leitura — sem gerar dashboard" },
 };
-const DEFAULT_USERS = [
-  { id: "1", name: "Laura",   username: "laura",   password: "hnsn2025",   role: "adm_master" },
-  { id: "2", name: "Diretor", username: "diretor", password: "diretor123", role: "adm_silver" },
-];
-const loadUsers   = () => { try { const u = localStorage.getItem(AUTH_KEY); return u ? JSON.parse(u) : DEFAULT_USERS; } catch { return DEFAULT_USERS; } };
-const saveUsers   = u  => localStorage.setItem(AUTH_KEY, JSON.stringify(u));
-const loadSession = () => { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; } };
-const saveSession = u  => sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
-const clearSession = () => sessionStorage.removeItem(SESSION_KEY);
+
+// Token JWT do usuário logado — enviado nas chamadas ao banco (ver sbFetch).
+let AUTH_TOKEN = null;
+
+const loadSession = () => {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY));
+    AUTH_TOKEN = s?.access_token || null;
+    return s?.user || null;
+  } catch { return null; }
+};
+const saveSession = s => { AUTH_TOKEN = s?.access_token || null; localStorage.setItem(SESSION_KEY, JSON.stringify(s)); };
+const clearSession = () => { AUTH_TOKEN = null; localStorage.removeItem(SESSION_KEY); };
+
+// Login REAL via Supabase Auth. Retorna { ok, user } ou { ok:false, error }.
+async function signIn(username, password) {
+  if (!USE_SUPABASE) return { ok: false, error: "Login indisponível (banco não configurado)." };
+  const email = username.trim().toLowerCase() + AUTH_DOMAIN;
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+  } catch { return { ok: false, error: "Sem conexão com o servidor." }; }
+  if (!res.ok) return { ok: false, error: "Usuário ou senha incorretos." };
+  const auth = await res.json();
+  AUTH_TOKEN = auth.access_token;
+  let profile = null;
+  try {
+    const p = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.user.id}&select=username,nome,role`, {
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${auth.access_token}` },
+    });
+    if (p.ok) profile = (await p.json())[0];
+  } catch {}
+  const user = {
+    id: auth.user.id,
+    name: profile?.nome || username,
+    username: profile?.username || username.trim().toLowerCase(),
+    role: profile?.role || "visualizador",
+  };
+  saveSession({ access_token: auth.access_token, refresh_token: auth.refresh_token, user });
+  return { ok: true, user };
+}
+
+// Troca a senha do próprio usuário logado (Supabase Auth).
+async function changeMyPassword(newPassword) {
+  if (!AUTH_TOKEN) return { ok: false, error: "Sessão expirada. Entre novamente." };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: "PUT",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${AUTH_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ password: newPassword }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); return { ok: false, error: e.msg || e.error_description || "Não foi possível trocar a senha." }; }
+    return { ok: true };
+  } catch { return { ok: false, error: "Sem conexão." }; }
+}
+
+// Lista os perfis/usuários (somente leitura) para a tela de Usuários.
+async function loadProfiles() {
+  const rows = await sbFetch("profiles?select=username,nome,role&order=role");
+  return Array.isArray(rows) ? rows : [];
+}
 
 // ═══════════════════════════════════════════════════════════
 // ALERTAS AUTOMÁTICOS
@@ -1086,70 +1142,62 @@ function ImportPage({ onImport, currentUser }) {
 // USUÁRIOS
 // ═══════════════════════════════════════════════════════════
 function UsersPage({ currentUser }) {
-  const [users, setUsers] = useState(() => loadUsers());
-  const [form, setForm]   = useState({ name: "", username: "", password: "", role: "visualizador" });
-  const [editId, setEditId] = useState(null);
-  const [msg, setMsg]     = useState("");
-  function handleSave() {
-    if (!form.name || !form.username || (!editId && !form.password)) { setMsg("⚠️ Preencha nome, usuário e senha."); return; }
-    if (users.find(u => u.username === form.username.toLowerCase() && u.id !== editId)) { setMsg("⚠️ Usuário já existe."); return; }
-    // Protege: só adm_master pode criar outro adm_master
-    if (form.role === "adm_master" && currentUser.role !== "adm_master") { setMsg("⚠️ Apenas ADM Master pode criar outro ADM Master."); return; }
-    let updated;
-    if (editId) updated = users.map(u => u.id === editId ? { ...u, name: form.name, username: form.username.toLowerCase(), role: form.role, ...(form.password ? { password: form.password } : {}) } : u);
-    else updated = [...users, { id: Date.now().toString(), name: form.name, username: form.username.toLowerCase(), password: form.password, role: form.role }];
-    saveUsers(updated); setUsers(updated);
-    addAuditLog(currentUser, editId ? "editar usuário" : "criar usuário", form.username, { role: form.role });
-    setForm({ name: "", username: "", password: "", role: "visualizador" }); setEditId(null);
-    setMsg(editId ? "✓ Atualizado!" : "✓ Usuário criado!"); setTimeout(() => setMsg(""), 2500);
+  const [profiles, setProfiles] = useState([]);
+  const [np1, setNp1] = useState("");
+  const [np2, setNp2] = useState("");
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { loadProfiles().then(setProfiles); }, []);
+  async function handleChangePw() {
+    if (busy) return;
+    if (np1.length < 6) { setMsg("⚠️ A nova senha precisa de ao menos 6 caracteres."); return; }
+    if (np1 !== np2) { setMsg("⚠️ As duas senhas não coincidem."); return; }
+    setBusy(true); setMsg("");
+    const r = await changeMyPassword(np1);
+    setBusy(false);
+    if (r.ok) { setMsg("✓ Senha alterada com sucesso!"); setNp1(""); setNp2(""); addAuditLog(currentUser, "trocar senha", currentUser.username, {}); setTimeout(() => setMsg(""), 3000); }
+    else setMsg("⚠️ " + r.error);
   }
   const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Gerenciar Usuários</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.5rem" }}>Crie, edite e controle os níveis de acesso</div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Usuários e Acesso</div>
+      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
+
+      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 460 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>🔑 Trocar minha senha</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <input type="password" value={np1} placeholder="Nova senha (mín. 6 caracteres)" onChange={e => { setNp1(e.target.value); setMsg(""); }} style={inp} autoComplete="new-password" />
+          <input type="password" value={np2} placeholder="Repita a nova senha" onChange={e => { setNp2(e.target.value); setMsg(""); }} onKeyDown={e => e.key === "Enter" && handleChangePw()} style={inp} autoComplete="new-password" />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button onClick={handleChangePw} disabled={busy} style={{ background: busy ? "#334155" : "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: busy ? "default" : "pointer", fontSize: 13 }}>{busy ? "Salvando…" : "Trocar senha"}</button>
+            {msg && <span style={{ fontSize: 13, color: msg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600 }}>{msg}</span>}
+          </div>
+        </div>
+      </div>
+
       <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, marginBottom: "1.25rem", overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid #2a2a38", fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em" }}>Usuários cadastrados ({users.length})</div>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #2a2a38", fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em" }}>Usuários com acesso ({profiles.length})</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead><tr>{["Nome","Usuário","Perfil","Permissões","Ações"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "#5a5a72", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38", background: "#111118" }}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Nome","Usuário","Perfil","Permissões"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "#5a5a72", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38", background: "#111118" }}>{h}</th>)}</tr></thead>
           <tbody>
-            {users.map(u => {
-              const role = ROLES[u.role]; const isMe = u.id === currentUser.id;
+            {profiles.map(u => {
+              const role = ROLES[u.role] || ROLES.visualizador; const isMe = u.username === currentUser.username;
               return (
-                <tr key={u.id} style={{ background: isMe ? "#1a1a28" : "transparent" }}>
-                  <td style={{ padding: "10px 14px", color: "#e8e8f0", fontWeight: 600 }}>{u.name} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
+                <tr key={u.username} style={{ background: isMe ? "#1a1a28" : "transparent" }}>
+                  <td style={{ padding: "10px 14px", color: "#e8e8f0", fontWeight: 600 }}>{u.nome} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
                   <td style={{ padding: "10px 14px", fontFamily: "JetBrains Mono, monospace", color: "#9090a8" }}>{u.username}</td>
                   <td style={{ padding: "10px 14px" }}><span style={{ background: role.color + "22", color: role.color, borderRadius: 99, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{role.label}</span></td>
                   <td style={{ padding: "10px 14px", fontSize: 11, color: "#5a5a72" }}>{role.desc}</td>
-                  <td style={{ padding: "10px 14px" }}>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button onClick={() => { setEditId(u.id); setForm({ name: u.name, username: u.username, password: "", role: u.role }); }} style={{ background: "#1e1e28", border: "1px solid #2a2a38", borderRadius: 5, padding: "4px 10px", color: "#22d3ee", cursor: "pointer", fontSize: 12 }}>✏️ Editar</button>
-                      {!isMe && <button onClick={() => { if (confirm("Excluir?")) { const up = users.filter(x => x.id !== u.id); saveUsers(up); setUsers(up); addAuditLog(currentUser, "excluir usuário", u.username, {}); } }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "4px 10px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>}
-                    </div>
-                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1.25rem" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>{editId ? "✏️ Editar Usuário" : "➕ Novo Usuário"}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
-          {[["name","Nome completo","text","Ex: Dr. João"],["username","Usuário (login)","text","Ex: joao"],["password",editId ? "Nova senha (opcional)" : "Senha","password","••••••••"]].map(([key,label,type,placeholder]) => (
-            <div key={key}><label style={{ fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 }}>{label}</label>
-              <input type={type} value={form[key]} placeholder={placeholder} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} onFocus={e => e.target.style.borderColor = "#22d3ee"} onBlur={e => e.target.style.borderColor = "#2a2a38"} style={inp} /></div>
-          ))}
-          <div><label style={{ fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 }}>Perfil</label>
-            <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} style={{ ...inp, cursor: "pointer" }}>
-              {Object.entries(ROLES).map(([id, r]) => <option key={id} value={id}>{r.label}</option>)}
-            </select></div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button onClick={handleSave} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{editId ? "✓ Salvar" : "➕ Criar"}</button>
-          {editId && <button onClick={() => { setEditId(null); setForm({ name:"",username:"",password:"",role:"visualizador" }); }} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 14px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>}
-          {msg && <span style={{ fontSize: 13, color: msg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600 }}>{msg}</span>}
-        </div>
+
+      <div style={{ background: "#0e2a3d", border: "1px solid #1e4d6b", borderRadius: 10, padding: "1rem 1.25rem", fontSize: 13, color: "#9cc7dd", lineHeight: 1.6, maxWidth: 680 }}>
+        <strong style={{ color: "#22d3ee" }}>Adicionar ou remover usuários</strong> é feito no painel do Supabase → <em>Authentication → Users</em> (por segurança, a criação de contas não fica no navegador). Ao criar, use o e-mail no formato <code style={{ background: "#0a1a26", padding: "1px 5px", borderRadius: 4 }}>usuario@hnsn.local</code> e defina o perfil em <em>User Metadata</em>, por exemplo <code style={{ background: "#0a1a26", padding: "1px 5px", borderRadius: 4 }}>{`{ "role": "adm_silver" }`}</code>.
       </div>
     </div>
   );
@@ -1238,10 +1286,15 @@ function LoginScreen({ onLogin }) {
   const [showPass, setShowPass] = useState(false);
   const [error, setError]       = useState("");
   const [shake, setShake]       = useState(false);
-  function handleLogin() {
-    const user = loadUsers().find(u => u.username === username.trim().toLowerCase() && u.password === password);
-    if (user) { saveSession(user); onLogin(user); }
-    else { setError("Usuário ou senha incorretos."); setShake(true); setTimeout(() => setShake(false), 500); }
+  const [loading, setLoading]   = useState(false);
+  async function handleLogin() {
+    if (loading) return;
+    if (!username.trim() || !password) { setError("Preencha usuário e senha."); return; }
+    setLoading(true); setError("");
+    const r = await signIn(username, password);
+    setLoading(false);
+    if (r.ok) onLogin(r.user);
+    else { setError(r.error); setShake(true); setTimeout(() => setShake(false), 500); }
   }
   const inp = { width: "100%", padding: "11px 14px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, outline: "none", fontFamily: "Inter, sans-serif", background: "#fff", color: "#111", transition: "border .15s", boxSizing: "border-box" };
   return (
@@ -1264,7 +1317,7 @@ function LoginScreen({ onLogin }) {
           </div>
         </div>
         {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#dc2626", marginBottom: 14 }}>⚠️ {error}</div>}
-        <button onClick={handleLogin} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: "linear-gradient(135deg, #22d3ee, #6366f1)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "Inter, sans-serif", boxShadow: "0 4px 14px rgba(34,211,238,.35)" }}>Entrar</button>
+        <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: loading ? "#94a3b8" : "linear-gradient(135deg, #22d3ee, #6366f1)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "Inter, sans-serif", boxShadow: "0 4px 14px rgba(34,211,238,.35)" }}>{loading ? "Entrando…" : "Entrar"}</button>
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: "#cbd5e1" }}>Acesso restrito · Hospital Nossa Senhora de Navegantes</div>
       </div>
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
@@ -1291,7 +1344,7 @@ export default function App() {
   // Roda ao abrir E sempre que a janela volta ao foco (troca de aba/computador),
   // pra ver os números novos sem precisar apertar F5.
   useEffect(() => {
-    if (!USE_SUPABASE) return;
+    if (!USE_SUPABASE || !currentUser) return;
     let cancelled = false;
     const syncFromCloud = () => {
       loadFromSupabase().then(cloud => {
@@ -1329,7 +1382,7 @@ export default function App() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, []);
+  }, [currentUser]);
 
   // Permissões por nível
   const isMaster    = currentUser?.role === "adm_master";
