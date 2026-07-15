@@ -1166,6 +1166,37 @@ async function registrarSaidaRemote(saida, user) {
   await sbFetch("leitos_saidas", { method: "POST", body: JSON.stringify({ ...saida, usuario: user?.name || null }) });
 }
 
+// ── Referências de CID (tempo estimado de internação por diagnóstico) ──
+const CIDREF_KEY = "hnsn_cidref_v1";
+const loadCidRefLocal = () => { try { return JSON.parse(localStorage.getItem(CIDREF_KEY) || "[]"); } catch { return []; } };
+const saveCidRefLocal = arr => localStorage.setItem(CIDREF_KEY, JSON.stringify(arr));
+async function loadCidRefFromSupabase() {
+  const rows = await sbFetch("cid_referencia?select=*");
+  return Array.isArray(rows) ? rows : null;
+}
+async function upsertCidRefRemote(ref, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("cid_referencia?on_conflict=cid", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...ref, usuario: user?.name || null }),
+  });
+}
+async function deleteCidRefRemote(cid) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`cid_referencia?cid=eq.${encodeURIComponent(cid)}`, { method: "DELETE" });
+}
+// Acha a referência para um CID digitado: código exato → prefixo → descrição
+function sugerirCid(cidDigitado, refs) {
+  if (!cidDigitado || !refs || !refs.length) return null;
+  const c = cidDigitado.trim().toUpperCase();
+  if (c.length < 2) return null;
+  let m = refs.find(r => (r.cid || "").toUpperCase() === c);
+  if (!m) m = refs.find(r => { const rc = (r.cid || "").toUpperCase(); return rc && (c.startsWith(rc) || rc.startsWith(c)); });
+  if (!m && c.length >= 3) m = refs.find(r => (r.descricao || "").toUpperCase().includes(c));
+  return m || null;
+}
+
 // Previsão de alta = data de internação + dias previstos
 function calcAlta(dataInternacao, diasPrevistos) {
   if (!dataInternacao || !diasPrevistos) return null;
@@ -1192,15 +1223,23 @@ const STATUS_LEITO = {
 };
 
 // Modal de internação / edição de paciente no leito
-function InternarModal({ leito, onClose, onSave }) {
+function InternarModal({ leito, onClose, onSave, refs = [] }) {
   const [f, setF] = useState({
     iniciais: leito.iniciais || "", prontuario: leito.prontuario || "", motivo: leito.motivo || "",
     cid: leito.cid || "", data_internacao: leito.data_internacao || todayStr(), dias_previstos: leito.dias_previstos || "",
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  // ao digitar o CID, sugere os dias (só se o campo estiver vazio — nunca sobrescreve o que você digitou)
+  const onCid = v => setF(p => {
+    const next = { ...p, cid: v };
+    const s = sugerirCid(v, refs);
+    if (s && !p.dias_previstos) next.dias_previstos = String(s.dias);
+    return next;
+  });
   const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 11px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 };
   const alta = calcAlta(f.data_internacao, f.dias_previstos);
+  const sug = sugerirCid(f.cid, refs);
   function submit() {
     if (!f.iniciais.trim() || !f.dias_previstos) { alert("Informe ao menos as iniciais e os dias previstos."); return; }
     onSave({
@@ -1217,7 +1256,9 @@ function InternarModal({ leito, onClose, onSave }) {
           <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: J.S.M." style={inp} /></div>
           <div><label style={lbl}>Nº prontuário/registro</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="Ex.: 48213" style={inp} /></div>
           <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>Motivo da internação</label><input value={f.motivo} onChange={e => set("motivo", e.target.value)} placeholder="Ex.: Pós-operatório de colecistectomia" style={inp} /></div>
-          <div><label style={lbl}>CID</label><input value={f.cid} onChange={e => set("cid", e.target.value)} placeholder="Ex.: K80.2" style={inp} /></div>
+          <div><label style={lbl}>CID</label><input value={f.cid} onChange={e => onCid(e.target.value)} placeholder="Ex.: J18 (pneumonia)" style={inp} />
+            {sug && <div onClick={() => set("dias_previstos", String(sug.dias))} title="Aplicar a referência" style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, cursor: "pointer" }}>💡 {sug.descricao}: ref. {sug.dias}d · <span style={{ textDecoration: "underline" }}>aplicar</span></div>}
+          </div>
           <div><label style={lbl}>Data de internação</label><input type="date" value={f.data_internacao} onChange={e => set("data_internacao", e.target.value)} style={inp} /></div>
           <div><label style={lbl}>Diária de AIH / dias previstos *</label><input type="number" min="1" value={f.dias_previstos} onChange={e => set("dias_previstos", e.target.value)} placeholder="Ex.: 5" style={inp} /></div>
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
@@ -1234,20 +1275,90 @@ function InternarModal({ leito, onClose, onSave }) {
   );
 }
 
+// Modal de gerenciamento das referências de CID → dias
+function CidRefModal({ refs, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ cid: "", descricao: "", dias: "" });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const hl = { fontSize: 11, color: "#9090a8", fontWeight: 700, display: "block", marginBottom: 4 };
+  async function salvar() {
+    if (!f.cid.trim() || !f.dias) { alert("Informe o CID e os dias."); return; }
+    setBusy(true);
+    await onSave({ cid: f.cid.trim().toUpperCase(), descricao: f.descricao.trim(), dias: Number(f.dias) });
+    setBusy(false);
+    setF({ cid: "", descricao: "", dias: "" });
+  }
+  const ordenados = [...refs].sort((a, b) => (a.cid || "").localeCompare(b.cid || ""));
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 580, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>📚 Referências de CID → dias de internação</div>
+        <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Valores de referência aproximados — ajuste conforme seu protocolo, a diária de AIH e o quadro do paciente. Não é recomendação médica.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 80px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
+          <div><label style={hl}>CID</label><input value={f.cid} onChange={e => set("cid", e.target.value)} placeholder="J18" style={inp} /></div>
+          <div><label style={hl}>Descrição</label><input value={f.descricao} onChange={e => set("descricao", e.target.value)} placeholder="Pneumonia" style={inp} /></div>
+          <div><label style={hl}>Dias</label><input type="number" min="1" value={f.dias} onChange={e => set("dias", e.target.value)} placeholder="7" style={inp} /></div>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
+        </div>
+        <div style={{ border: "1px solid #2a2a38", borderRadius: 8, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr>{["CID", "Descrição", "Dias", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "#5a5a72", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "#111118", borderBottom: "1px solid #2a2a38" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {ordenados.length === 0 && <tr><td colSpan={4} style={{ padding: "18px", textAlign: "center", color: "#5a5a72" }}>Nenhuma referência cadastrada.</td></tr>}
+              {ordenados.map(r => (
+                <tr key={r.cid}>
+                  <td style={{ padding: "7px 12px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700 }}>{r.cid}</td>
+                  <td style={{ padding: "7px 12px", color: "#c8c8d8" }}>{r.descricao}</td>
+                  <td style={{ padding: "7px 12px", color: "#e8e8f0", fontWeight: 700 }}>{r.dias}d</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias) })} style={{ background: "transparent", border: "1px solid #2a2a38", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
+                    <button onClick={() => { if (confirm(`Remover a referência ${r.cid}?`)) onDelete(r.cid); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LeitosPage({ currentUser, canEdit }) {
   const [leitos, setLeitos] = useState(() => loadLeitos());
+  const [cidRef, setCidRef] = useState(() => loadCidRefLocal());
   const [modal, setModal]   = useState(null);   // leito sendo internado/editado
+  const [showCidRef, setShowCidRef] = useState(false);
   const [novoLeito, setNovoLeito] = useState("");
 
   useEffect(() => {
     if (!USE_SUPABASE) return;
     let cancel = false;
-    const sync = () => loadLeitosFromSupabase().then(rows => { if (!cancel && rows) { setLeitos(rows); saveLeitos(rows); } });
+    const sync = () => {
+      loadLeitosFromSupabase().then(rows => { if (!cancel && rows) { setLeitos(rows); saveLeitos(rows); } });
+      loadCidRefFromSupabase().then(rows => { if (!cancel && rows) { setCidRef(rows); saveCidRefLocal(rows); } });
+    };
     sync();
     const onFocus = () => sync();
     window.addEventListener("focus", onFocus);
     return () => { cancel = true; window.removeEventListener("focus", onFocus); };
   }, []);
+
+  async function salvarCidRef(ref) {
+    const arr = loadCidRefLocal().filter(r => r.cid !== ref.cid);
+    arr.push(ref);
+    saveCidRefLocal(arr); setCidRef(arr);
+    await upsertCidRefRemote(ref, currentUser);
+  }
+  async function removerCidRef(cid) {
+    const arr = loadCidRefLocal().filter(r => r.cid !== cid);
+    saveCidRefLocal(arr); setCidRef(arr);
+    await deleteCidRefRemote(cid);
+  }
 
   function persist(next) { saveLeitos(next); setLeitos(next); }
   async function salvarLeito(leito) {
@@ -1333,6 +1444,7 @@ function LeitosPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
           <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 11px", color: "#e8e8f0", fontSize: 13, outline: "none", width: 260 }} />
           <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
+          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>📚 Referências de CID</button>
         </div>
       )}
 
@@ -1388,7 +1500,8 @@ function LeitosPage({ currentUser, canEdit }) {
         </div>
       )}
 
-      {modal && <InternarModal leito={modal} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
+      {modal && <InternarModal leito={modal} refs={cidRef} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
+      {showCidRef && <CidRefModal refs={cidRef} onClose={() => setShowCidRef(false)} onSave={salvarCidRef} onDelete={removerCidRef} />}
     </div>
   );
 }
