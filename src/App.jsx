@@ -1139,6 +1139,264 @@ function ImportPage({ onImport, currentUser }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// GIRO DE LEITOS
+// ═══════════════════════════════════════════════════════════
+const LEITOS_KEY = "hnsn_leitos_v1";
+const loadLeitos = () => { try { return JSON.parse(localStorage.getItem(LEITOS_KEY) || "[]"); } catch { return []; } };
+const saveLeitos = arr => localStorage.setItem(LEITOS_KEY, JSON.stringify(arr));
+
+async function loadLeitosFromSupabase() {
+  const rows = await sbFetch("leitos?select=*");
+  return Array.isArray(rows) ? rows : null;
+}
+async function upsertLeitoRemote(leito, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("leitos?on_conflict=identificacao", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...leito, usuario: user?.name || null }),
+  });
+}
+async function deleteLeitoRemote(identificacao) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`leitos?identificacao=eq.${encodeURIComponent(identificacao)}`, { method: "DELETE" });
+}
+async function registrarSaidaRemote(saida, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("leitos_saidas", { method: "POST", body: JSON.stringify({ ...saida, usuario: user?.name || null }) });
+}
+
+// Previsão de alta = data de internação + dias previstos
+function calcAlta(dataInternacao, diasPrevistos) {
+  if (!dataInternacao || !diasPrevistos) return null;
+  const d = new Date(dataInternacao + "T00:00:00");
+  d.setDate(d.getDate() + Number(diasPrevistos));
+  return d;
+}
+// Sinaleira: verde (2+ dias), amarelo (falta ≤1 dia / alta hoje), vermelho (passou)
+function sinalLeito(dataInternacao, diasPrevistos) {
+  const alta = calcAlta(dataInternacao, diasPrevistos);
+  if (!alta) return { cor: "#5a5a72", texto: "sem previsão", restam: null };
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const restam = Math.round((alta - hoje) / 86400000);
+  const dataFmt = alta.toLocaleDateString("pt-BR");
+  if (restam < 0)  return { cor: "#f43f5e", texto: `🔴 ${Math.abs(restam)}d após a alta (${dataFmt})`, restam };
+  if (restam <= 1) return { cor: "#fbbf24", texto: restam === 0 ? `🟡 alta prevista hoje (${dataFmt})` : `🟡 falta 1 dia (${dataFmt})`, restam };
+  return { cor: "#34d399", texto: `🟢 faltam ${restam} dias (${dataFmt})`, restam };
+}
+
+const STATUS_LEITO = {
+  livre:       { label: "Livre",       cor: "#34d399", bg: "#0a3d2a" },
+  ocupado:     { label: "Ocupado",     cor: "#22d3ee", bg: "#0e2f3d" },
+  interditado: { label: "Interditado", cor: "#fb7185", bg: "#3d0f18" },
+};
+
+// Modal de internação / edição de paciente no leito
+function InternarModal({ leito, onClose, onSave }) {
+  const [f, setF] = useState({
+    iniciais: leito.iniciais || "", prontuario: leito.prontuario || "", motivo: leito.motivo || "",
+    cid: leito.cid || "", data_internacao: leito.data_internacao || todayStr(), dias_previstos: leito.dias_previstos || "",
+  });
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 11px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 };
+  const alta = calcAlta(f.data_internacao, f.dias_previstos);
+  function submit() {
+    if (!f.iniciais.trim() || !f.dias_previstos) { alert("Informe ao menos as iniciais e os dias previstos."); return; }
+    onSave({
+      iniciais: f.iniciais.trim(), prontuario: f.prontuario.trim(), motivo: f.motivo.trim(),
+      cid: f.cid.trim().toUpperCase(), data_internacao: f.data_internacao, dias_previstos: Number(f.dias_previstos),
+    });
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>🛏️ Leito {leito.identificacao} — {leito.status === "ocupado" ? "Editar internação" : "Internar paciente"}</div>
+        <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: 18 }}>Dados de saúde — use iniciais e prontuário</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: J.S.M." style={inp} /></div>
+          <div><label style={lbl}>Nº prontuário/registro</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="Ex.: 48213" style={inp} /></div>
+          <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>Motivo da internação</label><input value={f.motivo} onChange={e => set("motivo", e.target.value)} placeholder="Ex.: Pós-operatório de colecistectomia" style={inp} /></div>
+          <div><label style={lbl}>CID</label><input value={f.cid} onChange={e => set("cid", e.target.value)} placeholder="Ex.: K80.2" style={inp} /></div>
+          <div><label style={lbl}>Data de internação</label><input type="date" value={f.data_internacao} onChange={e => set("data_internacao", e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Diária de AIH / dias previstos *</label><input type="number" min="1" value={f.dias_previstos} onChange={e => set("dias_previstos", e.target.value)} placeholder="Ex.: 5" style={inp} /></div>
+          <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            <label style={lbl}>Previsão de alta</label>
+            <div style={{ ...inp, background: "#0a0a0f", color: alta ? "#22d3ee" : "#5a5a72", fontWeight: 700 }}>{alta ? alta.toLocaleDateString("pt-BR") : "—"}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={submit} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{leito.status === "ocupado" ? "✓ Salvar" : "🛏️ Internar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeitosPage({ currentUser, canEdit }) {
+  const [leitos, setLeitos] = useState(() => loadLeitos());
+  const [modal, setModal]   = useState(null);   // leito sendo internado/editado
+  const [novoLeito, setNovoLeito] = useState("");
+
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    let cancel = false;
+    const sync = () => loadLeitosFromSupabase().then(rows => { if (!cancel && rows) { setLeitos(rows); saveLeitos(rows); } });
+    sync();
+    const onFocus = () => sync();
+    window.addEventListener("focus", onFocus);
+    return () => { cancel = true; window.removeEventListener("focus", onFocus); };
+  }, []);
+
+  function persist(next) { saveLeitos(next); setLeitos(next); }
+  async function salvarLeito(leito) {
+    const arr = loadLeitos();
+    const i = arr.findIndex(l => l.identificacao === leito.identificacao);
+    if (i >= 0) arr[i] = { ...arr[i], ...leito }; else arr.push(leito);
+    persist(arr);
+    await upsertLeitoRemote(arr[i >= 0 ? i : arr.length - 1], currentUser);
+  }
+  async function addLeito() {
+    const id = novoLeito.trim();
+    if (!id) return;
+    if (loadLeitos().some(l => l.identificacao.toLowerCase() === id.toLowerCase())) { alert("Esse leito já existe."); return; }
+    setNovoLeito("");
+    await salvarLeito({ identificacao: id, status: "livre" });
+    addAuditLog(currentUser, "cadastrar leito", id, {});
+  }
+  async function internar(leito, dados) {
+    await salvarLeito({ identificacao: leito.identificacao, status: "ocupado", interdicao_motivo: null, ...dados });
+    addAuditLog(currentUser, leito.status === "ocupado" ? "editar internação" : "internar", leito.identificacao, { cid: dados.cid });
+    setModal(null);
+  }
+  async function darAlta(leito) {
+    if (!confirm(`Dar alta e liberar o leito ${leito.identificacao}?`)) return;
+    await registrarSaidaRemote({
+      leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
+      motivo: leito.motivo, data_internacao: leito.data_internacao, data_alta: todayStr(),
+    }, currentUser);
+    await salvarLeito({ identificacao: leito.identificacao, status: "livre", iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null });
+    addAuditLog(currentUser, "dar alta", leito.identificacao, {});
+  }
+  async function interditar(leito) {
+    const motivo = prompt(`Motivo da interdição do leito ${leito.identificacao}:`, leito.interdicao_motivo || "");
+    if (motivo === null) return;
+    await salvarLeito({ identificacao: leito.identificacao, status: "interditado", interdicao_motivo: motivo, iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null });
+    addAuditLog(currentUser, "interditar leito", leito.identificacao, { motivo });
+  }
+  async function liberar(leito) {
+    await salvarLeito({ identificacao: leito.identificacao, status: "livre", interdicao_motivo: null });
+    addAuditLog(currentUser, "liberar leito", leito.identificacao, {});
+  }
+  async function removerLeito(leito) {
+    if (!confirm(`Remover o leito ${leito.identificacao} do cadastro?`)) return;
+    persist(loadLeitos().filter(l => l.identificacao !== leito.identificacao));
+    await deleteLeitoRemote(leito.identificacao);
+    addAuditLog(currentUser, "remover leito", leito.identificacao, {});
+  }
+
+  const ordenados = [...leitos].sort((a, b) => a.identificacao.localeCompare(b.identificacao, "pt-BR", { numeric: true }));
+  const total = leitos.length;
+  const ocupados = leitos.filter(l => l.status === "ocupado").length;
+  const interditados = leitos.filter(l => l.status === "interditado").length;
+  const livres = leitos.filter(l => l.status === "livre").length;
+  const operacionais = total - interditados;
+  const ocupacao = operacionais > 0 ? Math.round((ocupados / operacionais) * 100) : 0;
+  const sinais = leitos.filter(l => l.status === "ocupado").map(l => sinalLeito(l.data_internacao, l.dias_previstos));
+  const amarelos = sinais.filter(s => s.restam !== null && s.restam >= 0 && s.restam <= 1).length;
+  const vermelhos = sinais.filter(s => s.restam !== null && s.restam < 0).length;
+
+  const Card = ({ label, valor, cor }) => (
+    <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "12px 16px", minWidth: 120, flex: 1 }}>
+      <div style={{ fontSize: 11, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: cor || "#e8e8f0", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🛏️ Giro de Leitos</div>
+      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.25rem" }}>Painel de gestão de leitos e previsão de alta</div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <Card label="Leitos" valor={total} />
+        <Card label="Ocupados" valor={ocupados} cor="#22d3ee" />
+        <Card label="Livres" valor={livres} cor="#34d399" />
+        <Card label="Interditados" valor={interditados} cor="#fb7185" />
+        <Card label="Ocupação" valor={ocupacao + "%"} cor={ocupacao >= 90 ? "#f43f5e" : "#e8e8f0"} />
+        <Card label="Alta próxima 🟡" valor={amarelos} cor="#fbbf24" />
+        <Card label="Alta vencida 🔴" valor={vermelhos} cor="#f43f5e" />
+      </div>
+
+      {canEdit && (
+        <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
+          <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 11px", color: "#e8e8f0", fontSize: 13, outline: "none", width: 260 }} />
+          <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
+        </div>
+      )}
+
+      {ordenados.length === 0 ? (
+        <div style={{ background: "#18181f", border: "1px dashed #2a2a38", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "#5a5a72" }}>
+          Nenhum leito cadastrado ainda.{canEdit ? " Cadastre o primeiro acima." : ""}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 12 }}>
+          {ordenados.map(l => {
+            const st = STATUS_LEITO[l.status] || STATUS_LEITO.livre;
+            const sinal = l.status === "ocupado" ? sinalLeito(l.data_internacao, l.dias_previstos) : null;
+            const borda = sinal ? sinal.cor : st.cor;
+            return (
+              <div key={l.identificacao} style={{ background: "#141420", border: `1px solid #2a2a38`, borderLeft: `4px solid ${borda}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800 }}>Leito {l.identificacao}</div>
+                  <span style={{ background: st.bg, color: st.cor, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{st.label}</span>
+                </div>
+
+                {l.status === "ocupado" && (
+                  <div style={{ fontSize: 12, color: "#c8c8d8", lineHeight: 1.7 }}>
+                    <div><strong style={{ color: "#e8e8f0" }}>{l.iniciais}</strong>{l.prontuario ? ` · reg. ${l.prontuario}` : ""}</div>
+                    {l.cid && <div style={{ color: "#9090a8" }}>CID {l.cid}{l.motivo ? ` · ${l.motivo}` : ""}</div>}
+                    {!l.cid && l.motivo && <div style={{ color: "#9090a8" }}>{l.motivo}</div>}
+                    <div style={{ color: "#5a5a72" }}>Internação: {l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"} · {l.dias_previstos}d prev.</div>
+                    {sinal && <div style={{ marginTop: 6, color: sinal.cor, fontWeight: 700, fontSize: 12 }}>{sinal.texto}</div>}
+                  </div>
+                )}
+                {l.status === "livre" && <div style={{ fontSize: 12, color: "#5a5a72" }}>Disponível para internação.</div>}
+                {l.status === "interditado" && <div style={{ fontSize: 12, color: "#fb7185" }}>Interditado{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
+
+                {canEdit && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+                    {l.status === "livre" && <>
+                      <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>Internar</button>
+                      <button onClick={() => interditar(l)} style={btnLeito("#fbbf24")}>Interditar</button>
+                      <button onClick={() => removerLeito(l)} style={btnLeito("#5a5a72")}>🗑</button>
+                    </>}
+                    {l.status === "ocupado" && <>
+                      <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
+                      <button onClick={() => setModal(l)} style={btnLeito("#9090a8")}>Editar</button>
+                    </>}
+                    {l.status === "interditado" && <>
+                      <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
+                      <button onClick={() => removerLeito(l)} style={btnLeito("#5a5a72")}>🗑</button>
+                    </>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {modal && <InternarModal leito={modal} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
+    </div>
+  );
+}
+function btnLeito(cor) {
+  return { background: "transparent", border: `1px solid ${cor}55`, color: cor, borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 };
+}
+
+// ═══════════════════════════════════════════════════════════
 // USUÁRIOS
 // ═══════════════════════════════════════════════════════════
 function UsersPage({ currentUser }) {
@@ -1409,6 +1667,7 @@ export default function App() {
     { id: "d1" },
     ...SPECS.map(s => ({ id: s.id, icon: "🏥", label: s.label, color: s.color })),
     { id: "d2" },
+    { id: "leitos",   icon: "🛏️", label: "Giro de Leitos" },
     ...(canPrint    ? [{ id: "print",     icon: "🖨️", label: "Imprimir Dashboard" }] : []),
     ...(canAudit    ? [{ id: "auditoria", icon: "📋", label: "Auditoria" }]           : []),
     ...(canImport   ? [{ id: "import",    icon: "📂", label: "Importar Dados" }]      : []),
@@ -1469,6 +1728,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active === "overview"  && <Overview db={db} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
+          {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
           {active === "auditoria" && canAudit    && <AuditoriaPage />}
           {active === "import"    && canImport   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
