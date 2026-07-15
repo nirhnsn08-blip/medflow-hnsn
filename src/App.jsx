@@ -11,6 +11,11 @@ const SUPABASE_URL = typeof window !== "undefined" ? (import.meta.env?.VITE_SUPA
 const SUPABASE_KEY = typeof window !== "undefined" ? (import.meta.env?.VITE_SUPABASE_KEY || window.SUPABASE_KEY || "") : "";
 const USE_SUPABASE = SUPABASE_URL.length > 10 && SUPABASE_KEY.length > 10;
 
+// Identidade do hospital — permite usar o MESMO app para vários hospitais,
+// cada um com seu próprio banco (VITE_SUPABASE_*) e seu nome (VITE_HOSPITAL_*).
+const HOSPITAL_SIGLA = import.meta.env?.VITE_HOSPITAL_SIGLA || "HNSN";
+const HOSPITAL_NOME  = import.meta.env?.VITE_HOSPITAL_NOME  || "Hospital Nossa Senhora de Navegantes";
+
 async function sbFetch(path, opts = {}) {
   if (!USE_SUPABASE) return null;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -464,7 +469,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
         <div style={{ width: 4, height: 32, background: spec.color, borderRadius: 2 }} />
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: spec.color }}>{spec.label}</div>
-          <div style={{ fontSize: 12, color: "#5a5a72" }}>Ambulatório HNSN · Meta mensal {fmt(spec.metaM)} · Anual {fmt(spec.metaA)} · 30% 1ª consulta = {fmt(spec.meta1a)}/ano</div>
+          <div style={{ fontSize: 12, color: "#5a5a72" }}>Ambulatório {HOSPITAL_SIGLA} · Meta mensal {fmt(spec.metaM)} · Anual {fmt(spec.metaA)} · 30% 1ª consulta = {fmt(spec.meta1a)}/ano</div>
         </div>
         <div style={{ marginLeft: "auto" }}>
           <SemaforoMeta pct={pctMes} diasRestantes={diasRest} />
@@ -750,7 +755,7 @@ function Overview({ db }) {
       {/* Cabeçalho */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem" }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>Ambulatório HNSN</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>Ambulatório {HOSPITAL_SIGLA}</div>
           <div style={{ fontSize: 12, color: "#5a5a72" }}>Visão geral de todas as especialidades</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -946,8 +951,8 @@ function PrintDashboard({ db }) {
         <div id="print-area" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>⚕ DASHBOARD AMBULATÓRIO — HNSN</div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>Hospital Nossa Senhora de Navegantes · MedFlow HNSN</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>⚕ DASHBOARD AMBULATÓRIO — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · MedFlow {HOSPITAL_SIGLA}</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>📅 {MONTHS_FULL[mes]}/{ano}</div>
@@ -1031,7 +1036,7 @@ function PrintDashboard({ db }) {
               })}
             </div>
             <div style={{ marginTop: 10, fontSize: 10, color: "#94a3b8", display: "flex", justifyContent: "space-between" }}>
-              <span>✅ Dados referente a {MONTHS_FULL[mes]}/{ano} · Fonte: MedFlow HNSN</span>
+              <span>✅ Dados referente a {MONTHS_FULL[mes]}/{ano} · Fonte: MedFlow {HOSPITAL_SIGLA}</span>
               <span>Gerado em {geradoEm}</span>
             </div>
           </div>
@@ -1673,7 +1678,7 @@ function LoginScreen({ onLogin }) {
       <div style={{ background: "#fff", borderRadius: 16, padding: "2.5rem 2rem", width: 380, boxShadow: "0 20px 60px rgba(0,0,0,.12)", animation: shake ? "shake .4s ease" : "fadeIn .4s ease" }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
           <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 12px", background: "linear-gradient(135deg, #22d3ee, #a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 8px 24px rgba(34,211,238,.3)" }}>⚕</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-.02em" }}>MedFlow HNSN</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-.02em" }}>MedFlow {HOSPITAL_SIGLA}</div>
           <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>Gestão de Atendimentos</div>
         </div>
         <div style={{ marginBottom: 14 }}>
@@ -1689,7 +1694,7 @@ function LoginScreen({ onLogin }) {
         </div>
         {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#dc2626", marginBottom: 14 }}>⚠️ {error}</div>}
         <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: loading ? "#94a3b8" : "linear-gradient(135deg, #22d3ee, #6366f1)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "Inter, sans-serif", boxShadow: "0 4px 14px rgba(34,211,238,.35)" }}>{loading ? "Entrando…" : "Entrar"}</button>
-        <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: "#cbd5e1" }}>Acesso restrito · Hospital Nossa Senhora de Navegantes</div>
+        <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: "#cbd5e1" }}>Acesso restrito · {HOSPITAL_NOME}</div>
       </div>
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
     </div>
@@ -1703,6 +1708,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => loadSession());
   const [db, setDb] = useState(() => loadDB());
   const [active, setActive] = useState("overview");
+  useEffect(() => { document.title = `MedFlow ${HOSPITAL_SIGLA}`; }, []);
   
   const handleSave = useCallback(newDb => {
     setDb(prev => ({ ...newDb }));
@@ -1796,7 +1802,7 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: "linear-gradient(135deg, #22d3ee, #a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".9rem" }}>⚕</div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: ".02em" }}>MedFlow HNSN</div>
+            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: ".02em" }}>MedFlow {HOSPITAL_SIGLA}</div>
             <div style={{ fontSize: 10, color: "#5a5a72", fontFamily: "JetBrains Mono, monospace" }}>Gestão de Atendimentos · Ambulatório</div>
           </div>
         </div>
