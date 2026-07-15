@@ -95,3 +95,21 @@ drop policy if exists saidas_select on public.leitos_saidas;
 drop policy if exists saidas_insert on public.leitos_saidas;
 create policy saidas_select on public.leitos_saidas for select to authenticated using (public.my_role() in ('adm_master','adm_silver'));
 create policy saidas_insert on public.leitos_saidas for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+
+-- ===== Referência CID → dias de internação (sugestão editável) =====
+create table if not exists public.cid_referencia (
+  cid        text primary key,
+  descricao  text,
+  dias       int not null default 0,
+  usuario    text,
+  updated_at timestamptz default now()
+);
+alter table public.cid_referencia enable row level security;
+drop policy if exists cidref_select on public.cid_referencia;
+drop policy if exists cidref_insert on public.cid_referencia;
+drop policy if exists cidref_update on public.cid_referencia;
+drop policy if exists cidref_delete on public.cid_referencia;
+create policy cidref_select on public.cid_referencia for select to authenticated using (true);
+create policy cidref_insert on public.cid_referencia for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy cidref_update on public.cid_referencia for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy cidref_delete on public.cid_referencia for delete to authenticated using (public.my_role() = 'adm_master');
