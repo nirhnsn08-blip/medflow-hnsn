@@ -1221,10 +1221,44 @@ function sinalLeito(dataInternacao, diasPrevistos) {
   return { cor: "#34d399", texto: `🟢 faltam ${restam} dias (${dataFmt})`, restam };
 }
 
+// ── Fase 2: histórico de turnover + utilidades de tempo ──
+async function registrarTurnoverRemote(turn, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("leitos_turnover", { method: "POST", body: JSON.stringify({ ...turn, usuario: user?.name || null }) });
+}
+async function loadSaidas() {
+  const rows = await sbFetch("leitos_saidas?select=*");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadTurnover() {
+  const rows = await sbFetch("leitos_turnover?select=*");
+  return Array.isArray(rows) ? rows : [];
+}
+const nowISO = () => new Date().toISOString();
+// minutos entre dois instantes ISO (b - a)
+function diffMin(a, b) {
+  if (!a || !b) return null;
+  const d = Math.round((new Date(b) - new Date(a)) / 60000);
+  return isNaN(d) ? null : d;
+}
+// formata duração em minutos -> "2h 30min" / "45min"
+function fmtDur(min) {
+  if (min == null || isNaN(min)) return "—";
+  if (min < 0) min = 0;
+  const h = Math.floor(min / 60), m = min % 60;
+  return h > 0 ? `${h}h ${m}min` : `${m}min`;
+}
+// data/hora curta a partir de ISO
+const horaFmt = iso => iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+// ISO -> valor de <input type=datetime-local> (local) e vice-versa
+const isoToLocal = iso => { if (!iso) return ""; const d = new Date(iso); const off = d.getTimezoneOffset(); return new Date(d - off * 60000).toISOString().slice(0, 16); };
+const localToIso = v => v ? new Date(v).toISOString() : null;
+
 const STATUS_LEITO = {
-  livre:       { label: "Livre",       cor: "#34d399", bg: "#0a3d2a" },
-  ocupado:     { label: "Ocupado",     cor: "#22d3ee", bg: "#0e2f3d" },
-  interditado: { label: "Interditado", cor: "#fb7185", bg: "#3d0f18" },
+  livre:        { label: "Livre",           cor: "#34d399", bg: "#0a3d2a" },
+  ocupado:      { label: "Ocupado",         cor: "#22d3ee", bg: "#0e2f3d" },
+  higienizacao: { label: "Em higienização", cor: "#fbbf24", bg: "#3d2e06" },
+  interditado:  { label: "Interditado",     cor: "#fb7185", bg: "#3d0f18" },
 };
 
 // Modal de internação / edição de paciente no leito
@@ -1232,6 +1266,7 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
   const [f, setF] = useState({
     iniciais: leito.iniciais || "", prontuario: leito.prontuario || "", motivo: leito.motivo || "",
     cid: leito.cid || "", data_internacao: leito.data_internacao || todayStr(), dias_previstos: leito.dias_previstos || "",
+    solic_em: isoToLocal(leito.solic_em),
   });
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   // ao digitar o CID, sugere os dias (só se o campo estiver vazio — nunca sobrescreve o que você digitou)
@@ -1250,6 +1285,7 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
     onSave({
       iniciais: f.iniciais.trim(), prontuario: f.prontuario.trim(), motivo: f.motivo.trim(),
       cid: f.cid.trim().toUpperCase(), data_internacao: f.data_internacao, dias_previstos: Number(f.dias_previstos),
+      solic_em: localToIso(f.solic_em),
     });
   }
   return (
@@ -1270,6 +1306,7 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
             <label style={lbl}>Previsão de alta</label>
             <div style={{ ...inp, background: "#0a0a0f", color: alta ? "#22d3ee" : "#5a5a72", fontWeight: 700 }}>{alta ? alta.toLocaleDateString("pt-BR") : "—"}</div>
           </div>
+          <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>🕐 Hora em que o leito foi solicitado (opcional — p/ indicadores)</label><input type="datetime-local" value={f.solic_em} onChange={e => set("solic_em", e.target.value)} style={inp} /></div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
@@ -1337,8 +1374,12 @@ function LeitosPage({ currentUser, canEdit }) {
   const [leitos, setLeitos] = useState(() => loadLeitos());
   const [cidRef, setCidRef] = useState(() => loadCidRefLocal());
   const [modal, setModal]   = useState(null);   // leito sendo internado/editado
+  const [tempos, setTempos] = useState(null);   // leito editando tempos de fluxo
   const [showCidRef, setShowCidRef] = useState(false);
+  const [showIndic, setShowIndic]   = useState(false);
   const [novoLeito, setNovoLeito] = useState("");
+  const [, setTick] = useState(0);
+  useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id); }, []);
 
   useEffect(() => {
     if (!USE_SUPABASE) return;
@@ -1382,23 +1423,49 @@ function LeitosPage({ currentUser, canEdit }) {
     addAuditLog(currentUser, "cadastrar leito", id, {});
   }
   async function internar(leito, dados) {
-    await salvarLeito({ identificacao: leito.identificacao, status: "ocupado", interdicao_motivo: null, ...dados });
-    addAuditLog(currentUser, leito.status === "ocupado" ? "editar internação" : "internar", leito.identificacao, { cid: dados.cid });
+    const now = nowISO();
+    const editando = leito.status === "ocupado";
+    // Se o leito passou por higienização antes desta internação, fecha o ciclo de turnover.
+    if (!editando && leito.disp_em) {
+      await registrarTurnoverRemote({ leito: leito.identificacao, solic_em: dados.solic_em || null, disp_em: leito.disp_em, pronto_em: leito.pronto_em || null, entrada_em: now }, currentUser);
+    }
+    await salvarLeito({
+      identificacao: leito.identificacao, status: "ocupado", interdicao_motivo: null,
+      iniciais: dados.iniciais, prontuario: dados.prontuario, motivo: dados.motivo, cid: dados.cid,
+      data_internacao: dados.data_internacao, dias_previstos: dados.dias_previstos,
+      entrada_em: editando ? (leito.entrada_em || now) : now,
+      solic_em: null, disp_em: null, pronto_em: null,
+    });
+    addAuditLog(currentUser, editando ? "editar internação" : "internar", leito.identificacao, { cid: dados.cid });
     setModal(null);
   }
   async function darAlta(leito) {
-    if (!confirm(`Dar alta e liberar o leito ${leito.identificacao}?`)) return;
+    if (!confirm(`Dar alta do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`)) return;
+    const now = nowISO();
+    const dias = leito.data_internacao ? Math.max(0, Math.round((new Date(todayStr() + "T00:00:00") - new Date(leito.data_internacao + "T00:00:00")) / 86400000)) : null;
     await registrarSaidaRemote({
       leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
       motivo: leito.motivo, data_internacao: leito.data_internacao, data_alta: todayStr(),
+      disp_em: now, dias_permanencia: dias,
     }, currentUser);
-    await salvarLeito({ identificacao: leito.identificacao, status: "livre", iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null });
+    await salvarLeito({
+      identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
+      iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null,
+    });
     addAuditLog(currentUser, "dar alta", leito.identificacao, {});
+  }
+  async function marcarPronto(leito) {
+    await salvarLeito({ identificacao: leito.identificacao, status: "livre", pronto_em: nowISO() });
+    addAuditLog(currentUser, "leito pronto", leito.identificacao, {});
+  }
+  async function salvarTempos(leito, campos) {
+    await salvarLeito({ identificacao: leito.identificacao, ...campos });
+    setTempos(null);
   }
   async function interditar(leito) {
     const motivo = prompt(`Motivo da interdição do leito ${leito.identificacao}:`, leito.interdicao_motivo || "");
     if (motivo === null) return;
-    await salvarLeito({ identificacao: leito.identificacao, status: "interditado", interdicao_motivo: motivo, iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null });
+    await salvarLeito({ identificacao: leito.identificacao, status: "interditado", interdicao_motivo: motivo, iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, solic_em: null, disp_em: null, pronto_em: null, entrada_em: null });
     addAuditLog(currentUser, "interditar leito", leito.identificacao, { motivo });
   }
   async function liberar(leito) {
@@ -1417,6 +1484,7 @@ function LeitosPage({ currentUser, canEdit }) {
   const ocupados = leitos.filter(l => l.status === "ocupado").length;
   const interditados = leitos.filter(l => l.status === "interditado").length;
   const livres = leitos.filter(l => l.status === "livre").length;
+  const higienizando = leitos.filter(l => l.status === "higienizacao").length;
   const operacionais = total - interditados;
   const ocupacao = operacionais > 0 ? Math.round((ocupados / operacionais) * 100) : 0;
   const sinais = leitos.filter(l => l.status === "ocupado").map(l => sinalLeito(l.data_internacao, l.dias_previstos));
@@ -1439,6 +1507,7 @@ function LeitosPage({ currentUser, canEdit }) {
         <Card label="Leitos" valor={total} />
         <Card label="Ocupados" valor={ocupados} cor="#22d3ee" />
         <Card label="Livres" valor={livres} cor="#34d399" />
+        <Card label="Higienização 🧼" valor={higienizando} cor="#fbbf24" />
         <Card label="Interditados" valor={interditados} cor="#fb7185" />
         <Card label="Ocupação" valor={ocupacao + "%"} cor={ocupacao >= 90 ? "#f43f5e" : "#e8e8f0"} />
         <Card label="Alta próxima 🟡" valor={amarelos} cor="#fbbf24" />
@@ -1449,7 +1518,8 @@ function LeitosPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
           <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 11px", color: "#e8e8f0", fontSize: 13, outline: "none", width: 260 }} />
           <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
-          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>📚 Referências de CID</button>
+          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>📊 Indicadores</button>
+          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>📚 Referências de CID</button>
         </div>
       )}
 
@@ -1479,7 +1549,19 @@ function LeitosPage({ currentUser, canEdit }) {
                     {sinal && <div style={{ marginTop: 6, color: sinal.cor, fontWeight: 700, fontSize: 12 }}>{sinal.texto}</div>}
                   </div>
                 )}
-                {l.status === "livre" && <div style={{ fontSize: 12, color: "#5a5a72" }}>Disponível para internação.</div>}
+                {l.status === "livre" && (
+                  <div style={{ fontSize: 12, color: "#5a5a72" }}>
+                    Disponível para internação.
+                    {l.pronto_em && <div style={{ color: "#34d399", marginTop: 2 }}>Pronto desde {horaFmt(l.pronto_em)}</div>}
+                  </div>
+                )}
+                {l.status === "higienizacao" && (
+                  <div style={{ fontSize: 12, color: "#c8c8d8", lineHeight: 1.7 }}>
+                    <div>🧼 Em higienização</div>
+                    <div style={{ color: "#5a5a72" }}>Vagou: {horaFmt(l.disp_em)}</div>
+                    <div style={{ marginTop: 4, color: "#fbbf24", fontWeight: 700 }}>Limpando há {fmtDur(diffMin(l.disp_em, nowISO()))}</div>
+                  </div>
+                )}
                 {l.status === "interditado" && <div style={{ fontSize: 12, color: "#fb7185" }}>Interditado{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
 
                 {canEdit && (
@@ -1492,6 +1574,11 @@ function LeitosPage({ currentUser, canEdit }) {
                     {l.status === "ocupado" && <>
                       <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
                       <button onClick={() => setModal(l)} style={btnLeito("#9090a8")}>Editar</button>
+                    </>}
+                    {l.status === "higienizacao" && <>
+                      <button onClick={() => marcarPronto(l)} style={btnLeito("#34d399")}>✓ Pronto</button>
+                      <button onClick={() => setTempos(l)} style={btnLeito("#9090a8")}>⏱ Ajustar</button>
+                      <button onClick={() => interditar(l)} style={btnLeito("#fb7185")}>Interditar</button>
                     </>}
                     {l.status === "interditado" && <>
                       <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
@@ -1506,12 +1593,117 @@ function LeitosPage({ currentUser, canEdit }) {
       )}
 
       {modal && <InternarModal leito={modal} refs={cidRef} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
+      {tempos && <TemposModal leito={tempos} onClose={() => setTempos(null)} onSave={campos => salvarTempos(tempos, campos)} />}
       {showCidRef && <CidRefModal refs={cidRef} onClose={() => setShowCidRef(false)} onSave={salvarCidRef} onDelete={removerCidRef} />}
+      {showIndic && <IndicadoresModal leitos={leitos} onClose={() => setShowIndic(false)} />}
     </div>
   );
 }
 function btnLeito(cor) {
   return { background: "transparent", border: `1px solid ${cor}55`, color: cor, borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 };
+}
+
+// Ajuste dos horários do fluxo do leito (disponibilizado / pronto)
+function TemposModal({ leito, onClose, onSave }) {
+  const [disp, setDisp] = useState(isoToLocal(leito.disp_em));
+  const [pronto, setPronto] = useState(isoToLocal(leito.pronto_em));
+  const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 11px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", flex: 1, boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 };
+  const agora = () => isoToLocal(nowISO());
+  const btnAgora = { background: "#1e1e28", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 12px", color: "#22d3ee", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" };
+  const limpeza = diffMin(localToIso(disp), localToIso(pronto));
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "92vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>⏱ Tempos do leito {leito.identificacao}</div>
+        <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: 18 }}>Ajuste se registrou fora do horário real.</div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Disponibilizado (paciente vagou)</label>
+          <div style={{ display: "flex", gap: 8 }}><input type="datetime-local" value={disp} onChange={e => setDisp(e.target.value)} style={inp} /><button onClick={() => setDisp(agora())} style={btnAgora}>agora</button></div>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Pronto (higienização concluída)</label>
+          <div style={{ display: "flex", gap: 8 }}><input type="datetime-local" value={pronto} onChange={e => setPronto(e.target.value)} style={inp} /><button onClick={() => setPronto(agora())} style={btnAgora}>agora</button></div>
+        </div>
+        <div style={{ background: "#0e0e14", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#fbbf24", fontWeight: 700, marginBottom: 18 }}>🧼 Tempo de higienização: {fmtDur(limpeza)}</div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={() => onSave({ disp_em: localToIso(disp), pronto_em: localToIso(pronto) })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Painel de indicadores de rotatividade (por mês)
+function IndicadoresModal({ leitos, onClose }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [saidas, setSaidas] = useState(null);
+  const [turnover, setTurnover] = useState(null);
+  useEffect(() => { loadSaidas().then(setSaidas); loadTurnover().then(setTurnover); }, []);
+
+  const inMesISO  = iso  => { if (!iso) return false; const d = new Date(iso); return d.getMonth() === mes && d.getFullYear() === ano; };
+  const inMesData = dstr => { if (!dstr) return false; const d = new Date(dstr + "T00:00:00"); return d.getMonth() === mes && d.getFullYear() === ano; };
+  const avg = arr => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
+  const sPer = (saidas || []).filter(s => inMesData(s.data_alta));
+  const altas = sPer.length;
+  const permVals = sPer.map(s => s.dias_permanencia != null ? s.dias_permanencia
+      : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null)).filter(v => v != null);
+  const permMedia = permVals.length ? (permVals.reduce((a, b) => a + b, 0) / permVals.length) : null;
+  const operacionais = leitos.filter(l => l.status !== "interditado").length;
+  const giro = operacionais > 0 ? altas / operacionais : null;
+
+  const tPer = (turnover || []).filter(t => inMesISO(t.entrada_em));
+  const higMin = avg(tPer.map(t => diffMin(t.disp_em, t.pronto_em)).filter(v => v != null && v >= 0));
+  const subMin = avg(tPer.map(t => diffMin(t.disp_em, t.entrada_em)).filter(v => v != null && v >= 0));
+  const solMin = avg(tPer.map(t => diffMin(t.solic_em, t.entrada_em)).filter(v => v != null && v >= 0));
+  const carregando = saidas === null || turnover === null;
+
+  const anos = [now.getFullYear(), now.getFullYear() - 1];
+  const sel = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "7px 10px", color: "#e8e8f0", fontSize: 13, outline: "none", cursor: "pointer" };
+  const Metric = ({ label, valor, sub, cor }) => (
+    <div style={{ background: "#141420", border: "1px solid #2a2a38", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "#e8e8f0", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 11, color: "#5a5a72", marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>📊 Indicadores de Giro de Leitos</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <select value={mes} onChange={e => setMes(Number(e.target.value))} style={sel}>{MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
+            <select value={ano} onChange={e => setAno(Number(e.target.value))} style={sel}>{anos.map(a => <option key={a} value={a}>{a}</option>)}</select>
+          </div>
+        </div>
+        {carregando ? (
+          <div style={{ padding: "2.5rem", textAlign: "center", color: "#5a5a72" }}>Carregando…</div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
+              <Metric label="Altas no mês" valor={altas} cor="#22d3ee" />
+              <Metric label="Média de permanência" valor={permMedia != null ? permMedia.toFixed(1) : "—"} sub="dias por internação" cor="#a78bfa" />
+              <Metric label="Giro de leito" valor={giro != null ? giro.toFixed(2) : "—"} sub="altas ÷ leitos operacionais" cor="#34d399" />
+              <Metric label="Higienização média" valor={fmtDur(higMin)} sub="disponibilizado → pronto" cor="#fbbf24" />
+              <Metric label="Substituição média" valor={fmtDur(subMin)} sub="vagou → próximo paciente" cor="#fbbf24" />
+              <Metric label="Solicitação → entrada" valor={fmtDur(solMin)} sub="quando registrado" cor="#60a5fa" />
+            </div>
+            <div style={{ fontSize: 11, color: "#5a5a72", marginTop: 14, lineHeight: 1.5 }}>
+              Baseado nas altas e nos ciclos de leito registrados em {MONTHS[mes]}/{ano}. Os tempos de higienização/substituição aparecem conforme os leitos passam pelo fluxo (alta → higienização → pronto → nova internação).
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════

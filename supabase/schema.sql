@@ -96,6 +96,23 @@ drop policy if exists saidas_insert on public.leitos_saidas;
 create policy saidas_select on public.leitos_saidas for select to authenticated using (public.my_role() in ('adm_master','adm_silver'));
 create policy saidas_insert on public.leitos_saidas for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
 
+-- Fase 2: tempos de fluxo do leito + histórico de turnover
+alter table public.leitos
+  add column if not exists solic_em   timestamptz, add column if not exists disp_em    timestamptz,
+  add column if not exists pronto_em  timestamptz, add column if not exists entrada_em timestamptz;
+alter table public.leitos_saidas
+  add column if not exists disp_em timestamptz, add column if not exists dias_permanencia int;
+create table if not exists public.leitos_turnover (
+  id bigserial primary key, leito text,
+  solic_em timestamptz, disp_em timestamptz, pronto_em timestamptz, entrada_em timestamptz,
+  usuario text, created_at timestamptz default now()
+);
+alter table public.leitos_turnover enable row level security;
+drop policy if exists turnover_select on public.leitos_turnover;
+drop policy if exists turnover_insert on public.leitos_turnover;
+create policy turnover_select on public.leitos_turnover for select to authenticated using (public.my_role() in ('adm_master','adm_silver'));
+create policy turnover_insert on public.leitos_turnover for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+
 -- ===== Referência CID → dias de internação (sugestão editável) =====
 create table if not exists public.cid_referencia (
   cid        text primary key,
