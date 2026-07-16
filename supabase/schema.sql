@@ -118,9 +118,11 @@ create table if not exists public.cid_referencia (
   cid        text primary key,
   descricao  text,
   dias       int not null default 0,
+  tratamento text,
   usuario    text,
   updated_at timestamptz default now()
 );
+alter table public.cid_referencia add column if not exists tratamento text;
 alter table public.cid_referencia enable row level security;
 drop policy if exists cidref_select on public.cid_referencia;
 drop policy if exists cidref_insert on public.cid_referencia;

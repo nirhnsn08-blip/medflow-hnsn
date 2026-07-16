@@ -1505,6 +1505,13 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
           <div><label style={lbl}>CID</label><input value={f.cid} onChange={e => onCid(e.target.value)} placeholder="Ex.: J18 (pneumonia)" style={inp} />
             {sug && <div onClick={() => set("dias_previstos", String(sug.dias))} title="Aplicar a referência" style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, cursor: "pointer" }}>💡 {sug.descricao}: ref. {sug.dias}d · <span style={{ textDecoration: "underline" }}>aplicar</span></div>}
           </div>
+          {sug?.tratamento && (
+            <div style={{ gridColumn: "1 / 3", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 3 }}>💊 Tratamento de referência ({sug.cid})</div>
+              <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{sug.tratamento}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Referência da literatura — a conduta é sempre do médico assistente.</div>
+            </div>
+          )}
           <div><label style={lbl}>Data de internação</label><input type="date" value={f.data_internacao} onChange={e => set("data_internacao", e.target.value)} style={inp} /></div>
           <div><label style={lbl}>Diária de AIH / dias previstos *</label><input type="number" min="1" value={f.dias_previstos} onChange={e => set("dias_previstos", e.target.value)} placeholder="Ex.: 5" style={inp} /></div>
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
@@ -1524,7 +1531,7 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
 
 // Modal de gerenciamento das referências de CID → dias
 function CidRefModal({ refs, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ cid: "", descricao: "", dias: "" });
+  const [f, setF] = useState({ cid: "", descricao: "", dias: "", tratamento: "" });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
@@ -1532,21 +1539,25 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
   async function salvar() {
     if (!f.cid.trim() || !f.dias) { alert("Informe o CID e os dias."); return; }
     setBusy(true);
-    await onSave({ cid: f.cid.trim().toUpperCase(), descricao: f.descricao.trim(), dias: Number(f.dias) });
+    await onSave({ cid: f.cid.trim().toUpperCase(), descricao: f.descricao.trim(), dias: Number(f.dias), tratamento: f.tratamento.trim() || null });
     setBusy(false);
-    setF({ cid: "", descricao: "", dias: "" });
+    setF({ cid: "", descricao: "", dias: "", tratamento: "" });
   }
   const ordenados = [...refs].sort((a, b) => (a.cid || "").localeCompare(b.cid || ""));
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 580, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>📚 Referências de CID → dias de internação</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Valores de referência aproximados — ajuste conforme seu protocolo, a diária de AIH e o quadro do paciente. Não é recomendação médica.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 80px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>📚 Referências de CID → dias + tratamento</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Valores e condutas de referência aproximados (literatura) — ajuste conforme seu protocolo, a diária de AIH e o quadro do paciente. Não é recomendação médica; a conduta é sempre do médico assistente.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 80px auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
           <div><label style={hl}>CID</label><input value={f.cid} onChange={e => set("cid", e.target.value)} placeholder="J18" style={inp} /></div>
           <div><label style={hl}>Descrição</label><input value={f.descricao} onChange={e => set("descricao", e.target.value)} placeholder="Pneumonia" style={inp} /></div>
           <div><label style={hl}>Dias</label><input type="number" min="1" value={f.dias} onChange={e => set("dias", e.target.value)} placeholder="7" style={inp} /></div>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={hl}>💊 Tratamento sugerido (referência da literatura — revisar com a equipe médica)</label>
+          <textarea value={f.tratamento} onChange={e => set("tratamento", e.target.value)} placeholder="Ex.: Antibioticoterapia empírica conforme protocolo institucional; reavaliar em 48-72h…" rows={3} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} />
         </div>
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -1555,11 +1566,14 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
               {ordenados.length === 0 && <tr><td colSpan={4} style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)" }}>Nenhuma referência cadastrada.</td></tr>}
               {ordenados.map(r => (
                 <tr key={r.cid}>
-                  <td style={{ padding: "7px 12px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700 }}>{r.cid}</td>
-                  <td style={{ padding: "7px 12px", color: "var(--text-2)" }}>{r.descricao}</td>
-                  <td style={{ padding: "7px 12px", color: "var(--text)", fontWeight: 700 }}>{r.dias}d</td>
-                  <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias) })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
+                  <td style={{ padding: "7px 12px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700, verticalAlign: "top" }}>{r.cid}</td>
+                  <td style={{ padding: "7px 12px", color: "var(--text-2)" }}>
+                    {r.descricao}
+                    {r.tratamento && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>💊 {r.tratamento}</div>}
+                  </td>
+                  <td style={{ padding: "7px 12px", color: "var(--text)", fontWeight: 700, verticalAlign: "top" }}>{r.dias}d</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap", verticalAlign: "top" }}>
+                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias), tratamento: r.tratamento || "" })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
                     <button onClick={() => { if (confirm(`Remover a referência ${r.cid}?`)) onDelete(r.cid); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>
                   </td>
                 </tr>
