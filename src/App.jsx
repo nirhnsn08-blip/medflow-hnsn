@@ -162,7 +162,7 @@ const ROLES = {
   adm_master:   { label: "ADM Master",   color: "#f59e0b", desc: "Acesso total — único que cria usuários, acessa banco e auditoria" },
   adm_silver:   { label: "ADM Silver",   color: "#22d3ee", desc: "Insere dados, importa, auditoria e gera dashboard" },
   analista:     { label: "Analista",     color: "#a78bfa", desc: "Visualiza e gera dashboard para impressão" },
-  visualizador: { label: "Visualizador", color: "#5a5a72", desc: "Somente leitura — sem gerar dashboard" },
+  visualizador: { label: "Visualizador", color: "var(--text-muted)", desc: "Somente leitura — sem gerar dashboard" },
 };
 
 // Token JWT do usuário logado — enviado nas chamadas ao banco (ver sbFetch).
@@ -288,18 +288,18 @@ function RingGauge({ value, max, color, label, sub, size = 120 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
       <svg width={size} height={size} viewBox="0 0 120 120">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1e1e28" strokeWidth={10} />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--surface-3)" strokeWidth={10} />
         <circle cx={cx} cy={cy} r={r} fill="none" stroke={rc} strokeWidth={10}
           strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
           transform="rotate(-90 60 60)" style={{ transition: "stroke-dasharray .6s ease" }} />
         <text x={cx} y={cy - 6} textAnchor="middle" fill={rc} fontSize={18} fontWeight={700} fontFamily="JetBrains Mono, monospace">{Math.round(pct)}%</text>
-        <text x={cx} y={cy + 12} textAnchor="middle" fill="#9090a8" fontSize={10} fontFamily="Inter, sans-serif">
+        <text x={cx} y={cy + 12} textAnchor="middle" fill="var(--text-3)" fontSize={10} fontFamily="Inter, sans-serif">
           {isOver ? "✓ meta" : `${fmt(Math.max(max - value, 0))} falta`}
         </text>
       </svg>
       <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#9090a8", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
-        {sub && <div style={{ fontSize: 10, color: "#5a5a72" }}>{sub}</div>}
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
+        {sub && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{sub}</div>}
       </div>
     </div>
   );
@@ -307,10 +307,10 @@ function RingGauge({ value, max, color, label, sub, size = 120 }) {
 
 function StatCard({ label, value, sub, color, big }) {
   return (
-    <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderTop: `2px solid ${color}`, borderRadius: 8, padding: "12px 14px", flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "#5a5a72", marginBottom: 4 }}>{label}</div>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: `2px solid ${color}`, borderRadius: 8, padding: "12px 14px", flex: 1, minWidth: 0 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: big ? 28 : 22, fontWeight: 600, color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "#9090a8", marginTop: 4 }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>{sub}</div>}
     </div>
   );
 }
@@ -344,10 +344,10 @@ function SemaforoMeta({ pct, diasRestantes }) {
 const customTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: "#1e1e28", border: "1px solid #3a3a4e", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
-      <div style={{ color: "#9090a8", marginBottom: 4 }}>{label}</div>
+    <div style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
+      <div style={{ color: "var(--text-3)", marginBottom: 4 }}>{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color || "#e8e8f0", display: "flex", gap: 8, alignItems: "center" }}>
+        <div key={i} style={{ color: p.color || "var(--text)", display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ width: 8, height: 8, background: p.color, borderRadius: 2, display: "inline-block" }} />
           {p.name}: <strong>{fmt(p.value)}</strong>
         </div>
@@ -366,7 +366,7 @@ function AlertBanner({ db }) {
   const warns  = alerts.filter(a => a.level === "warning").length;
   if (alerts.length === 0) return null;
   return (
-    <div style={{ background: "#111118", borderBottom: "1px solid #2a2a38" }}>
+    <div style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>
       <button onClick={() => setOpen(p => !p)} style={{
         width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "6px 1.5rem",
         background: "none", border: "none", cursor: "pointer", textAlign: "left",
@@ -374,7 +374,7 @@ function AlertBanner({ db }) {
         {crits > 0 && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>🔴 {crits} crítico{crits > 1 ? "s" : ""}</span>}
         {warns > 0 && <span style={{ background: "#3d2e06", color: "#fbbf24", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>⚠️ {warns} atenção</span>}
         {alerts.filter(a => a.level === "success").length > 0 && <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>✅ {alerts.filter(a => a.level === "success").length} meta(s) atingida(s)</span>}
-        <span style={{ fontSize: 11, color: "#5a5a72", marginLeft: "auto" }}>{open ? "▲ fechar" : "▼ ver alertas"}</span>
+        <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{open ? "▲ fechar" : "▼ ver alertas"}</span>
       </button>
       {open && (
         <div style={{ padding: "0 1.5rem .75rem", display: "flex", flexDirection: "column", gap: 4 }}>
@@ -460,7 +460,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
     { name: "Emerg.",     value: mesData.emergencias },
   ];
 
-  const inp = { background: "#1e1e28", border: "1px solid #2a2a38", borderRadius: 6, padding: "7px 10px", color: "#e8e8f0", fontFamily: "JetBrains Mono, monospace", fontSize: 14, width: "100%", outline: "none" };
+  const inp = { background: "var(--surface-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "JetBrains Mono, monospace", fontSize: 14, width: "100%", outline: "none" };
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -469,7 +469,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
         <div style={{ width: 4, height: 32, background: spec.color, borderRadius: 2 }} />
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, color: spec.color }}>{spec.label}</div>
-          <div style={{ fontSize: 12, color: "#5a5a72" }}>Ambulatório {HOSPITAL_SIGLA} · Meta mensal {fmt(spec.metaM)} · Anual {fmt(spec.metaA)} · 30% 1ª consulta = {fmt(spec.meta1a)}/ano</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Ambulatório {HOSPITAL_SIGLA} · Meta mensal {fmt(spec.metaM)} · Anual {fmt(spec.metaA)} · 30% 1ª consulta = {fmt(spec.meta1a)}/ano</div>
         </div>
         <div style={{ marginLeft: "auto" }}>
           <SemaforoMeta pct={pctMes} diasRestantes={diasRest} />
@@ -479,9 +479,9 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
       {/* Grid: formulário + KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: "1rem", marginBottom: "1rem" }}>
         {/* Formulário */}
-        <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em" }}>Lançar dados</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em" }}>Lançar dados</span>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, width: "auto", fontSize: 12, padding: "4px 8px" }} />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -495,11 +495,11 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               { key: "emergencias", icon: "🚨", label: "Emergências" },
             ].map(({ key, icon, label }) => (
               <div key={key}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "#9090a8", marginBottom: 4, display: "block" }}>{icon} {label}</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, display: "block" }}>{icon} {label}</label>
                 <input type="number" min="0" value={form[key]}
                   onChange={e => !readOnly && setForm(p => ({ ...p, [key]: e.target.value }))}
                   onFocus={e => !readOnly && (e.target.style.borderColor = spec.color)}
-                  onBlur={e => e.target.style.borderColor = "#2a2a38"}
+                  onBlur={e => e.target.style.borderColor = "var(--border)"}
                   disabled={readOnly} placeholder="0"
                   style={{ ...inp, opacity: readOnly ? .5 : 1, cursor: readOnly ? "not-allowed" : "text" }} />
               </div>
@@ -515,16 +515,16 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
             </div>
           )}
           <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ background: "#0e0e14", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: "#5a5a72" }}>TOTAL DIA</div>
+            <div style={{ background: "var(--input-bg)", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>TOTAL DIA</div>
               <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 20, color: spec.color, fontWeight: 700 }}>{totalDia}</div>
             </div>
-            <div style={{ background: "#0e0e14", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: "#5a5a72" }}>1ªS</div>
+            <div style={{ background: "var(--input-bg)", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>1ªS</div>
               <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 20, color: "#a78bfa", fontWeight: 700 }}>{f("primeiras")}</div>
             </div>
-            <div style={{ background: "#0e0e14", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
-              <div style={{ fontSize: 10, color: "#5a5a72" }}>LIVRES</div>
+            <div style={{ background: "var(--input-bg)", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)" }}>LIVRES</div>
               <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 20, color: "#34d399", fontWeight: 700 }}>{f("livres")}</div>
             </div>
           </div>
@@ -540,8 +540,8 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           </div>
 
           {/* Comparativo mês a mês */}
-          <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>
               📊 Comparativo de Desempenho
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
@@ -550,8 +550,8 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
                 { label: `${comp.mesAnteriorLabel} (mês ant.)`,  value: comp.mesAnterior,    sub: `${comp.variacaoMes >= 0 ? "▲" : "▼"} ${Math.abs(comp.variacaoMes).toFixed(0)}% vs mês anterior`, color: comp.variacaoMes >= 0 ? "#34d399" : "#fb7185" },
                 { label: `${MONTHS_FULL[mes]} ${ano-1}`,         value: comp.mesAnoAnterior, sub: `${comp.variacaoAno >= 0 ? "▲" : "▼"} ${Math.abs(comp.variacaoAno).toFixed(0)}% vs ano anterior`,  color: comp.variacaoAno >= 0 ? "#34d399" : "#fb7185" },
               ].map(({ label, value, sub, color }) => (
-                <div key={label} style={{ background: "#111118", borderRadius: 6, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 10, color: "#5a5a72", marginBottom: 3 }}>{label}</div>
+                <div key={label} style={{ background: "var(--bg-2)", borderRadius: 6, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 3 }}>{label}</div>
                   <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 20, color, fontWeight: 700 }}>{fmt(value)}</div>
                   <div style={{ fontSize: 10, color, marginTop: 2 }}>{sub}</div>
                 </div>
@@ -560,7 +560,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           </div>
 
           {/* Barra mensal */}
-          <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem" }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>Meta Mensal — {MONTHS_FULL[mes]}/{ano}</span>
@@ -573,13 +573,13 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
                 <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80, fontSize: 12, padding: "4px 8px" }} />
               </div>
             </div>
-            <div style={{ background: "#0e0e14", borderRadius: 99, height: 14, overflow: "hidden", marginBottom: 6 }}>
+            <div style={{ background: "var(--input-bg)", borderRadius: 99, height: 14, overflow: "hidden", marginBottom: 6 }}>
               <div style={{ width: `${Math.min(pctMes, 100)}%`, height: "100%", borderRadius: 99, background: pctMes >= 100 ? "#34d399" : pctMes >= 70 ? spec.color : pctMes >= 40 ? "#fbbf24" : "#fb7185", transition: "width .6s" }} />
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9090a8" }}>
-              <span>Realizado: <strong style={{ color: "#e8e8f0" }}>{fmt(totalMes)}</strong></span>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
+              <span>Realizado: <strong style={{ color: "var(--text)" }}>{fmt(totalMes)}</strong></span>
               <span style={{ color: spec.color, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctMes.toFixed(1)}%</span>
-              <span>Meta: <strong style={{ color: "#e8e8f0" }}>{fmt(spec.metaM)}</strong></span>
+              <span>Meta: <strong style={{ color: "var(--text)" }}>{fmt(spec.metaM)}</strong></span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
               {[
@@ -589,12 +589,12 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               ].map(({ label, v, max, c }) => {
                 const p = max > 0 ? Math.min((v / max) * 100, 100) : 0;
                 return (
-                  <div key={label} style={{ background: "#0e0e14", borderRadius: 6, padding: "6px 10px" }}>
-                    <div style={{ fontSize: 10, color: "#5a5a72", marginBottom: 4 }}>{label}</div>
-                    <div style={{ background: "#1e1e28", borderRadius: 99, height: 5, overflow: "hidden", marginBottom: 4 }}>
+                  <div key={label} style={{ background: "var(--input-bg)", borderRadius: 6, padding: "6px 10px" }}>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
+                    <div style={{ background: "var(--surface-3)", borderRadius: 99, height: 5, overflow: "hidden", marginBottom: 4 }}>
                       <div style={{ width: `${p}%`, height: "100%", background: c, borderRadius: 99, transition: "width .5s" }} />
                     </div>
-                    <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 13, color: c }}>{fmt(v)} <span style={{ fontSize: 10, color: "#5a5a72" }}>/ {fmt(max)}</span></div>
+                    <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 13, color: c }}>{fmt(v)} <span style={{ fontSize: 10, color: "var(--text-muted)" }}>/ {fmt(max)}</span></div>
                   </div>
                 );
               })}
@@ -605,19 +605,19 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 
       {/* Gauges + linha últimos dias */}
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "1rem", marginBottom: "1rem" }}>
-        <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem", display: "flex", gap: "1.5rem", alignItems: "center" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", display: "flex", gap: "1.5rem", alignItems: "center" }}>
           <RingGauge value={totalMes}   max={spec.metaM}  color={spec.color} label="Meta Mensal"  sub={`${fmt(totalMes)}/${fmt(spec.metaM)}`} />
           <RingGauge value={totalAno}   max={spec.metaA}  color={spec.color} label="Meta Anual"   sub={`${fmt(totalAno)}/${fmt(spec.metaA)}`} />
           <RingGauge value={total1aAno} max={spec.meta1a} color="#a78bfa"    label="30% 1ª Cons." sub={`${fmt(total1aAno)}/${fmt(spec.meta1a)}`} />
         </div>
-        <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tendência — últimos 12 meses</div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tendência — últimos 12 meses</div>
           <ResponsiveContainer width="100%" height={110}>
             <ComposedChart data={trend12} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis hide />
               <Tooltip content={customTooltip} />
-              <ReferenceLine y={spec.metaM} stroke="#3a3a4e" strokeDasharray="4 2" />
+              <ReferenceLine y={spec.metaM} stroke="var(--border-2)" strokeDasharray="4 2" />
               <Area type="monotone" dataKey="total" name="Total" fill={spec.color + "22"} stroke={spec.color} strokeWidth={2} />
               <Line type="monotone" dataKey="primeiras" name="1ª Consulta" stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
             </ComposedChart>
@@ -626,17 +626,17 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
       </div>
 
       {/* Barras anuais + composição mensal + meta anual */}
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem", marginBottom: "1rem" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", marginBottom: "1rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em" }}>Atendimentos mensais — {ano}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em" }}>Atendimentos mensais — {ano}</span>
           <DeltaBadge value={totalAno} meta={spec.metaA} />
         </div>
         <ResponsiveContainer width="100%" height={150}>
           <BarChart data={barData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-            <XAxis dataKey="name" tick={{ fill: "#5a5a72", fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
+            <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={35} />
             <Tooltip content={customTooltip} />
-            <ReferenceLine y={spec.metaM} stroke="#3a3a4e" strokeDasharray="4 2" />
+            <ReferenceLine y={spec.metaM} stroke="var(--border-2)" strokeDasharray="4 2" />
             <Bar dataKey="Total" radius={[4, 4, 0, 0]}>
               {barData.map((entry, i) => <Cell key={i} fill={entry.Total >= spec.metaM ? "#34d399" : entry.Total >= spec.metaM * .7 ? spec.color : "#fb7185"} fillOpacity={.9} />)}
             </Bar>
@@ -647,12 +647,12 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
         {/* Composição mensal */}
-        <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Composição — {MONTHS_FULL[mes]}</div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Composição — {MONTHS_FULL[mes]}</div>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={compData} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
-              <XAxis type="number" tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fill: "#9090a8", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-3)", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip content={customTooltip} />
               <Bar dataKey="value" name="Qtd." radius={[0, 4, 4, 0]}>
                 {compData.map((_, i) => <Cell key={i} fill={[spec.color,"#34d399","#22d3ee","#a78bfa","#60a5fa","#fb7185","#fbbf24"][i % 7]} fillOpacity={.85} />)}
@@ -662,8 +662,8 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
         </div>
 
         {/* Meta anual + 30% */}
-        <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Progresso Anual — {ano}</div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Progresso Anual — {ano}</div>
           {[
             { label: "Total de atendimentos", value: totalAno,   meta: spec.metaA,  color: spec.color },
             { label: "1ª Consultas (30%)",    value: total1aAno, meta: spec.meta1a, color: "#a78bfa" },
@@ -675,13 +675,13 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
                   <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
                   <DeltaBadge value={value} meta={meta} />
                 </div>
-                <div style={{ background: "#0e0e14", borderRadius: 99, height: 10, overflow: "hidden", marginBottom: 4 }}>
+                <div style={{ background: "var(--input-bg)", borderRadius: 99, height: 10, overflow: "hidden", marginBottom: 4 }}>
                   <div style={{ width: `${p}%`, height: "100%", background: value >= meta ? "#34d399" : color, borderRadius: 99, transition: "width .6s" }} />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9090a8" }}>
-                  <span>Realizado: <strong style={{ color: "#e8e8f0" }}>{fmt(value)}</strong></span>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-3)" }}>
+                  <span>Realizado: <strong style={{ color: "var(--text)" }}>{fmt(value)}</strong></span>
                   <span style={{ fontFamily: "JetBrains Mono, monospace", color: value >= meta ? "#34d399" : color, fontWeight: 700 }}>{p.toFixed(1)}%</span>
-                  <span>Meta: <strong style={{ color: "#e8e8f0" }}>{fmt(meta)}</strong></span>
+                  <span>Meta: <strong style={{ color: "var(--text)" }}>{fmt(meta)}</strong></span>
                 </div>
                 {value < meta && <div style={{ fontSize: 11, color: "#fb7185", marginTop: 4 }}>Faltam <strong>{fmt(meta - value)}</strong></div>}
               </div>
@@ -690,15 +690,15 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           {/* Tabela anual resumo */}
           <div style={{ maxHeight: 130, overflowY: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-              <thead><tr>{["Mês","Total","1ª","Ret.","% Meta"].map(h => <th key={h} style={{ padding: "4px 6px", color: "#5a5a72", textAlign: "left", borderBottom: "1px solid #2a2a38", fontWeight: 700 }}>{h}</th>)}</tr></thead>
+              <thead><tr>{["Mês","Total","1ª","Ret.","% Meta"].map(h => <th key={h} style={{ padding: "4px 6px", color: "var(--text-muted)", textAlign: "left", borderBottom: "1px solid var(--border)", fontWeight: 700 }}>{h}</th>)}</tr></thead>
               <tbody>
                 {anoData.filter(m => m.total > 0).map(m => {
                   const pct = spec.metaM > 0 ? Math.round((m.total / spec.metaM) * 100) : 0;
                   const c = pct >= 100 ? "#34d399" : pct >= 70 ? spec.color : "#fb7185";
                   return (
                     <tr key={m.mes}>
-                      <td style={{ padding: "4px 6px", color: "#9090a8" }}>{MONTHS[m.mes]}</td>
-                      <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "#e8e8f0" }}>{m.total}</td>
+                      <td style={{ padding: "4px 6px", color: "var(--text-3)" }}>{MONTHS[m.mes]}</td>
+                      <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "var(--text)" }}>{m.total}</td>
                       <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "#a78bfa" }}>{m.primeiras}</td>
                       <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{m.retornos}</td>
                       <td style={{ padding: "4px 6px" }}><span style={{ background: c + "22", color: c, borderRadius: 99, padding: "1px 6px", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pct}%</span></td>
@@ -721,7 +721,7 @@ function Overview({ db }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
-  const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "5px 8px", color: "#e8e8f0", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none" };
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 8px", color: "var(--text)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none" };
 
   const rows = SPECS.map(spec => {
     const m      = aggregateMes(db, ano, mes, spec.id);
@@ -756,7 +756,7 @@ function Overview({ db }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem" }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>Ambulatório {HOSPITAL_SIGLA}</div>
-          <div style={{ fontSize: 12, color: "#5a5a72" }}>Visão geral de todas as especialidades</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Visão geral de todas as especialidades</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 18 }}>📅</span>
@@ -776,8 +776,8 @@ function Overview({ db }) {
       </div>
 
       {/* Bloco consolidado mensal */}
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1rem" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".85rem" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1rem" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".85rem" }}>
           📅 Consolidado — {MONTHS_FULL[mes]}/{ano}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: ".75rem", marginBottom: ".85rem" }}>
@@ -788,17 +788,17 @@ function Overview({ db }) {
             { icon: "🚨", label: "Emergências", value: totalEmerg,      color: "#fb7185", sub: "contam na meta" },
             { icon: "❌", label: "Faltas",      value: totalFaltas,     color: "#fbbf24", sub: "pacientes ausentes" },
           ].map(({ icon, label, value, color, sub }) => (
-            <div key={label} style={{ background: "#111118", border: "1px solid #2a2a38", borderLeft: `3px solid ${color}`, borderRadius: 8, padding: "10px 12px" }}>
-              <div style={{ fontSize: 11, color: "#5a5a72", marginBottom: 4 }}>{icon} {label}</div>
+            <div key={label} style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${color}`, borderRadius: 8, padding: "10px 12px" }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{icon} {label}</div>
               <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{fmt(value)}</div>
-              <div style={{ fontSize: 10, color: "#5a5a72", marginTop: 4 }}>{sub}</div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>{sub}</div>
             </div>
           ))}
         </div>
       </div>
 
       {/* Cards por especialidade com gráfico de tendência */}
-      <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".75rem" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".75rem" }}>
         Especialidades — Meta Mensal + Tendência 6 Meses
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(1,1fr)", gap: "1rem" }}>
@@ -807,7 +807,7 @@ function Overview({ db }) {
           const bc      = pctM >= 100 ? "#34d399" : pctM >= 70 ? spec.color : pctM >= 40 ? "#fbbf24" : "#fb7185";
           const faltaA  = Math.max(spec.metaA - totalA, 0);
           return (
-            <div key={spec.id} style={{ background: "#18181f", border: `1px solid #2a2a38`, borderLeft: `4px solid ${spec.color}`, borderRadius: 10, padding: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr 320px", gap: "1.25rem", alignItems: "start" }}>
+            <div key={spec.id} style={{ background: "var(--surface)", border: `1px solid var(--border)`, borderLeft: `4px solid ${spec.color}`, borderRadius: 10, padding: "1rem", display: "grid", gridTemplateColumns: "1fr 1fr 320px", gap: "1.25rem", alignItems: "start" }}>
 
               {/* Coluna 1: KPIs mensais */}
               <div>
@@ -815,16 +815,16 @@ function Overview({ db }) {
                 {/* Barra mensal */}
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, color: "#9090a8" }}>Meta Mensal</span>
+                    <span style={{ fontSize: 11, color: "var(--text-3)" }}>Meta Mensal</span>
                     <DeltaBadge value={total} meta={spec.metaM} />
                   </div>
-                  <div style={{ background: "#0e0e14", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 4 }}>
+                  <div style={{ background: "var(--input-bg)", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 4 }}>
                     <div style={{ width: `${Math.min(pctM,100)}%`, height: "100%", background: bc, borderRadius: 99, transition: "width .5s" }} />
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#5a5a72" }}>
-                    <span>Realizado: <strong style={{ color: "#e8e8f0" }}>{fmt(total)}</strong></span>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)" }}>
+                    <span>Realizado: <strong style={{ color: "var(--text)" }}>{fmt(total)}</strong></span>
                     <span style={{ color: bc, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctM.toFixed(1)}%</span>
-                    <span>Meta: <strong style={{ color: "#e8e8f0" }}>{fmt(spec.metaM)}</strong></span>
+                    <span>Meta: <strong style={{ color: "var(--text)" }}>{fmt(spec.metaM)}</strong></span>
                   </div>
                   {faltaM > 0 && <div style={{ fontSize: 11, color: "#fb7185", marginTop: 3 }}>Faltam <strong>{fmt(faltaM)}</strong> para a meta</div>}
                 </div>
@@ -838,8 +838,8 @@ function Overview({ db }) {
                     { label: "Realiz.",  v: m.realizadas,  c: "#34d399" },
                     { label: "Faltas",   v: m.faltas,      c: "#fbbf24" },
                   ].map(({ label, v, c }) => (
-                    <div key={label} style={{ background: "#111118", borderRadius: 6, padding: "5px 8px", textAlign: "center" }}>
-                      <div style={{ fontSize: 9, color: "#5a5a72" }}>{label}</div>
+                    <div key={label} style={{ background: "var(--bg-2)", borderRadius: 6, padding: "5px 8px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{label}</div>
                       <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 14, color: c, fontWeight: 700 }}>{v}</div>
                     </div>
                   ))}
@@ -848,25 +848,25 @@ function Overview({ db }) {
 
               {/* Coluna 2: KPIs anuais */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Anual {ano}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Anual {ano}</div>
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 11, color: "#9090a8" }}>Meta Anual</span>
+                    <span style={{ fontSize: 11, color: "var(--text-3)" }}>Meta Anual</span>
                     <DeltaBadge value={totalA} meta={spec.metaA} />
                   </div>
-                  <div style={{ background: "#0e0e14", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 4 }}>
+                  <div style={{ background: "var(--input-bg)", borderRadius: 99, height: 8, overflow: "hidden", marginBottom: 4 }}>
                     <div style={{ width: `${Math.min(pctA,100)}%`, height: "100%", background: spec.color, borderRadius: 99, transition: "width .5s" }} />
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#5a5a72" }}>
-                    <span>Realizado: <strong style={{ color: "#e8e8f0" }}>{fmt(totalA)}</strong></span>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)" }}>
+                    <span>Realizado: <strong style={{ color: "var(--text)" }}>{fmt(totalA)}</strong></span>
                     <span style={{ color: spec.color, fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pctA.toFixed(1)}%</span>
-                    <span>Meta: <strong style={{ color: "#e8e8f0" }}>{fmt(spec.metaA)}</strong></span>
+                    <span>Meta: <strong style={{ color: "var(--text)" }}>{fmt(spec.metaA)}</strong></span>
                   </div>
                   {faltaA > 0 && <div style={{ fontSize: 11, color: "#fb7185", marginTop: 3 }}>Faltam <strong>{fmt(faltaA)}</strong> para a meta anual</div>}
                 </div>
                 {/* Acumulado */}
-                <div style={{ background: "#111118", borderRadius: 8, padding: "8px 10px" }}>
-                  <div style={{ fontSize: 10, color: "#5a5a72", marginBottom: 6 }}>ACUMULADO TOTAL</div>
+                <div style={{ background: "var(--bg-2)", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>ACUMULADO TOTAL</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
                     {[
                       { label: "Total",   v: acum.total,      c: spec.color },
@@ -875,7 +875,7 @@ function Overview({ db }) {
                       { label: "Faltas",  v: acum.faltas,     c: "#fbbf24" },
                     ].map(({ label, v, c }) => (
                       <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                        <span style={{ color: "#5a5a72" }}>{label}:</span>
+                        <span style={{ color: "var(--text-muted)" }}>{label}:</span>
                         <span style={{ fontFamily: "JetBrains Mono, monospace", color: c, fontWeight: 700 }}>{fmt(v)}</span>
                       </div>
                     ))}
@@ -885,19 +885,19 @@ function Overview({ db }) {
 
               {/* Coluna 3: Gráfico tendência 6 meses */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
                   Tendência — últimos 6 meses
                 </div>
                 <ResponsiveContainer width="100%" height={130}>
                   <ComposedChart data={trend6} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="name" tick={{ fill: "#5a5a72", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
                     <YAxis hide />
                     <Tooltip content={customTooltip} />
-                    <ReferenceLine y={spec.metaM} stroke="#3a3a4e" strokeDasharray="3 3" />
+                    <ReferenceLine y={spec.metaM} stroke="var(--border-2)" strokeDasharray="3 3" />
                     <Area type="monotone" dataKey="total" name="Atendimentos" fill={spec.color + "22"} stroke={spec.color} strokeWidth={2} dot={{ fill: spec.color, r: 3 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
-                <div style={{ fontSize: 10, color: "#5a5a72", textAlign: "center", marginTop: 2 }}>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", marginTop: 2 }}>
                   linha tracejada = meta {fmt(spec.metaM)}/mês
                 </div>
               </div>
@@ -918,7 +918,7 @@ function PrintDashboard({ db }) {
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
   const [preview, setPreview] = useState(false);
-  const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "7px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
 
   const aggAll = SPECS.map(spec => {
     const m = aggregateMes(db, ano, mes, spec.id);
@@ -938,11 +938,11 @@ function PrintDashboard({ db }) {
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <style>{printStyles}</style>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🖨️ Dashboard para Impressão</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.25rem" }}>Relatório visual por período — imprima ou salve como PDF</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Relatório visual por período — imprima ou salve como PDF</div>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.5rem" }}>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: "#9090a8", marginBottom: 5 }}>MÊS</div>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>MÊS</div>
           <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
-        <div><div style={{ fontSize: 11, fontWeight: 700, color: "#9090a8", marginBottom: 5 }}>ANO</div>
+        <div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>ANO</div>
           <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 90 }} /></div>
         <button onClick={() => setPreview(true)} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 7, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>👁 Pré-visualizar</button>
         {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimir / PDF</button>}
@@ -1053,34 +1053,34 @@ function AuditoriaPage() {
   const [logs, setLogs] = useState(() => loadAudit());
   const [filtro, setFiltro] = useState("");
   const filtered = logs.filter(l => !filtro || l.user.toLowerCase().includes(filtro.toLowerCase()) || l.alvo.includes(filtro));
-  const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "7px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>📋 Log de Auditoria</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.5rem" }}>Histórico de todas as alterações realizadas na plataforma</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Histórico de todas as alterações realizadas na plataforma</div>
       <div style={{ display: "flex", gap: 10, marginBottom: "1rem", alignItems: "center" }}>
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar por usuário ou data..." style={{ ...inp, width: 280 }} />
-        <button onClick={() => setLogs(loadAudit())} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "7px 14px", color: "#22d3ee", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 13 }}>↺ Atualizar</button>
-        <span style={{ fontSize: 12, color: "#5a5a72" }}>{filtered.length} registro(s)</span>
+        <button onClick={() => setLogs(loadAudit())} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", color: "#22d3ee", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 13 }}>↺ Atualizar</button>
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{filtered.length} registro(s)</span>
       </div>
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, overflow: "hidden" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
-            <tr>{["Data/Hora","Usuário","Ação","Alvo","Dados"].map(h => <th key={h} style={{ textAlign: "left", padding: "10px 14px", color: "#5a5a72", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38", background: "#111118" }}>{h}</th>)}</tr>
+            <tr>{["Data/Hora","Usuário","Ação","Alvo","Dados"].map(h => <th key={h} style={{ textAlign: "left", padding: "10px 14px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)", background: "var(--bg-2)" }}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: "2rem", textAlign: "center", color: "#5a5a72" }}>Nenhum registro de auditoria encontrado.</td></tr>
+              <tr><td colSpan={5} style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>Nenhum registro de auditoria encontrado.</td></tr>
             )}
             {filtered.map((l, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #1e1e28" }}>
-                <td style={{ padding: "8px 14px", fontFamily: "JetBrains Mono, monospace", color: "#9090a8", fontSize: 11 }}>{new Date(l.ts).toLocaleString("pt-BR")}</td>
+              <tr key={i} style={{ borderBottom: "1px solid var(--surface-3)" }}>
+                <td style={{ padding: "8px 14px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)", fontSize: 11 }}>{new Date(l.ts).toLocaleString("pt-BR")}</td>
                 <td style={{ padding: "8px 14px", fontWeight: 600, color: "#22d3ee" }}>{l.user}</td>
                 <td style={{ padding: "8px 14px" }}>
                   <span style={{ background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{l.acao}</span>
                 </td>
-                <td style={{ padding: "8px 14px", color: "#e8e8f0", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{l.alvo}</td>
-                <td style={{ padding: "8px 14px", color: "#5a5a72", fontSize: 11, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.dados}</td>
+                <td style={{ padding: "8px 14px", color: "var(--text)", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{l.alvo}</td>
+                <td style={{ padding: "8px 14px", color: "var(--text-muted)", fontSize: 11, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.dados}</td>
               </tr>
             ))}
           </tbody>
@@ -1121,16 +1121,16 @@ function ImportPage({ onImport, currentUser }) {
     const rows = ["data,especialidade,primeiras,retornos,ofertadas,realizadas,livres,emergencias,faltas","2025-01-02,cirurgia_geral,5,12,20,17,3,2,1","2025-01-02,oftalmologia,4,10,18,14,4,0,0","2025-01-02,ginecologia,3,9,15,12,3,1,0","2025-01-02,urologia,3,8,14,11,3,0,2","2025-01-02,ortopedia,4,12,20,16,4,1,4"];
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" })); a.download = "modelo_hnsn.csv"; a.click();
   }
-  const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Importar Dados</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.5rem" }}>Carregue histórico via CSV</div>
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1.25rem", marginBottom: "1rem" }}>
-        <label style={{ display: "flex", flexDirection: "column", alignItems: "center", border: "2px dashed #3a3a4e", borderRadius: 8, padding: "2rem", cursor: "pointer", marginBottom: 12 }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Carregue histórico via CSV</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1rem" }}>
+        <label style={{ display: "flex", flexDirection: "column", alignItems: "center", border: "2px dashed var(--border-2)", borderRadius: 8, padding: "2rem", cursor: "pointer", marginBottom: 12 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
           <strong>Clique para selecionar</strong>
-          <div style={{ fontSize: 12, color: "#5a5a72", marginTop: 4 }}>CSV com as colunas abaixo</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>CSV com as colunas abaixo</div>
           <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
         </label>
         {msg && <div style={{ fontSize: 13, color: msg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600, marginBottom: 10 }}>{msg}</div>}
@@ -1212,7 +1212,7 @@ function calcAlta(dataInternacao, diasPrevistos) {
 // Sinaleira: verde (2+ dias), amarelo (falta ≤1 dia / alta hoje), vermelho (passou)
 function sinalLeito(dataInternacao, diasPrevistos) {
   const alta = calcAlta(dataInternacao, diasPrevistos);
-  if (!alta) return { cor: "#5a5a72", texto: "sem previsão", restam: null };
+  if (!alta) return { cor: "var(--text-muted)", texto: "sem previsão", restam: null };
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const restam = Math.round((alta - hoje) / 86400000);
   const dataFmt = alta.toLocaleDateString("pt-BR");
@@ -1276,8 +1276,8 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
     if (s && !p.dias_previstos) next.dias_previstos = String(s.dias);
     return next;
   });
-  const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 11px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
-  const lbl = { fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 };
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
   const alta = calcAlta(f.data_internacao, f.dias_previstos);
   const sug = sugerirCid(f.cid, refs);
   function submit() {
@@ -1290,9 +1290,9 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>🛏️ Leito {leito.identificacao} — {leito.status === "ocupado" ? "Editar internação" : "Internar paciente"}</div>
-        <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: 18 }}>Dados de saúde — use iniciais e prontuário</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>Dados de saúde — use iniciais e prontuário</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: J.S.M." style={inp} /></div>
           <div><label style={lbl}>Nº prontuário/registro</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="Ex.: 48213" style={inp} /></div>
@@ -1304,12 +1304,12 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
           <div><label style={lbl}>Diária de AIH / dias previstos *</label><input type="number" min="1" value={f.dias_previstos} onChange={e => set("dias_previstos", e.target.value)} placeholder="Ex.: 5" style={inp} /></div>
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
             <label style={lbl}>Previsão de alta</label>
-            <div style={{ ...inp, background: "#0a0a0f", color: alta ? "#22d3ee" : "#5a5a72", fontWeight: 700 }}>{alta ? alta.toLocaleDateString("pt-BR") : "—"}</div>
+            <div style={{ ...inp, background: "var(--bg)", color: alta ? "#22d3ee" : "var(--text-muted)", fontWeight: 700 }}>{alta ? alta.toLocaleDateString("pt-BR") : "—"}</div>
           </div>
           <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>🕐 Hora em que o leito foi solicitado (opcional — p/ indicadores)</label><input type="datetime-local" value={f.solic_em} onChange={e => set("solic_em", e.target.value)} style={inp} /></div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={submit} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{leito.status === "ocupado" ? "✓ Salvar" : "🛏️ Internar"}</button>
         </div>
       </div>
@@ -1322,8 +1322,8 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
   const [f, setF] = useState({ cid: "", descricao: "", dias: "" });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
-  const hl = { fontSize: 11, color: "#9090a8", fontWeight: 700, display: "block", marginBottom: 4 };
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const hl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
   async function salvar() {
     if (!f.cid.trim() || !f.dias) { alert("Informe o CID e os dias."); return; }
     setBusy(true);
@@ -1334,27 +1334,27 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
   const ordenados = [...refs].sort((a, b) => (a.cid || "").localeCompare(b.cid || ""));
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 580, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 580, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>📚 Referências de CID → dias de internação</div>
-        <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Valores de referência aproximados — ajuste conforme seu protocolo, a diária de AIH e o quadro do paciente. Não é recomendação médica.</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Valores de referência aproximados — ajuste conforme seu protocolo, a diária de AIH e o quadro do paciente. Não é recomendação médica.</div>
         <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 80px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
           <div><label style={hl}>CID</label><input value={f.cid} onChange={e => set("cid", e.target.value)} placeholder="J18" style={inp} /></div>
           <div><label style={hl}>Descrição</label><input value={f.descricao} onChange={e => set("descricao", e.target.value)} placeholder="Pneumonia" style={inp} /></div>
           <div><label style={hl}>Dias</label><input type="number" min="1" value={f.dias} onChange={e => set("dias", e.target.value)} placeholder="7" style={inp} /></div>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
         </div>
-        <div style={{ border: "1px solid #2a2a38", borderRadius: 8, overflow: "hidden" }}>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr>{["CID", "Descrição", "Dias", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "#5a5a72", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "#111118", borderBottom: "1px solid #2a2a38" }}>{h}</th>)}</tr></thead>
+            <thead><tr>{["CID", "Descrição", "Dias", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
             <tbody>
-              {ordenados.length === 0 && <tr><td colSpan={4} style={{ padding: "18px", textAlign: "center", color: "#5a5a72" }}>Nenhuma referência cadastrada.</td></tr>}
+              {ordenados.length === 0 && <tr><td colSpan={4} style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)" }}>Nenhuma referência cadastrada.</td></tr>}
               {ordenados.map(r => (
                 <tr key={r.cid}>
                   <td style={{ padding: "7px 12px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700 }}>{r.cid}</td>
-                  <td style={{ padding: "7px 12px", color: "#c8c8d8" }}>{r.descricao}</td>
-                  <td style={{ padding: "7px 12px", color: "#e8e8f0", fontWeight: 700 }}>{r.dias}d</td>
+                  <td style={{ padding: "7px 12px", color: "var(--text-2)" }}>{r.descricao}</td>
+                  <td style={{ padding: "7px 12px", color: "var(--text)", fontWeight: 700 }}>{r.dias}d</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias) })} style={{ background: "transparent", border: "1px solid #2a2a38", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
+                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias) })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
                     <button onClick={() => { if (confirm(`Remover a referência ${r.cid}?`)) onDelete(r.cid); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>
                   </td>
                 </tr>
@@ -1363,7 +1363,7 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
           </table>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
         </div>
       </div>
     </div>
@@ -1492,16 +1492,16 @@ function LeitosPage({ currentUser, canEdit }) {
   const vermelhos = sinais.filter(s => s.restam !== null && s.restam < 0).length;
 
   const Card = ({ label, valor, cor }) => (
-    <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "12px 16px", minWidth: 120, flex: 1 }}>
-      <div style={{ fontSize: 11, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: cor || "#e8e8f0", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", minWidth: 120, flex: 1 }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
     </div>
   );
 
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🛏️ Giro de Leitos</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.25rem" }}>Painel de gestão de leitos e previsão de alta</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Painel de gestão de leitos e previsão de alta</div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <Card label="Leitos" valor={total} />
@@ -1509,14 +1509,14 @@ function LeitosPage({ currentUser, canEdit }) {
         <Card label="Livres" valor={livres} cor="#34d399" />
         <Card label="Higienização 🧼" valor={higienizando} cor="#fbbf24" />
         <Card label="Interditados" valor={interditados} cor="#fb7185" />
-        <Card label="Ocupação" valor={ocupacao + "%"} cor={ocupacao >= 90 ? "#f43f5e" : "#e8e8f0"} />
+        <Card label="Ocupação" valor={ocupacao + "%"} cor={ocupacao >= 90 ? "#f43f5e" : "var(--text)"} />
         <Card label="Alta próxima 🟡" valor={amarelos} cor="#fbbf24" />
         <Card label="Alta vencida 🔴" valor={vermelhos} cor="#f43f5e" />
       </div>
 
       {canEdit && (
         <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
-          <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 11px", color: "#e8e8f0", fontSize: 13, outline: "none", width: 260 }} />
+          <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 260 }} />
           <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
           <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>📊 Indicadores</button>
           <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>📚 Referências de CID</button>
@@ -1524,7 +1524,7 @@ function LeitosPage({ currentUser, canEdit }) {
       )}
 
       {ordenados.length === 0 ? (
-        <div style={{ background: "#18181f", border: "1px dashed #2a2a38", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "#5a5a72" }}>
+        <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)" }}>
           Nenhum leito cadastrado ainda.{canEdit ? " Cadastre o primeiro acima." : ""}
         </div>
       ) : (
@@ -1534,31 +1534,31 @@ function LeitosPage({ currentUser, canEdit }) {
             const sinal = l.status === "ocupado" ? sinalLeito(l.data_internacao, l.dias_previstos) : null;
             const borda = sinal ? sinal.cor : st.cor;
             return (
-              <div key={l.identificacao} style={{ background: "#141420", border: `1px solid #2a2a38`, borderLeft: `4px solid ${borda}`, borderRadius: 10, padding: "12px 14px" }}>
+              <div key={l.identificacao} style={{ background: "var(--surface-2)", border: `1px solid var(--border)`, borderLeft: `4px solid ${borda}`, borderRadius: 10, padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <div style={{ fontSize: 15, fontWeight: 800 }}>Leito {l.identificacao}</div>
                   <span style={{ background: st.bg, color: st.cor, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{st.label}</span>
                 </div>
 
                 {l.status === "ocupado" && (
-                  <div style={{ fontSize: 12, color: "#c8c8d8", lineHeight: 1.7 }}>
-                    <div><strong style={{ color: "#e8e8f0" }}>{l.iniciais}</strong>{l.prontuario ? ` · reg. ${l.prontuario}` : ""}</div>
-                    {l.cid && <div style={{ color: "#9090a8" }}>CID {l.cid}{l.motivo ? ` · ${l.motivo}` : ""}</div>}
-                    {!l.cid && l.motivo && <div style={{ color: "#9090a8" }}>{l.motivo}</div>}
-                    <div style={{ color: "#5a5a72" }}>Internação: {l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"} · {l.dias_previstos}d prev.</div>
+                  <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
+                    <div><strong style={{ color: "var(--text)" }}>{l.iniciais}</strong>{l.prontuario ? ` · reg. ${l.prontuario}` : ""}</div>
+                    {l.cid && <div style={{ color: "var(--text-3)" }}>CID {l.cid}{l.motivo ? ` · ${l.motivo}` : ""}</div>}
+                    {!l.cid && l.motivo && <div style={{ color: "var(--text-3)" }}>{l.motivo}</div>}
+                    <div style={{ color: "var(--text-muted)" }}>Internação: {l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"} · {l.dias_previstos}d prev.</div>
                     {sinal && <div style={{ marginTop: 6, color: sinal.cor, fontWeight: 700, fontSize: 12 }}>{sinal.texto}</div>}
                   </div>
                 )}
                 {l.status === "livre" && (
-                  <div style={{ fontSize: 12, color: "#5a5a72" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     Disponível para internação.
                     {l.pronto_em && <div style={{ color: "#34d399", marginTop: 2 }}>Pronto desde {horaFmt(l.pronto_em)}</div>}
                   </div>
                 )}
                 {l.status === "higienizacao" && (
-                  <div style={{ fontSize: 12, color: "#c8c8d8", lineHeight: 1.7 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
                     <div>🧼 Em higienização</div>
-                    <div style={{ color: "#5a5a72" }}>Vagou: {horaFmt(l.disp_em)}</div>
+                    <div style={{ color: "var(--text-muted)" }}>Vagou: {horaFmt(l.disp_em)}</div>
                     <div style={{ marginTop: 4, color: "#fbbf24", fontWeight: 700 }}>Limpando há {fmtDur(diffMin(l.disp_em, nowISO()))}</div>
                   </div>
                 )}
@@ -1569,20 +1569,20 @@ function LeitosPage({ currentUser, canEdit }) {
                     {l.status === "livre" && <>
                       <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>Internar</button>
                       <button onClick={() => interditar(l)} style={btnLeito("#fbbf24")}>Interditar</button>
-                      <button onClick={() => removerLeito(l)} style={btnLeito("#5a5a72")}>🗑</button>
+                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>🗑</button>
                     </>}
                     {l.status === "ocupado" && <>
                       <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
-                      <button onClick={() => setModal(l)} style={btnLeito("#9090a8")}>Editar</button>
+                      <button onClick={() => setModal(l)} style={btnLeito("var(--text-3)")}>Editar</button>
                     </>}
                     {l.status === "higienizacao" && <>
                       <button onClick={() => marcarPronto(l)} style={btnLeito("#34d399")}>✓ Pronto</button>
-                      <button onClick={() => setTempos(l)} style={btnLeito("#9090a8")}>⏱ Ajustar</button>
+                      <button onClick={() => setTempos(l)} style={btnLeito("var(--text-3)")}>⏱ Ajustar</button>
                       <button onClick={() => interditar(l)} style={btnLeito("#fb7185")}>Interditar</button>
                     </>}
                     {l.status === "interditado" && <>
                       <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
-                      <button onClick={() => removerLeito(l)} style={btnLeito("#5a5a72")}>🗑</button>
+                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>🗑</button>
                     </>}
                   </div>
                 )}
@@ -1607,16 +1607,16 @@ function btnLeito(cor) {
 function TemposModal({ leito, onClose, onSave }) {
   const [disp, setDisp] = useState(isoToLocal(leito.disp_em));
   const [pronto, setPronto] = useState(isoToLocal(leito.pronto_em));
-  const inp = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 11px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", flex: 1, boxSizing: "border-box" };
-  const lbl = { fontSize: 11, fontWeight: 700, color: "#9090a8", display: "block", marginBottom: 5 };
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", flex: 1, boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
   const agora = () => isoToLocal(nowISO());
-  const btnAgora = { background: "#1e1e28", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 12px", color: "#22d3ee", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" };
+  const btnAgora = { background: "var(--surface-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 12px", color: "#22d3ee", cursor: "pointer", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" };
   const limpeza = diffMin(localToIso(disp), localToIso(pronto));
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "92vw" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "92vw" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>⏱ Tempos do leito {leito.identificacao}</div>
-        <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: 18 }}>Ajuste se registrou fora do horário real.</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>Ajuste se registrou fora do horário real.</div>
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>Disponibilizado (paciente vagou)</label>
           <div style={{ display: "flex", gap: 8 }}><input type="datetime-local" value={disp} onChange={e => setDisp(e.target.value)} style={inp} /><button onClick={() => setDisp(agora())} style={btnAgora}>agora</button></div>
@@ -1625,9 +1625,9 @@ function TemposModal({ leito, onClose, onSave }) {
           <label style={lbl}>Pronto (higienização concluída)</label>
           <div style={{ display: "flex", gap: 8 }}><input type="datetime-local" value={pronto} onChange={e => setPronto(e.target.value)} style={inp} /><button onClick={() => setPronto(agora())} style={btnAgora}>agora</button></div>
         </div>
-        <div style={{ background: "#0e0e14", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#fbbf24", fontWeight: 700, marginBottom: 18 }}>🧼 Tempo de higienização: {fmtDur(limpeza)}</div>
+        <div style={{ background: "var(--input-bg)", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#fbbf24", fontWeight: 700, marginBottom: 18 }}>🧼 Tempo de higienização: {fmtDur(limpeza)}</div>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={() => onSave({ disp_em: localToIso(disp), pronto_em: localToIso(pronto) })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Salvar</button>
         </div>
       </div>
@@ -1663,17 +1663,17 @@ function IndicadoresModal({ leitos, onClose }) {
   const carregando = saidas === null || turnover === null;
 
   const anos = [now.getFullYear(), now.getFullYear() - 1];
-  const sel = { background: "#0e0e14", border: "1px solid #2a2a38", borderRadius: 6, padding: "7px 10px", color: "#e8e8f0", fontSize: 13, outline: "none", cursor: "pointer" };
+  const sel = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" };
   const Metric = ({ label, valor, sub, cor }) => (
-    <div style={{ background: "#141420", border: "1px solid #2a2a38", borderRadius: 10, padding: "14px 16px" }}>
-      <div style={{ fontSize: 11, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "#e8e8f0", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>{valor}</div>
-      {sub && <div style={{ fontSize: 11, color: "#5a5a72", marginTop: 3 }}>{sub}</div>}
+    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 6 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{sub}</div>}
     </div>
   );
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>📊 Indicadores de Giro de Leitos</div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -1682,7 +1682,7 @@ function IndicadoresModal({ leitos, onClose }) {
           </div>
         </div>
         {carregando ? (
-          <div style={{ padding: "2.5rem", textAlign: "center", color: "#5a5a72" }}>Carregando…</div>
+          <div style={{ padding: "2.5rem", textAlign: "center", color: "var(--text-muted)" }}>Carregando…</div>
         ) : (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
@@ -1693,13 +1693,13 @@ function IndicadoresModal({ leitos, onClose }) {
               <Metric label="Substituição média" valor={fmtDur(subMin)} sub="vagou → próximo paciente" cor="#fbbf24" />
               <Metric label="Solicitação → entrada" valor={fmtDur(solMin)} sub="quando registrado" cor="#60a5fa" />
             </div>
-            <div style={{ fontSize: 11, color: "#5a5a72", marginTop: 14, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 14, lineHeight: 1.5 }}>
               Baseado nas altas e nos ciclos de leito registrados em {MONTHS[mes]}/{ano}. Os tempos de higienização/substituição aparecem conforme os leitos passam pelo fluxo (alta → higienização → pronto → nova internação).
             </div>
           </>
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
-          <button onClick={onClose} style={{ background: "#18181f", color: "#9090a8", border: "1px solid #2a2a38", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
         </div>
       </div>
     </div>
@@ -1726,14 +1726,14 @@ function UsersPage({ currentUser }) {
     if (r.ok) { setMsg("✓ Senha alterada com sucesso!"); setNp1(""); setNp2(""); addAuditLog(currentUser, "trocar senha", currentUser.username, {}); setTimeout(() => setMsg(""), 3000); }
     else setMsg("⚠️ " + r.error);
   }
-  const inp = { background: "#18181f", border: "1px solid #2a2a38", borderRadius: 6, padding: "8px 10px", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Usuários e Acesso</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
 
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 460 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>🔑 Trocar minha senha</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 460 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>🔑 Trocar minha senha</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <input type="password" value={np1} placeholder="Nova senha (mín. 6 caracteres)" onChange={e => { setNp1(e.target.value); setMsg(""); }} style={inp} autoComplete="new-password" />
           <input type="password" value={np2} placeholder="Repita a nova senha" onChange={e => { setNp2(e.target.value); setMsg(""); }} onKeyDown={e => e.key === "Enter" && handleChangePw()} style={inp} autoComplete="new-password" />
@@ -1744,19 +1744,19 @@ function UsersPage({ currentUser }) {
         </div>
       </div>
 
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, marginBottom: "1.25rem", overflow: "hidden" }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid #2a2a38", fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em" }}>Usuários com acesso ({profiles.length})</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.25rem", overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em" }}>Usuários com acesso ({profiles.length})</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead><tr>{["Nome","Usuário","Perfil","Permissões"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "#5a5a72", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #2a2a38", background: "#111118" }}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Nome","Usuário","Perfil","Permissões"].map(h => <th key={h} style={{ padding: "10px 14px", textAlign: "left", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)", background: "var(--bg-2)" }}>{h}</th>)}</tr></thead>
           <tbody>
             {profiles.map(u => {
               const role = ROLES[u.role] || ROLES.visualizador; const isMe = u.username === currentUser.username;
               return (
                 <tr key={u.username} style={{ background: isMe ? "#1a1a28" : "transparent" }}>
-                  <td style={{ padding: "10px 14px", color: "#e8e8f0", fontWeight: 600 }}>{u.nome} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
-                  <td style={{ padding: "10px 14px", fontFamily: "JetBrains Mono, monospace", color: "#9090a8" }}>{u.username}</td>
+                  <td style={{ padding: "10px 14px", color: "var(--text)", fontWeight: 600 }}>{u.nome} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
+                  <td style={{ padding: "10px 14px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)" }}>{u.username}</td>
                   <td style={{ padding: "10px 14px" }}><span style={{ background: role.color + "22", color: role.color, borderRadius: 99, padding: "3px 10px", fontSize: 12, fontWeight: 700 }}>{role.label}</span></td>
-                  <td style={{ padding: "10px 14px", fontSize: 11, color: "#5a5a72" }}>{role.desc}</td>
+                  <td style={{ padding: "10px 14px", fontSize: 11, color: "var(--text-muted)" }}>{role.desc}</td>
                 </tr>
               );
             })}
@@ -1778,13 +1778,13 @@ function SupabasePage() {
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>☁️ Banco de Dados — Supabase</div>
-      <div style={{ fontSize: 12, color: "#5a5a72", marginBottom: "1.5rem" }}>Configure o banco de dados para sincronização em tempo real entre dispositivos</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Configure o banco de dados para sincronização em tempo real entre dispositivos</div>
 
       <div style={{ background: USE_SUPABASE ? "#0a3d2a" : "#3d2e06", border: `1px solid ${USE_SUPABASE ? "#34d399" : "#fbbf24"}`, borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: USE_SUPABASE ? "#34d399" : "#fbbf24" }}>
           {USE_SUPABASE ? "✅ Supabase conectado e ativo" : "⚠️ Supabase não configurado — usando localStorage"}
         </div>
-        <div style={{ fontSize: 12, color: "#9090a8", marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
           {USE_SUPABASE ? "Os dados estão sendo sincronizados em tempo real." : "Os dados ficam somente neste navegador. Configure o Supabase para persistência real."}
         </div>
       </div>
@@ -1796,19 +1796,19 @@ function SupabasePage() {
         { step: "4", title: "Pegar as credenciais", desc: "Vá em Settings → API. Copie a 'Project URL' e a 'anon public key'." },
         { step: "5", title: "Adicionar as credenciais ao projeto", desc: "No arquivo index.html do MedFlow, adicione antes do </body>:\n\n<script>\n  window.SUPABASE_URL = 'sua-url-aqui';\n  window.SUPABASE_KEY = 'sua-chave-aqui';\n</script>" },
       ].map(({ step, title, desc, action, url }) => (
-        <div key={step} style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: ".75rem", display: "flex", gap: "1rem" }}>
+        <div key={step} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: ".75rem", display: "flex", gap: "1rem" }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#22d3ee22", border: "1px solid #22d3ee", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#22d3ee", flexShrink: 0 }}>{step}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{title}</div>
-            <div style={{ fontSize: 12, color: "#9090a8", lineHeight: 1.6, whiteSpace: "pre-line" }}>{desc}</div>
+            <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6, whiteSpace: "pre-line" }}>{desc}</div>
             {action && url && <a href={url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 8, color: "#22d3ee", fontSize: 12, fontWeight: 700 }}>{action}</a>}
           </div>
         </div>
       ))}
 
-      <div style={{ background: "#18181f", border: "1px solid #2a2a38", borderRadius: 10, padding: "1rem 1.25rem" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#5a5a72", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📄 SQL — Execute no Supabase SQL Editor</div>
-        <pre style={{ background: "#0e0e14", borderRadius: 8, padding: "1rem", fontSize: 11, color: "#34d399", overflowX: "auto", lineHeight: 1.6 }}>{`-- Tabela de atendimentos
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📄 SQL — Execute no Supabase SQL Editor</div>
+        <pre style={{ background: "var(--input-bg)", borderRadius: 8, padding: "1rem", fontSize: 11, color: "#34d399", overflowX: "auto", lineHeight: 1.6 }}>{`-- Tabela de atendimentos
 create table if not exists atendimentos (
   id bigserial primary key,
   data date not null,
@@ -1901,7 +1901,9 @@ export default function App() {
   const [db, setDb] = useState(() => loadDB());
   const [active, setActive] = useState("overview");
   const [ambOpen, setAmbOpen] = useState(true);
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("hnsn_theme") || "dark"; } catch { return "dark"; } });
   useEffect(() => { document.title = `MedFlow ${HOSPITAL_SIGLA}`; }, []);
+  useEffect(() => { document.documentElement.setAttribute("data-theme", theme); try { localStorage.setItem("hnsn_theme", theme); } catch {} }, [theme]);
   
   const handleSave = useCallback(newDb => {
     setDb(prev => ({ ...newDb }));
@@ -1989,18 +1991,19 @@ export default function App() {
   const currentSpec = SPECS.find(s => s.id === active);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "#0a0a0f", color: "#e8e8f0", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
       {/* HEADER */}
-      <div style={{ background: "#111118", borderBottom: "1px solid #2a2a38", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 1.5rem", flexShrink: 0, zIndex: 100 }}>
+      <div style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 1.5rem", flexShrink: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 28, height: 28, borderRadius: 6, background: "linear-gradient(135deg, #22d3ee, #a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".9rem" }}>⚕</div>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: ".02em" }}>MedFlow {HOSPITAL_SIGLA}</div>
-            <div style={{ fontSize: 10, color: "#5a5a72", fontFamily: "JetBrains Mono, monospace" }}>Gestão de Atendimentos · Ambulatório</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>Gestão de Atendimentos · Ambulatório</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ fontSize: 11, color: "#9090a8", fontFamily: "JetBrains Mono, monospace" }}>{now.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}</div>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{now.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}</div>
+          <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Alternar tema claro/escuro" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 9px", color: "var(--text-3)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>{theme === "dark" ? "☀️" : "🌙"}</button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{currentUser.name}</div>
@@ -2009,9 +2012,9 @@ export default function App() {
             <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, background: role.color + "22", border: `1px solid ${role.color}44` }}>
               {currentUser.role === "adm_master" ? "👑" : currentUser.role === "adm_silver" ? "🥈" : currentUser.role === "analista" ? "📊" : "👁"}
             </div>
-            <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid #2a2a38", borderRadius: 6, padding: "5px 10px", color: "#5a5a72", cursor: "pointer", fontSize: 12, fontFamily: "Inter, sans-serif" }}
+            <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 10px", color: "var(--text-muted)", cursor: "pointer", fontSize: 12, fontFamily: "Inter, sans-serif" }}
               onMouseOver={e => { e.currentTarget.style.borderColor = "#fb7185"; e.currentTarget.style.color = "#fb7185"; }}
-              onMouseOut={e => { e.currentTarget.style.borderColor = "#2a2a38"; e.currentTarget.style.color = "#5a5a72"; }}>
+              onMouseOut={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-muted)"; }}>
               Sair
             </button>
           </div>
@@ -2023,25 +2026,25 @@ export default function App() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* SIDEBAR */}
-        <nav style={{ width: 215, minWidth: 215, background: "#111118", borderRight: "1px solid #2a2a38", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
-          {isReadOnly && <div style={{ margin: "0 10px 8px", background: "#1e1e28", border: "1px solid #3a3a4e", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#5a5a72", textAlign: "center" }}>👁 Somente visualização</div>}
+        <nav style={{ width: 215, minWidth: 215, background: "var(--bg-2)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
+          {isReadOnly && <div style={{ margin: "0 10px 8px", background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>👁 Somente visualização</div>}
           {sidebarItems.map((item, i) => {
-            if (item.id?.startsWith("d")) return <div key={i} style={{ height: 1, background: "#1e1e28", margin: ".5rem 0" }} />;
+            if (item.id?.startsWith("d")) return <div key={i} style={{ height: 1, background: "var(--surface-3)", margin: ".5rem 0" }} />;
 
             // Grupo expansível (ex.: Ambulatório → especialidades)
             if (item.children) {
               const childActive = item.children.some(c => c.id === active);
               return (
                 <div key={item.id}>
-                  <button onClick={() => setAmbOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "#c8c8d8", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "#18181f" : "transparent" }}>
+                  <button onClick={() => setAmbOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "var(--text-2)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "var(--surface)" : "transparent" }}>
                     <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>{item.label}
-                    <span style={{ marginLeft: "auto", fontSize: 10, color: "#5a5a72" }}>{ambOpen ? "▾" : "▸"}</span>
+                    <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)" }}>{ambOpen ? "▾" : "▸"}</span>
                   </button>
                   {ambOpen && item.children.map(c => {
                     const isActive = active === c.id;
                     return (
-                      <button key={c.id} onClick={() => setActive(c.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "#9090a8", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "#18181f" : "transparent" }}>
-                        <span style={{ width: 7, height: 7, borderRadius: 99, background: c.color || "#5a5a72", flexShrink: 0 }} />{c.label}
+                      <button key={c.id} onClick={() => setActive(c.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "var(--surface)" : "transparent" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: c.color || "var(--text-muted)", flexShrink: 0 }} />{c.label}
                       </button>
                     );
                   })}
@@ -2051,7 +2054,7 @@ export default function App() {
 
             const isActive = active === item.id;
             return (
-              <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "#9090a8", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "#18181f" : "transparent" }}>
+              <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
                 <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>{item.label}
               </button>
             );

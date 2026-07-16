@@ -11,8 +11,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: 'Inter', sans-serif; background: #0a0a0f; color: #e8e8f0; }
+      /* ── Tema (claro/escuro) ── valores padrão = ESCURO */
+      :root {
+        --bg:#0a0a0f; --bg-2:#111118; --surface:#18181f; --surface-2:#141420; --surface-3:#1e1e28;
+        --input-bg:#0e0e14; --border:#2a2a38; --border-2:#3a3a4e;
+        --text:#e8e8f0; --text-2:#c8c8d8; --text-3:#9090a8; --text-muted:#5a5a72;
+      }
+      :root[data-theme="light"] {
+        --bg:#e9ecf1; --bg-2:#ffffff; --surface:#ffffff; --surface-2:#f6f7f9; --surface-3:#eef1f4;
+        --input-bg:#f3f5f7; --border:#dce0e6; --border-2:#ccd2da;
+        --text:#1a1d23; --text-2:#333a42; --text-3:#586170; --text-muted:#8b94a1;
+      }
+      body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
     </style>
+    <script>try{document.documentElement.setAttribute('data-theme', localStorage.getItem('hnsn_theme')||'dark')}catch(e){}</script>
   </head>
   <body>
     <div id="root"></div>
