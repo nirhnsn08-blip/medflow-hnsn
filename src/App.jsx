@@ -1900,6 +1900,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => loadSession());
   const [db, setDb] = useState(() => loadDB());
   const [active, setActive] = useState("overview");
+  const [ambOpen, setAmbOpen] = useState(true);
   useEffect(() => { document.title = `MedFlow ${HOSPITAL_SIGLA}`; }, []);
   
   const handleSave = useCallback(newDb => {
@@ -1976,7 +1977,7 @@ export default function App() {
   const sidebarItems = [
     { id: "overview",  icon: "📊", label: "Visão Geral" },
     { id: "d1" },
-    ...SPECS.map(s => ({ id: s.id, icon: "🏥", label: s.label, color: s.color })),
+    { id: "ambulatorio", icon: "🏥", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
     { id: "d2" },
     { id: "leitos",   icon: "🛏️", label: "Giro de Leitos" },
     ...(canPrint    ? [{ id: "print",     icon: "🖨️", label: "Imprimir Dashboard" }] : []),
@@ -2026,6 +2027,28 @@ export default function App() {
           {isReadOnly && <div style={{ margin: "0 10px 8px", background: "#1e1e28", border: "1px solid #3a3a4e", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "#5a5a72", textAlign: "center" }}>👁 Somente visualização</div>}
           {sidebarItems.map((item, i) => {
             if (item.id?.startsWith("d")) return <div key={i} style={{ height: 1, background: "#1e1e28", margin: ".5rem 0" }} />;
+
+            // Grupo expansível (ex.: Ambulatório → especialidades)
+            if (item.children) {
+              const childActive = item.children.some(c => c.id === active);
+              return (
+                <div key={item.id}>
+                  <button onClick={() => setAmbOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "#c8c8d8", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "#18181f" : "transparent" }}>
+                    <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>{item.label}
+                    <span style={{ marginLeft: "auto", fontSize: 10, color: "#5a5a72" }}>{ambOpen ? "▾" : "▸"}</span>
+                  </button>
+                  {ambOpen && item.children.map(c => {
+                    const isActive = active === c.id;
+                    return (
+                      <button key={c.id} onClick={() => setActive(c.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "#9090a8", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "#18181f" : "transparent" }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 99, background: c.color || "#5a5a72", flexShrink: 0 }} />{c.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            }
+
             const isActive = active === item.id;
             return (
               <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "#9090a8", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "#18181f" : "transparent" }}>
