@@ -130,3 +130,29 @@ create policy cidref_select on public.cid_referencia for select to authenticated
 create policy cidref_insert on public.cid_referencia for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
 create policy cidref_update on public.cid_referencia for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy cidref_delete on public.cid_referencia for delete to authenticated using (public.my_role() = 'adm_master');
+
+-- ===== Monitoramento: setores + fila de solicitações de leito =====
+create table if not exists public.setores (
+  nome text primary key,
+  alerta_amarelo int default 90, alerta_vermelho int default 100, ordem int default 0,
+  usuario text, updated_at timestamptz default now()
+);
+alter table public.setores enable row level security;
+drop policy if exists setores_select on public.setores;
+drop policy if exists setores_write  on public.setores;
+create policy setores_select on public.setores for select to authenticated using (true);
+create policy setores_write  on public.setores for all    to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+
+alter table public.leitos add column if not exists setor text;
+
+create table if not exists public.solicitacoes (
+  id bigserial primary key,
+  iniciais text, setor_origem text, setor_destino text,
+  hora_pedido timestamptz default now(), status text default 'aguardando',
+  usuario text, created_at timestamptz default now()
+);
+alter table public.solicitacoes enable row level security;
+drop policy if exists solic_select on public.solicitacoes;
+drop policy if exists solic_write  on public.solicitacoes;
+create policy solic_select on public.solicitacoes for select to authenticated using (true);
+create policy solic_write  on public.solicitacoes for all    to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));

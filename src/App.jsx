@@ -717,7 +717,212 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 // ═══════════════════════════════════════════════════════════
 // VISÃO GERAL
 // ═══════════════════════════════════════════════════════════
-function Overview({ db }) {
+// ═══════════════════════════════════════════════════════════
+// SETORES + SOLICITAÇÕES (monitoramento de leitos)
+// ═══════════════════════════════════════════════════════════
+const SETORES_KEY = "hnsn_setores_v1";
+const loadSetoresLocal = () => { try { return JSON.parse(localStorage.getItem(SETORES_KEY) || "[]"); } catch { return []; } };
+const saveSetoresLocal = arr => localStorage.setItem(SETORES_KEY, JSON.stringify(arr));
+async function loadSetoresFromSupabase() {
+  const rows = await sbFetch("setores?select=*&order=ordem");
+  return Array.isArray(rows) ? rows : null;
+}
+async function upsertSetorRemote(setor, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("setores?on_conflict=nome", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ ...setor, usuario: user?.name || null }) });
+}
+async function deleteSetorRemote(nome) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`setores?nome=eq.${encodeURIComponent(nome)}`, { method: "DELETE" });
+}
+async function loadSolicitacoes() {
+  const rows = await sbFetch("solicitacoes?status=eq.aguardando&select=*&order=hora_pedido");
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSolicitacaoRemote(sol, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("solicitacoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...sol, usuario: user?.name || null }) });
+}
+async function updateSolicitacaoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`solicitacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
+}
+// Ocupação de um setor considerando a fila; retorna métricas + cor do alerta.
+function ocupacaoSetor(leitos, solicitacoes, setor) {
+  const dele = leitos.filter(l => (l.setor || "") === setor.nome);
+  const operacionais = dele.filter(l => l.status !== "interditado").length;
+  const ocupados = dele.filter(l => l.status === "ocupado").length;
+  const aguardando = (solicitacoes || []).filter(s => s.setor_destino === setor.nome).length;
+  const pct = operacionais > 0 ? Math.round(((ocupados + aguardando) / operacionais) * 100) : (aguardando > 0 ? null : 0);
+  const amar = setor.alerta_amarelo ?? 90, verm = setor.alerta_vermelho ?? 100;
+  const cor = pct == null ? "var(--text-muted)" : pct >= verm ? "#f43f5e" : pct >= amar ? "#fbbf24" : "#34d399";
+  return { operacionais, ocupados, aguardando, pct, cor, restringir: pct != null && pct >= verm };
+}
+
+function Overview({ db, currentUser, canEdit }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [leitos, setLeitos]   = useState([]);
+  const [setores, setSetores] = useState([]);
+  const [solic, setSolic]     = useState([]);
+  const [saidas, setSaidas]   = useState([]);
+  const [novo, setNovo] = useState({ iniciais: "", setor_origem: "", setor_destino: "" });
+  const [, setTick] = useState(0);
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 8px", color: "var(--text)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none" };
+
+  function refresh() {
+    if (!USE_SUPABASE) { setLeitos(loadLeitos()); setSetores(loadSetoresLocal()); return; }
+    loadLeitosFromSupabase().then(r => r && setLeitos(r));
+    loadSetoresFromSupabase().then(r => r && setSetores(r));
+    loadSolicitacoes().then(setSolic);
+    loadSaidas().then(setSaidas);
+  }
+  useEffect(() => {
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => setTick(t => t + 1), 60000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+  }, []);
+
+  // Métricas globais de leitos
+  const operacionais = leitos.filter(l => l.status !== "interditado").length;
+  const ocupadosG = leitos.filter(l => l.status === "ocupado").length;
+  const higienizando = leitos.filter(l => l.status === "higienizacao").length;
+  const ocupacaoG = operacionais > 0 ? Math.round((ocupadosG / operacionais) * 100) : 0;
+  const inMesData = dstr => { if (!dstr) return false; const d = new Date(dstr + "T00:00:00"); return d.getMonth() === mes && d.getFullYear() === ano; };
+  const sMes = saidas.filter(s => inMesData(s.data_alta));
+  const altas = sMes.length;
+  const giro = operacionais > 0 ? altas / operacionais : 0;
+  const permVals = sMes.map(s => s.dias_permanencia).filter(v => v != null);
+  const permMedia = permVals.length ? permVals.reduce((a, b) => a + b, 0) / permVals.length : null;
+  const totalAguardando = solic.length;
+
+  async function addSolic() {
+    if (!novo.iniciais.trim() || !novo.setor_destino) { alert("Informe as iniciais do paciente e o setor de destino."); return; }
+    await addSolicitacaoRemote({ iniciais: novo.iniciais.trim(), setor_origem: novo.setor_origem || null, setor_destino: novo.setor_destino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
+    addAuditLog(currentUser, "solicitar leito", `${novo.setor_origem || "?"} → ${novo.setor_destino}`, {});
+    setNovo({ iniciais: "", setor_origem: "", setor_destino: "" });
+    setTimeout(refresh, 400);
+  }
+  async function resolverSolic(s, status) {
+    await updateSolicitacaoRemote(s.id, { status });
+    addAuditLog(currentUser, status === "atendido" ? "leito atendido" : "solicitação cancelada", s.setor_destino, {});
+    setTimeout(refresh, 300);
+  }
+
+  const specRows = SPECS.map(spec => {
+    const m = aggregateMes(db, ano, mes, spec.id);
+    const total = m.primeiras + m.retornos + m.emergencias;
+    const pct = spec.metaM > 0 ? Math.round((total / spec.metaM) * 100) : 0;
+    return { spec, total, pct };
+  });
+
+  const setoresOrd = [...setores].sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.nome.localeCompare(b.nome));
+  const nomesSetores = setoresOrd.map(s => s.nome);
+
+  return (
+    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem", flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>🖥️ Centro de Monitoramento — {HOSPITAL_SIGLA}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Leitos, ocupação e solicitações em tempo real</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 18 }}>📅</span>
+          <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
+          <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80 }} />
+        </div>
+      </div>
+
+      {/* MÉTRICAS GLOBAIS DE LEITOS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: ".75rem", marginBottom: "1.25rem" }}>
+        <StatCard label="Taxa de ocupação" value={ocupacaoG + "%"} color={ocupacaoG >= 90 ? "#f43f5e" : "#22d3ee"} big />
+        <StatCard label={`Giro de leito — ${MONTHS[mes]}`} value={giro.toFixed(2)} color="#a78bfa" big />
+        <StatCard label="Perman. média" value={permMedia != null ? permMedia.toFixed(1) + "d" : "—"} color="#34d399" big />
+        <StatCard label="Aguardando leito" value={totalAguardando} color={totalAguardando > 0 ? "#fbbf24" : "#34d399"} big />
+        <StatCard label="Em higienização" value={higienizando} color="#fbbf24" big />
+      </div>
+
+      {/* ALERTAS POR SETOR */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🚦 Ocupação por setor</div>
+      {setoresOrd.length === 0 ? (
+        <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1.25rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginBottom: "1.25rem" }}>
+          Nenhum setor cadastrado. Cadastre em <strong>Giro de Leitos → 🏷️ Setores</strong> e marque o setor de cada leito.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
+          {setoresOrd.map(setor => {
+            const o = ocupacaoSetor(leitos, solic, setor);
+            return (
+              <div key={setor.nome} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${o.cor}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{setor.nome}</div>
+                  {o.restringir && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>⛔ RESTRINGIR</span>}
+                </div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: o.cor, fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{o.pct == null ? "—" : o.pct + "%"}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{o.ocupados}/{o.operacionais} ocupados{o.aguardando > 0 ? ` · ${o.aguardando} aguardando` : ""}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* SOLICITAÇÕES PENDENTES */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🛎️ Solicitações de leito pendentes ({totalAguardando})</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
+        {canEdit && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: solic.length ? 14 : 0 }}>
+            <input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Iniciais do paciente" style={{ ...inp, fontFamily: "Inter", width: 150 }} />
+            <select value={novo.setor_origem} onChange={e => setNovo(p => ({ ...p, setor_origem: e.target.value }))} style={{ ...inp, fontFamily: "Inter" }}><option value="">Origem…</option>{nomesSetores.map(n => <option key={n} value={n}>{n}</option>)}<option value="Emergência">Emergência</option><option value="Centro Cirúrgico">Centro Cirúrgico</option></select>
+            <span style={{ color: "var(--text-muted)" }}>→</span>
+            <select value={novo.setor_destino} onChange={e => setNovo(p => ({ ...p, setor_destino: e.target.value }))} style={{ ...inp, fontFamily: "Inter" }}><option value="">Destino…</option>{nomesSetores.map(n => <option key={n} value={n}>{n}</option>)}</select>
+            <button onClick={addSolic} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Solicitar</button>
+          </div>
+        )}
+        {solic.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: canEdit ? "8px 0 4px" : "8px 0" }}>Nenhum paciente aguardando leito. ✅</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {solic.map(s => {
+              const espera = fmtDur(diffMin(s.hora_pedido, nowISO()));
+              return (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 700, minWidth: 70 }}>{s.iniciais}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>{s.setor_origem || "?"} <span style={{ color: "var(--text-muted)" }}>→</span> <strong style={{ color: "var(--text)" }}>{s.setor_destino}</strong></span>
+                  <span style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700, marginLeft: "auto" }}>⏳ {espera}</span>
+                  {canEdit && <>
+                    <button onClick={() => resolverSolic(s, "atendido")} style={btnLeito("#34d399")}>✓ Atendido</button>
+                    <button onClick={() => resolverSolic(s, "cancelado")} style={btnLeito("var(--text-muted)")}>✕</button>
+                  </>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ESPECIALIDADES — META x REALIZADO */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🏥 Ambulatório — meta mensal × realizado ({MONTHS[mes]})</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
+        {specRows.map(({ spec, total, pct }) => (
+          <div key={spec.id}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+              <span style={{ fontWeight: 600, color: spec.color }}>{spec.label}</span>
+              <span style={{ color: "var(--text-3)" }}><strong style={{ color: "var(--text)" }}>{fmt(total)}</strong> / {fmt(spec.metaM)} · {pct}%</span>
+            </div>
+            <div style={{ height: 7, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}>
+              <div style={{ width: Math.min(pct, 100) + "%", height: "100%", background: pct >= 100 ? "#34d399" : spec.color, borderRadius: 99 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OverviewAntigo({ db }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
@@ -1370,6 +1575,60 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
   );
 }
 
+// Gerenciar setores (nome + limiares de alerta por setor)
+function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
+  const [f, setF] = useState({ nome: "", alerta_amarelo: 90, alerta_vermelho: 100 });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const hl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  async function salvar() {
+    if (!f.nome.trim()) { alert("Informe o nome do setor."); return; }
+    setBusy(true);
+    await onSave({ nome: f.nome.trim(), alerta_amarelo: Number(f.alerta_amarelo) || 90, alerta_vermelho: Number(f.alerta_vermelho) || 100, ordem: setores.length });
+    setBusy(false);
+    setF({ nome: "", alerta_amarelo: 90, alerta_vermelho: 100 });
+  }
+  const ordenados = [...setores].sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.nome.localeCompare(b.nome));
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>🏷️ Setores e limiares de alerta</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2 }}>Amarelo = atenção; Vermelho = restringir. Ocupação considera os leitos ocupados + a fila de espera do setor.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
+          <div><label style={hl}>Setor</label><input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: UTI" style={inp} /></div>
+          <div><label style={hl}>🟡 Amarelo %</label><input type="number" value={f.alerta_amarelo} onChange={e => set("alerta_amarelo", e.target.value)} style={inp} /></div>
+          <div><label style={hl}>🔴 Vermelho %</label><input type="number" value={f.alerta_vermelho} onChange={e => set("alerta_vermelho", e.target.value)} style={inp} /></div>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
+        </div>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr>{["Setor", "🟡", "🔴", "Leitos", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {ordenados.length === 0 && <tr><td colSpan={5} style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)" }}>Nenhum setor cadastrado.</td></tr>}
+              {ordenados.map(s => (
+                <tr key={s.nome}>
+                  <td style={{ padding: "7px 12px", fontWeight: 700 }}>{s.nome}</td>
+                  <td style={{ padding: "7px 12px", color: "#fbbf24" }}>{s.alerta_amarelo}%</td>
+                  <td style={{ padding: "7px 12px", color: "#f43f5e" }}>{s.alerta_vermelho}%</td>
+                  <td style={{ padding: "7px 12px", color: "var(--text-3)" }}>{leitos.filter(l => (l.setor || "") === s.nome).length}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button onClick={() => setF({ nome: s.nome, alerta_amarelo: s.alerta_amarelo, alerta_vermelho: s.alerta_vermelho })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
+                    <button onClick={() => { if (confirm(`Remover o setor ${s.nome}? (os leitos ficam sem setor)`)) onDelete(s.nome); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LeitosPage({ currentUser, canEdit }) {
   const [leitos, setLeitos] = useState(() => loadLeitos());
   const [cidRef, setCidRef] = useState(() => loadCidRefLocal());
@@ -1377,6 +1636,8 @@ function LeitosPage({ currentUser, canEdit }) {
   const [tempos, setTempos] = useState(null);   // leito editando tempos de fluxo
   const [showCidRef, setShowCidRef] = useState(false);
   const [showIndic, setShowIndic]   = useState(false);
+  const [setores, setSetores] = useState(() => loadSetoresLocal());
+  const [showSetores, setShowSetores] = useState(false);
   const [novoLeito, setNovoLeito] = useState("");
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id); }, []);
@@ -1387,6 +1648,7 @@ function LeitosPage({ currentUser, canEdit }) {
     const sync = () => {
       loadLeitosFromSupabase().then(rows => { if (!cancel && rows) { setLeitos(rows); saveLeitos(rows); } });
       loadCidRefFromSupabase().then(rows => { if (!cancel && rows) { setCidRef(rows); saveCidRefLocal(rows); } });
+      loadSetoresFromSupabase().then(rows => { if (!cancel && rows) { setSetores(rows); saveSetoresLocal(rows); } });
     };
     sync();
     const onFocus = () => sync();
@@ -1404,6 +1666,20 @@ function LeitosPage({ currentUser, canEdit }) {
     const arr = loadCidRefLocal().filter(r => r.cid !== cid);
     saveCidRefLocal(arr); setCidRef(arr);
     await deleteCidRefRemote(cid);
+  }
+  async function salvarSetor(setor) {
+    const arr = loadSetoresLocal().filter(s => s.nome !== setor.nome); arr.push(setor);
+    saveSetoresLocal(arr); setSetores(arr);
+    await upsertSetorRemote(setor, currentUser);
+    addAuditLog(currentUser, "salvar setor", setor.nome, {});
+  }
+  async function removerSetor(nome) {
+    const arr = loadSetoresLocal().filter(s => s.nome !== nome);
+    saveSetoresLocal(arr); setSetores(arr);
+    await deleteSetorRemote(nome);
+  }
+  async function setSetorLeito(leito, setorNome) {
+    await salvarLeito({ identificacao: leito.identificacao, setor: setorNome || null });
   }
 
   function persist(next) { saveLeitos(next); setLeitos(next); }
@@ -1518,7 +1794,8 @@ function LeitosPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
           <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 260 }} />
           <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
-          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>📊 Indicadores</button>
+          <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>🏷️ Setores</button>
+          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>📊 Indicadores</button>
           <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>📚 Referências de CID</button>
         </div>
       )}
@@ -1539,6 +1816,15 @@ function LeitosPage({ currentUser, canEdit }) {
                   <div style={{ fontSize: 15, fontWeight: 800 }}>Leito {l.identificacao}</div>
                   <span style={{ background: st.bg, color: st.cor, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{st.label}</span>
                 </div>
+
+                {canEdit ? (
+                  <div style={{ marginBottom: 8 }}>
+                    <select value={l.setor || ""} onChange={e => setSetorLeito(l, e.target.value)} style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 7px", color: l.setor ? "#60a5fa" : "var(--text-muted)", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", maxWidth: "100%", cursor: "pointer" }}>
+                      <option value="">🏷️ sem setor</option>
+                      {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+                    </select>
+                  </div>
+                ) : l.setor && <div style={{ marginBottom: 8, fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>🏷️ {l.setor}</div>}
 
                 {l.status === "ocupado" && (
                   <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
@@ -1595,6 +1881,7 @@ function LeitosPage({ currentUser, canEdit }) {
       {modal && <InternarModal leito={modal} refs={cidRef} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
       {tempos && <TemposModal leito={tempos} onClose={() => setTempos(null)} onSave={campos => salvarTempos(tempos, campos)} />}
       {showCidRef && <CidRefModal refs={cidRef} onClose={() => setShowCidRef(false)} onSave={salvarCidRef} onDelete={removerCidRef} />}
+      {showSetores && <SetoresModal setores={setores} leitos={leitos} onClose={() => setShowSetores(false)} onSave={salvarSetor} onDelete={removerSetor} />}
       {showIndic && <IndicadoresModal leitos={leitos} onClose={() => setShowIndic(false)} />}
     </div>
   );
@@ -2063,7 +2350,7 @@ export default function App() {
 
         {/* CONTENT */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          {active === "overview"  && <Overview db={db} />}
+          {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
