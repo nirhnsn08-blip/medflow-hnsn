@@ -11,6 +11,9 @@ dist-ssr/
 .env.*
 !.env.example
 
+# Backups de dados — contêm dados de pacientes (LGPD). NUNCA subir ao GitHub.
+backups/
+
 # Vercel
 .vercel/
 
