@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v6
+# 📍 Ponto de restauração — checkpoint-v7
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v6` (anteriores: `checkpoint-v5` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v7` (anteriores: `checkpoint-v6` … `checkpoint-v1`)
 - **Data:** 2026-07-17
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -45,13 +45,18 @@ dá pra voltar exatamente para este estado.
   fluxo hospitalar" — logo hub de correntes convergindo no núcleo, login corporativo
   azul-marinho, cabeçalho com hospital à direita, favicon/título novos e relatórios
   assinados pela Valentrax.
+- **✨ Identidade interna corporativa:** tema escuro em azul-marinho e claro em
+  cinza-frio; ícones SVG de linha na barra lateral (sem emojis decorativos no app);
+  paleta de gráficos categórica validada por script (contraste + daltonismo):
+  teal/azul/âmbar/índigo/rosé; botões secundários neutros; cores de status
+  (verde/âmbar/vermelho) reservadas para semântica real.
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v6
+git reset --hard checkpoint-v7
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -60,7 +65,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v6
+git checkout -b recuperacao checkpoint-v7
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -76,6 +81,9 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `dc8b5a9` 🎨 paleta de gráficos profissional validada
+- `225b70e` 🎨 rebrand profundo — paleta marinho + interface sem emojis
+- `82e2604` ✨ rebrand Valentrax — marca, login, cabeçalho, favicon
 - `0aebdf9` 🦠 SCIH Fase C — indicadores mensais + dashboard + relatório
 - `2678bdd` 🦠 SCIH Fase B — base de germes com embasamento + sugestão de isolamento
 - `8852264` 🦠 SCIH Fase A — isolamentos por leito + casos de vigilância
