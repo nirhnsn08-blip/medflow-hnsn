@@ -1557,6 +1557,39 @@ function sugerirGerme(digitado, germes) {
   return m || null;
 }
 
+// ── Fase C: indicadores mensais do SCIH ──
+async function loadScihIndicadores() {
+  const rows = await sbFetch("scih_indicadores?select=*&order=competencia");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertScihIndicadorRemote(ind, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("scih_indicadores?on_conflict=competencia", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...ind, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+const compDe = (ano, mes) => `${ano}-${String(mes + 1).padStart(2, "0")}`;  // mes 0-11
+// taxa = num/den * fator (null se denominador ausente/zero)
+function taxa(num, den, fator = 100) {
+  if (num == null || den == null || den === 0) return null;
+  return (Number(num) / Number(den)) * fator;
+}
+// Calcula todos os indicadores derivados de uma linha
+function calcIndic(r) {
+  r = r || {};
+  return {
+    higiene: taxa(r.higiene_realizadas, r.higiene_oportunidades, 100),          // % adesão
+    pav: taxa(r.pav_casos, r.ventilador_dia, 1000),                             // por 1000 vent-dia
+    antimicrobiano: taxa(r.antimicrobiano_dot, r.pacientes_dia, 1000),          // DOT por 1000 pac-dia
+    culturasPos: taxa(r.culturas_positivas, r.culturas_coletadas, 100),         // % positividade
+    iscCesariana: taxa(r.isc_cesariana, r.cir_cesariana, 100),
+    iscOftalmo: taxa(r.isc_oftalmo, r.cir_oftalmo, 100),
+    iscArtroplastia: taxa(r.isc_artroplastia, r.cir_artroplastia, 100),
+  };
+}
+
 // dias entre uma data (yyyy-mm-dd) e hoje
 function diasDesde(dateStr) {
   if (!dateStr) return null;
@@ -1748,7 +1781,9 @@ function ScihPage({ currentUser, canEdit }) {
   const [casos, setCasos]   = useState([]);
   const [germes, setGermes] = useState([]);
   const [showGermes, setShowGermes] = useState(false);
+  const [sub, setSub] = useState("vigilancia");
   const [, setTick] = useState(0);
+  const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
   const vazio = { iniciais: "", prontuario: "", leito: "", isolamento: "", data_coleta: "", data_resultado: "", germe: "", multirresistente: false, antibiotico: "", dias_antibiotico: "", observacao: "" };
   const [f, setF] = useState(vazio);
   const [busy, setBusy] = useState(false);
@@ -1843,6 +1878,12 @@ function ScihPage({ currentUser, canEdit }) {
         <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>🧬 Base de germes ({germes.length})</button>
       </div>
 
+      <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
+        <button onClick={() => setSub("vigilancia")} style={subBtn(sub === "vigilancia")}>🧫 Vigilância & Isolamentos</button>
+        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>📊 Indicadores & Relatórios</button>
+      </div>
+
+      {sub === "vigilancia" && (<>
       {/* DEFINIÇÕES DE ISOLAMENTO — autoexplicativo */}
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📖 Tipos de precaução / isolamento</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
@@ -1964,9 +2005,9 @@ function ScihPage({ currentUser, canEdit }) {
         </details>
       )}
 
-      <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1rem 1.25rem", fontSize: 12, color: "var(--text-muted)" }}>
-        🔜 <strong>Em breve nesta aba:</strong> dashboard e relatórios dos indicadores do SCIH — higiene de mãos, PAV, cirurgias limpas, uso de antimicrobiano, exames e treinamentos (Fase C).
-      </div>
+      </>)}
+
+      {sub === "indicadores" && <IndicadoresScih currentUser={currentUser} canEdit={canEdit} />}
 
       {showGermes && <GermesModal germes={germes} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowGermes(false)} onSave={salvarGerme} onDelete={removerGerme} />}
     </div>
@@ -2047,6 +2088,188 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── SCIH Fase C: indicadores mensais + dashboard + relatório ──
+const compLabel = comp => { if (!comp) return ""; const [a, m] = comp.split("-"); return `${MONTHS[Number(m) - 1] || m}/${a.slice(2)}`; };
+function IndicadoresScih({ currentUser, canEdit }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [rows, setRows] = useState([]);
+  const [form, setForm] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
+
+  function refresh() { if (USE_SUPABASE) loadScihIndicadores().then(setRows); }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
+  const comp = compDe(ano, mes);
+  useEffect(() => { const r = rows.find(x => x.competencia === comp); setForm(r ? { ...r } : {}); }, [comp, rows]);
+
+  const num = v => (v === "" || v == null ? null : Number(v));
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v === "" ? "" : Number(v) }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const NumField = ({ k, label }) => (<div><label style={lbl}>{label}</label><input type="number" min="0" value={form[k] ?? ""} onChange={e => set(k, e.target.value)} disabled={!canEdit} style={inp} /></div>);
+  const fmt1 = v => (v == null ? "—" : v.toLocaleString("pt-BR", { maximumFractionDigits: 1 }));
+
+  const r = calcIndic(form);
+  async function salvar() {
+    setBusy(true);
+    const payload = { competencia: comp };
+    ["exames_lab","exames_imagem","culturas_coletadas","culturas_positivas","pacientes_dia","ventilador_dia","higiene_oportunidades","higiene_realizadas","pav_casos","antimicrobiano_dot","cir_cesariana","isc_cesariana","cir_oftalmo","isc_oftalmo","cir_artroplastia","isc_artroplastia","treinamentos","treinamentos_participantes"].forEach(k => payload[k] = num(form[k]));
+    payload.observacao = form.observacao || null;
+    await upsertScihIndicadorRemote(payload, currentUser);
+    addAuditLog(currentUser, "salvar indicadores SCIH", comp, {});
+    setBusy(false);
+    setTimeout(refresh, 400);
+  }
+
+  const ultimos = rows.slice(-12);
+  const MiniTrend = ({ titulo, chave, unidade, cor }) => {
+    const dados = ultimos.map(x => ({ comp: x.competencia, v: calcIndic(x)[chave] }));
+    const vals = dados.map(d => d.v).filter(v => v != null);
+    const max = vals.length ? Math.max(...vals) : 0;
+    return (
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "var(--text-2)" }}>{titulo} <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>({unidade})</span></div>
+        {vals.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem dados ainda.</div> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {dados.map(d => (
+              <div key={d.comp} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 10, color: "var(--text-muted)", width: 42, fontFamily: "JetBrains Mono, monospace" }}>{compLabel(d.comp)}</span>
+                <div style={{ flex: 1, height: 12, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ width: (max > 0 && d.v != null ? Math.max(2, (d.v / max) * 100) : 0) + "%", height: "100%", background: cor, borderRadius: 99 }} />
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 700, width: 44, textAlign: "right", color: d.v == null ? "var(--text-muted)" : "var(--text)" }}>{d.v == null ? "—" : fmt1(d.v)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const RateCard = ({ label, valor, unidade, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}<span style={{ fontSize: 12, fontWeight: 600, marginLeft: 3, color: "var(--text-muted)" }}>{unidade}</span></div>
+      {sub && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  const printStyles = `@media print { body * { visibility: hidden !important; } #scih-print, #scih-print * { visibility: visible !important; } #scih-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
+  const linhasRel = [
+    ["Exames laboratoriais", form.exames_lab ?? "—", ""],
+    ["Exames de imagem", form.exames_imagem ?? "—", ""],
+    ["Culturas coletadas", form.culturas_coletadas ?? "—", ""],
+    ["Culturas positivas", form.culturas_positivas ?? "—", r.culturasPos != null ? `${fmt1(r.culturasPos)}% positividade` : ""],
+    ["Pacientes-dia", form.pacientes_dia ?? "—", ""],
+    ["Ventilador-dia", form.ventilador_dia ?? "—", ""],
+    ["Higiene de mãos (adesão)", `${form.higiene_realizadas ?? "—"}/${form.higiene_oportunidades ?? "—"}`, r.higiene != null ? `${fmt1(r.higiene)}% de adesão` : ""],
+    ["PAV", `${form.pav_casos ?? "—"} caso(s)`, r.pav != null ? `${fmt1(r.pav)} por 1000 vent-dia` : ""],
+    ["Uso de antimicrobiano (DOT)", form.antimicrobiano_dot ?? "—", r.antimicrobiano != null ? `${fmt1(r.antimicrobiano)} DOT/1000 pac-dia` : ""],
+    ["Cesariana (C.O)", `${form.cir_cesariana ?? "—"} cir. · ${form.isc_cesariana ?? "—"} ISC`, r.iscCesariana != null ? `${fmt1(r.iscCesariana)}% ISC` : ""],
+    ["Oftalmológica", `${form.cir_oftalmo ?? "—"} cir. · ${form.isc_oftalmo ?? "—"} ISC`, r.iscOftalmo != null ? `${fmt1(r.iscOftalmo)}% ISC` : ""],
+    ["Artroplastia (quadril/joelho)", `${form.cir_artroplastia ?? "—"} cir. · ${form.isc_artroplastia ?? "—"} ISC`, r.iscArtroplastia != null ? `${fmt1(r.iscArtroplastia)}% ISC` : ""],
+    ["Treinamentos do SCIH", `${form.treinamentos ?? "—"} · ${form.treinamentos_participantes ?? "—"} particip.`, ""],
+  ];
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+        <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "📄 Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimir / PDF</button>}
+      </div>
+
+      {/* PAINEL DE TAXAS DO MÊS */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📊 Taxas de {MONTHS_FULL[mes]}/{ano}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <RateCard label="Adesão higiene de mãos" valor={r.higiene != null ? fmt1(r.higiene) : "—"} unidade="%" cor={r.higiene == null ? "var(--border)" : r.higiene >= 80 ? "#34d399" : r.higiene >= 60 ? "#fbbf24" : "#f43f5e"} sub="realizadas ÷ oportunidades" />
+        <RateCard label="Densidade de PAV" valor={r.pav != null ? fmt1(r.pav) : "—"} unidade="/1000 vent-dia" cor={r.pav == null ? "var(--border)" : "#a78bfa"} sub="casos ÷ ventilador-dia" />
+        <RateCard label="Uso de antimicrobiano" valor={r.antimicrobiano != null ? fmt1(r.antimicrobiano) : "—"} unidade="DOT/1000 pac-dia" cor={r.antimicrobiano == null ? "var(--border)" : "#22d3ee"} sub="DOT ÷ pacientes-dia" />
+        <RateCard label="Positividade de culturas" valor={r.culturasPos != null ? fmt1(r.culturasPos) : "—"} unidade="%" cor={r.culturasPos == null ? "var(--border)" : "#60a5fa"} sub="positivas ÷ coletadas" />
+        <RateCard label="ISC cesariana" valor={r.iscCesariana != null ? fmt1(r.iscCesariana) : "—"} unidade="%" cor={r.iscCesariana == null ? "var(--border)" : r.iscCesariana > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
+        <RateCard label="ISC oftalmológica" valor={r.iscOftalmo != null ? fmt1(r.iscOftalmo) : "—"} unidade="%" cor={r.iscOftalmo == null ? "var(--border)" : r.iscOftalmo > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
+        <RateCard label="ISC artroplastia" valor={r.iscArtroplastia != null ? fmt1(r.iscArtroplastia) : "—"} unidade="%" cor={r.iscArtroplastia == null ? "var(--border)" : r.iscArtroplastia > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
+      </div>
+
+      {/* LANÇAMENTO MENSAL */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>✍️ Lançamento de {MONTHS_FULL[mes]}/{ano} {canEdit ? "" : "(somente leitura)"}</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.5rem" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Volumes do mês</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
+          <NumField k="exames_lab" label="Exames laboratoriais" />
+          <NumField k="exames_imagem" label="Exames de imagem" />
+          <NumField k="culturas_coletadas" label="Culturas coletadas" />
+          <NumField k="culturas_positivas" label="Culturas positivas" />
+          <NumField k="pacientes_dia" label="Pacientes-dia" />
+          <NumField k="ventilador_dia" label="Ventilador-dia" />
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Higiene de mãos · PAV · antimicrobiano</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
+          <NumField k="higiene_oportunidades" label="Oportunidades observadas" />
+          <NumField k="higiene_realizadas" label="Higienizações realizadas" />
+          <NumField k="pav_casos" label="Casos de PAV" />
+          <NumField k="antimicrobiano_dot" label="Antimicrobiano (DOT)" />
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Cirurgias limpas (nº de cirurgias e nº de infecções — ISC)</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
+          <NumField k="cir_cesariana" label="Cesarianas (C.O)" />
+          <NumField k="isc_cesariana" label="ISC cesariana" />
+          <NumField k="cir_oftalmo" label="Cir. oftalmológicas" />
+          <NumField k="isc_oftalmo" label="ISC oftalmológica" />
+          <NumField k="cir_artroplastia" label="Artroplastias quadril/joelho" />
+          <NumField k="isc_artroplastia" label="ISC artroplastia" />
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Treinamentos do SCIH</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
+          <NumField k="treinamentos" label="Treinamentos realizados" />
+          <NumField k="treinamentos_participantes" label="Participantes" />
+        </div>
+        <div style={{ marginBottom: canEdit ? 16 : 0 }}><label style={lbl}>Observação</label><input value={form.observacao ?? ""} onChange={e => setForm(p => ({ ...p, observacao: e.target.value }))} disabled={!canEdit} placeholder="Notas do mês" style={inp} /></div>
+        {canEdit && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 22px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "Salvando…" : "💾 Salvar lançamento do mês"}</button>}
+      </div>
+
+      {/* TENDÊNCIAS */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📈 Tendência (últimos {ultimos.length || 0} meses lançados)</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
+        <MiniTrend titulo="Adesão higiene de mãos" chave="higiene" unidade="%" cor="#34d399" />
+        <MiniTrend titulo="Densidade de PAV" chave="pav" unidade="/1000 vent-dia" cor="#a78bfa" />
+        <MiniTrend titulo="Uso de antimicrobiano" chave="antimicrobiano" unidade="DOT/1000 pac-dia" cor="#22d3ee" />
+        <MiniTrend titulo="ISC cesariana" chave="iscCesariana" unidade="%" cor="#fbbf24" />
+      </div>
+
+      {preview && (
+        <div id="scih-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>🦠 RELATÓRIO SCIH — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Indicadores de controle de infecção</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>📅 {MONTHS_FULL[mes]}/{ano}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Gerado em {new Date().toLocaleString("pt-BR")}</div>
+            </div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>{["Indicador", "Números", "Taxa / cálculo"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {linhasRel.map(([ind, n, t]) => (
+                <tr key={ind}><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 600, color: "#0f172a" }}>{ind}</td><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{n}</td><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#0369a1", fontWeight: 600 }}>{t}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          {form.observacao && <div style={{ marginTop: 12, fontSize: 11, color: "#475569" }}><strong>Observação:</strong> {form.observacao}</div>}
+          <div style={{ marginTop: 16, fontSize: 10, color: "#94a3b8", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Relatório gerado pelo MedFlow · dados lançados manualmente pela equipe do SCIH. Taxas calculadas automaticamente. Documento de apoio à CCIH.</div>
+        </div>
+      )}
     </div>
   );
 }

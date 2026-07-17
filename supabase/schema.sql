@@ -184,6 +184,32 @@ create policy scih_germes_insert on public.scih_germes for insert to authenticat
 create policy scih_germes_update on public.scih_germes for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy scih_germes_delete on public.scih_germes for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- ===== SCIH Fase C: indicadores mensais (lançamento manual) =====
+create table if not exists public.scih_indicadores (
+  competencia text primary key,          -- 'YYYY-MM'
+  exames_lab int, exames_imagem int,
+  culturas_coletadas int, culturas_positivas int,
+  pacientes_dia int, ventilador_dia int,
+  higiene_oportunidades int, higiene_realizadas int,
+  pav_casos int,
+  antimicrobiano_dot int,                -- dias de terapia antimicrobiana (DOT)
+  cir_cesariana int, isc_cesariana int,
+  cir_oftalmo int,   isc_oftalmo int,
+  cir_artroplastia int, isc_artroplastia int,
+  treinamentos int, treinamentos_participantes int,
+  observacao text,
+  usuario text, updated_at timestamptz default now()
+);
+alter table public.scih_indicadores enable row level security;
+drop policy if exists scih_ind_select on public.scih_indicadores;
+drop policy if exists scih_ind_insert on public.scih_indicadores;
+drop policy if exists scih_ind_update on public.scih_indicadores;
+drop policy if exists scih_ind_delete on public.scih_indicadores;
+create policy scih_ind_select on public.scih_indicadores for select to authenticated using (true);
+create policy scih_ind_insert on public.scih_indicadores for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy scih_ind_update on public.scih_indicadores for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy scih_ind_delete on public.scih_indicadores for delete to authenticated using (public.my_role() = 'adm_master');
+
 -- ===== Monitoramento: setores + fila de solicitações de leito =====
 create table if not exists public.setores (
   nome text primary key,
