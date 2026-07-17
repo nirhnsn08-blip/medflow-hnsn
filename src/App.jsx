@@ -1530,6 +1530,33 @@ async function setLeitoIsolamentoRemote(id, iso, user) {
     body: JSON.stringify({ identificacao: id, isolamento: iso || null, usuario: user?.name || null }),
   });
 }
+// ── Fase B: base de germes com embasamento ──
+async function loadScihGermes() {
+  const rows = await sbFetch("scih_germes?select=*");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertScihGermeRemote(germe, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("scih_germes?on_conflict=nome", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...germe, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+async function deleteScihGermeRemote(nome) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`scih_germes?nome=eq.${encodeURIComponent(nome)}`, { method: "DELETE" });
+}
+// Acha o germe da base a partir do que foi digitado (nome exato → contém)
+function sugerirGerme(digitado, germes) {
+  if (!digitado || !germes || !germes.length) return null;
+  const c = digitado.trim().toLowerCase();
+  if (c.length < 3) return null;
+  let m = germes.find(g => (g.nome || "").toLowerCase() === c);
+  if (!m) m = germes.find(g => { const gn = (g.nome || "").toLowerCase(); return gn && (c.includes(gn) || gn.includes(c)); });
+  return m || null;
+}
+
 // dias entre uma data (yyyy-mm-dd) e hoje
 function diasDesde(dateStr) {
   if (!dateStr) return null;
@@ -1719,16 +1746,29 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
 function ScihPage({ currentUser, canEdit }) {
   const [leitos, setLeitos] = useState([]);
   const [casos, setCasos]   = useState([]);
+  const [germes, setGermes] = useState([]);
+  const [showGermes, setShowGermes] = useState(false);
   const [, setTick] = useState(0);
   const vazio = { iniciais: "", prontuario: "", leito: "", isolamento: "", data_coleta: "", data_resultado: "", germe: "", multirresistente: false, antibiotico: "", dias_antibiotico: "", observacao: "" };
   const [f, setF] = useState(vazio);
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  // ao digitar o germe, sugere o isolamento e marca multirresistente (só se ainda vazio)
+  const onGerme = v => setF(p => {
+    const next = { ...p, germe: v };
+    const g = sugerirGerme(v, germes);
+    if (g) {
+      if (g.isolamento && !p.isolamento) next.isolamento = g.isolamento;
+      if (g.tipo === "multirresistente" && !p.multirresistente) next.multirresistente = true;
+    }
+    return next;
+  });
 
   function refresh() {
     if (!USE_SUPABASE) { setLeitos(loadLeitos()); return; }
     loadLeitosFromSupabase().then(r => r && setLeitos(r));
     loadScihCasos().then(setCasos);
+    loadScihGermes().then(setGermes);
   }
   useEffect(() => {
     refresh();
@@ -1777,6 +1817,17 @@ function ScihPage({ currentUser, canEdit }) {
     addAuditLog(currentUser, "excluir caso SCIH", c.iniciais, {});
     setTimeout(refresh, 300);
   }
+  async function salvarGerme(g) {
+    await upsertScihGermeRemote(g, currentUser);
+    setGermes(prev => [...prev.filter(x => x.nome !== g.nome), g]);
+    addAuditLog(currentUser, "salvar germe SCIH", g.nome, {});
+  }
+  async function removerGerme(nome) {
+    await deleteScihGermeRemote(nome);
+    setGermes(prev => prev.filter(x => x.nome !== nome));
+    addAuditLog(currentUser, "remover germe SCIH", nome, {});
+  }
+  const gSug = sugerirGerme(f.germe, germes);
 
   const IsoBadge = ({ tipo }) => { const v = ISOLAMENTOS[tipo]; if (!v) return null; return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: v.bg, color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>{v.icon} {v.label}</span>
@@ -1784,8 +1835,13 @@ function ScihPage({ currentUser, canEdit }) {
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🦠 SCIH — Controle de Infecção Hospitalar</div>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Precauções/isolamentos e vigilância de pacientes. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🦠 SCIH — Controle de Infecção Hospitalar</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Precauções/isolamentos e vigilância de pacientes. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+        </div>
+        <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>🧬 Base de germes ({germes.length})</button>
+      </div>
 
       {/* DEFINIÇÕES DE ISOLAMENTO — autoexplicativo */}
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📖 Tipos de precaução / isolamento</div>
@@ -1845,7 +1901,9 @@ function ScihPage({ currentUser, canEdit }) {
               </div>
               <div><label style={lbl}>Data da coleta da cultura</label><input type="date" value={f.data_coleta} onChange={e => set("data_coleta", e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Data do resultado</label><input type="date" value={f.data_resultado} onChange={e => set("data_resultado", e.target.value)} style={inp} /></div>
-              <div><label style={lbl}>Germe (o que cresceu)</label><input value={f.germe} onChange={e => set("germe", e.target.value)} placeholder="Ex.: Klebsiella pneumoniae" style={inp} /></div>
+              <div><label style={lbl}>Germe (o que cresceu)</label><input value={f.germe} onChange={e => onGerme(e.target.value)} placeholder="Ex.: Klebsiella pneumoniae" style={inp} />
+                {gSug && <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, lineHeight: 1.4 }}>💡 {gSug.nome}{gSug.tipo === "multirresistente" ? " (multirresistente)" : ""}{gSug.isolamento && ISOLAMENTOS[gSug.isolamento] ? ` · sugere isolamento ${ISOLAMENTOS[gSug.isolamento].label}` : ""}</div>}
+              </div>
               <div><label style={lbl}>Antibiótico utilizado</label><input value={f.antibiotico} onChange={e => set("antibiotico", e.target.value)} placeholder="Ex.: Meropenem" style={inp} /></div>
               <div><label style={lbl}>Dias de antibiótico</label><input type="number" min="0" value={f.dias_antibiotico} onChange={e => set("dias_antibiotico", e.target.value)} placeholder="Ex.: 7" style={inp} /></div>
               <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 8 }}>
@@ -1907,7 +1965,87 @@ function ScihPage({ currentUser, canEdit }) {
       )}
 
       <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1rem 1.25rem", fontSize: 12, color: "var(--text-muted)" }}>
-        🔜 <strong>Em breve nesta aba:</strong> base de germes com embasamento literário e sugestão automática de isolamento (Fase B) · dashboard e relatórios dos indicadores do SCIH — higiene de mãos, PAV, cirurgias limpas, uso de antimicrobiano, exames e treinamentos (Fase C).
+        🔜 <strong>Em breve nesta aba:</strong> dashboard e relatórios dos indicadores do SCIH — higiene de mãos, PAV, cirurgias limpas, uso de antimicrobiano, exames e treinamentos (Fase C).
+      </div>
+
+      {showGermes && <GermesModal germes={germes} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowGermes(false)} onSave={salvarGerme} onDelete={removerGerme} />}
+    </div>
+  );
+}
+
+// Modal da base de germes (multirresistentes/sensíveis) com embasamento literário
+function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
+  const vazio = { nome: "", tipo: "multirresistente", isolamento: "", embasamento: "", observacao: "" };
+  const [f, setF] = useState(vazio);
+  const [busy, setBusy] = useState(false);
+  const [filtro, setFiltro] = useState("");
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const hl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  async function salvar() {
+    if (!f.nome.trim()) { alert("Informe o nome do germe."); return; }
+    setBusy(true);
+    await onSave({ nome: f.nome.trim(), tipo: f.tipo, isolamento: f.isolamento || null, embasamento: f.embasamento.trim() || null, observacao: f.observacao.trim() || null });
+    setBusy(false); setF(vazio);
+  }
+  const ordenados = [...germes]
+    .filter(g => !filtro || (g.nome || "").toLowerCase().includes(filtro.toLowerCase()))
+    .sort((a, b) => (a.tipo || "").localeCompare(b.tipo || "") || (a.nome || "").localeCompare(b.nome || ""));
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 720, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>🧬 Base de germes — embasamento e isolamento</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Referência editável. Ao cadastrar um caso e digitar o germe, o sistema sugere o isolamento e marca multirresistente com base nesta lista. Sempre validar com a CCIH e o antibiograma do paciente.</div>
+        {canEdit && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 150px", gap: 8, marginBottom: 8 }}>
+            <div><label style={hl}>Germe</label><input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Klebsiella pneumoniae (KPC)" style={inp} /></div>
+            <div><label style={hl}>Tipo</label>
+              <select value={f.tipo} onChange={e => set("tipo", e.target.value)} style={inp}>
+                <option value="multirresistente">Multirresistente</option>
+                <option value="sensivel">Sensível</option>
+              </select>
+            </div>
+            <div><label style={hl}>Isolamento sugerido</label>
+              <select value={f.isolamento} onChange={e => set("isolamento", e.target.value)} style={inp}>
+                <option value="">— nenhum —</option>
+                {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+        {canEdit && (
+          <>
+            <div style={{ marginBottom: 8 }}><label style={hl}>Embasamento (literatura)</label><textarea value={f.embasamento} onChange={e => set("embasamento", e.target.value)} rows={2} placeholder="Ex.: Precaução de contato (Anvisa/CDC). Carbapenemase — reservar polimixina/ceftazidima-avibactam conforme antibiograma." style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} /></div>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 16 }}>
+              <div style={{ flex: 1 }}><label style={hl}>Observação</label><input value={f.observacao} onChange={e => set("observacao", e.target.value)} placeholder="Opcional" style={inp} /></div>
+              <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 38 }}>{busy ? "…" : "+ Salvar"}</button>
+            </div>
+          </>
+        )}
+        <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="🔎 Filtrar germe…" style={{ ...inp, marginBottom: 10 }} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {ordenados.length === 0 && <div style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Nenhum germe cadastrado.</div>}
+          {ordenados.map(g => (
+            <div key={g.nome} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                <strong style={{ fontSize: 14 }}>{g.nome}</strong>
+                {g.tipo === "multirresistente"
+                  ? <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>MULTIRRESISTENTE</span>
+                  : <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>SENSÍVEL</span>}
+                {g.isolamento && ISOLAMENTOS[g.isolamento] && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ISOLAMENTOS[g.isolamento].bg, color: ISOLAMENTOS[g.isolamento].cor, border: `1px solid ${ISOLAMENTOS[g.isolamento].cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>{ISOLAMENTOS[g.isolamento].icon} {ISOLAMENTOS[g.isolamento].label}</span>}
+                {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  <button onClick={() => setF({ nome: g.nome, tipo: g.tipo || "multirresistente", isolamento: g.isolamento || "", embasamento: g.embasamento || "", observacao: g.observacao || "" })} style={btnLeito("#22d3ee")}>✏️</button>
+                  {isMaster && <button onClick={() => { if (confirm(`Remover o germe ${g.nome}?`)) onDelete(g.nome); }} style={btnLeito("#fb7185")}>🗑</button>}
+                </span>}
+              </div>
+              {g.embasamento && <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{g.embasamento}</div>}
+              {g.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>📝 {g.observacao}</div>}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
       </div>
     </div>
   );

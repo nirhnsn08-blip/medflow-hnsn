@@ -164,6 +164,26 @@ create policy scih_casos_insert on public.scih_casos for insert to authenticated
 create policy scih_casos_update on public.scih_casos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy scih_casos_delete on public.scih_casos for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- ===== SCIH Fase B: base de germes com embasamento =====
+create table if not exists public.scih_germes (
+  nome text primary key,
+  tipo text not null default 'multirresistente',  -- multirresistente | sensivel
+  isolamento text,                                 -- aereo | contato | goticulas | null
+  embasamento text,
+  observacao text,
+  usuario text,
+  updated_at timestamptz default now()
+);
+alter table public.scih_germes enable row level security;
+drop policy if exists scih_germes_select on public.scih_germes;
+drop policy if exists scih_germes_insert on public.scih_germes;
+drop policy if exists scih_germes_update on public.scih_germes;
+drop policy if exists scih_germes_delete on public.scih_germes;
+create policy scih_germes_select on public.scih_germes for select to authenticated using (true);
+create policy scih_germes_insert on public.scih_germes for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy scih_germes_update on public.scih_germes for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy scih_germes_delete on public.scih_germes for delete to authenticated using (public.my_role() = 'adm_master');
+
 -- ===== Monitoramento: setores + fila de solicitações de leito =====
 create table if not exists public.setores (
   nome text primary key,
