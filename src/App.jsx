@@ -1954,6 +1954,52 @@ function sentinelaPaciente(d) {
   return alertas;
 }
 
+// Resumo automático de passagem de plantão — gerado localmente, sem custo e
+// sem serviço externo (os dados não saem do navegador).
+function resumoLocalPaciente(prontuario, dados, timeline, alertas) {
+  const ini = dados?.cadastro?.iniciais || "O paciente";
+  const idade = dados?.cadastro?.ano_nascimento ? `${new Date().getFullYear() - dados.cadastro.ano_nascimento} anos` : null;
+  const frases = [];
+
+  // Situação atual
+  const psAberto = dados.ps.find(a => a.status !== "finalizado");
+  if (dados.leitoAtual.length) {
+    const l = dados.leitoAtual[0];
+    const desde = l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : null;
+    frases.push(`${ini}${idade ? ` (${idade})` : ""}, prontuário ${prontuario}, está internado no leito ${l.identificacao}${l.setor ? ` (${l.setor})` : ""}${desde ? ` desde ${desde}` : ""}${l.cid ? `, CID ${l.cid}` : ""}${l.motivo ? ` — ${l.motivo}` : ""}.`);
+    const s = sinalLeito(l.data_internacao, l.dias_previstos);
+    if (s.restam != null) frases.push(s.restam < 0 ? `A previsão de alta está vencida há ${Math.abs(s.restam)} dia(s).` : `A previsão de alta é em ${s.restam} dia(s).`);
+  } else if (psAberto) {
+    frases.push(`${ini}${idade ? ` (${idade})` : ""}, prontuário ${prontuario}, está no Pronto-Socorro (${psAberto.status.replace(/_/g, " ")})${psAberto.classificacao ? `, classificação ${MANCHESTER[psAberto.classificacao]?.label || psAberto.classificacao}` : ""}${psAberto.queixa ? `, queixa: ${psAberto.queixa}` : ""}.`);
+  } else {
+    frases.push(`${ini}${idade ? ` (${idade})` : ""}, prontuário ${prontuario}, não está internado nem em atendimento no momento.`);
+  }
+
+  // Histórico
+  const nInt = dados.saidas.length + dados.leitoAtual.length;
+  const nPS = dados.ps.length;
+  if (nInt || nPS) {
+    const ultAlta = dados.saidas[0];
+    frases.push(`Histórico no sistema: ${nInt} internação(ões) e ${nPS} passagem(ns) pelo PS${ultAlta?.data_alta ? `; última alta em ${new Date(ultAlta.data_alta + "T00:00:00").toLocaleDateString("pt-BR")}${ultAlta.dias_permanencia != null ? ` após ${ultAlta.dias_permanencia} dia(s)` : ""}` : ""}.`);
+  }
+
+  // SCIH
+  const scihAtivo = dados.scih.filter(c => c.status !== "encerrado");
+  scihAtivo.forEach(c => {
+    frases.push(`Vigilância SCIH ativa${c.germe ? `: ${c.germe}${c.multirresistente ? " (multirresistente)" : ""}` : ""}${c.isolamento && ISOLAMENTOS[c.isolamento] ? `, isolamento de ${ISOLAMENTOS[c.isolamento].label.toLowerCase()}` : ""}${c.antibiotico ? `, em uso de ${c.antibiotico}` : ""}.`);
+  });
+
+  // Última evolução
+  const ultEv = dados.evolucoes[0];
+  if (ultEv) frases.push(`Última evolução (${TIPOS_EVOLUCAO[ultEv.tipo]?.label.toLowerCase() || ultEv.tipo}, ${horaFmt(ultEv.criado_em)}, por ${ultEv.usuario || "?"}): "${ultEv.texto.length > 220 ? ultEv.texto.slice(0, 220) + "…" : ultEv.texto}"`);
+
+  // Pendências
+  if (alertas.length) frases.push(`Pendências e alertas: ${alertas.map(a => a.texto.toLowerCase()).join("; ")}.`);
+  else frases.push("Sem pendências ou alertas ativos no momento.");
+
+  return frases.join(" ");
+}
+
 // ── Página Paciente 360 ──
 function PacientePage({ currentUser, canEdit }) {
   const [busca, setBusca] = useState("");
@@ -1962,13 +2008,18 @@ function PacientePage({ currentUser, canEdit }) {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [cadForm, setCadForm] = useState(null); // form de cadastro mínimo quando não existe
+  const [resumoIA, setResumoIA] = useState(null);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 12px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
   const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
 
   async function abrir(pront) {
-    setCarregando(true); setProntuario(pront); setSugestoes([]);
+    setCarregando(true); setProntuario(pront); setSugestoes([]); setResumoIA(null);
     const d = await loadPaciente360(pront);
     setDados(d); setCadForm(null); setCarregando(false);
+  }
+  function resumir() {
+    setResumoIA(resumoLocalPaciente(prontuario, dados, timeline, alertas));
+    addAuditLog(currentUser, "resumo do paciente", prontuario, {});
   }
   async function buscar() {
     const t = busca.trim();
@@ -2022,10 +2073,24 @@ function PacientePage({ currentUser, canEdit }) {
                 {dados.leitoAtual.length > 0 && <strong style={{ color: "#22d3ee" }}> · internado agora — leito {dados.leitoAtual[0].identificacao}{dados.leitoAtual[0].setor ? ` (${dados.leitoAtual[0].setor})` : ""}</strong>}
               </div>
             </div>
-            {!dados.cadastro && canEdit && !cadForm && (
-              <button onClick={() => setCadForm({ iniciais: iniciaisConhecidas || "", ano_nascimento: "", sexo: "" })} style={{ ...btnLeito("#22d3ee"), marginLeft: "auto" }}>Completar cadastro</button>
-            )}
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              {!dados.cadastro && canEdit && !cadForm && (
+                <button onClick={() => setCadForm({ iniciais: iniciaisConhecidas || "", ano_nascimento: "", sexo: "" })} style={btnLeito("#22d3ee")}>Completar cadastro</button>
+              )}
+              {timeline.length > 0 && (
+                <button onClick={resumir} style={{ background: `linear-gradient(90deg, ${VX.turquesa}, ${VX.azul})`, color: "#062a35", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Resumo do paciente</button>
+              )}
+            </div>
           </div>
+
+          {/* RESUMO POR IA */}
+          {resumoIA && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${VX.turquesa}`, borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: VX.turquesa, textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Resumo de passagem de plantão</div>
+              <div style={{ fontSize: 13.5, color: "var(--text-2)", lineHeight: 1.65, whiteSpace: "pre-wrap" }}>{resumoIA}</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Gerado automaticamente a partir da linha do tempo. Confira as informações antes de usar — a conduta é sempre do médico assistente.</div>
+            </div>
+          )}
 
           {/* CADASTRO MÍNIMO */}
           {cadForm && (
