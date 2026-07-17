@@ -89,6 +89,7 @@ const ICON_PATHS = {
   cloud:     <><path d="M7 18 a4.5 4.5 0 0 1 -.6-8.96 6 6 0 0 1 11.7 1.2 A4 4 0 0 1 17.5 18 z"/></>,
   users:     <><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5 c0-3 2.5-5 5.5-5 s5.5 2 5.5 5"/><circle cx="16.8" cy="9.5" r="2.5"/><path d="M16.5 14.6 c2.4.3 4 2 4 4.4"/></>,
   activity:  <path d="M3 12 h4 l2.5-6.5 5 13 2.5-6.5 H21"/>,
+  record:    <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 13 h2 l1-2.5 2 5 1-2.5 H16"/><path d="M9 7 h6"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -1866,6 +1867,276 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// PACIENTE 360 — registro clínico integrado (timeline + evoluções)
+// ═══════════════════════════════════════════════════════════
+const TIPOS_EVOLUCAO = {
+  evolucao_medica: { label: "Evolução médica",        cor: "#3b82f6" },
+  enfermagem:      { label: "Evolução de enfermagem", cor: "#0d9488" },
+  fisioterapia:    { label: "Fisioterapia",           cor: "#6366f1" },
+  nutricao:        { label: "Nutrição",               cor: "#d97706" },
+  anotacao:        { label: "Anotação administrativa", cor: "#8d99ab" },
+};
+async function loadPaciente360(prontuario) {
+  const p = encodeURIComponent(prontuario);
+  const [cad, ps, leitoAtual, saidas, scih, evolucoes] = await Promise.all([
+    sbFetch(`pacientes?prontuario=eq.${p}&select=*`),
+    sbFetch(`ps_atendimentos?prontuario=eq.${p}&select=*&order=chegada_em.desc`),
+    sbFetch(`leitos?prontuario=eq.${p}&status=eq.ocupado&select=*`),
+    sbFetch(`leitos_saidas?prontuario=eq.${p}&select=*&order=data_alta.desc`).catch(() => []),
+    sbFetch(`scih_casos?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    sbFetch(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`),
+  ]);
+  return {
+    cadastro: Array.isArray(cad) && cad[0] ? cad[0] : null,
+    ps: Array.isArray(ps) ? ps : [], leitoAtual: Array.isArray(leitoAtual) ? leitoAtual : [],
+    saidas: Array.isArray(saidas) ? saidas : [], scih: Array.isArray(scih) ? scih : [],
+    evolucoes: Array.isArray(evolucoes) ? evolucoes : [],
+  };
+}
+async function buscarPacientesPorIniciais(termo) {
+  const rows = await sbFetch(`pacientes?iniciais=ilike.*${encodeURIComponent(termo)}*&select=*&limit=10`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertPacienteRemote(pac, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("pacientes?on_conflict=prontuario", {
+    method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...pac, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+async function addEvolucaoRemote(ev, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("pep_evolucoes", { method: "POST", body: JSON.stringify({ ...ev, usuario: user?.name || null }) });
+}
+// Monta a linha do tempo unificada a partir de todos os módulos
+function montarTimeline(d) {
+  const ev = [];
+  const push = (quando, modulo, cor, titulo, detalhe) => { if (quando) ev.push({ quando, modulo, cor, titulo, detalhe }); };
+  d.ps.forEach(a => {
+    push(a.chegada_em, "PS", "#6366f1", "Chegada no Pronto-Socorro", a.queixa || null);
+    if (a.triagem_em) push(a.triagem_em, "PS", MANCHESTER[a.classificacao]?.cor || "#6366f1", `Triagem: ${MANCHESTER[a.classificacao]?.label || a.classificacao || "—"}`, null);
+    if (a.atendimento_em) push(a.atendimento_em, "PS", "#6366f1", "Início do atendimento", null);
+    if (a.desfecho_em) push(a.desfecho_em, "PS", PS_DESFECHOS[a.desfecho]?.cor || "#6366f1", `Desfecho no PS: ${PS_DESFECHOS[a.desfecho]?.label || a.desfecho}${a.setor_destino ? " → " + a.setor_destino : ""}`, a.observacao || null);
+  });
+  d.leitoAtual.forEach(l => {
+    push(l.entrada_em || (l.data_internacao ? l.data_internacao + "T12:00:00" : null), "Internação", "#0d9488", `Internado no leito ${l.identificacao}${l.setor ? " (" + l.setor + ")" : ""} — em andamento`, [l.cid ? "CID " + l.cid : null, l.motivo].filter(Boolean).join(" · ") || null);
+  });
+  d.saidas.forEach(s => {
+    push(s.data_internacao ? s.data_internacao + "T12:00:00" : null, "Internação", "#0d9488", `Internação no leito ${s.leito}`, [s.cid ? "CID " + s.cid : null, s.motivo].filter(Boolean).join(" · ") || null);
+    push(s.data_alta ? s.data_alta + "T12:00:01" : null, "Internação", "#34d399", `Alta hospitalar${s.dias_permanencia != null ? ` — ${s.dias_permanencia}d de permanência` : ""}`, null);
+  });
+  d.scih.forEach(c => {
+    if (c.data_coleta) push(c.data_coleta + "T12:00:00", "SCIH", "#d97706", "Cultura coletada", null);
+    if (c.data_resultado) push(c.data_resultado + "T12:00:01", "SCIH", "#d97706", `Resultado de cultura: ${c.germe || "—"}${c.multirresistente ? " (multirresistente)" : ""}`, c.isolamento && ISOLAMENTOS[c.isolamento] ? "Isolamento " + ISOLAMENTOS[c.isolamento].label : null);
+    else if (!c.data_coleta) push(c.criado_em, "SCIH", "#d97706", "Caso de vigilância SCIH aberto", c.germe || null);
+  });
+  d.evolucoes.forEach(e => {
+    push(e.criado_em, TIPOS_EVOLUCAO[e.tipo]?.label || "Evolução", TIPOS_EVOLUCAO[e.tipo]?.cor || "#3b82f6", TIPOS_EVOLUCAO[e.tipo]?.label || e.tipo, e.texto);
+  });
+  return ev.sort((a, b) => new Date(b.quando) - new Date(a.quando));
+}
+// Sentinela: alertas automáticos sobre o paciente
+function sentinelaPaciente(d) {
+  const alertas = [];
+  d.ps.filter(a => a.status !== "finalizado").forEach(a => alertas.push({ cor: "#f97316", texto: `Paciente está no PS agora (${a.status.replace(/_/g, " ")})` }));
+  d.leitoAtual.forEach(l => {
+    const s = sinalLeito(l.data_internacao, l.dias_previstos);
+    if (s.restam != null && s.restam < 0) alertas.push({ cor: "#f43f5e", texto: `Internação ${Math.abs(s.restam)}d além da previsão de alta (leito ${l.identificacao})` });
+  });
+  d.scih.filter(c => c.status !== "encerrado").forEach(c => {
+    alertas.push({ cor: "#d97706", texto: `Vigilância SCIH ativa${c.germe ? ": " + c.germe : ""}${c.isolamento && ISOLAMENTOS[c.isolamento] ? " · isolamento " + ISOLAMENTOS[c.isolamento].label : ""}` });
+    if (c.data_coleta && !c.data_resultado) {
+      const dias = diasDesde(c.data_coleta);
+      if (dias != null && dias >= 3) alertas.push({ cor: "#fbbf24", texto: `Cultura coletada há ${dias}d sem resultado registrado` });
+    }
+  });
+  return alertas;
+}
+
+// ── Página Paciente 360 ──
+function PacientePage({ currentUser, canEdit }) {
+  const [busca, setBusca] = useState("");
+  const [sugestoes, setSugestoes] = useState([]);
+  const [prontuario, setProntuario] = useState(null);
+  const [dados, setDados] = useState(null);
+  const [carregando, setCarregando] = useState(false);
+  const [cadForm, setCadForm] = useState(null); // form de cadastro mínimo quando não existe
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 12px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
+  const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
+
+  async function abrir(pront) {
+    setCarregando(true); setProntuario(pront); setSugestoes([]);
+    const d = await loadPaciente360(pront);
+    setDados(d); setCadForm(null); setCarregando(false);
+  }
+  async function buscar() {
+    const t = busca.trim();
+    if (!t) return;
+    if (/^\d+$/.test(t)) { abrir(t); return; }
+    const achados = await buscarPacientesPorIniciais(t);
+    if (achados.length === 1) abrir(achados[0].prontuario);
+    else if (achados.length > 1) setSugestoes(achados);
+    else { setSugestoes([]); alert("Nenhum paciente cadastrado com essas iniciais. Busque pelo número do prontuário."); }
+  }
+  async function salvarCadastro() {
+    if (!cadForm.iniciais.trim()) { alert("Informe as iniciais."); return; }
+    await upsertPacienteRemote({ prontuario, iniciais: cadForm.iniciais.trim(), ano_nascimento: cadForm.ano_nascimento ? Number(cadForm.ano_nascimento) : null, sexo: cadForm.sexo || null }, currentUser);
+    addAuditLog(currentUser, "cadastrar paciente", prontuario, {});
+    abrir(prontuario);
+  }
+  const idade = dados?.cadastro?.ano_nascimento ? new Date().getFullYear() - dados.cadastro.ano_nascimento : null;
+  const timeline = dados ? montarTimeline(dados) : [];
+  const alertas = dados ? sentinelaPaciente(dados) : [];
+  const iniciaisConhecidas = dados?.cadastro?.iniciais
+    || dados?.leitoAtual[0]?.iniciais || dados?.ps[0]?.iniciais || dados?.saidas[0]?.iniciais || dados?.scih[0]?.iniciais || null;
+
+  return (
+    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Paciente 360 — Registro Clínico Integrado</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Linha do tempo automática de todos os módulos + evoluções da equipe. Registro imutável: evoluções não podem ser editadas nem apagadas.</div>
+
+      {/* BUSCA */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} placeholder="Nº do prontuário ou iniciais (ex.: 48213 ou J.S.M.)" style={{ ...inp, flex: 1, minWidth: 240 }} />
+        <button onClick={buscar} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Buscar</button>
+      </div>
+      {sugestoes.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {sugestoes.map(s => <button key={s.prontuario} onClick={() => abrir(s.prontuario)} style={btnLeito("#22d3ee")}>{s.iniciais} · reg. {s.prontuario}</button>)}
+        </div>
+      )}
+      {carregando && <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "1rem 0" }}>Carregando…</div>}
+
+      {dados && !carregando && (
+        <>
+          {/* CABEÇALHO DO PACIENTE */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", margin: "10px 0 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 10, background: "#0d948822", border: "1px solid #0d948855", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16, color: "#2dd4bf" }}>
+              {(iniciaisConhecidas || "?").charAt(0)}
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800 }}>{iniciaisConhecidas || "Paciente"} <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>· prontuário {prontuario}</span></div>
+              <div style={{ fontSize: 12, color: "var(--text-3)" }}>
+                {idade != null ? `${idade} anos` : "idade não cadastrada"}{dados.cadastro?.sexo ? ` · ${dados.cadastro.sexo}` : ""}
+                {dados.leitoAtual.length > 0 && <strong style={{ color: "#22d3ee" }}> · internado agora — leito {dados.leitoAtual[0].identificacao}{dados.leitoAtual[0].setor ? ` (${dados.leitoAtual[0].setor})` : ""}</strong>}
+              </div>
+            </div>
+            {!dados.cadastro && canEdit && !cadForm && (
+              <button onClick={() => setCadForm({ iniciais: iniciaisConhecidas || "", ano_nascimento: "", sexo: "" })} style={{ ...btnLeito("#22d3ee"), marginLeft: "auto" }}>Completar cadastro</button>
+            )}
+          </div>
+
+          {/* CADASTRO MÍNIMO */}
+          {cadForm && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <div><label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Iniciais *</label><input value={cadForm.iniciais} onChange={e => setCadForm(p => ({ ...p, iniciais: e.target.value }))} style={{ ...inp, width: 110 }} /></div>
+              <div><label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Ano de nascimento</label><input type="number" value={cadForm.ano_nascimento} onChange={e => setCadForm(p => ({ ...p, ano_nascimento: e.target.value }))} placeholder="1957" style={{ ...inp, width: 100 }} /></div>
+              <div><label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Sexo</label>
+                <select value={cadForm.sexo} onChange={e => setCadForm(p => ({ ...p, sexo: e.target.value }))} style={{ ...inp, width: 130 }}>
+                  <option value="">—</option><option value="feminino">Feminino</option><option value="masculino">Masculino</option>
+                </select></div>
+              <button onClick={salvarCadastro} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Salvar cadastro</button>
+              <button onClick={() => setCadForm(null)} style={btnLeito("var(--text-muted)")}>Cancelar</button>
+            </div>
+          )}
+
+          {/* SENTINELA */}
+          {alertas.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+              {alertas.map((a, i) => (
+                <div key={i} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${a.cor}`, borderRadius: 8, padding: "8px 13px", fontSize: 12.5, color: "var(--text-2)", fontWeight: 600 }}>{a.texto}</div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }}>
+            {/* TIMELINE */}
+            <div>
+              <div style={secLbl}>Linha do tempo ({timeline.length})</div>
+              {timeline.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "14px", textAlign: "center" }}>Nenhum registro encontrado para este prontuário.</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                {timeline.map((e, i) => (
+                  <div key={i} style={{ display: "flex", gap: 12 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 99, background: e.cor, marginTop: 6, flexShrink: 0 }} />
+                      {i < timeline.length - 1 && <span style={{ width: 2, flex: 1, background: "var(--border)", minHeight: 18 }} />}
+                    </div>
+                    <div style={{ paddingBottom: 14, flex: 1 }}>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{horaFmt(e.quando)} · {e.modulo}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>{e.titulo}</div>
+                      {e.detalhe && <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.55, marginTop: 2, whiteSpace: "pre-wrap" }}>{e.detalhe}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* NOVA EVOLUÇÃO */}
+            <div style={{ position: "sticky", top: 0 }}>
+              <div style={secLbl}>Nova evolução</div>
+              {canEdit ? <EvolucaoForm prontuario={prontuario} currentUser={currentUser} onSaved={() => abrir(prontuario)} /> :
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px" }}>Seu perfil é somente leitura.</div>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Formulário de evolução com ditado por voz (Web Speech API, pt-BR)
+function EvolucaoForm({ prontuario, currentUser, onSaved }) {
+  const [tipo, setTipo] = useState("evolucao_medica");
+  const [texto, setTexto] = useState("");
+  const [gravando, setGravando] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const recRef = useRef(null);
+  const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 12px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+
+  function toggleVoz() {
+    if (gravando) { recRef.current?.stop(); setGravando(false); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "pt-BR"; rec.continuous = true; rec.interimResults = false;
+    rec.onresult = ev => {
+      let novo = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) novo += ev.results[i][0].transcript;
+      if (novo) setTexto(t => (t ? t.trimEnd() + " " : "") + novo.trim());
+    };
+    rec.onend = () => setGravando(false);
+    rec.onerror = () => setGravando(false);
+    recRef.current = rec; rec.start(); setGravando(true);
+  }
+  async function salvar() {
+    if (!texto.trim()) { alert("Escreva (ou dite) o texto da evolução."); return; }
+    if (!confirm("Salvar esta evolução? Ela NÃO poderá ser editada nem apagada depois (registro clínico).")) return;
+    setBusy(true);
+    if (gravando) { recRef.current?.stop(); setGravando(false); }
+    await addEvolucaoRemote({ prontuario, tipo, texto: texto.trim(), criado_em: nowISO() }, currentUser);
+    addAuditLog(currentUser, "nova evolução", `${prontuario} (${tipo})`, {});
+    setTexto(""); setBusy(false); onSaved?.();
+  }
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px" }}>
+      <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ ...inp, marginBottom: 8 }}>
+        {Object.entries(TIPOS_EVOLUCAO).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+      </select>
+      <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={7} placeholder="Escreva a evolução — ou clique em Ditar e fale." style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {suportaVoz ? (
+          <button onClick={toggleVoz} style={{ background: gravando ? "#f43f5e" : "transparent", color: gravando ? "#fff" : "var(--text-2)", border: `1px solid ${gravando ? "#f43f5e" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+            {gravando ? "● Gravando… (parar)" : "Ditar por voz"}
+          </button>
+        ) : <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Ditado por voz indisponível neste navegador (use o Chrome).</span>}
+        <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>Assinada como <strong>{currentUser?.name}</strong> com data/hora. Registro imutável — confira antes de salvar.</div>
+    </div>
+  );
+}
+
 // ── Página Pronto-Socorro: chegada → triagem → atendimento → desfecho ──
 function PSPage({ currentUser, canEdit }) {
   const [fila, setFila] = useState([]);
@@ -3283,6 +3554,7 @@ export default function App() {
     { id: "ps",       icon: "activity", label: "Pronto-Socorro" },
     { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
     { id: "scih",     icon: "shield", label: "SCIH" },
+    { id: "paciente", icon: "record", label: "Paciente 360" },
     ...(canPrint    ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
     ...(canAudit    ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
     ...(canImport   ? [{ id: "import",    icon: "upload",    label: "Importar Dados" }]      : []),
@@ -3370,6 +3642,7 @@ export default function App() {
           {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
           {active === "auditoria" && canAudit    && <AuditoriaPage />}
           {active === "import"    && canImport   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}

@@ -164,6 +164,40 @@ create policy scih_casos_insert on public.scih_casos for insert to authenticated
 create policy scih_casos_update on public.scih_casos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy scih_casos_delete on public.scih_casos for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- ===== Paciente 360: cadastro mínimo + evoluções (registro clínico imutável) =====
+create table if not exists public.pacientes (
+  prontuario text primary key,
+  iniciais text not null,
+  ano_nascimento int,
+  sexo text,
+  usuario text, updated_at timestamptz default now()
+);
+alter table public.pacientes enable row level security;
+drop policy if exists pac_select on public.pacientes;
+drop policy if exists pac_insert on public.pacientes;
+drop policy if exists pac_update on public.pacientes;
+drop policy if exists pac_delete on public.pacientes;
+create policy pac_select on public.pacientes for select to authenticated using (true);
+create policy pac_insert on public.pacientes for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy pac_update on public.pacientes for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy pac_delete on public.pacientes for delete to authenticated using (public.my_role() = 'adm_master');
+
+-- Evoluções: registro clínico APPEND-ONLY (sem update/delete — como a auditoria)
+create table if not exists public.pep_evolucoes (
+  id bigserial primary key,
+  prontuario text not null,
+  tipo text not null default 'evolucao_medica',
+  texto text not null,
+  usuario text,
+  criado_em timestamptz not null default now()
+);
+create index if not exists pep_evolucoes_prontuario_idx on public.pep_evolucoes (prontuario, criado_em desc);
+alter table public.pep_evolucoes enable row level security;
+drop policy if exists pep_select on public.pep_evolucoes;
+drop policy if exists pep_insert on public.pep_evolucoes;
+create policy pep_select on public.pep_evolucoes for select to authenticated using (true);
+create policy pep_insert on public.pep_evolucoes for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+
 -- ===== Pronto-Socorro: triagem Manchester + jornada do paciente =====
 create table if not exists public.ps_atendimentos (
   id bigserial primary key,
