@@ -36,11 +36,12 @@ async function sbFetch(path, opts = {}) {
 // DADOS MESTRES
 // ═══════════════════════════════════════════════════════════
 const SPECS = [
-  { id: "cirurgia_geral", label: "Cirurgia Geral", metaM: 360,  metaA: 4320, meta1a: 1320, color: "#22d3ee" },
-  { id: "oftalmologia",   label: "Oftalmologia",   metaM: 240,  metaA: 2880, meta1a: 864,  color: "#38bdf8" },
-  { id: "ginecologia",    label: "Ginecologia",    metaM: 240,  metaA: 2880, meta1a: 864,  color: "#34d399" },
-  { id: "urologia",       label: "Urologia",       metaM: 240,  metaA: 2880, meta1a: 864,  color: "#fbbf24" },
-  { id: "ortopedia",      label: "Ortopedia",      metaM: 387,  metaA: 4644, meta1a: 1394, color: "#60a5fa" },
+  // Cores categóricas validadas (contraste + daltonismo) nos temas claro e escuro
+  { id: "cirurgia_geral", label: "Cirurgia Geral", metaM: 360,  metaA: 4320, meta1a: 1320, color: "#0d9488" },
+  { id: "oftalmologia",   label: "Oftalmologia",   metaM: 240,  metaA: 2880, meta1a: 864,  color: "#3b82f6" },
+  { id: "ginecologia",    label: "Ginecologia",    metaM: 240,  metaA: 2880, meta1a: 864,  color: "#d97706" },
+  { id: "urologia",       label: "Urologia",       metaM: 240,  metaA: 2880, meta1a: 864,  color: "#6366f1" },
+  { id: "ortopedia",      label: "Ortopedia",      metaM: 387,  metaA: 4644, meta1a: 1394, color: "#e11d48" },
 ];
 const MONTHS      = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -634,9 +635,9 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 12 }}>
               {[
-                { label: "Realizadas", v: mesData.realizadas, max: mesData.ofertadas, c: "#34d399" },
-                { label: "Livres",     v: mesData.livres,     max: mesData.ofertadas, c: "#22d3ee" },
-                { label: "1ªs Cons.",  v: mesData.primeiras,  max: mesData.primeiras + mesData.retornos, c: "#38bdf8" },
+                { label: "Realizadas", v: mesData.realizadas, max: mesData.ofertadas, c: "#0d9488" },
+                { label: "Livres",     v: mesData.livres,     max: mesData.ofertadas, c: "#3b82f6" },
+                { label: "1ªs Cons.",  v: mesData.primeiras,  max: mesData.primeiras + mesData.retornos, c: "#6366f1" },
               ].map(({ label, v, max, c }) => {
                 const p = max > 0 ? Math.min((v / max) * 100, 100) : 0;
                 return (
@@ -659,7 +660,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", display: "flex", gap: "1.5rem", alignItems: "center" }}>
           <RingGauge value={totalMes}   max={spec.metaM}  color={spec.color} label="Meta Mensal"  sub={`${fmt(totalMes)}/${fmt(spec.metaM)}`} />
           <RingGauge value={totalAno}   max={spec.metaA}  color={spec.color} label="Meta Anual"   sub={`${fmt(totalAno)}/${fmt(spec.metaA)}`} />
-          <RingGauge value={total1aAno} max={spec.meta1a} color="#38bdf8"    label="30% 1ª Cons." sub={`${fmt(total1aAno)}/${fmt(spec.meta1a)}`} />
+          <RingGauge value={total1aAno} max={spec.meta1a} color="#6366f1"    label="30% 1ª Cons." sub={`${fmt(total1aAno)}/${fmt(spec.meta1a)}`} />
         </div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tendência — últimos 12 meses</div>
@@ -670,7 +671,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               <Tooltip content={customTooltip} />
               <ReferenceLine y={spec.metaM} stroke="var(--border-2)" strokeDasharray="4 2" />
               <Area type="monotone" dataKey="total" name="Total" fill={spec.color + "22"} stroke={spec.color} strokeWidth={2} />
-              <Line type="monotone" dataKey="primeiras" name="1ª Consulta" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+              <Line type="monotone" dataKey="primeiras" name="1ª Consulta" stroke="#6366f1" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -691,7 +692,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
             <Bar dataKey="Total" radius={[4, 4, 0, 0]}>
               {barData.map((entry, i) => <Cell key={i} fill={entry.Total >= spec.metaM ? "#34d399" : entry.Total >= spec.metaM * .7 ? spec.color : "#fb7185"} fillOpacity={.9} />)}
             </Bar>
-            <Bar dataKey="1ª Consulta" fill="#38bdf8" fillOpacity={.7} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="1ª Consulta" fill="#6366f1" fillOpacity={.7} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -706,7 +707,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-3)", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip content={customTooltip} />
               <Bar dataKey="value" name="Qtd." radius={[0, 4, 4, 0]}>
-                {compData.map((_, i) => <Cell key={i} fill={[spec.color,"#34d399","#22d3ee","#38bdf8","#60a5fa","#fb7185","#fbbf24"][i % 7]} fillOpacity={.85} />)}
+                {compData.map((_, i) => <Cell key={i} fill={["#0d9488","#3b82f6","#d97706","#6366f1","#e11d48","#64748b","#94a3b8"][i % 7]} fillOpacity={.85} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -895,8 +896,8 @@ function Overview({ db, currentUser, canEdit }) {
       {/* MÉTRICAS GLOBAIS DE LEITOS */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: ".75rem", marginBottom: "1.25rem" }}>
         <StatCard label="Taxa de ocupação" value={ocupacaoG + "%"} color={ocupacaoG >= 90 ? "#f43f5e" : "#22d3ee"} big />
-        <StatCard label={`Giro de leito — ${MONTHS[mes]}`} value={giro.toFixed(2)} color="#38bdf8" big />
-        <StatCard label="Perman. média" value={permMedia != null ? permMedia.toFixed(1) + "d" : "—"} color="#34d399" big />
+        <StatCard label={`Giro de leito — ${MONTHS[mes]}`} value={giro.toFixed(2)} color="#3b82f6" big />
+        <StatCard label="Perman. média" value={permMedia != null ? permMedia.toFixed(1) + "d" : "—"} color="#0d9488" big />
         <StatCard label="Aguardando leito" value={totalAguardando} color={totalAguardando > 0 ? "#fbbf24" : "#34d399"} big />
         <StatCard label="Em higienização" value={higienizando} color="#fbbf24" big />
       </div>
@@ -1036,7 +1037,7 @@ function OverviewAntigo({ db }) {
       {/* KPIs principais */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: ".75rem" }}>
         <StatCard label={`Atendimentos — ${MONTHS_FULL[mes]}`} value={fmt(totalGeral)}    color="#22d3ee" big />
-        <StatCard label={`Acumulado — ${ano}`}                  value={fmt(rows.reduce((a,r)=>a+r.totalA,0))} color="#38bdf8" big />
+        <StatCard label={`Acumulado — ${ano}`}                  value={fmt(rows.reduce((a,r)=>a+r.totalA,0))} color="#3b82f6" big />
         <StatCard label="Especialidades ativas"                  value={SPECS.length}       color="#34d399" big />
         <StatCard label="Taxa de realização"                     value={`${txReal.toFixed(1)}%`} color={txReal>=80?"#34d399":txReal>=60?"#fbbf24":"#fb7185"} big />
       </div>
@@ -1926,7 +1927,7 @@ function ScihPage({ currentUser, canEdit }) {
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>SCIH — Controle de Infecção Hospitalar</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Precauções/isolamentos e vigilância de pacientes. Dados de saúde — use iniciais e prontuário (LGPD).</div>
         </div>
-        <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "#38bdf8", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de germes ({germes.length})</button>
+        <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de germes ({germes.length})</button>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
@@ -2243,9 +2244,9 @@ function IndicadoresScih({ currentUser, canEdit }) {
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Taxas de {MONTHS_FULL[mes]}/{ano}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
         <RateCard label="Adesão higiene de mãos" valor={r.higiene != null ? fmt1(r.higiene) : "—"} unidade="%" cor={r.higiene == null ? "var(--border)" : r.higiene >= 80 ? "#34d399" : r.higiene >= 60 ? "#fbbf24" : "#f43f5e"} sub="realizadas ÷ oportunidades" />
-        <RateCard label="Densidade de PAV" valor={r.pav != null ? fmt1(r.pav) : "—"} unidade="/1000 vent-dia" cor={r.pav == null ? "var(--border)" : "#38bdf8"} sub="casos ÷ ventilador-dia" />
-        <RateCard label="Uso de antimicrobiano" valor={r.antimicrobiano != null ? fmt1(r.antimicrobiano) : "—"} unidade="DOT/1000 pac-dia" cor={r.antimicrobiano == null ? "var(--border)" : "#22d3ee"} sub="DOT ÷ pacientes-dia" />
-        <RateCard label="Positividade de culturas" valor={r.culturasPos != null ? fmt1(r.culturasPos) : "—"} unidade="%" cor={r.culturasPos == null ? "var(--border)" : "#60a5fa"} sub="positivas ÷ coletadas" />
+        <RateCard label="Densidade de PAV" valor={r.pav != null ? fmt1(r.pav) : "—"} unidade="/1000 vent-dia" cor={r.pav == null ? "var(--border)" : "#6366f1"} sub="casos ÷ ventilador-dia" />
+        <RateCard label="Uso de antimicrobiano" valor={r.antimicrobiano != null ? fmt1(r.antimicrobiano) : "—"} unidade="DOT/1000 pac-dia" cor={r.antimicrobiano == null ? "var(--border)" : "#3b82f6"} sub="DOT ÷ pacientes-dia" />
+        <RateCard label="Positividade de culturas" valor={r.culturasPos != null ? fmt1(r.culturasPos) : "—"} unidade="%" cor={r.culturasPos == null ? "var(--border)" : "#0d9488"} sub="positivas ÷ coletadas" />
         <RateCard label="ISC cesariana" valor={r.iscCesariana != null ? fmt1(r.iscCesariana) : "—"} unidade="%" cor={r.iscCesariana == null ? "var(--border)" : r.iscCesariana > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
         <RateCard label="ISC oftalmológica" valor={r.iscOftalmo != null ? fmt1(r.iscOftalmo) : "—"} unidade="%" cor={r.iscOftalmo == null ? "var(--border)" : r.iscOftalmo > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
         <RateCard label="ISC artroplastia" valor={r.iscArtroplastia != null ? fmt1(r.iscArtroplastia) : "—"} unidade="%" cor={r.iscArtroplastia == null ? "var(--border)" : r.iscArtroplastia > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
@@ -2291,10 +2292,10 @@ function IndicadoresScih({ currentUser, canEdit }) {
       {/* TENDÊNCIAS */}
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tendência (últimos {ultimos.length || 0} meses lançados)</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
-        <MiniTrend titulo="Adesão higiene de mãos" chave="higiene" unidade="%" cor="#34d399" />
-        <MiniTrend titulo="Densidade de PAV" chave="pav" unidade="/1000 vent-dia" cor="#38bdf8" />
-        <MiniTrend titulo="Uso de antimicrobiano" chave="antimicrobiano" unidade="DOT/1000 pac-dia" cor="#22d3ee" />
-        <MiniTrend titulo="ISC cesariana" chave="iscCesariana" unidade="%" cor="#fbbf24" />
+        <MiniTrend titulo="Adesão higiene de mãos" chave="higiene" unidade="%" cor="#0d9488" />
+        <MiniTrend titulo="Densidade de PAV" chave="pav" unidade="/1000 vent-dia" cor="#6366f1" />
+        <MiniTrend titulo="Uso de antimicrobiano" chave="antimicrobiano" unidade="DOT/1000 pac-dia" cor="#3b82f6" />
+        <MiniTrend titulo="ISC cesariana" chave="iscCesariana" unidade="%" cor="#d97706" />
       </div>
 
       {preview && (
@@ -2494,9 +2495,9 @@ function LeitosPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
           <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 260 }} />
           <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
-          <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>Setores</button>
-          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Indicadores</button>
-          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#38bdf8", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Referências de CID</button>
+          <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>Setores</button>
+          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Indicadores</button>
+          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Referências de CID</button>
         </div>
       )}
 
@@ -2684,7 +2685,7 @@ function IndicadoresModal({ leitos, onClose }) {
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
               <Metric label="Altas no mês" valor={altas} cor="#22d3ee" />
-              <Metric label="Média de permanência" valor={permMedia != null ? permMedia.toFixed(1) : "—"} sub="dias por internação" cor="#38bdf8" />
+              <Metric label="Média de permanência" valor={permMedia != null ? permMedia.toFixed(1) : "—"} sub="dias por internação" cor="#3b82f6" />
               <Metric label="Giro de leito" valor={giro != null ? giro.toFixed(2) : "—"} sub="altas ÷ leitos operacionais" cor="#34d399" />
               <Metric label="Higienização média" valor={fmtDur(higMin)} sub="disponibilizado → pronto" cor="#fbbf24" />
               <Metric label="Substituição média" valor={fmtDur(subMin)} sub="vagou → próximo paciente" cor="#fbbf24" />
