@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v8
+# 📍 Ponto de restauração — checkpoint-v9
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v8` (anteriores: `checkpoint-v7` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v9` (anteriores: `checkpoint-v8` … `checkpoint-v1`)
 - **Data:** 2026-07-17
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -56,13 +56,17 @@ dá pra voltar exatamente para este estado.
   Desfecho "Internação" abre a solicitação de leito automaticamente — primeira
   **jornada do paciente ponta a ponta**: PS → fila → leito → alta → higienização.
   Indicadores: porta→triagem, permanência média, atendidos hoje. Testado e validado.
+- **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
+  cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
+  altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
+  imutáveis (sem UPDATE/DELETE no banco) com ditado por voz (pt-BR). Testado.
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v8
+git reset --hard checkpoint-v9
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -71,7 +75,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v8
+git checkout -b recuperacao checkpoint-v9
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -87,6 +91,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `45472e5` 📋 Paciente 360 — registro clínico integrado (timeline + evoluções + voz)
 - `c6d1c0d` 🏥 Pronto-Socorro — triagem Manchester + jornada do paciente
 - `dc8b5a9` 🎨 paleta de gráficos profissional validada
 - `225b70e` 🎨 rebrand profundo — paleta marinho + interface sem emojis
