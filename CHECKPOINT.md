@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v10
+# 📍 Ponto de restauração — checkpoint-v11
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v10` (anteriores: `checkpoint-v9` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v11` (anteriores: `checkpoint-v10` … `checkpoint-v1`)
 - **Data:** 2026-07-17
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -62,13 +62,19 @@ dá pra voltar exatamente para este estado.
   imutáveis (sem UPDATE/DELETE no banco) com ditado por voz (pt-BR) e **resumo de
   passagem de plantão** gerado localmente (gratuito, dados não saem do navegador;
   versão IA dormante em supabase/functions). Testado.
+- **🔪 Bloco Cirúrgico (completo, A+B+C):** salas com reserva e detecção de conflito,
+  agenda com materiais/OPME, mapa cirúrgico do dia, check-in, checklist de Cirurgia
+  Segura da OMS (Sign In/Time Out/Sign Out com itens oficiais), tempos cirúrgicos,
+  RPA com cronômetro, cancelamento com motivo padronizado e indicadores (ocupação
+  de salas, taxa/motivos de cancelamento, produtividade por cirurgião, adesão ao
+  checklist). Testado e validado.
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v10
+git reset --hard checkpoint-v11
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -77,7 +83,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v10
+git checkout -b recuperacao checkpoint-v11
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -93,6 +99,9 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `ab00284` 🔪 Bloco Cirúrgico Fase C — indicadores (ocupação, cancelamentos, produtividade)
+- `0a48ef5` 🔪 Bloco Cirúrgico Fase B — check-in, checklist OMS, tempos, RPA
+- `8ccf7b8` 🔪 Bloco Cirúrgico Fase A — agenda, mapa por sala, cancelamentos
 - `d832105` 📋 Resumo de passagem de plantão gratuito (local) no Paciente 360
 - `45472e5` 📋 Paciente 360 — registro clínico integrado (timeline + evoluções + voz)
 - `c6d1c0d` 🏥 Pronto-Socorro — triagem Manchester + jornada do paciente
