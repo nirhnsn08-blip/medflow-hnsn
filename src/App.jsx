@@ -747,16 +747,21 @@ async function updateSolicitacaoRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`solicitacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
 }
-// Ocupação de um setor considerando a fila; retorna métricas + cor do alerta.
+// Ocupação de um setor = SÓ os leitos ocupados (a fila de espera não conta —
+// paciente aguardando ainda não está num leito). A fila vira um selo separado.
 function ocupacaoSetor(leitos, solicitacoes, setor) {
   const dele = leitos.filter(l => (l.setor || "") === setor.nome);
   const operacionais = dele.filter(l => l.status !== "interditado").length;
   const ocupados = dele.filter(l => l.status === "ocupado").length;
-  const aguardando = (solicitacoes || []).filter(s => s.setor_destino === setor.nome).length;
-  const pct = operacionais > 0 ? Math.round(((ocupados + aguardando) / operacionais) * 100) : (aguardando > 0 ? null : 0);
+  const fila = (solicitacoes || []).filter(s => s.setor_destino === setor.nome);
+  const aguardando = fila.length;
+  // maior tempo de espera da fila deste setor (em minutos)
+  const agora = nowISO();
+  const maiorEsperaMin = fila.reduce((m, s) => { const d = diffMin(s.hora_pedido, agora); return d != null && d > m ? d : m; }, 0);
+  const pct = operacionais > 0 ? Math.round((ocupados / operacionais) * 100) : null;
   const amar = setor.alerta_amarelo ?? 90, verm = setor.alerta_vermelho ?? 100;
   const cor = pct == null ? "var(--text-muted)" : pct >= verm ? "#f43f5e" : pct >= amar ? "#fbbf24" : "#34d399";
-  return { operacionais, ocupados, aguardando, pct, cor, restringir: pct != null && pct >= verm };
+  return { operacionais, ocupados, aguardando, maiorEsperaMin, pct, cor, restringir: pct != null && pct >= verm };
 }
 
 function Overview({ db, currentUser, canEdit }) {
@@ -862,7 +867,12 @@ function Overview({ db, currentUser, canEdit }) {
                   {o.restringir && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>⛔ RESTRINGIR</span>}
                 </div>
                 <div style={{ fontSize: 30, fontWeight: 800, color: o.cor, fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{o.pct == null ? "—" : o.pct + "%"}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{o.ocupados}/{o.operacionais} ocupados{o.aguardando > 0 ? ` · ${o.aguardando} aguardando` : ""}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{o.ocupados}/{o.operacionais} ocupados</div>
+                {o.aguardando > 0 && (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#3d2e06", color: "#fbbf24", borderRadius: 99, padding: "3px 10px", fontSize: 11, fontWeight: 700, marginTop: 7 }}>
+                    🕐 {o.aguardando} na fila · maior espera {fmtDur(o.maiorEsperaMin)}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -870,7 +880,7 @@ function Overview({ db, currentUser, canEdit }) {
       )}
 
       {/* SOLICITAÇÕES PENDENTES */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🛎️ Solicitações de leito pendentes ({totalAguardando})</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>⏳ Lista de espera por leito ({totalAguardando})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
         {canEdit && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: solic.length ? 14 : 0 }}>
@@ -1608,7 +1618,7 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>🏷️ Setores e limiares de alerta</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2 }}>Amarelo = atenção; Vermelho = restringir. Ocupação considera os leitos ocupados + a fila de espera do setor.</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2 }}>Amarelo = atenção; Vermelho = restringir. Ocupação = leitos ocupados ÷ operacionais. A fila de espera aparece como um selo separado no monitoramento, sem contar na ocupação.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
           <div><label style={hl}>Setor</label><input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: UTI" style={inp} /></div>
           <div><label style={hl}>🟡 Amarelo %</label><input type="number" value={f.alerta_amarelo} onChange={e => set("alerta_amarelo", e.target.value)} style={inp} /></div>
