@@ -1,11 +1,14 @@
-# 📍 Ponto de restauração — checkpoint-v2
+# 📍 Ponto de restauração — checkpoint-v3
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v2` (anterior: `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v3` (anteriores: `checkpoint-v2`, `checkpoint-v1`)
 - **Data:** 2026-07-16
-- **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`) e no demo (`medflow-demo.vercel.app`).
+- **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
+- ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
+  O site demo recebe o código novo, mas sem as migrações de banco — salvar nas
+  telas novas dá erro lá (esperado).
 
 ## O que já está pronto neste ponto
 - **Login seguro** (Supabase Auth) + permissões por papel + auditoria. Banco trancado por RLS.
@@ -23,13 +26,16 @@ dá pra voltar exatamente para este estado.
   **alertas por setor** (com fila + "restringir"), **fila de solicitações de leito**
   (origem→destino, tempo de espera) e metas das especialidades. Setores geridos em
   Giro de Leitos → 🏷️ Setores; cada leito tem um seletor de setor.
+- **💊 Tratamento sugerido por CID:** cada referência de CID pode ter um texto de
+  tratamento (base na literatura, revisado pela equipe). Aparece no 📚 Referências
+  de CID e no modal de internação ao digitar o CID. 8 CIDs pré-preenchidos no HNSN.
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v2
+git reset --hard checkpoint-v3
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -38,7 +44,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v2
+git checkout -b recuperacao checkpoint-v3
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -47,12 +53,14 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
 **backup do banco** — ver a pasta local `backups/` (peça "faz um backup dos dados").
 
 ## Pendências conhecidas (não urgentes)
-- **DEMO** ainda sem a migração da Fase 3 parte 2 (setores/solicitações). Rodar o
-  bloco SQL desses no banco do demo se quiser o monitoramento lá.
+- Equipe médica revisar os 8 textos de tratamento por CID (editáveis no 📚).
+- **DEMO congelado**: banco sem as migrações da Fase 3 pt2 e do tratamento por CID.
+  Se um dia voltarmos a usar o demo, rodar as migrações acumuladas antes.
 - 2 registros falsos do AQUARIO no histórico do HNSN (leitos_saidas/leitos_turnover),
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `9b4ca54` 💊 Tratamento sugerido por CID (referências + modal de internação)
 - `baabe17` Fase 3 pt2 — Centro de Monitoramento (setores, solicitações, alertas)
 - `ebc40d3` Fase 3 pt1 — modo claro/escuro
 - `39bba1a` aba "Ambulatório" expansível · `cb71266` Giro de Leitos Fase 2
