@@ -88,6 +88,7 @@ const ICON_PATHS = {
   upload:    <><path d="M4 17 v3 h16 v-3"/><path d="M12 15 V4"/><path d="M7.5 8.5 L12 4 l4.5 4.5"/></>,
   cloud:     <><path d="M7 18 a4.5 4.5 0 0 1 -.6-8.96 6 6 0 0 1 11.7 1.2 A4 4 0 0 1 17.5 18 z"/></>,
   users:     <><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5 c0-3 2.5-5 5.5-5 s5.5 2 5.5 5"/><circle cx="16.8" cy="9.5" r="2.5"/><path d="M16.5 14.6 c2.4.3 4 2 4 4.4"/></>,
+  activity:  <path d="M3 12 h4 l2.5-6.5 5 13 2.5-6.5 H21"/>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -1609,6 +1610,44 @@ function sugerirGerme(digitado, germes) {
   return m || null;
 }
 
+// ═══════════════════════════════════════════════════════════
+// PRONTO-SOCORRO — triagem Manchester + jornada do paciente
+// ═══════════════════════════════════════════════════════════
+// Cores do Protocolo de Manchester são normativas (semântica clínica oficial).
+const MANCHESTER = {
+  vermelho: { label: "Emergência",     cor: "#ef4444", bg: "#3d0f18", alvoMin: 0,   desc: "Risco de vida imediato. Atendimento IMEDIATO — sala de emergência." },
+  laranja:  { label: "Muito urgente",  cor: "#f97316", bg: "#3d2206", alvoMin: 10,  desc: "Risco significativo. Atendimento em até 10 minutos." },
+  amarelo:  { label: "Urgente",        cor: "#eab308", bg: "#3d2e06", alvoMin: 60,  desc: "Condição aguda sem risco imediato. Atendimento em até 60 minutos." },
+  verde:    { label: "Pouco urgente",  cor: "#22c55e", bg: "#0a3d2a", alvoMin: 120, desc: "Condição de menor gravidade. Atendimento em até 120 minutos." },
+  azul:     { label: "Não urgente",    cor: "#3b82f6", bg: "#132c47", alvoMin: 240, desc: "Queixa simples/crônica. Atendimento em até 240 minutos ou encaminhamento." },
+};
+const PS_DESFECHOS = {
+  alta:          { label: "Alta",          cor: "#34d399" },
+  internacao:    { label: "Internação",    cor: "#22d3ee" },
+  transferencia: { label: "Transferência", cor: "#3b82f6" },
+  evasao:        { label: "Evasão",        cor: "#8d99ab" },
+  obito:         { label: "Óbito",         cor: "#f43f5e" },
+};
+async function loadPsAtendimentos() {
+  const rows = await sbFetch("ps_atendimentos?status=neq.finalizado&select=*&order=chegada_em");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadPsFinalizadosHoje() {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const rows = await sbFetch(`ps_atendimentos?status=eq.finalizado&desfecho_em=gte.${hoje.toISOString()}&select=*&order=desfecho_em.desc`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addPsAtendimentoRemote(at, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("ps_atendimentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...at, usuario: user?.name || null }) });
+}
+async function updatePsAtendimentoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`ps_atendimentos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Prioridade de ordenação da fila (menor = mais urgente)
+const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
+
 // ── Fase C: indicadores mensais do SCIH ──
 async function loadScihIndicadores() {
   const rows = await sbFetch("scih_indicadores?select=*&order=competencia");
@@ -1821,6 +1860,266 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Página Pronto-Socorro: chegada → triagem → atendimento → desfecho ──
+function PSPage({ currentUser, canEdit }) {
+  const [fila, setFila] = useState([]);
+  const [finalizados, setFinalizados] = useState([]);
+  const [setores, setSetores] = useState([]);
+  const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "" });
+  const [triando, setTriando] = useState(null);
+  const [desfechando, setDesfechando] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [, setTick] = useState(0);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadPsAtendimentos().then(setFila);
+    loadPsFinalizadosHoje().then(setFinalizados);
+    loadSetoresFromSupabase().then(r => r && setSetores(r));
+  }
+  useEffect(() => {
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => setTick(t => t + 1), 30000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+  }, []);
+
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
+  const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
+
+  async function registrarChegada() {
+    if (!novo.iniciais.trim()) { alert("Informe ao menos as iniciais do paciente."); return; }
+    setBusy(true);
+    await addPsAtendimentoRemote({ iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim() || null, queixa: novo.queixa.trim() || null, chegada_em: nowISO(), status: "aguardando_triagem" }, currentUser);
+    addAuditLog(currentUser, "PS: chegada", novo.iniciais.trim(), {});
+    setNovo({ iniciais: "", prontuario: "", queixa: "" });
+    setBusy(false); setTimeout(refresh, 400);
+  }
+  async function triar(p, classificacao) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento" });
+    addAuditLog(currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
+    setTriando(null); setTimeout(refresh, 300);
+  }
+  async function iniciarAtendimento(p) {
+    await updatePsAtendimentoRemote(p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
+    addAuditLog(currentUser, "PS: inicio atendimento", p.iniciais, {});
+    setTimeout(refresh, 300);
+  }
+  async function darDesfecho(p, desfecho, setorDestino, observacao) {
+    await updatePsAtendimentoRemote(p.id, { desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null, observacao: observacao || null, status: "finalizado" });
+    // Jornada do paciente: internação no PS abre automaticamente a solicitação de leito
+    if (desfecho === "internacao" && setorDestino) {
+      await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
+    }
+    addAuditLog(currentUser, "PS: desfecho", `${p.iniciais} → ${desfecho}${setorDestino ? " (" + setorDestino + ")" : ""}`, {});
+    setDesfechando(null); setTimeout(refresh, 300);
+  }
+
+  const agora = nowISO();
+  const aguardandoTriagem = fila.filter(p => p.status === "aguardando_triagem");
+  const aguardandoAtend = fila.filter(p => p.status === "aguardando_atendimento")
+    .sort((a, b) => (PS_PRIORIDADE[a.classificacao] ?? 9) - (PS_PRIORIDADE[b.classificacao] ?? 9) || new Date(a.triagem_em) - new Date(b.triagem_em));
+  const emAtendimento = fila.filter(p => p.status === "em_atendimento");
+  const portaTriagem = fila.concat(finalizados).map(p => diffMin(p.chegada_em, p.triagem_em)).filter(v => v != null);
+  const portaTriagemMedia = portaTriagem.length ? portaTriagem.reduce((a, b) => a + b, 0) / portaTriagem.length : null;
+  const permanencias = finalizados.map(p => diffMin(p.chegada_em, p.desfecho_em)).filter(v => v != null);
+  const permMedia = permanencias.length ? permanencias.reduce((a, b) => a + b, 0) / permanencias.length : null;
+
+  const ClasseBadge = ({ c }) => { const v = MANCHESTER[c]; if (!v) return <span style={{ fontSize: 11, color: "var(--text-muted)" }}>sem triagem</span>;
+    return <span style={{ background: v.bg, color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 800 }}>{v.label}</span>; };
+  // Cronômetro contra o tempo-alvo da classificação
+  const Espera = ({ p }) => {
+    const min = diffMin(p.triagem_em || p.chegada_em, agora);
+    const alvo = p.classificacao ? MANCHESTER[p.classificacao]?.alvoMin : null;
+    const estourou = alvo != null && min != null && min > alvo && alvo > 0;
+    const imediato = p.classificacao === "vermelho";
+    return <span style={{ fontSize: 12, fontWeight: 700, color: estourou || imediato ? "#f43f5e" : "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>
+      {fmtDur(min)}{alvo != null ? ` / alvo ${alvo === 0 ? "imediato" : fmtDur(alvo)}` : ""}{estourou ? " · ESTOURADO" : ""}
+    </span>;
+  };
+  const Card = ({ label, valor, cor }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", minWidth: 130, flex: 1 }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+    </div>
+  );
+  const linhaPac = { display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 13px", flexWrap: "wrap" };
+
+  return (
+    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pronto-Socorro — Triagem e Fluxo</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Classificação de risco (Protocolo de Manchester) e jornada do paciente. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <Card label="Aguardando triagem" valor={aguardandoTriagem.length} cor={aguardandoTriagem.length > 0 ? "#fbbf24" : "#34d399"} />
+        <Card label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" />
+        <Card label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" />
+        <Card label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" />
+        <Card label="Porta→triagem (média)" valor={portaTriagemMedia != null ? fmtDur(Math.round(portaTriagemMedia)) : "—"} cor="#6366f1" />
+        <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
+      </div>
+
+      {/* Legenda Manchester — autoexplicativa */}
+      <details style={{ marginBottom: "1.25rem" }}>
+        <summary style={{ ...secLbl, cursor: "pointer", marginBottom: 8 }}>Protocolo de Manchester — o que significa cada cor</summary>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+          {Object.entries(MANCHESTER).map(([k, v]) => (
+            <div key={k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${v.cor}`, borderRadius: 10, padding: "10px 13px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: v.cor }}>{v.label}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.5, marginTop: 3 }}>{v.desc}</div>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      {/* CHEGADA */}
+      {canEdit && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Registrar chegada</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Iniciais *" style={{ ...inp, width: 120 }} />
+            <input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Prontuário" style={{ ...inp, width: 110 }} />
+            <input value={novo.queixa} onChange={e => setNovo(p => ({ ...p, queixa: e.target.value }))} onKeyDown={e => e.key === "Enter" && registrarChegada()} placeholder="Queixa principal (ex.: dor torácica)" style={{ ...inp, flex: 1, minWidth: 200 }} />
+            <button onClick={registrarChegada} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "+ Chegada"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* FILA DE TRIAGEM */}
+      <div style={secLbl}>Aguardando triagem ({aguardandoTriagem.length})</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.25rem" }}>
+        {aguardandoTriagem.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px", textAlign: "center" }}>Ninguém aguardando triagem.</div>}
+        {aguardandoTriagem.map(p => (
+          <div key={p.id} style={linhaPac}>
+            <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+            {p.prontuario && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+            {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
+            <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>chegou há {fmtDur(diffMin(p.chegada_em, agora))}</span>
+            {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Triar</button>}
+          </div>
+        ))}
+      </div>
+
+      {/* FILA DE ATENDIMENTO (por prioridade) */}
+      <div style={secLbl}>Fila de atendimento — por prioridade ({aguardandoAtend.length})</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.25rem" }}>
+        {aguardandoAtend.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px", textAlign: "center" }}>Fila vazia.</div>}
+        {aguardandoAtend.map(p => (
+          <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${MANCHESTER[p.classificacao]?.cor || "var(--border)"}` }}>
+            <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+            <ClasseBadge c={p.classificacao} />
+            {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
+            <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
+            {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar atendimento</button>}
+          </div>
+        ))}
+      </div>
+
+      {/* EM ATENDIMENTO */}
+      <div style={secLbl}>Em atendimento ({emAtendimento.length})</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.25rem" }}>
+        {emAtendimento.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px", textAlign: "center" }}>Nenhum paciente em atendimento.</div>}
+        {emAtendimento.map(p => (
+          <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${MANCHESTER[p.classificacao]?.cor || "var(--border)"}` }}>
+            <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+            <ClasseBadge c={p.classificacao} />
+            {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>em atendimento há {fmtDur(diffMin(p.atendimento_em, agora))}</span>
+            {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+          </div>
+        ))}
+      </div>
+
+      {/* FINALIZADOS HOJE */}
+      {finalizados.length > 0 && (
+        <details style={{ marginBottom: "1.25rem" }}>
+          <summary style={{ ...secLbl, cursor: "pointer" }}>Finalizados hoje ({finalizados.length})</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+            {finalizados.map(p => (
+              <div key={p.id} style={{ ...linhaPac, padding: "7px 12px", fontSize: 12, color: "var(--text-3)" }}>
+                <strong style={{ color: "var(--text-2)" }}>{p.iniciais}</strong>
+                <ClasseBadge c={p.classificacao} />
+                {p.desfecho && <span style={{ color: PS_DESFECHOS[p.desfecho]?.cor || "var(--text-3)", fontWeight: 700 }}>{PS_DESFECHOS[p.desfecho]?.label || p.desfecho}{p.setor_destino ? ` → ${p.setor_destino}` : ""}</span>}
+                <span style={{ marginLeft: "auto", fontFamily: "JetBrains Mono, monospace" }}>permanência {fmtDur(diffMin(p.chegada_em, p.desfecho_em))}</span>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* MODAL TRIAGEM */}
+      {triando && (
+        <div onClick={() => setTriando(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 500, maxWidth: "94vw" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Triagem — {triando.iniciais}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>{triando.queixa || "Sem queixa registrada"} · chegou há {fmtDur(diffMin(triando.chegada_em, agora))}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {Object.entries(MANCHESTER).map(([k, v]) => (
+                <button key={k} onClick={() => triar(triando, k)} style={{ display: "flex", alignItems: "center", gap: 12, background: v.bg, border: `1px solid ${v.cor}55`, borderLeft: `5px solid ${v.cor}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", textAlign: "left" }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: v.cor, minWidth: 110 }}>{v.label}</span>
+                  <span style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.4 }}>{v.desc}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+              <button onClick={() => setTriando(null)} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DESFECHO */}
+      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
+    </div>
+  );
+}
+
+// Modal de desfecho do PS (alta/internação/transferência/evasão/óbito)
+function PsDesfechoModal({ paciente, setores, onClose, onSave }) {
+  const [desfecho, setDesfecho] = useState("");
+  const [setorDestino, setSetorDestino] = useState("");
+  const [obs, setObs] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  async function salvar() {
+    if (!desfecho) { alert("Escolha o desfecho."); return; }
+    if (desfecho === "internacao" && !setorDestino) { alert("Escolha o setor de destino da internação."); return; }
+    setBusy(true);
+    await onSave(paciente, desfecho, setorDestino, obs.trim());
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 460, maxWidth: "94vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Desfecho — {paciente.iniciais}</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+          {Object.entries(PS_DESFECHOS).map(([k, v]) => (
+            <button key={k} onClick={() => setDesfecho(k)} style={{ background: desfecho === k ? v.cor : "transparent", color: desfecho === k ? "#000" : v.cor, border: `1px solid ${v.cor}66`, borderRadius: 7, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{v.label}</button>
+          ))}
+        </div>
+        {desfecho === "internacao" && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 }}>Setor de destino (abre solicitação de leito automaticamente)</label>
+            <select value={setorDestino} onChange={e => setSetorDestino(e.target.value)} style={inp}>
+              <option value="">Escolha o setor…</option>
+              {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+            </select>
+          </div>
+        )}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 }}>Observação (opcional)</label>
+          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Ex.: encaminhado com acompanhante" style={inp} />
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar desfecho"}</button>
         </div>
       </div>
     </div>
@@ -2981,6 +3280,7 @@ export default function App() {
     { id: "d1" },
     { id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
     { id: "d2" },
+    { id: "ps",       icon: "activity", label: "Pronto-Socorro" },
     { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
     { id: "scih",     icon: "shield", label: "SCIH" },
     ...(canPrint    ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
@@ -3067,6 +3367,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
+          {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}

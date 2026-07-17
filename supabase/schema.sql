@@ -164,6 +164,31 @@ create policy scih_casos_insert on public.scih_casos for insert to authenticated
 create policy scih_casos_update on public.scih_casos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy scih_casos_delete on public.scih_casos for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- ===== Pronto-Socorro: triagem Manchester + jornada do paciente =====
+create table if not exists public.ps_atendimentos (
+  id bigserial primary key,
+  iniciais text not null, prontuario text, queixa text,
+  chegada_em timestamptz not null default now(),
+  classificacao text,                -- vermelho | laranja | amarelo | verde | azul
+  triagem_em timestamptz,
+  atendimento_em timestamptz,
+  desfecho text,                     -- alta | internacao | transferencia | evasao | obito
+  desfecho_em timestamptz,
+  setor_destino text,                -- quando desfecho = internacao
+  status text not null default 'aguardando_triagem', -- aguardando_triagem | aguardando_atendimento | em_atendimento | finalizado
+  observacao text,
+  usuario text, updated_at timestamptz default now()
+);
+alter table public.ps_atendimentos enable row level security;
+drop policy if exists ps_select on public.ps_atendimentos;
+drop policy if exists ps_insert on public.ps_atendimentos;
+drop policy if exists ps_update on public.ps_atendimentos;
+drop policy if exists ps_delete on public.ps_atendimentos;
+create policy ps_select on public.ps_atendimentos for select to authenticated using (true);
+create policy ps_insert on public.ps_atendimentos for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy ps_update on public.ps_atendimentos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy ps_delete on public.ps_atendimentos for delete to authenticated using (public.my_role() = 'adm_master');
+
 -- ===== SCIH Fase B: base de germes com embasamento =====
 create table if not exists public.scih_germes (
   nome text primary key,
