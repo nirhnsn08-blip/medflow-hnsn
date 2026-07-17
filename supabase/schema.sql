@@ -164,6 +164,56 @@ create policy scih_casos_insert on public.scih_casos for insert to authenticated
 create policy scih_casos_update on public.scih_casos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy scih_casos_delete on public.scih_casos for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- ===== Bloco Cirúrgico: salas + agenda/mapa + workflow do dia =====
+create table if not exists public.cc_salas (
+  nome text primary key,
+  ordem int default 0,
+  ativa boolean default true,
+  usuario text, updated_at timestamptz default now()
+);
+alter table public.cc_salas enable row level security;
+drop policy if exists ccs_select on public.cc_salas;
+drop policy if exists ccs_insert on public.cc_salas;
+drop policy if exists ccs_update on public.cc_salas;
+drop policy if exists ccs_delete on public.cc_salas;
+create policy ccs_select on public.cc_salas for select to authenticated using (true);
+create policy ccs_insert on public.cc_salas for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy ccs_update on public.cc_salas for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy ccs_delete on public.cc_salas for delete to authenticated using (public.my_role() = 'adm_master');
+
+create table if not exists public.cc_cirurgias (
+  id bigserial primary key,
+  data date not null,
+  hora_prevista time,
+  duracao_prev_min int,
+  sala text,
+  iniciais text not null, prontuario text,
+  procedimento text not null,
+  cirurgiao text, anestesista text, tipo_anestesia text,
+  opme text,                            -- materiais e OPME necessários
+  observacao text,
+  status text not null default 'agendada', -- agendada | checkin | em_cirurgia | recuperacao | concluida | cancelada
+  chk_sign_in boolean default false,    -- checklist cirurgia segura (OMS)
+  chk_time_out boolean default false,
+  chk_sign_out boolean default false,
+  checkin_em timestamptz, entrada_sala_em timestamptz,
+  inicio_anestesia_em timestamptz, inicio_cirurgia_em timestamptz,
+  fim_cirurgia_em timestamptz, saida_sala_em timestamptz,
+  rpa_entrada_em timestamptz, rpa_saida_em timestamptz,
+  cancelamento_motivo text,
+  usuario text, updated_at timestamptz default now()
+);
+create index if not exists cc_cirurgias_data_idx on public.cc_cirurgias (data, sala);
+alter table public.cc_cirurgias enable row level security;
+drop policy if exists ccc_select on public.cc_cirurgias;
+drop policy if exists ccc_insert on public.cc_cirurgias;
+drop policy if exists ccc_update on public.cc_cirurgias;
+drop policy if exists ccc_delete on public.cc_cirurgias;
+create policy ccc_select on public.cc_cirurgias for select to authenticated using (true);
+create policy ccc_insert on public.cc_cirurgias for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy ccc_update on public.cc_cirurgias for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy ccc_delete on public.cc_cirurgias for delete to authenticated using (public.my_role() = 'adm_master');
+
 -- ===== Paciente 360: cadastro mínimo + evoluções (registro clínico imutável) =====
 create table if not exists public.pacientes (
   prontuario text primary key,

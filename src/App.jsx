@@ -90,6 +90,7 @@ const ICON_PATHS = {
   users:     <><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5 c0-3 2.5-5 5.5-5 s5.5 2 5.5 5"/><circle cx="16.8" cy="9.5" r="2.5"/><path d="M16.5 14.6 c2.4.3 4 2 4 4.4"/></>,
   activity:  <path d="M3 12 h4 l2.5-6.5 5 13 2.5-6.5 H21"/>,
   record:    <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 13 h2 l1-2.5 2 5 1-2.5 H16"/><path d="M9 7 h6"/></>,
+  scissors:  <><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.6 L20 18 M8.2 16.4 L20 6 M13.2 12 l1.6 1.4"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -2202,6 +2203,328 @@ function EvolucaoForm({ prontuario, currentUser, onSaved }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// BLOCO CIRÚRGICO — agenda, mapa, workflow do dia e indicadores
+// ═══════════════════════════════════════════════════════════
+const CC_STATUS = {
+  agendada:    { label: "Agendada",          cor: "#8d99ab" },
+  checkin:     { label: "Check-in feito",    cor: "#3b82f6" },
+  em_cirurgia: { label: "Em cirurgia",       cor: "#22d3ee" },
+  recuperacao: { label: "Recuperação (RPA)", cor: "#d97706" },
+  concluida:   { label: "Concluída",         cor: "#34d399" },
+  cancelada:   { label: "Cancelada",         cor: "#f43f5e" },
+};
+const CC_MOTIVOS_CANCELAMENTO = [
+  "Condição clínica do paciente", "Jejum inadequado", "Falta de material/OPME",
+  "Falta de sala/tempo cirúrgico", "Ausência do paciente", "Ausência do cirurgião",
+  "Exames pendentes", "Falta de leito para pós-operatório", "Outro",
+];
+async function loadCcSalas() {
+  const rows = await sbFetch("cc_salas?select=*&order=ordem");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertCcSalaRemote(sala, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("cc_salas?on_conflict=nome", {
+    method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...sala, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+async function deleteCcSalaRemote(nome) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`cc_salas?nome=eq.${encodeURIComponent(nome)}`, { method: "DELETE" });
+}
+async function loadCcCirurgias(data) {
+  const rows = await sbFetch(`cc_cirurgias?data=eq.${data}&select=*&order=hora_prevista`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addCcCirurgiaRemote(c, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("cc_cirurgias", { method: "POST", body: JSON.stringify({ ...c, usuario: user?.name || null }) });
+}
+async function updateCcCirurgiaRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`cc_cirurgias?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// minutos desde meia-noite a partir de "HH:MM" (p/ detectar conflito de sala)
+const horaMin = h => { if (!h) return null; const [hh, mm] = h.split(":").map(Number); return hh * 60 + (mm || 0); };
+// Cirurgias da mesma sala cujo intervalo previsto se sobrepõe ao informado
+function conflitosDeSala(cirurgias, sala, hora, duracaoMin, ignorarId) {
+  if (!sala || !hora) return [];
+  const ini = horaMin(hora), fim = ini + (Number(duracaoMin) || 60);
+  return cirurgias.filter(c => {
+    if (c.id === ignorarId || c.sala !== sala || c.status === "cancelada" || !c.hora_prevista) return false;
+    const ci = horaMin(c.hora_prevista.slice(0, 5)), cf = ci + (c.duracao_prev_min || 60);
+    return ini < cf && ci < fim;
+  });
+}
+
+// ── Página Bloco Cirúrgico ──
+function BlocoPage({ currentUser, canEdit }) {
+  const [data, setData] = useState(todayStr());
+  const [salas, setSalas] = useState([]);
+  const [cirurgias, setCirurgias] = useState([]);
+  const [showSalas, setShowSalas] = useState(false);
+  const [agendando, setAgendando] = useState(false); // false | true (nova) | objeto (edição)
+  const [cancelando, setCancelando] = useState(null);
+  const [, setTick] = useState(0);
+
+  function refresh(d = data) {
+    if (!USE_SUPABASE) return;
+    loadCcSalas().then(setSalas);
+    loadCcCirurgias(d).then(setCirurgias);
+  }
+  useEffect(() => {
+    refresh(data);
+    const onFocus = () => refresh(data);
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => setTick(t => t + 1), 30000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+  }, [data]);
+
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
+  const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
+
+  async function salvarCirurgia(c, idEdicao) {
+    if (idEdicao) await updateCcCirurgiaRemote(idEdicao, c);
+    else await addCcCirurgiaRemote({ ...c, status: "agendada" }, currentUser);
+    addAuditLog(currentUser, idEdicao ? "editar cirurgia" : "agendar cirurgia", `${c.iniciais} · ${c.procedimento}`, {});
+    setAgendando(false); setTimeout(() => refresh(), 400);
+  }
+  async function cancelar(c, motivo) {
+    await updateCcCirurgiaRemote(c.id, { status: "cancelada", cancelamento_motivo: motivo });
+    addAuditLog(currentUser, "cancelar cirurgia", `${c.iniciais} · ${motivo}`, {});
+    setCancelando(null); setTimeout(() => refresh(), 300);
+  }
+
+  const ativas = cirurgias.filter(c => c.status !== "cancelada");
+  const canceladas = cirurgias.filter(c => c.status === "cancelada");
+  const emAndamento = cirurgias.filter(c => ["checkin", "em_cirurgia", "recuperacao"].includes(c.status));
+  const concluidas = cirurgias.filter(c => c.status === "concluida");
+  const salasAtivas = salas.filter(s => s.ativa !== false);
+  // agrupa por sala pro mapa
+  const porSala = salasAtivas.map(s => ({ sala: s.nome, lista: ativas.filter(c => c.sala === s.nome) }));
+  const semSala = ativas.filter(c => !c.sala || !salasAtivas.some(s => s.nome === c.sala));
+
+  const Card = ({ label, valor, cor }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", minWidth: 120, flex: 1 }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+    </div>
+  );
+  const StatusBadge = ({ st }) => { const v = CC_STATUS[st]; if (!v) return null;
+    return <span style={{ background: v.cor + "22", color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 800 }}>{v.label}</span>; };
+
+  const CirurgiaCard = ({ c }) => (
+    <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${CC_STATUS[c.status]?.cor || "var(--border)"}`, borderRadius: 8, padding: "10px 13px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, fontSize: 13 }}>{c.hora_prevista ? c.hora_prevista.slice(0, 5) : "—"}</span>
+        <strong>{c.iniciais}</strong>
+        {c.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {c.prontuario}</span>}
+        <StatusBadge st={c.status} />
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>{c.duracao_prev_min ? `${c.duracao_prev_min}min prev.` : ""}</span>
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4 }}>{c.procedimento}{c.cirurgiao ? ` · Dr(a). ${c.cirurgiao}` : ""}</div>
+      {c.opme && <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 3 }}>OPME/materiais: {c.opme}</div>}
+      {c.observacao && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Obs.: {c.observacao}</div>}
+      {c.status === "cancelada" && c.cancelamento_motivo && <div style={{ fontSize: 11.5, color: "#f43f5e", marginTop: 3, fontWeight: 600 }}>Motivo: {c.cancelamento_motivo}</div>}
+      {canEdit && c.status === "agendada" && (
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setAgendando(c)} style={btnLeito("var(--text-3)")}>Editar</button>
+          <button onClick={() => setCancelando(c)} style={btnLeito("#f43f5e")}>Cancelar cirurgia</button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Bloco Cirúrgico — Mapa e Agenda</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Agenda por sala, cirurgia segura e tempos do dia. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {canEdit && <button onClick={() => setShowSalas(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Salas ({salasAtivas.length})</button>}
+          {canEdit && <button onClick={() => setAgendando(true)} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Agendar cirurgia</button>}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap" }}>
+        <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Dia do mapa</label>
+        <input type="date" value={data} onChange={e => setData(e.target.value)} style={inp} />
+        {data !== todayStr() && <button onClick={() => setData(todayStr())} style={btnLeito("#22d3ee")}>Hoje</button>}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <Card label="Cirurgias no dia" valor={ativas.length} cor="#22d3ee" />
+        <Card label="Em andamento" valor={emAndamento.length} cor="#3b82f6" />
+        <Card label="Concluídas" valor={concluidas.length} cor="#34d399" />
+        <Card label="Canceladas" valor={canceladas.length} cor={canceladas.length > 0 ? "#f43f5e" : "var(--text)"} />
+      </div>
+
+      {/* MAPA CIRÚRGICO POR SALA */}
+      <div style={secLbl}>Mapa cirúrgico — {new Date(data + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}</div>
+      {salasAtivas.length === 0 ? (
+        <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginBottom: "1.25rem" }}>
+          Nenhuma sala cadastrada. {canEdit ? "Clique em Salas para cadastrar as salas do bloco." : ""}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: "1.25rem" }}>
+          {porSala.map(({ sala, lista }) => (
+            <div key={sala} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                {sala}
+                <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{lista.length} cirurgia(s)</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {lista.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "10px 0" }}>Sala livre neste dia.</div>}
+                {lista.map(c => <CirurgiaCard key={c.id} c={c} />)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {semSala.length > 0 && (
+        <div style={{ marginBottom: "1.25rem" }}>
+          <div style={secLbl}>Sem sala definida ({semSala.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{semSala.map(c => <CirurgiaCard key={c.id} c={c} />)}</div>
+        </div>
+      )}
+
+      {/* CANCELADAS DO DIA */}
+      {canceladas.length > 0 && (
+        <details style={{ marginBottom: "1.25rem" }}>
+          <summary style={{ ...secLbl, cursor: "pointer" }}>Canceladas no dia ({canceladas.length})</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>{canceladas.map(c => <CirurgiaCard key={c.id} c={c} />)}</div>
+        </details>
+      )}
+
+      {agendando && <AgendarCirurgiaModal cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
+      {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
+      {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
+    </div>
+  );
+}
+
+// Modal de agendamento (nova cirurgia ou edição) com detecção de conflito de sala
+function AgendarCirurgiaModal({ cirurgia, data, salas, cirurgiasDoDia, onClose, onSave }) {
+  const [f, setF] = useState({
+    data: cirurgia?.data || data, hora_prevista: cirurgia?.hora_prevista?.slice(0, 5) || "",
+    duracao_prev_min: cirurgia?.duracao_prev_min || "", sala: cirurgia?.sala || "",
+    iniciais: cirurgia?.iniciais || "", prontuario: cirurgia?.prontuario || "",
+    procedimento: cirurgia?.procedimento || "", cirurgiao: cirurgia?.cirurgiao || "",
+    opme: cirurgia?.opme || "", observacao: cirurgia?.observacao || "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
+  const conflitos = f.data === data ? conflitosDeSala(cirurgiasDoDia, f.sala, f.hora_prevista, f.duracao_prev_min, cirurgia?.id) : [];
+  async function salvar() {
+    if (!f.iniciais.trim() || !f.procedimento.trim()) { alert("Informe ao menos as iniciais do paciente e o procedimento."); return; }
+    if (conflitos.length && !confirm(`Atenção: a sala ${f.sala} já tem ${conflitos.length} cirurgia(s) nesse horário (${conflitos.map(c => c.iniciais).join(", ")}). Agendar mesmo assim?`)) return;
+    setBusy(true);
+    await onSave({
+      data: f.data, hora_prevista: f.hora_prevista || null, duracao_prev_min: f.duracao_prev_min ? Number(f.duracao_prev_min) : null,
+      sala: f.sala || null, iniciais: f.iniciais.trim(), prontuario: f.prontuario.trim() || null,
+      procedimento: f.procedimento.trim(), cirurgiao: f.cirurgiao.trim() || null,
+      opme: f.opme.trim() || null, observacao: f.observacao.trim() || null,
+    }, cirurgia?.id);
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 540, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{cirurgia ? "Editar cirurgia" : "Agendar cirurgia"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={lbl}>Data</label><input type="date" value={f.data} onChange={e => set("data", e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Hora prevista</label><input type="time" value={f.hora_prevista} onChange={e => set("hora_prevista", e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Duração (min)</label><input type="number" min="10" step="10" value={f.duracao_prev_min} onChange={e => set("duracao_prev_min", e.target.value)} placeholder="90" style={inp} /></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={lbl}>Sala</label>
+            <select value={f.sala} onChange={e => set("sala", e.target.value)} style={inp}>
+              <option value="">— definir depois —</option>
+              {salas.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+            </select></div>
+          <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="J.S.M." style={inp} /></div>
+          <div><label style={lbl}>Prontuário</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="48213" style={inp} /></div>
+        </div>
+        {conflitos.length > 0 && <div style={{ background: "#3d2206", border: "1px solid #f9731666", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#f97316", fontWeight: 600, marginBottom: 10 }}>Conflito de sala: já há {conflitos.length} cirurgia(s) na {f.sala} nesse intervalo.</div>}
+        <div style={{ marginBottom: 10 }}><label style={lbl}>Procedimento *</label><input value={f.procedimento} onChange={e => set("procedimento", e.target.value)} placeholder="Ex.: Colecistectomia videolaparoscópica" style={inp} /></div>
+        <div style={{ marginBottom: 10 }}><label style={lbl}>Cirurgião</label><input value={f.cirurgiao} onChange={e => set("cirurgiao", e.target.value)} placeholder="Sobrenome do cirurgião" style={inp} /></div>
+        <div style={{ marginBottom: 10 }}><label style={lbl}>Materiais e OPME necessários</label><textarea value={f.opme} onChange={e => set("opme", e.target.value)} rows={2} placeholder="Ex.: kit vídeo, clipes de titânio; OPME: prótese X (fornecedor Y)" style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} /></div>
+        <div style={{ marginBottom: 16 }}><label style={lbl}>Observação</label><input value={f.observacao} onChange={e => set("observacao", e.target.value)} placeholder="Opcional" style={inp} /></div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : cirurgia ? "Salvar alterações" : "Agendar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal de cancelamento com motivo padronizado (alimenta o indicador da Fase C)
+function CancelarCirurgiaModal({ cirurgia, onClose, onConfirm }) {
+  const [motivo, setMotivo] = useState("");
+  const [outro, setOutro] = useState("");
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  function confirmar() {
+    const m = motivo === "Outro" ? (outro.trim() ? `Outro: ${outro.trim()}` : "") : motivo;
+    if (!m) { alert("Escolha o motivo do cancelamento."); return; }
+    onConfirm(cirurgia, m);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 420, maxWidth: "94vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Cancelar cirurgia — {cirurgia.iniciais}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{cirurgia.procedimento}</div>
+        <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 }}>Motivo do cancelamento *</label>
+        <select value={motivo} onChange={e => setMotivo(e.target.value)} style={{ ...inp, marginBottom: 10 }}>
+          <option value="">Escolha…</option>
+          {CC_MOTIVOS_CANCELAMENTO.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+        {motivo === "Outro" && <input value={outro} onChange={e => setOutro(e.target.value)} placeholder="Descreva o motivo" style={{ ...inp, marginBottom: 10 }} />}
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Voltar</button>
+          <button onClick={confirmar} style={{ background: "#f43f5e", color: "#fff", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Confirmar cancelamento</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Gerenciar salas do bloco
+function CcSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
+  const [nome, setNome] = useState("");
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", flex: 1, boxSizing: "border-box" };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Salas do Bloco Cirúrgico</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <input value={nome} onChange={e => setNome(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && nome.trim()) { onSave({ nome: nome.trim(), ordem: salas.length, ativa: true }); setNome(""); } }} placeholder="Ex.: Sala 1" style={inp} />
+          <button onClick={() => { if (nome.trim()) { onSave({ nome: nome.trim(), ordem: salas.length, ativa: true }); setNome(""); } }} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Salvar</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {salas.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>Nenhuma sala cadastrada.</div>}
+          {salas.map(s => (
+            <div key={s.nome} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+              <strong style={{ flex: 1 }}>{s.nome}</strong>
+              <button onClick={() => onSave({ ...s, ativa: s.ativa === false })} style={btnLeito(s.ativa === false ? "#34d399" : "#d97706")}>{s.ativa === false ? "Reativar" : "Desativar"}</button>
+              {isMaster && <button onClick={() => { if (confirm(`Remover a sala ${s.nome}?`)) onDelete(s.nome); }} style={btnLeito("#f43f5e")}>Excluir</button>}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página Pronto-Socorro: chegada → triagem → atendimento → desfecho ──
 function PSPage({ currentUser, canEdit }) {
   const [fila, setFila] = useState([]);
@@ -3617,6 +3940,7 @@ export default function App() {
     { id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
     { id: "d2" },
     { id: "ps",       icon: "activity", label: "Pronto-Socorro" },
+    { id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" },
     { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
     { id: "scih",     icon: "shield", label: "SCIH" },
     { id: "paciente", icon: "record", label: "Paciente 360" },
@@ -3705,6 +4029,7 @@ export default function App() {
           {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
           {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "bloco"     && <BlocoPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
