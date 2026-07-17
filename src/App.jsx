@@ -37,7 +37,7 @@ async function sbFetch(path, opts = {}) {
 // ═══════════════════════════════════════════════════════════
 const SPECS = [
   { id: "cirurgia_geral", label: "Cirurgia Geral", metaM: 360,  metaA: 4320, meta1a: 1320, color: "#22d3ee" },
-  { id: "oftalmologia",   label: "Oftalmologia",   metaM: 240,  metaA: 2880, meta1a: 864,  color: "#a78bfa" },
+  { id: "oftalmologia",   label: "Oftalmologia",   metaM: 240,  metaA: 2880, meta1a: 864,  color: "#38bdf8" },
   { id: "ginecologia",    label: "Ginecologia",    metaM: 240,  metaA: 2880, meta1a: 864,  color: "#34d399" },
   { id: "urologia",       label: "Urologia",       metaM: 240,  metaA: 2880, meta1a: 864,  color: "#fbbf24" },
   { id: "ortopedia",      label: "Ortopedia",      metaM: 387,  metaA: 4644, meta1a: 1394, color: "#60a5fa" },
@@ -74,6 +74,25 @@ function VxWordmark({ size = 14, color = "inherit", spacing = ".1em" }) {
     <span style={{ fontWeight: 800, fontSize: size, letterSpacing: spacing, color }}>
       VALENTRA<span style={{ background: `linear-gradient(135deg, ${VX.azul}, ${VX.royal})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>X</span>
     </span>
+  );
+}
+// Ícones de linha (profissionais, sem emoji) — traço 1.8, herdam a cor do texto
+const ICON_PATHS = {
+  dashboard: <><rect x="3" y="3" width="7.5" height="9.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="5.5" rx="1.5"/><rect x="13.5" y="11.5" width="7.5" height="9.5" rx="1.5"/><rect x="3" y="15.5" width="7.5" height="5.5" rx="1.5"/></>,
+  clinic:    <><path d="M4 21 V6 a2 2 0 0 1 2-2 h12 a2 2 0 0 1 2 2 v15"/><path d="M2 21 h20"/><path d="M12 7 v6 M9 10 h6"/><path d="M9.5 21 v-4 h5 v4"/></>,
+  bed:       <><path d="M3 6 v12"/><path d="M3 15 h18 v3"/><path d="M3 11 h18 v4"/><circle cx="7" cy="8.5" r="1.6"/><path d="M11 11 V9 a1.5 1.5 0 0 1 1.5-1.5 H19 a2 2 0 0 1 2 2 V11"/></>,
+  shield:    <><path d="M12 3 l7 3 v5.5 c0 4.2-2.9 7.4-7 9.5 -4.1-2.1-7-5.3-7-9.5 V6 z"/><path d="M9.2 12 l2 2 3.6-4"/></>,
+  printer:   <><path d="M7 8 V4 h10 v4"/><rect x="4" y="8" width="16" height="8" rx="1.5"/><path d="M7 13 h10 v7 H7 z"/></>,
+  clipboard: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5 V3 h6 v1.5"/><path d="M8.5 9.5 h7 M8.5 13 h7 M8.5 16.5 h4.5"/></>,
+  upload:    <><path d="M4 17 v3 h16 v-3"/><path d="M12 15 V4"/><path d="M7.5 8.5 L12 4 l4.5 4.5"/></>,
+  cloud:     <><path d="M7 18 a4.5 4.5 0 0 1 -.6-8.96 6 6 0 0 1 11.7 1.2 A4 4 0 0 1 17.5 18 z"/></>,
+  users:     <><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19.5 c0-3 2.5-5 5.5-5 s5.5 2 5.5 5"/><circle cx="16.8" cy="9.5" r="2.5"/><path d="M16.5 14.6 c2.4.3 4 2 4 4.4"/></>,
+};
+function Icon({ name, size = 15 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+      {ICON_PATHS[name] || null}
+    </svg>
   );
 }
 const K = "hnsn_v5";
@@ -193,7 +212,7 @@ const AUTH_DOMAIN = "@hnsn.local";    // "laura" -> laura@hnsn.local (o Supabase
 const ROLES = {
   adm_master:   { label: "ADM Master",   color: "#f59e0b", desc: "Acesso total — único que cria usuários, acessa banco e auditoria" },
   adm_silver:   { label: "ADM Silver",   color: "#22d3ee", desc: "Insere dados, importa, auditoria e gera dashboard" },
-  analista:     { label: "Analista",     color: "#a78bfa", desc: "Visualiza e gera dashboard para impressão" },
+  analista:     { label: "Analista",     color: "#38bdf8", desc: "Visualiza e gera dashboard para impressão" },
   visualizador: { label: "Visualizador", color: "var(--text-muted)", desc: "Somente leitura — sem gerar dashboard" },
 };
 
@@ -292,7 +311,7 @@ function calcAlertas(db) {
 
     // Meta atingida — positivo
     else if (pct >= 100)
-      alerts.push({ level: "success", spec: spec.label, msg: `${spec.label} atingiu 100% da meta mensal! 🎉`, color: spec.color });
+      alerts.push({ level: "success", spec: spec.label, msg: `${spec.label} atingiu 100% da meta mensal!`, color: spec.color });
 
     // Alta taxa de faltas
     if (txFalta > 20 && m.ofertadas > 0)
@@ -360,14 +379,14 @@ function DeltaBadge({ value, meta }) {
 function SemaforoMeta({ pct, diasRestantes }) {
   const proj = pct; // já calculado fora
   let cor, icone, texto;
-  if (pct >= 100)                          { cor = "#34d399"; icone = "🟢"; texto = "Meta atingida!"; }
-  else if (diasRestantes > 0 && pct >= 70) { cor = "#fbbf24"; icone = "🟡"; texto = "Precisa acelerar"; }
-  else if (pct < 40 && diasRestantes < 10) { cor = "#fb7185"; icone = "🔴"; texto = "Meta em risco"; }
-  else if (pct >= 40)                      { cor = "#fbbf24"; icone = "🟡"; texto = "Atenção"; }
-  else                                     { cor = "#fb7185"; icone = "🔴"; texto = "Ritmo insuficiente"; }
+  if (pct >= 100)                          { cor = "#34d399"; icone = "●"; texto = "Meta atingida!"; }
+  else if (diasRestantes > 0 && pct >= 70) { cor = "#fbbf24"; icone = "●"; texto = "Precisa acelerar"; }
+  else if (pct < 40 && diasRestantes < 10) { cor = "#fb7185"; icone = "●"; texto = "Meta em risco"; }
+  else if (pct >= 40)                      { cor = "#fbbf24"; icone = "●"; texto = "Atenção"; }
+  else                                     { cor = "#fb7185"; icone = "●"; texto = "Ritmo insuficiente"; }
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, background: cor + "18", border: `1px solid ${cor}44`, borderRadius: 6, padding: "4px 10px" }}>
-      <span style={{ fontSize: 14 }}>{icone}</span>
+      <span style={{ fontSize: 14, color: cor }}>{icone}</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: cor }}>{texto}</span>
     </div>
   );
@@ -403,9 +422,9 @@ function AlertBanner({ db }) {
         width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "6px 1.5rem",
         background: "none", border: "none", cursor: "pointer", textAlign: "left",
       }}>
-        {crits > 0 && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>🔴 {crits} crítico{crits > 1 ? "s" : ""}</span>}
-        {warns > 0 && <span style={{ background: "#3d2e06", color: "#fbbf24", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>⚠️ {warns} atenção</span>}
-        {alerts.filter(a => a.level === "success").length > 0 && <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>✅ {alerts.filter(a => a.level === "success").length} meta(s) atingida(s)</span>}
+        {crits > 0 && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>{crits} crítico{crits > 1 ? "s" : ""}</span>}
+        {warns > 0 && <span style={{ background: "#3d2e06", color: "#fbbf24", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>{warns} atenção</span>}
+        {alerts.filter(a => a.level === "success").length > 0 && <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px" }}>{alerts.filter(a => a.level === "success").length} meta(s) atingida(s)</span>}
         <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}>{open ? "▲ fechar" : "▼ ver alertas"}</span>
       </button>
       {open && (
@@ -417,7 +436,7 @@ function AlertBanner({ db }) {
               borderLeft: `3px solid ${a.level === "critical" ? "#fb7185" : a.level === "warning" ? "#fbbf24" : "#34d399"}`,
               fontSize: 12, color: a.level === "critical" ? "#fb7185" : a.level === "warning" ? "#fbbf24" : "#34d399",
             }}>
-              {a.level === "critical" ? "🔴" : a.level === "warning" ? "⚠️" : "✅"} {a.msg}
+              ● {a.msg}
             </div>
           ))}
         </div>
@@ -518,16 +537,16 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             {[
-              { key: "ofertadas",   icon: "📋", label: "Ofertadas (Gercon)" },
-              { key: "realizadas",  icon: "✅", label: "Realizadas" },
-              { key: "livres",      icon: "🔓", label: "Livres" },
-              { key: "primeiras",   icon: "1️⃣", label: "1ª Consulta" },
-              { key: "retornos",    icon: "🔁", label: "Retorno" },
-              { key: "faltas",      icon: "❌", label: "Faltas" },
-              { key: "emergencias", icon: "🚨", label: "Emergências" },
-            ].map(({ key, icon, label }) => (
+              { key: "ofertadas",   label: "Ofertadas (Gercon)" },
+              { key: "realizadas",  label: "Realizadas" },
+              { key: "livres",      label: "Livres" },
+              { key: "primeiras",   label: "1ª Consulta" },
+              { key: "retornos",    label: "Retorno" },
+              { key: "faltas",      label: "Faltas" },
+              { key: "emergencias", label: "Emergências" },
+            ].map(({ key, label }) => (
               <div key={key}>
-                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, display: "block" }}>{icon} {label}</label>
+                <label style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, display: "block" }}>{label}</label>
                 <input type="number" min="0" value={form[key]}
                   onChange={e => !readOnly && setForm(p => ({ ...p, [key]: e.target.value }))}
                   onFocus={e => !readOnly && (e.target.style.borderColor = spec.color)}
@@ -538,11 +557,11 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
             ))}
           </div>
           {readOnly ? (
-            <div style={{ background: "#3b2f6e", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#a78bfa", textAlign: "center", marginTop: 4 }}>👁 Modo visualização</div>
+            <div style={{ background: "#1e3a5f", borderRadius: 6, padding: "8px 12px", fontSize: 12, color: "#38bdf8", textAlign: "center", marginTop: 4 }}>Modo visualização</div>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
-              <button onClick={handleSave} style={{ background: spec.color, color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", flex: 1 }}>💾 Salvar</button>
-              {saved === "cloud" && <span style={{ color: "#34d399", fontSize: 12, fontWeight: 700 }}>☁️ Salvo e sincronizado!</span>}
+              <button onClick={handleSave} style={{ background: spec.color, color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", flex: 1 }}>Salvar</button>
+              {saved === "cloud" && <span style={{ color: "#34d399", fontSize: 12, fontWeight: 700 }}>Salvo e sincronizado</span>}
               {saved === "local" && <span style={{ color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>⚠️ Salvo SÓ neste aparelho</span>}
             </div>
           )}
@@ -553,7 +572,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
             </div>
             <div style={{ background: "var(--input-bg)", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
               <div style={{ fontSize: 10, color: "var(--text-muted)" }}>1ªS</div>
-              <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 20, color: "#a78bfa", fontWeight: 700 }}>{f("primeiras")}</div>
+              <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 20, color: "#38bdf8", fontWeight: 700 }}>{f("primeiras")}</div>
             </div>
             <div style={{ background: "var(--input-bg)", borderRadius: 6, padding: "6px 10px", flex: 1, textAlign: "center" }}>
               <div style={{ fontSize: 10, color: "var(--text-muted)" }}>LIVRES</div>
@@ -574,7 +593,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           {/* Comparativo mês a mês */}
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>
-              📊 Comparativo de Desempenho
+              Comparativo de Desempenho
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
               {[
@@ -617,7 +636,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               {[
                 { label: "Realizadas", v: mesData.realizadas, max: mesData.ofertadas, c: "#34d399" },
                 { label: "Livres",     v: mesData.livres,     max: mesData.ofertadas, c: "#22d3ee" },
-                { label: "1ªs Cons.",  v: mesData.primeiras,  max: mesData.primeiras + mesData.retornos, c: "#a78bfa" },
+                { label: "1ªs Cons.",  v: mesData.primeiras,  max: mesData.primeiras + mesData.retornos, c: "#38bdf8" },
               ].map(({ label, v, max, c }) => {
                 const p = max > 0 ? Math.min((v / max) * 100, 100) : 0;
                 return (
@@ -640,7 +659,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", display: "flex", gap: "1.5rem", alignItems: "center" }}>
           <RingGauge value={totalMes}   max={spec.metaM}  color={spec.color} label="Meta Mensal"  sub={`${fmt(totalMes)}/${fmt(spec.metaM)}`} />
           <RingGauge value={totalAno}   max={spec.metaA}  color={spec.color} label="Meta Anual"   sub={`${fmt(totalAno)}/${fmt(spec.metaA)}`} />
-          <RingGauge value={total1aAno} max={spec.meta1a} color="#a78bfa"    label="30% 1ª Cons." sub={`${fmt(total1aAno)}/${fmt(spec.meta1a)}`} />
+          <RingGauge value={total1aAno} max={spec.meta1a} color="#38bdf8"    label="30% 1ª Cons." sub={`${fmt(total1aAno)}/${fmt(spec.meta1a)}`} />
         </div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tendência — últimos 12 meses</div>
@@ -651,7 +670,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               <Tooltip content={customTooltip} />
               <ReferenceLine y={spec.metaM} stroke="var(--border-2)" strokeDasharray="4 2" />
               <Area type="monotone" dataKey="total" name="Total" fill={spec.color + "22"} stroke={spec.color} strokeWidth={2} />
-              <Line type="monotone" dataKey="primeiras" name="1ª Consulta" stroke="#a78bfa" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+              <Line type="monotone" dataKey="primeiras" name="1ª Consulta" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -672,7 +691,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
             <Bar dataKey="Total" radius={[4, 4, 0, 0]}>
               {barData.map((entry, i) => <Cell key={i} fill={entry.Total >= spec.metaM ? "#34d399" : entry.Total >= spec.metaM * .7 ? spec.color : "#fb7185"} fillOpacity={.9} />)}
             </Bar>
-            <Bar dataKey="1ª Consulta" fill="#a78bfa" fillOpacity={.7} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="1ª Consulta" fill="#38bdf8" fillOpacity={.7} radius={[3, 3, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -687,7 +706,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
               <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-3)", fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip content={customTooltip} />
               <Bar dataKey="value" name="Qtd." radius={[0, 4, 4, 0]}>
-                {compData.map((_, i) => <Cell key={i} fill={[spec.color,"#34d399","#22d3ee","#a78bfa","#60a5fa","#fb7185","#fbbf24"][i % 7]} fillOpacity={.85} />)}
+                {compData.map((_, i) => <Cell key={i} fill={[spec.color,"#34d399","#22d3ee","#38bdf8","#60a5fa","#fb7185","#fbbf24"][i % 7]} fillOpacity={.85} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -698,7 +717,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Progresso Anual — {ano}</div>
           {[
             { label: "Total de atendimentos", value: totalAno,   meta: spec.metaA,  color: spec.color },
-            { label: "1ª Consultas (30%)",    value: total1aAno, meta: spec.meta1a, color: "#a78bfa" },
+            { label: "1ª Consultas (30%)",    value: total1aAno, meta: spec.meta1a, color: "#38bdf8" },
           ].map(({ label, value, meta, color }) => {
             const p = meta > 0 ? Math.min((value / meta) * 100, 100) : 0;
             return (
@@ -731,7 +750,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
                     <tr key={m.mes}>
                       <td style={{ padding: "4px 6px", color: "var(--text-3)" }}>{MONTHS[m.mes]}</td>
                       <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "var(--text)" }}>{m.total}</td>
-                      <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "#a78bfa" }}>{m.primeiras}</td>
+                      <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "#38bdf8" }}>{m.primeiras}</td>
                       <td style={{ padding: "4px 6px", fontFamily: "JetBrains Mono, monospace", color: "#60a5fa" }}>{m.retornos}</td>
                       <td style={{ padding: "4px 6px" }}><span style={{ background: c + "22", color: c, borderRadius: 99, padding: "1px 6px", fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{pct}%</span></td>
                     </tr>
@@ -863,11 +882,11 @@ function Overview({ db, currentUser, canEdit }) {
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "1.25rem", flexWrap: "wrap", gap: 10 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>🖥️ Centro de Monitoramento — {HOSPITAL_SIGLA}</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>Centro de Monitoramento —{HOSPITAL_SIGLA}</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Leitos, ocupação e solicitações em tempo real</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 18 }}>📅</span>
+
           <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
           <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 80 }} />
         </div>
@@ -876,17 +895,17 @@ function Overview({ db, currentUser, canEdit }) {
       {/* MÉTRICAS GLOBAIS DE LEITOS */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: ".75rem", marginBottom: "1.25rem" }}>
         <StatCard label="Taxa de ocupação" value={ocupacaoG + "%"} color={ocupacaoG >= 90 ? "#f43f5e" : "#22d3ee"} big />
-        <StatCard label={`Giro de leito — ${MONTHS[mes]}`} value={giro.toFixed(2)} color="#a78bfa" big />
+        <StatCard label={`Giro de leito — ${MONTHS[mes]}`} value={giro.toFixed(2)} color="#38bdf8" big />
         <StatCard label="Perman. média" value={permMedia != null ? permMedia.toFixed(1) + "d" : "—"} color="#34d399" big />
         <StatCard label="Aguardando leito" value={totalAguardando} color={totalAguardando > 0 ? "#fbbf24" : "#34d399"} big />
         <StatCard label="Em higienização" value={higienizando} color="#fbbf24" big />
       </div>
 
       {/* ALERTAS POR SETOR */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🚦 Ocupação por setor</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Ocupação por setor</div>
       {setoresOrd.length === 0 ? (
         <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1.25rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginBottom: "1.25rem" }}>
-          Nenhum setor cadastrado. Cadastre em <strong>Giro de Leitos → 🏷️ Setores</strong> e marque o setor de cada leito.
+          Nenhum setor cadastrado. Cadastre em <strong>Giro de Leitos → Setores</strong> e marque o setor de cada leito.
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
@@ -896,13 +915,13 @@ function Overview({ db, currentUser, canEdit }) {
               <div key={setor.nome} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${o.cor}`, borderRadius: 10, padding: "12px 14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{setor.nome}</div>
-                  {o.restringir && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>⛔ RESTRINGIR</span>}
+                  {o.restringir && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 8px", fontSize: 10, fontWeight: 800 }}>RESTRINGIR</span>}
                 </div>
                 <div style={{ fontSize: 30, fontWeight: 800, color: o.cor, fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{o.pct == null ? "—" : o.pct + "%"}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{o.ocupados}/{o.operacionais} ocupados</div>
                 {o.aguardando > 0 && (
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 5, background: "#3d2e06", color: "#fbbf24", borderRadius: 99, padding: "3px 10px", fontSize: 11, fontWeight: 700, marginTop: 7 }}>
-                    🕐 {o.aguardando} na fila · maior espera {fmtDur(o.maiorEsperaMin)}
+                    {o.aguardando} na fila · maior espera {fmtDur(o.maiorEsperaMin)}
                   </div>
                 )}
               </div>
@@ -912,7 +931,7 @@ function Overview({ db, currentUser, canEdit }) {
       )}
 
       {/* SOLICITAÇÕES PENDENTES */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>⏳ Lista de espera por leito ({totalAguardando})</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Lista de espera por leito ({totalAguardando})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
         {canEdit && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: solic.length ? 14 : 0 }}>
@@ -924,7 +943,7 @@ function Overview({ db, currentUser, canEdit }) {
           </div>
         )}
         {solic.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: canEdit ? "8px 0 4px" : "8px 0" }}>Nenhum paciente aguardando leito. ✅</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: canEdit ? "8px 0 4px" : "8px 0" }}>Nenhum paciente aguardando leito.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {solic.map(s => {
@@ -946,7 +965,7 @@ function Overview({ db, currentUser, canEdit }) {
       </div>
 
       {/* ESPECIALIDADES — META x REALIZADO */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🏥 Ambulatório — meta mensal × realizado ({MONTHS[mes]})</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Ambulatório — meta mensal × realizado ({MONTHS[mes]})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
         {specRows.map(({ spec, total, pct }) => (
           <div key={spec.id}>
@@ -1006,7 +1025,7 @@ function OverviewAntigo({ db }) {
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Visão geral de todas as especialidades</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 18 }}>📅</span>
+
           <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>
             {MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}
           </select>
@@ -1017,7 +1036,7 @@ function OverviewAntigo({ db }) {
       {/* KPIs principais */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: ".75rem", marginBottom: ".75rem" }}>
         <StatCard label={`Atendimentos — ${MONTHS_FULL[mes]}`} value={fmt(totalGeral)}    color="#22d3ee" big />
-        <StatCard label={`Acumulado — ${ano}`}                  value={fmt(rows.reduce((a,r)=>a+r.totalA,0))} color="#a78bfa" big />
+        <StatCard label={`Acumulado — ${ano}`}                  value={fmt(rows.reduce((a,r)=>a+r.totalA,0))} color="#38bdf8" big />
         <StatCard label="Especialidades ativas"                  value={SPECS.length}       color="#34d399" big />
         <StatCard label="Taxa de realização"                     value={`${txReal.toFixed(1)}%`} color={txReal>=80?"#34d399":txReal>=60?"#fbbf24":"#fb7185"} big />
       </div>
@@ -1025,18 +1044,18 @@ function OverviewAntigo({ db }) {
       {/* Bloco consolidado mensal */}
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1rem" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: ".85rem" }}>
-          📅 Consolidado — {MONTHS_FULL[mes]}/{ano}
+          Consolidado — {MONTHS_FULL[mes]}/{ano}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: ".75rem", marginBottom: ".85rem" }}>
           {[
-            { icon: "📋", label: "Ofertadas",   value: totalOfertadas,  color: "#22d3ee", sub: "vagas Gercon" },
-            { icon: "✅", label: "Realizadas",  value: totalRealizadas, color: "#34d399", sub: `${txReal.toFixed(1)}% das ofertadas` },
-            { icon: "🔓", label: "Livres",      value: totalLivres,     color: "#60a5fa", sub: "não utilizadas" },
-            { icon: "🚨", label: "Emergências", value: totalEmerg,      color: "#fb7185", sub: "contam na meta" },
-            { icon: "❌", label: "Faltas",      value: totalFaltas,     color: "#fbbf24", sub: "pacientes ausentes" },
-          ].map(({ icon, label, value, color, sub }) => (
+            { label: "Ofertadas",   value: totalOfertadas,  color: "#22d3ee", sub: "vagas Gercon" },
+            { label: "Realizadas",  value: totalRealizadas, color: "#34d399", sub: `${txReal.toFixed(1)}% das ofertadas` },
+            { label: "Livres",      value: totalLivres,     color: "#60a5fa", sub: "não utilizadas" },
+            { label: "Emergências", value: totalEmerg,      color: "#fb7185", sub: "contam na meta" },
+            { label: "Faltas",      value: totalFaltas,     color: "#fbbf24", sub: "pacientes ausentes" },
+          ].map(({ label, value, color, sub }) => (
             <div key={label} style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${color}`, borderRadius: 8, padding: "10px 12px" }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{icon} {label}</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
               <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{fmt(value)}</div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>{sub}</div>
             </div>
@@ -1078,7 +1097,7 @@ function OverviewAntigo({ db }) {
                 {/* Mini stats */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                   {[
-                    { label: "1ª Cons.", v: m.primeiras,   c: "#a78bfa" },
+                    { label: "1ª Cons.", v: m.primeiras,   c: "#38bdf8" },
                     { label: "Retorno",  v: m.retornos,    c: "#60a5fa" },
                     { label: "Emerg.",   v: m.emergencias, c: "#fb7185" },
                     { label: "Ofert.",   v: m.ofertadas,   c: "#22d3ee" },
@@ -1117,7 +1136,7 @@ function OverviewAntigo({ db }) {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
                     {[
                       { label: "Total",   v: acum.total,      c: spec.color },
-                      { label: "1ª Cons.",v: acum.primeiras,  c: "#a78bfa" },
+                      { label: "1ª Cons.",v: acum.primeiras,  c: "#38bdf8" },
                       { label: "Emerg.",  v: acum.emergencias,c: "#fb7185" },
                       { label: "Faltas",  v: acum.faltas,     c: "#fbbf24" },
                     ].map(({ label, v, c }) => (
@@ -1184,15 +1203,15 @@ function PrintDashboard({ db }) {
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <style>{printStyles}</style>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🖨️ Dashboard para Impressão</div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Dashboard para Impressão</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Relatório visual por período — imprima ou salve como PDF</div>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.5rem" }}>
         <div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>MÊS</div>
           <select value={mes} onChange={e => setMes(+e.target.value)} style={inp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
         <div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>ANO</div>
           <input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...inp, width: 90 }} /></div>
-        <button onClick={() => setPreview(true)} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 7, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>👁 Pré-visualizar</button>
-        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimir / PDF</button>}
+        <button onClick={() => setPreview(true)} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 7, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Pré-visualizar</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "9px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
       </div>
       {preview && (
         <div id="print-area" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
@@ -1202,19 +1221,19 @@ function PrintDashboard({ db }) {
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>📅 {MONTHS_FULL[mes]}/{ano}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>{MONTHS_FULL[mes]}/{ano}</div>
               <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Gerado em {geradoEm}</div>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
             {[
-              { icon: "📊", label: "TOTAL ATENDIMENTOS", value: fmt(totalGeral), sub: "todas as especialidades", bg: "#f0fdf4", border: "#86efac", val: "#16a34a" },
-              { icon: "🎯", label: "META TOTAL DO MÊS",  value: fmt(metaGeral),  sub: "soma das especialidades", bg: "#eff6ff", border: "#93c5fd", val: "#1d4ed8" },
-              { icon: diffGeral >= 0 ? "📈" : "📉", label: "DIFERENÇA PARA A META", value: (diffGeral >= 0 ? "+" : "") + fmt(diffGeral), sub: diffGeral >= 0 ? "Acima da meta" : "Abaixo da meta", bg: diffGeral >= 0 ? "#f0fdf4" : "#fef2f2", border: diffGeral >= 0 ? "#86efac" : "#fca5a5", val: diffGeral >= 0 ? "#16a34a" : "#dc2626" },
-              { icon: "🏆", label: "% DA META GERAL",    value: pctGeral.toFixed(1) + "%", sub: "desempenho geral", bg: pctGeral >= 100 ? "#f0fdf4" : "#fef9c3", border: pctGeral >= 100 ? "#86efac" : "#fde047", val: pctGeral >= 100 ? "#16a34a" : "#a16207" },
-            ].map(({ icon, label, value, sub, bg, border, val }) => (
+              { label: "TOTAL ATENDIMENTOS", value: fmt(totalGeral), sub: "todas as especialidades", bg: "#f0fdf4", border: "#86efac", val: "#16a34a" },
+              { label: "META TOTAL DO MÊS",  value: fmt(metaGeral),  sub: "soma das especialidades", bg: "#eff6ff", border: "#93c5fd", val: "#1d4ed8" },
+              { label: "DIFERENÇA PARA A META", value: (diffGeral >= 0 ? "+" : "") + fmt(diffGeral), sub: diffGeral >= 0 ? "Acima da meta" : "Abaixo da meta", bg: diffGeral >= 0 ? "#f0fdf4" : "#fef2f2", border: diffGeral >= 0 ? "#86efac" : "#fca5a5", val: diffGeral >= 0 ? "#16a34a" : "#dc2626" },
+              { label: "% DA META GERAL",    value: pctGeral.toFixed(1) + "%", sub: "desempenho geral", bg: pctGeral >= 100 ? "#f0fdf4" : "#fef9c3", border: pctGeral >= 100 ? "#86efac" : "#fde047", val: pctGeral >= 100 ? "#16a34a" : "#a16207" },
+            ].map(({ label, value, sub, bg, border, val }) => (
               <div key={label} style={{ background: bg, border: `1.5px solid ${border}`, borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{icon} {label}</div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{label}</div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: val, lineHeight: 1, fontFamily: "JetBrains Mono, monospace" }}>{value}</div>
                 <div style={{ fontSize: 10, color: "#64748b", marginTop: 4 }}>{sub}</div>
               </div>
@@ -1283,7 +1302,7 @@ function PrintDashboard({ db }) {
               })}
             </div>
             <div style={{ marginTop: 10, fontSize: 10, color: "#94a3b8", display: "flex", justifyContent: "space-between" }}>
-              <span>✅ Dados referente a {MONTHS_FULL[mes]}/{ano} · Fonte: Valentrax · {HOSPITAL_SIGLA}</span>
+              <span>Dados referente a {MONTHS_FULL[mes]}/{ano} · Fonte: Valentrax · {HOSPITAL_SIGLA}</span>
               <span>Gerado em {geradoEm}</span>
             </div>
           </div>
@@ -1303,7 +1322,7 @@ function AuditoriaPage() {
   const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>📋 Log de Auditoria</div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Log de Auditoria</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Histórico de todas as alterações realizadas na plataforma</div>
       <div style={{ display: "flex", gap: 10, marginBottom: "1rem", alignItems: "center" }}>
         <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar por usuário ou data..." style={{ ...inp, width: 280 }} />
@@ -1375,15 +1394,15 @@ function ImportPage({ onImport, currentUser }) {
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Carregue histórico via CSV</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1rem" }}>
         <label style={{ display: "flex", flexDirection: "column", alignItems: "center", border: "2px dashed var(--border-2)", borderRadius: 8, padding: "2rem", cursor: "pointer", marginBottom: 12 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>📂</div>
+          <div style={{ marginBottom: 8, color: "var(--text-3)" }}><Icon name="upload" size={32} /></div>
           <strong>Clique para selecionar</strong>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>CSV com as colunas abaixo</div>
           <input type="file" accept=".csv" onChange={handleFile} style={{ display: "none" }} />
         </label>
         {msg && <div style={{ fontSize: 13, color: msg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600, marginBottom: 10 }}>{msg}</div>}
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={downloadTemplate} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer" }}>⬇ Baixar Modelo CSV</button>
-          <button onClick={() => { if (confirm("Apagar TODOS os dados?")) { localStorage.removeItem(K); onImport({}); addAuditLog(currentUser, "limpar dados", "todos", {}); } }} style={{ background: "transparent", color: "#fb7185", border: "1px solid #3d0f18", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer" }}>🗑 Apagar todos os dados</button>
+          <button onClick={downloadTemplate} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer" }}>Baixar modelo CSV</button>
+          <button onClick={() => { if (confirm("Apagar TODOS os dados?")) { localStorage.removeItem(K); onImport({}); addAuditLog(currentUser, "limpar dados", "todos", {}); } }} style={{ background: "transparent", color: "#fb7185", border: "1px solid #3d0f18", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer" }}>Excluir Apagar todos os dados</button>
         </div>
       </div>
     </div>
@@ -1463,9 +1482,9 @@ function sinalLeito(dataInternacao, diasPrevistos) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const restam = Math.round((alta - hoje) / 86400000);
   const dataFmt = alta.toLocaleDateString("pt-BR");
-  if (restam < 0)  return { cor: "#f43f5e", texto: `🔴 ${Math.abs(restam)}d após a alta (${dataFmt})`, restam };
-  if (restam <= 1) return { cor: "#fbbf24", texto: restam === 0 ? `🟡 alta prevista hoje (${dataFmt})` : `🟡 falta 1 dia (${dataFmt})`, restam };
-  return { cor: "#34d399", texto: `🟢 faltam ${restam} dias (${dataFmt})`, restam };
+  if (restam < 0)  return { cor: "#f43f5e", texto: `${Math.abs(restam)}d após a alta (${dataFmt})`, restam };
+  if (restam <= 1) return { cor: "#fbbf24", texto: restam === 0 ? `alta prevista hoje (${dataFmt})` : `falta 1 dia (${dataFmt})`, restam };
+  return { cor: "#34d399", texto: `faltam ${restam} dias (${dataFmt})`, restam };
 }
 
 // ── Fase 2: histórico de turnover + utilidades de tempo ──
@@ -1522,7 +1541,7 @@ const ISOLAMENTOS = {
     quarto: "Quarto privativo (ou coorte do mesmo agente).",
   },
   goticulas: {
-    label: "Gotículas", icon: "😷", cor: "#a78bfa", bg: "#241a3d",
+    label: "Gotículas", icon: "😷", cor: "#38bdf8", bg: "#132c47",
     curto: "Gotículas respiratórias maiores que 5 µm; alcançam curtas distâncias (~1 a 2 m).",
     quando: "Doença meningocócica, coqueluche, influenza, difteria, caxumba, rubéola, H. influenzae invasiva.",
     epi: "Máscara cirúrgica ao entrar / aproximar (< 1 m); higiene das mãos. Paciente usa máscara cirúrgica no transporte.",
@@ -1660,18 +1679,18 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "92vw", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>🛏️ Leito {leito.identificacao} — {leito.status === "ocupado" ? "Editar internação" : "Internar paciente"}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Leito {leito.identificacao} — {leito.status === "ocupado" ? "Editar internação" : "Internar paciente"}</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>Dados de saúde — use iniciais e prontuário</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: J.S.M." style={inp} /></div>
           <div><label style={lbl}>Nº prontuário/registro</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="Ex.: 48213" style={inp} /></div>
           <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>Motivo da internação</label><input value={f.motivo} onChange={e => set("motivo", e.target.value)} placeholder="Ex.: Pós-operatório de colecistectomia" style={inp} /></div>
           <div><label style={lbl}>CID</label><input value={f.cid} onChange={e => onCid(e.target.value)} placeholder="Ex.: J18 (pneumonia)" style={inp} />
-            {sug && <div onClick={() => set("dias_previstos", String(sug.dias))} title="Aplicar a referência" style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, cursor: "pointer" }}>💡 {sug.descricao}: ref. {sug.dias}d · <span style={{ textDecoration: "underline" }}>aplicar</span></div>}
+            {sug && <div onClick={() => set("dias_previstos", String(sug.dias))} title="Aplicar a referência" style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, cursor: "pointer" }}>Sugestão — {sug.descricao}: ref. {sug.dias}d · <span style={{ textDecoration: "underline" }}>aplicar</span></div>}
           </div>
           {sug?.tratamento && (
             <div style={{ gridColumn: "1 / 3", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 3 }}>💊 Tratamento de referência ({sug.cid})</div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 3 }}>Tratamento de referência ({sug.cid})</div>
               <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{sug.tratamento}</div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Referência da literatura — a conduta é sempre do médico assistente.</div>
             </div>
@@ -1682,11 +1701,11 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
             <label style={lbl}>Previsão de alta</label>
             <div style={{ ...inp, background: "var(--bg)", color: alta ? "#22d3ee" : "var(--text-muted)", fontWeight: 700 }}>{alta ? alta.toLocaleDateString("pt-BR") : "—"}</div>
           </div>
-          <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>🕐 Hora em que o leito foi solicitado (opcional — p/ indicadores)</label><input type="datetime-local" value={f.solic_em} onChange={e => set("solic_em", e.target.value)} style={inp} /></div>
+          <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>Hora em que o leito foi solicitado (opcional — p/ indicadores)</label><input type="datetime-local" value={f.solic_em} onChange={e => set("solic_em", e.target.value)} style={inp} /></div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
-          <button onClick={submit} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{leito.status === "ocupado" ? "✓ Salvar" : "🛏️ Internar"}</button>
+          <button onClick={submit} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{leito.status === "ocupado" ? "Salvar" : "Internar"}</button>
         </div>
       </div>
     </div>
@@ -1711,7 +1730,7 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 580, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>📚 Referências de CID → dias + tratamento</div>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Referências de CID — dias e tratamento</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Valores e condutas de referência aproximados (literatura) — ajuste conforme seu protocolo, a diária de AIH e o quadro do paciente. Não é recomendação médica; a conduta é sempre do médico assistente.</div>
         <div style={{ display: "grid", gridTemplateColumns: "110px 1fr 80px auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
           <div><label style={hl}>CID</label><input value={f.cid} onChange={e => set("cid", e.target.value)} placeholder="J18" style={inp} /></div>
@@ -1720,7 +1739,7 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
         </div>
         <div style={{ marginBottom: 14 }}>
-          <label style={hl}>💊 Tratamento sugerido (referência da literatura — revisar com a equipe médica)</label>
+          <label style={hl}>Tratamento sugerido (referência da literatura — revisar com a equipe médica)</label>
           <textarea value={f.tratamento} onChange={e => set("tratamento", e.target.value)} placeholder="Ex.: Antibioticoterapia empírica conforme protocolo institucional; reavaliar em 48-72h…" rows={3} style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} />
         </div>
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
@@ -1733,12 +1752,12 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
                   <td style={{ padding: "7px 12px", fontFamily: "JetBrains Mono, monospace", color: "#22d3ee", fontWeight: 700, verticalAlign: "top" }}>{r.cid}</td>
                   <td style={{ padding: "7px 12px", color: "var(--text-2)" }}>
                     {r.descricao}
-                    {r.tratamento && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>💊 {r.tratamento}</div>}
+                    {r.tratamento && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{r.tratamento}</div>}
                   </td>
                   <td style={{ padding: "7px 12px", color: "var(--text)", fontWeight: 700, verticalAlign: "top" }}>{r.dias}d</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap", verticalAlign: "top" }}>
-                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias), tratamento: r.tratamento || "" })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
-                    <button onClick={() => { if (confirm(`Remover a referência ${r.cid}?`)) onDelete(r.cid); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                    <button onClick={() => setF({ cid: r.cid, descricao: r.descricao || "", dias: String(r.dias), tratamento: r.tratamento || "" })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>Editar</button>
+                    <button onClick={() => { if (confirm(`Remover a referência ${r.cid}?`)) onDelete(r.cid); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>Excluir</button>
                   </td>
                 </tr>
               ))}
@@ -1771,17 +1790,17 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>🏷️ Setores e limiares de alerta</div>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Setores e limiares de alerta</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2 }}>Amarelo = atenção; Vermelho = restringir. Ocupação = leitos ocupados ÷ operacionais. A fila de espera aparece como um selo separado no monitoramento, sem contar na ocupação.</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
           <div><label style={hl}>Setor</label><input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: UTI" style={inp} /></div>
-          <div><label style={hl}>🟡 Amarelo %</label><input type="number" value={f.alerta_amarelo} onChange={e => set("alerta_amarelo", e.target.value)} style={inp} /></div>
-          <div><label style={hl}>🔴 Vermelho %</label><input type="number" value={f.alerta_vermelho} onChange={e => set("alerta_vermelho", e.target.value)} style={inp} /></div>
+          <div><label style={hl}>Amarelo %</label><input type="number" value={f.alerta_amarelo} onChange={e => set("alerta_amarelo", e.target.value)} style={inp} /></div>
+          <div><label style={hl}>Vermelho %</label><input type="number" value={f.alerta_vermelho} onChange={e => set("alerta_vermelho", e.target.value)} style={inp} /></div>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
         </div>
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr>{["Setor", "🟡", "🔴", "Leitos", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Setor", "Amarelo", "Vermelho", "Leitos", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
             <tbody>
               {ordenados.length === 0 && <tr><td colSpan={5} style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)" }}>Nenhum setor cadastrado.</td></tr>}
               {ordenados.map(s => (
@@ -1791,8 +1810,8 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
                   <td style={{ padding: "7px 12px", color: "#f43f5e" }}>{s.alerta_vermelho}%</td>
                   <td style={{ padding: "7px 12px", color: "var(--text-3)" }}>{leitos.filter(l => (l.setor || "") === s.nome).length}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button onClick={() => setF({ nome: s.nome, alerta_amarelo: s.alerta_amarelo, alerta_vermelho: s.alerta_vermelho })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>✏️</button>
-                    <button onClick={() => { if (confirm(`Remover o setor ${s.nome}? (os leitos ficam sem setor)`)) onDelete(s.nome); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                    <button onClick={() => setF({ nome: s.nome, alerta_amarelo: s.alerta_amarelo, alerta_vermelho: s.alerta_vermelho })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>Editar</button>
+                    <button onClick={() => { if (confirm(`Remover o setor ${s.nome}? (os leitos ficam sem setor)`)) onDelete(s.nome); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>Excluir</button>
                   </td>
                 </tr>
               ))}
@@ -1897,31 +1916,31 @@ function ScihPage({ currentUser, canEdit }) {
   const gSug = sugerirGerme(f.germe, germes);
 
   const IsoBadge = ({ tipo }) => { const v = ISOLAMENTOS[tipo]; if (!v) return null; return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: v.bg, color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>{v.icon} {v.label}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: v.bg, color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>{v.label}</span>
   ); };
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🦠 SCIH — Controle de Infecção Hospitalar</div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>SCIH — Controle de Infecção Hospitalar</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Precauções/isolamentos e vigilância de pacientes. Dados de saúde — use iniciais e prontuário (LGPD).</div>
         </div>
-        <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>🧬 Base de germes ({germes.length})</button>
+        <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "#38bdf8", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de germes ({germes.length})</button>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
-        <button onClick={() => setSub("vigilancia")} style={subBtn(sub === "vigilancia")}>🧫 Vigilância & Isolamentos</button>
-        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>📊 Indicadores & Relatórios</button>
+        <button onClick={() => setSub("vigilancia")} style={subBtn(sub === "vigilancia")}>Vigilância & Isolamentos</button>
+        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores & Relatórios</button>
       </div>
 
       {sub === "vigilancia" && (<>
       {/* DEFINIÇÕES DE ISOLAMENTO — autoexplicativo */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📖 Tipos de precaução / isolamento</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tipos de precaução / isolamento</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
         {Object.entries(ISOLAMENTOS).map(([k, v]) => (
           <div key={k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${v.cor}`, borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: v.cor, marginBottom: 6 }}>{v.icon} Precaução por {v.label}</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: v.cor, marginBottom: 6 }}>Precaução por {v.label}</div>
             <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55, marginBottom: 8 }}>{v.curto}</div>
             <div style={{ fontSize: 11, color: "var(--text-3)", lineHeight: 1.6 }}>
               <div style={{ marginBottom: 4 }}><strong style={{ color: "var(--text-2)" }}>Quando:</strong> {v.quando}</div>
@@ -1934,10 +1953,10 @@ function ScihPage({ currentUser, canEdit }) {
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: "1.5rem", fontStyle: "italic" }}>Orientações gerais baseadas nas diretrizes da Anvisa (Medidas de Prevenção de IRAS) e literatura (CDC). Sempre seguir o protocolo institucional e a orientação da CCIH.</div>
 
       {/* LEITOS EM ISOLAMENTO AGORA */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🛏️ Leitos em isolamento agora ({leitosIsolados.length})</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Leitos em isolamento agora ({leitosIsolados.length})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.5rem" }}>
         {leitosIsolados.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>Nenhum leito sinalizado como isolamento. Marque em <strong>Giro de Leitos</strong> (seletor 🦠 no card do leito) ou ao cadastrar um caso abaixo.</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>Nenhum leito sinalizado como isolamento. Marque em <strong>Giro de Leitos</strong> (seletor de isolamento no card do leito) ou ao cadastrar um caso abaixo.</div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {leitosIsolados.map(l => (
@@ -1952,11 +1971,11 @@ function ScihPage({ currentUser, canEdit }) {
       </div>
 
       {/* CADASTRO DE CASO DE VIGILÂNCIA */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>🧫 Casos em vigilância ({ativos.length})</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Casos em vigilância ({ativos.length})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.5rem" }}>
         {canEdit && (
           <>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>➕ Cadastrar caso</div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Cadastrar caso</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
               <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: L.S." style={inp} /></div>
               <div><label style={lbl}>Nº prontuário</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="Ex.: 48213" style={inp} /></div>
@@ -1969,13 +1988,13 @@ function ScihPage({ currentUser, canEdit }) {
               <div><label style={lbl}>Tipo de isolamento</label>
                 <select value={f.isolamento} onChange={e => set("isolamento", e.target.value)} style={inp}>
                   <option value="">— nenhum —</option>
-                  {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                  {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                 </select>
               </div>
               <div><label style={lbl}>Data da coleta da cultura</label><input type="date" value={f.data_coleta} onChange={e => set("data_coleta", e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Data do resultado</label><input type="date" value={f.data_resultado} onChange={e => set("data_resultado", e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Germe (o que cresceu)</label><input value={f.germe} onChange={e => onGerme(e.target.value)} placeholder="Ex.: Klebsiella pneumoniae" style={inp} />
-                {gSug && <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, lineHeight: 1.4 }}>💡 {gSug.nome}{gSug.tipo === "multirresistente" ? " (multirresistente)" : ""}{gSug.isolamento && ISOLAMENTOS[gSug.isolamento] ? ` · sugere isolamento ${ISOLAMENTOS[gSug.isolamento].label}` : ""}</div>}
+                {gSug && <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, lineHeight: 1.4 }}>Sugestão: {gSug.nome}{gSug.tipo === "multirresistente" ? " (multirresistente)" : ""}{gSug.isolamento && ISOLAMENTOS[gSug.isolamento] ? ` · isolamento ${ISOLAMENTOS[gSug.isolamento].label}` : ""}</div>}
               </div>
               <div><label style={lbl}>Antibiótico utilizado</label><input value={f.antibiotico} onChange={e => set("antibiotico", e.target.value)} placeholder="Ex.: Meropenem" style={inp} /></div>
               <div><label style={lbl}>Dias de antibiótico</label><input type="number" min="0" value={f.dias_antibiotico} onChange={e => set("dias_antibiotico", e.target.value)} placeholder="Ex.: 7" style={inp} /></div>
@@ -1991,7 +2010,7 @@ function ScihPage({ currentUser, canEdit }) {
           </>
         )}
         {ativos.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum caso em vigilância. ✅</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum caso em vigilância.</div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {ativos.map(c => (
@@ -1999,12 +2018,12 @@ function ScihPage({ currentUser, canEdit }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
                   <strong style={{ fontSize: 14 }}>{c.iniciais}</strong>
                   {c.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {c.prontuario}</span>}
-                  {c.leito && <span style={{ fontSize: 11, color: "#22d3ee", fontWeight: 700 }}>🛏️ leito {c.leito}</span>}
+                  {c.leito && <span style={{ fontSize: 11, color: "#22d3ee", fontWeight: 700 }}>leito {c.leito}</span>}
                   {c.isolamento && <IsoBadge tipo={c.isolamento} />}
-                  {c.multirresistente && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>⚠️ MULTIRRESISTENTE</span>}
+                  {c.multirresistente && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>MULTIRRESISTENTE</span>}
                   {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                     <button onClick={() => encerrar(c)} style={btnLeito("#34d399")}>✓ Encerrar</button>
-                    {currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={btnLeito("#fb7185")}>🗑</button>}
+                    {currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={btnLeito("#fb7185")}>Excluir</button>}
                   </span>}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.7 }}>
@@ -2012,7 +2031,7 @@ function ScihPage({ currentUser, canEdit }) {
                   {c.data_coleta && <span>coleta {new Date(c.data_coleta + "T00:00:00").toLocaleDateString("pt-BR")}{diasDesde(c.data_coleta) != null ? ` (há ${diasDesde(c.data_coleta)}d)` : ""} · </span>}
                   {c.data_resultado && <span>resultado {new Date(c.data_resultado + "T00:00:00").toLocaleDateString("pt-BR")} · </span>}
                   {c.antibiotico && <span><strong style={{ color: "var(--text-2)" }}>ATB:</strong> {c.antibiotico}{c.dias_antibiotico != null ? ` (${c.dias_antibiotico}d)` : ""}</span>}
-                  {c.observacao && <div style={{ color: "var(--text-muted)", marginTop: 2 }}>📝 {c.observacao}</div>}
+                  {c.observacao && <div style={{ color: "var(--text-muted)", marginTop: 2 }}>Obs.: {c.observacao}</div>}
                 </div>
               </div>
             ))}
@@ -2022,15 +2041,15 @@ function ScihPage({ currentUser, canEdit }) {
 
       {encerrados.length > 0 && (
         <details style={{ marginBottom: "1.5rem" }}>
-          <summary style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", cursor: "pointer" }}>📁 Casos encerrados ({encerrados.length})</summary>
+          <summary style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", cursor: "pointer" }}>Casos encerrados ({encerrados.length})</summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
             {encerrados.map(c => (
               <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--text-3)" }}>
                 <strong style={{ color: "var(--text-2)" }}>{c.iniciais}</strong>
-                {c.leito && <span>🛏️ {c.leito}</span>}
+                {c.leito && <span>leito {c.leito}</span>}
                 {c.isolamento && <IsoBadge tipo={c.isolamento} />}
                 {c.germe && <span>· {c.germe}</span>}
-                {canEdit && currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={{ ...btnLeito("#fb7185"), marginLeft: "auto" }}>🗑</button>}
+                {canEdit && currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={{ ...btnLeito("#fb7185"), marginLeft: "auto" }}>Excluir</button>}
               </div>
             ))}
           </div>
@@ -2067,7 +2086,7 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 720, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>🧬 Base de germes — embasamento e isolamento</div>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Base de germes — embasamento e isolamento</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2, lineHeight: 1.5 }}>Referência editável. Ao cadastrar um caso e digitar o germe, o sistema sugere o isolamento e marca multirresistente com base nesta lista. Sempre validar com a CCIH e o antibiograma do paciente.</div>
         {canEdit && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 150px 150px", gap: 8, marginBottom: 8 }}>
@@ -2081,7 +2100,7 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
             <div><label style={hl}>Isolamento sugerido</label>
               <select value={f.isolamento} onChange={e => set("isolamento", e.target.value)} style={inp}>
                 <option value="">— nenhum —</option>
-                {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
           </div>
@@ -2095,7 +2114,7 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
             </div>
           </>
         )}
-        <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="🔎 Filtrar germe…" style={{ ...inp, marginBottom: 10 }} />
+        <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar germe…" style={{ ...inp, marginBottom: 10 }} />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {ordenados.length === 0 && <div style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Nenhum germe cadastrado.</div>}
           {ordenados.map(g => (
@@ -2105,14 +2124,14 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
                 {g.tipo === "multirresistente"
                   ? <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>MULTIRRESISTENTE</span>
                   : <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>SENSÍVEL</span>}
-                {g.isolamento && ISOLAMENTOS[g.isolamento] && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ISOLAMENTOS[g.isolamento].bg, color: ISOLAMENTOS[g.isolamento].cor, border: `1px solid ${ISOLAMENTOS[g.isolamento].cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>{ISOLAMENTOS[g.isolamento].icon} {ISOLAMENTOS[g.isolamento].label}</span>}
+                {g.isolamento && ISOLAMENTOS[g.isolamento] && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ISOLAMENTOS[g.isolamento].bg, color: ISOLAMENTOS[g.isolamento].cor, border: `1px solid ${ISOLAMENTOS[g.isolamento].cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>{ISOLAMENTOS[g.isolamento].label}</span>}
                 {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                  <button onClick={() => setF({ nome: g.nome, tipo: g.tipo || "multirresistente", isolamento: g.isolamento || "", embasamento: g.embasamento || "", observacao: g.observacao || "" })} style={btnLeito("#22d3ee")}>✏️</button>
-                  {isMaster && <button onClick={() => { if (confirm(`Remover o germe ${g.nome}?`)) onDelete(g.nome); }} style={btnLeito("#fb7185")}>🗑</button>}
+                  <button onClick={() => setF({ nome: g.nome, tipo: g.tipo || "multirresistente", isolamento: g.isolamento || "", embasamento: g.embasamento || "", observacao: g.observacao || "" })} style={btnLeito("#22d3ee")}>Editar</button>
+                  {isMaster && <button onClick={() => { if (confirm(`Remover o germe ${g.nome}?`)) onDelete(g.nome); }} style={btnLeito("#fb7185")}>Excluir</button>}
                 </span>}
               </div>
               {g.embasamento && <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{g.embasamento}</div>}
-              {g.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>📝 {g.observacao}</div>}
+              {g.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>Obs.: {g.observacao}</div>}
             </div>
           ))}
         </div>
@@ -2216,15 +2235,15 @@ function IndicadoresScih({ currentUser, canEdit }) {
       <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
         <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
-        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "📄 Relatório do mês"}</button>
-        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>🖨️ Imprimir / PDF</button>}
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
       </div>
 
       {/* PAINEL DE TAXAS DO MÊS */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📊 Taxas de {MONTHS_FULL[mes]}/{ano}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Taxas de {MONTHS_FULL[mes]}/{ano}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
         <RateCard label="Adesão higiene de mãos" valor={r.higiene != null ? fmt1(r.higiene) : "—"} unidade="%" cor={r.higiene == null ? "var(--border)" : r.higiene >= 80 ? "#34d399" : r.higiene >= 60 ? "#fbbf24" : "#f43f5e"} sub="realizadas ÷ oportunidades" />
-        <RateCard label="Densidade de PAV" valor={r.pav != null ? fmt1(r.pav) : "—"} unidade="/1000 vent-dia" cor={r.pav == null ? "var(--border)" : "#a78bfa"} sub="casos ÷ ventilador-dia" />
+        <RateCard label="Densidade de PAV" valor={r.pav != null ? fmt1(r.pav) : "—"} unidade="/1000 vent-dia" cor={r.pav == null ? "var(--border)" : "#38bdf8"} sub="casos ÷ ventilador-dia" />
         <RateCard label="Uso de antimicrobiano" valor={r.antimicrobiano != null ? fmt1(r.antimicrobiano) : "—"} unidade="DOT/1000 pac-dia" cor={r.antimicrobiano == null ? "var(--border)" : "#22d3ee"} sub="DOT ÷ pacientes-dia" />
         <RateCard label="Positividade de culturas" valor={r.culturasPos != null ? fmt1(r.culturasPos) : "—"} unidade="%" cor={r.culturasPos == null ? "var(--border)" : "#60a5fa"} sub="positivas ÷ coletadas" />
         <RateCard label="ISC cesariana" valor={r.iscCesariana != null ? fmt1(r.iscCesariana) : "—"} unidade="%" cor={r.iscCesariana == null ? "var(--border)" : r.iscCesariana > 0 ? "#fbbf24" : "#34d399"} sub="infecções ÷ cirurgias" />
@@ -2233,7 +2252,7 @@ function IndicadoresScih({ currentUser, canEdit }) {
       </div>
 
       {/* LANÇAMENTO MENSAL */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>✍️ Lançamento de {MONTHS_FULL[mes]}/{ano} {canEdit ? "" : "(somente leitura)"}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Lançamento de {MONTHS_FULL[mes]}/{ano} {canEdit ? "" : "(somente leitura)"}</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.5rem" }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Volumes do mês</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
@@ -2266,14 +2285,14 @@ function IndicadoresScih({ currentUser, canEdit }) {
           <NumField k="treinamentos_participantes" label="Participantes" />
         </div>
         <div style={{ marginBottom: canEdit ? 16 : 0 }}><label style={lbl}>Observação</label><input value={form.observacao ?? ""} onChange={e => setForm(p => ({ ...p, observacao: e.target.value }))} disabled={!canEdit} placeholder="Notas do mês" style={inp} /></div>
-        {canEdit && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 22px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "Salvando…" : "💾 Salvar lançamento do mês"}</button>}
+        {canEdit && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 22px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "Salvando…" : "Salvar lançamento do mês"}</button>}
       </div>
 
       {/* TENDÊNCIAS */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📈 Tendência (últimos {ultimos.length || 0} meses lançados)</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Tendência (últimos {ultimos.length || 0} meses lançados)</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
         <MiniTrend titulo="Adesão higiene de mãos" chave="higiene" unidade="%" cor="#34d399" />
-        <MiniTrend titulo="Densidade de PAV" chave="pav" unidade="/1000 vent-dia" cor="#a78bfa" />
+        <MiniTrend titulo="Densidade de PAV" chave="pav" unidade="/1000 vent-dia" cor="#38bdf8" />
         <MiniTrend titulo="Uso de antimicrobiano" chave="antimicrobiano" unidade="DOT/1000 pac-dia" cor="#22d3ee" />
         <MiniTrend titulo="ISC cesariana" chave="iscCesariana" unidade="%" cor="#fbbf24" />
       </div>
@@ -2286,7 +2305,7 @@ function IndicadoresScih({ currentUser, canEdit }) {
               <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Indicadores de controle de infecção</div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>📅 {MONTHS_FULL[mes]}/{ano}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>{MONTHS_FULL[mes]}/{ano}</div>
               <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Gerado em {new Date().toLocaleString("pt-BR")}</div>
             </div>
           </div>
@@ -2457,27 +2476,27 @@ function LeitosPage({ currentUser, canEdit }) {
 
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>🛏️ Giro de Leitos</div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Giro de Leitos</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Painel de gestão de leitos e previsão de alta</div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <Card label="Leitos" valor={total} />
         <Card label="Ocupados" valor={ocupados} cor="#22d3ee" />
         <Card label="Livres" valor={livres} cor="#34d399" />
-        <Card label="Higienização 🧼" valor={higienizando} cor="#fbbf24" />
+        <Card label="Higienização" valor={higienizando} cor="#fbbf24" />
         <Card label="Interditados" valor={interditados} cor="#fb7185" />
         <Card label="Ocupação" valor={ocupacao + "%"} cor={ocupacao >= 90 ? "#f43f5e" : "var(--text)"} />
-        <Card label="Alta próxima 🟡" valor={amarelos} cor="#fbbf24" />
-        <Card label="Alta vencida 🔴" valor={vermelhos} cor="#f43f5e" />
+        <Card label="Alta próxima" valor={amarelos} cor="#fbbf24" />
+        <Card label="Alta vencida" valor={vermelhos} cor="#f43f5e" />
       </div>
 
       {canEdit && (
         <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center" }}>
           <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 260 }} />
           <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
-          <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>🏷️ Setores</button>
-          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>📊 Indicadores</button>
-          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#a78bfa", border: "1px solid #3b2f6e", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>📚 Referências de CID</button>
+          <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "#60a5fa", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>Setores</button>
+          <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: "#34d399", border: "1px solid #14503a", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Indicadores</button>
+          <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "#38bdf8", border: "1px solid #1e3a5f", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Referências de CID</button>
         </div>
       )}
 
@@ -2500,22 +2519,22 @@ function LeitosPage({ currentUser, canEdit }) {
 
                 {l.isolamento && ISOLAMENTOS[l.isolamento] && (
                   <div title={ISOLAMENTOS[l.isolamento].curto} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: ISOLAMENTOS[l.isolamento].bg, color: ISOLAMENTOS[l.isolamento].cor, border: `1px solid ${ISOLAMENTOS[l.isolamento].cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 800, marginBottom: 8 }}>
-                    {ISOLAMENTOS[l.isolamento].icon} Isolamento {ISOLAMENTOS[l.isolamento].label}
+                    Isolamento {ISOLAMENTOS[l.isolamento].label}
                   </div>
                 )}
 
                 {canEdit ? (
                   <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                     <select value={l.setor || ""} onChange={e => setSetorLeito(l, e.target.value)} style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 7px", color: l.setor ? "#60a5fa" : "var(--text-muted)", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", maxWidth: "100%", cursor: "pointer" }}>
-                      <option value="">🏷️ sem setor</option>
+                      <option value="">sem setor</option>
                       {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
                     </select>
                     <select value={l.isolamento || ""} onChange={e => setIsolamentoLeito(l, e.target.value)} title="Marcar leito como isolamento" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 7px", color: l.isolamento && ISOLAMENTOS[l.isolamento] ? ISOLAMENTOS[l.isolamento].cor : "var(--text-muted)", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", maxWidth: "100%", cursor: "pointer" }}>
-                      <option value="">🦠 sem isolamento</option>
-                      {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                      <option value="">sem isolamento</option>
+                      {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
                   </div>
-                ) : l.setor && <div style={{ marginBottom: 8, fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>🏷️ {l.setor}</div>}
+                ) : l.setor && <div style={{ marginBottom: 8, fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>{l.setor}</div>}
 
                 {l.status === "ocupado" && (
                   <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
@@ -2534,7 +2553,7 @@ function LeitosPage({ currentUser, canEdit }) {
                 )}
                 {l.status === "higienizacao" && (
                   <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
-                    <div>🧼 Em higienização</div>
+                    <div>Em higienização</div>
                     <div style={{ color: "var(--text-muted)" }}>Vagou: {horaFmt(l.disp_em)}</div>
                     <div style={{ marginTop: 4, color: "#fbbf24", fontWeight: 700 }}>Limpando há {fmtDur(diffMin(l.disp_em, nowISO()))}</div>
                   </div>
@@ -2546,7 +2565,7 @@ function LeitosPage({ currentUser, canEdit }) {
                     {l.status === "livre" && <>
                       <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>Internar</button>
                       <button onClick={() => interditar(l)} style={btnLeito("#fbbf24")}>Interditar</button>
-                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>🗑</button>
+                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>Excluir</button>
                     </>}
                     {l.status === "ocupado" && <>
                       <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
@@ -2554,12 +2573,12 @@ function LeitosPage({ currentUser, canEdit }) {
                     </>}
                     {l.status === "higienizacao" && <>
                       <button onClick={() => marcarPronto(l)} style={btnLeito("#34d399")}>✓ Pronto</button>
-                      <button onClick={() => setTempos(l)} style={btnLeito("var(--text-3)")}>⏱ Ajustar</button>
+                      <button onClick={() => setTempos(l)} style={btnLeito("var(--text-3)")}>Ajustar</button>
                       <button onClick={() => interditar(l)} style={btnLeito("#fb7185")}>Interditar</button>
                     </>}
                     {l.status === "interditado" && <>
                       <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
-                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>🗑</button>
+                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>Excluir</button>
                     </>}
                   </div>
                 )}
@@ -2593,7 +2612,7 @@ function TemposModal({ leito, onClose, onSave }) {
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "92vw" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>⏱ Tempos do leito {leito.identificacao}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Tempos do leito {leito.identificacao}</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 18 }}>Ajuste se registrou fora do horário real.</div>
         <div style={{ marginBottom: 14 }}>
           <label style={lbl}>Disponibilizado (paciente vagou)</label>
@@ -2603,7 +2622,7 @@ function TemposModal({ leito, onClose, onSave }) {
           <label style={lbl}>Pronto (higienização concluída)</label>
           <div style={{ display: "flex", gap: 8 }}><input type="datetime-local" value={pronto} onChange={e => setPronto(e.target.value)} style={inp} /><button onClick={() => setPronto(agora())} style={btnAgora}>agora</button></div>
         </div>
-        <div style={{ background: "var(--input-bg)", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#fbbf24", fontWeight: 700, marginBottom: 18 }}>🧼 Tempo de higienização: {fmtDur(limpeza)}</div>
+        <div style={{ background: "var(--input-bg)", borderRadius: 8, padding: "10px 12px", fontSize: 13, color: "#fbbf24", fontWeight: 700, marginBottom: 18 }}>Tempo de higienização: {fmtDur(limpeza)}</div>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={() => onSave({ disp_em: localToIso(disp), pronto_em: localToIso(pronto) })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Salvar</button>
@@ -2653,7 +2672,7 @@ function IndicadoresModal({ leitos, onClose }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>📊 Indicadores de Giro de Leitos</div>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Indicadores de Giro de Leitos</div>
           <div style={{ display: "flex", gap: 8 }}>
             <select value={mes} onChange={e => setMes(Number(e.target.value))} style={sel}>{MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
             <select value={ano} onChange={e => setAno(Number(e.target.value))} style={sel}>{anos.map(a => <option key={a} value={a}>{a}</option>)}</select>
@@ -2665,7 +2684,7 @@ function IndicadoresModal({ leitos, onClose }) {
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 14 }}>
               <Metric label="Altas no mês" valor={altas} cor="#22d3ee" />
-              <Metric label="Média de permanência" valor={permMedia != null ? permMedia.toFixed(1) : "—"} sub="dias por internação" cor="#a78bfa" />
+              <Metric label="Média de permanência" valor={permMedia != null ? permMedia.toFixed(1) : "—"} sub="dias por internação" cor="#38bdf8" />
               <Metric label="Giro de leito" valor={giro != null ? giro.toFixed(2) : "—"} sub="altas ÷ leitos operacionais" cor="#34d399" />
               <Metric label="Higienização média" valor={fmtDur(higMin)} sub="disponibilizado → pronto" cor="#fbbf24" />
               <Metric label="Substituição média" valor={fmtDur(subMin)} sub="vagou → próximo paciente" cor="#fbbf24" />
@@ -2711,7 +2730,7 @@ function UsersPage({ currentUser }) {
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
 
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 460 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>🔑 Trocar minha senha</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Trocar minha senha</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <input type="password" value={np1} placeholder="Nova senha (mín. 6 caracteres)" onChange={e => { setNp1(e.target.value); setMsg(""); }} style={inp} autoComplete="new-password" />
           <input type="password" value={np2} placeholder="Repita a nova senha" onChange={e => { setNp2(e.target.value); setMsg(""); }} onKeyDown={e => e.key === "Enter" && handleChangePw()} style={inp} autoComplete="new-password" />
@@ -2755,12 +2774,12 @@ function UsersPage({ currentUser }) {
 function SupabasePage() {
   return (
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>☁️ Banco de Dados — Supabase</div>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Banco de Dados — Supabase</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Configure o banco de dados para sincronização em tempo real entre dispositivos</div>
 
       <div style={{ background: USE_SUPABASE ? "#0a3d2a" : "#3d2e06", border: `1px solid ${USE_SUPABASE ? "#34d399" : "#fbbf24"}`, borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: USE_SUPABASE ? "#34d399" : "#fbbf24" }}>
-          {USE_SUPABASE ? "✅ Supabase conectado e ativo" : "⚠️ Supabase não configurado — usando localStorage"}
+          {USE_SUPABASE ? "Supabase conectado e ativo" : "⚠️ Supabase não configurado — usando localStorage"}
         </div>
         <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 4 }}>
           {USE_SUPABASE ? "Os dados estão sendo sincronizados em tempo real." : "Os dados ficam somente neste navegador. Configure o Supabase para persistência real."}
@@ -2785,7 +2804,7 @@ function SupabasePage() {
       ))}
 
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>📄 SQL — Execute no Supabase SQL Editor</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>SQL — Execute no Supabase SQL Editor</div>
         <pre style={{ background: "var(--input-bg)", borderRadius: 8, padding: "1rem", fontSize: 11, color: "#34d399", overflowX: "auto", lineHeight: 1.6 }}>{`-- Tabela de atendimentos
 create table if not exists atendimentos (
   id bigserial primary key,
@@ -2957,17 +2976,17 @@ export default function App() {
   const now = new Date();
   const role = ROLES[currentUser.role];
   const sidebarItems = [
-    { id: "overview",  icon: "📊", label: "Visão Geral" },
+    { id: "overview",  icon: "dashboard", label: "Visão Geral" },
     { id: "d1" },
-    { id: "ambulatorio", icon: "🏥", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
+    { id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
     { id: "d2" },
-    { id: "leitos",   icon: "🛏️", label: "Giro de Leitos" },
-    { id: "scih",     icon: "🦠", label: "SCIH" },
-    ...(canPrint    ? [{ id: "print",     icon: "🖨️", label: "Imprimir Dashboard" }] : []),
-    ...(canAudit    ? [{ id: "auditoria", icon: "📋", label: "Auditoria" }]           : []),
-    ...(canImport   ? [{ id: "import",    icon: "📂", label: "Importar Dados" }]      : []),
-    ...(canSupabase ? [{ id: "supabase",  icon: "☁️", label: "Banco de Dados" }]      : []),
-    ...(canUsers    ? [{ id: "users",     icon: "👥", label: "Usuários" }]            : []),
+    { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
+    { id: "scih",     icon: "shield", label: "SCIH" },
+    ...(canPrint    ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
+    ...(canAudit    ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
+    ...(canImport   ? [{ id: "import",    icon: "upload",    label: "Importar Dados" }]      : []),
+    ...(canSupabase ? [{ id: "supabase",  icon: "cloud",     label: "Banco de Dados" }]      : []),
+    ...(canUsers    ? [{ id: "users",     icon: "users",     label: "Usuários" }]            : []),
   ];
   const currentSpec = SPECS.find(s => s.id === active);
 
@@ -2983,7 +3002,7 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <span style={{ fontSize: 11, color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 11px", whiteSpace: "nowrap" }}>🏥 {HOSPITAL_NOME}</span>
+          <span style={{ fontSize: 11, color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 11px", whiteSpace: "nowrap" }}>{HOSPITAL_NOME}</span>
           <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{now.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}</div>
           <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Alternar tema claro/escuro" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 9px", color: "var(--text-3)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>{theme === "dark" ? "☀️" : "🌙"}</button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -2991,8 +3010,8 @@ export default function App() {
               <div style={{ fontSize: 13, fontWeight: 600 }}>{currentUser.name}</div>
               <div style={{ fontSize: 10, color: role.color, fontWeight: 700 }}>{role.label}</div>
             </div>
-            <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, background: role.color + "22", border: `1px solid ${role.color}44` }}>
-              {currentUser.role === "adm_master" ? "👑" : currentUser.role === "adm_silver" ? "🥈" : currentUser.role === "analista" ? "📊" : "👁"}
+            <div style={{ width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: role.color, background: role.color + "22", border: `1px solid ${role.color}44` }}>
+              {(currentUser.name || "?").charAt(0).toUpperCase()}
             </div>
             <button onClick={handleLogout} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 10px", color: "var(--text-muted)", cursor: "pointer", fontSize: 12, fontFamily: "Inter, sans-serif" }}
               onMouseOver={e => { e.currentTarget.style.borderColor = "#fb7185"; e.currentTarget.style.color = "#fb7185"; }}
@@ -3009,7 +3028,7 @@ export default function App() {
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* SIDEBAR */}
         <nav style={{ width: 215, minWidth: 215, background: "var(--bg-2)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
-          {isReadOnly && <div style={{ margin: "0 10px 8px", background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>👁 Somente visualização</div>}
+          {isReadOnly && <div style={{ margin: "0 10px 8px", background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>Somente visualização</div>}
           {sidebarItems.map((item, i) => {
             if (item.id?.startsWith("d")) return <div key={i} style={{ height: 1, background: "var(--surface-3)", margin: ".5rem 0" }} />;
 
@@ -3018,8 +3037,8 @@ export default function App() {
               const childActive = item.children.some(c => c.id === active);
               return (
                 <div key={item.id}>
-                  <button onClick={() => setAmbOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "var(--text-2)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "var(--surface)" : "transparent" }}>
-                    <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>{item.label}
+                  <button onClick={() => setAmbOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "var(--text-2)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "var(--surface)" : "transparent" }}>
+                    <Icon name={item.icon} />{item.label}
                     <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)" }}>{ambOpen ? "▾" : "▸"}</span>
                   </button>
                   {ambOpen && item.children.map(c => {
@@ -3036,8 +3055,8 @@ export default function App() {
 
             const isActive = active === item.id;
             return (
-              <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 8, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
-                <span style={{ fontSize: 14, width: 18, textAlign: "center" }}>{item.icon}</span>{item.label}
+              <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
+                <Icon name={item.icon} />{item.label}
               </button>
             );
           })}
