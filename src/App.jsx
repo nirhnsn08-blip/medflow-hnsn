@@ -44,6 +44,38 @@ const SPECS = [
 ];
 const MONTHS      = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+// ═══════════════════════════════════════════════════════════
+// MARCA VALENTRAX — Healthcare Operations
+// Símbolo: hub radial de correntes curvas convergindo no núcleo
+// (setores do hospital conectados ao centro analítico).
+// ═══════════════════════════════════════════════════════════
+const VX = { turquesa: "#2dd4bf", azul: "#38bdf8", royal: "#1d4ed8", prata: "#8d99ab", marinho: "#101c30", marinho2: "#14233a", borda: "#23395a" };
+function VxLogo({ size = 30 }) {
+  const ray = (rot, cor, w, r, op = 1) => (
+    <g key={rot} transform={`rotate(${rot} 36 36)`} opacity={op}>
+      <path d="M45 35.4 C 51 34.6, 55.5 32.6, 59 29.6" stroke={cor} strokeWidth={w} fill="none" strokeLinecap="round" />
+      <circle cx="60.6" cy="28.2" r={r} fill={cor} />
+    </g>
+  );
+  return (
+    <svg viewBox="0 0 72 72" width={size} height={size} aria-hidden="true" style={{ flexShrink: 0 }}>
+      {[0, 90, 180, 270].map(a => ray(a, VX.turquesa, 3.2, 2.8))}
+      {[45, 225].map(a => ray(a, VX.azul, 2.5, 2.2))}
+      {[135, 315].map(a => ray(a, VX.prata, 2.5, 2.2, 0.85))}
+      <circle cx="36" cy="36" r="12.5" fill="none" stroke={VX.turquesa} strokeWidth="1" opacity=".25" />
+      <circle cx="36" cy="36" r="8.2" fill={VX.turquesa} />
+    </svg>
+  );
+}
+// Wordmark VALENTRAX com o X em degradê azul
+function VxWordmark({ size = 14, color = "inherit", spacing = ".1em" }) {
+  return (
+    <span style={{ fontWeight: 800, fontSize: size, letterSpacing: spacing, color }}>
+      VALENTRA<span style={{ background: `linear-gradient(135deg, ${VX.azul}, ${VX.royal})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>X</span>
+    </span>
+  );
+}
 const K = "hnsn_v5";
 
 // ═══════════════════════════════════════════════════════════
@@ -1166,8 +1198,8 @@ function PrintDashboard({ db }) {
         <div id="print-area" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
             <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>⚕ DASHBOARD AMBULATÓRIO — {HOSPITAL_SIGLA}</div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · MedFlow {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>DASHBOARD AMBULATÓRIO — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>📅 {MONTHS_FULL[mes]}/{ano}</div>
@@ -1251,7 +1283,7 @@ function PrintDashboard({ db }) {
               })}
             </div>
             <div style={{ marginTop: 10, fontSize: 10, color: "#94a3b8", display: "flex", justifyContent: "space-between" }}>
-              <span>✅ Dados referente a {MONTHS_FULL[mes]}/{ano} · Fonte: MedFlow {HOSPITAL_SIGLA}</span>
+              <span>✅ Dados referente a {MONTHS_FULL[mes]}/{ano} · Fonte: Valentrax · {HOSPITAL_SIGLA}</span>
               <span>Gerado em {geradoEm}</span>
             </div>
           </div>
@@ -2250,8 +2282,8 @@ function IndicadoresScih({ currentUser, canEdit }) {
         <div id="scih-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>🦠 RELATÓRIO SCIH — {HOSPITAL_SIGLA}</div>
-              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Indicadores de controle de infecção</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>RELATÓRIO SCIH — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Indicadores de controle de infecção</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>📅 {MONTHS_FULL[mes]}/{ano}</div>
@@ -2267,7 +2299,7 @@ function IndicadoresScih({ currentUser, canEdit }) {
             </tbody>
           </table>
           {form.observacao && <div style={{ marginTop: 12, fontSize: 11, color: "#475569" }}><strong>Observação:</strong> {form.observacao}</div>}
-          <div style={{ marginTop: 16, fontSize: 10, color: "#94a3b8", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Relatório gerado pelo MedFlow · dados lançados manualmente pela equipe do SCIH. Taxas calculadas automaticamente. Documento de apoio à CCIH.</div>
+          <div style={{ marginTop: 16, fontSize: 10, color: "#94a3b8", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Relatório gerado pela Valentrax Healthcare Operations · dados lançados manualmente pela equipe do SCIH. Taxas calculadas automaticamente. Documento de apoio à CCIH.</div>
         </div>
       )}
     </div>
@@ -2740,7 +2772,7 @@ function SupabasePage() {
         { step: "2", title: "Criar um novo projeto", desc: "Clique em 'New Project', dê o nome 'medflow-hnsn', escolha a região 'South America (São Paulo)' e defina uma senha forte." },
         { step: "3", title: "Criar as tabelas", desc: "Vá em SQL Editor e execute o script abaixo para criar as tabelas necessárias." },
         { step: "4", title: "Pegar as credenciais", desc: "Vá em Settings → API. Copie a 'Project URL' e a 'anon public key'." },
-        { step: "5", title: "Adicionar as credenciais ao projeto", desc: "No arquivo index.html do MedFlow, adicione antes do </body>:\n\n<script>\n  window.SUPABASE_URL = 'sua-url-aqui';\n  window.SUPABASE_KEY = 'sua-chave-aqui';\n</script>" },
+        { step: "5", title: "Adicionar as credenciais ao projeto", desc: "No arquivo index.html do Valentrax, adicione antes do </body>:\n\n<script>\n  window.SUPABASE_URL = 'sua-url-aqui';\n  window.SUPABASE_KEY = 'sua-chave-aqui';\n</script>" },
       ].map(({ step, title, desc, action, url }) => (
         <div key={step} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: ".75rem", display: "flex", gap: "1rem" }}>
           <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#22d3ee22", border: "1px solid #22d3ee", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#22d3ee", flexShrink: 0 }}>{step}</div>
@@ -2810,29 +2842,31 @@ function LoginScreen({ onLogin }) {
     if (r.ok) onLogin(r.user);
     else { setError(r.error); setShake(true); setTimeout(() => setShake(false), 500); }
   }
-  const inp = { width: "100%", padding: "11px 14px", borderRadius: 8, border: "1.5px solid #e5e7eb", fontSize: 14, outline: "none", fontFamily: "Inter, sans-serif", background: "#fff", color: "#111", transition: "border .15s", boxSizing: "border-box" };
+  const inp = { width: "100%", padding: "11px 14px", borderRadius: 8, border: `1.5px solid #2a4166`, fontSize: 14, outline: "none", fontFamily: "Inter, sans-serif", background: "#0f1b2e", color: "#e9eef5", transition: "border .15s", boxSizing: "border-box" };
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: "2.5rem 2rem", width: 380, boxShadow: "0 20px 60px rgba(0,0,0,.12)", animation: shake ? "shake .4s ease" : "fadeIn .4s ease" }}>
+    <div style={{ minHeight: "100vh", background: `radial-gradient(90% 130% at 75% -25%, #1c3356 0%, ${VX.marinho} 60%)`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Inter, sans-serif" }}>
+      <div style={{ background: VX.marinho2, border: `1px solid #2a4166`, borderRadius: 16, padding: "2.5rem 2rem", width: 380, boxShadow: "0 20px 60px rgba(2,8,20,.55)", animation: shake ? "shake .4s ease" : "fadeIn .4s ease" }}>
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, margin: "0 auto 12px", background: "linear-gradient(135deg, #22d3ee, #a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 8px 24px rgba(34,211,238,.3)" }}>⚕</div>
-          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", letterSpacing: "-.02em" }}>MedFlow {HOSPITAL_SIGLA}</div>
-          <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 4 }}>Gestão de Atendimentos</div>
+          <div style={{ margin: "0 auto 12px", width: 58 }}><VxLogo size={58} /></div>
+          <VxWordmark size={22} color="#f2f6fb" spacing=".12em" />
+          <div style={{ fontSize: 10, color: VX.turquesa, marginTop: 4, letterSpacing: ".2em", fontWeight: 600 }}>HEALTHCARE OPERATIONS</div>
+          <div style={{ fontSize: 12, color: "#c6d2e2", marginTop: 8 }}>Inteligência para o fluxo hospitalar.</div>
         </div>
         <div style={{ marginBottom: 14 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 6 }}>USUÁRIO</label>
-          <input type="text" value={username} placeholder="Digite seu usuário" onChange={e => { setUsername(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} onFocus={e => e.target.style.borderColor = "#22d3ee"} onBlur={e => e.target.style.borderColor = "#e5e7eb"} style={inp} autoComplete="username" />
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#9db1cd", display: "block", marginBottom: 6 }}>USUÁRIO</label>
+          <input type="text" value={username} placeholder="Digite seu usuário" onChange={e => { setUsername(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} onFocus={e => e.target.style.borderColor = VX.turquesa} onBlur={e => e.target.style.borderColor = "#2a4166"} style={inp} autoComplete="username" />
         </div>
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 12, fontWeight: 700, color: "#374151", display: "block", marginBottom: 6 }}>SENHA</label>
+          <label style={{ fontSize: 12, fontWeight: 700, color: "#9db1cd", display: "block", marginBottom: 6 }}>SENHA</label>
           <div style={{ position: "relative" }}>
-            <input type={showPass ? "text" : "password"} value={password} placeholder="••••••••" onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} onFocus={e => e.target.style.borderColor = "#22d3ee"} onBlur={e => e.target.style.borderColor = "#e5e7eb"} style={{ ...inp, paddingRight: 44 }} autoComplete="current-password" />
-            <button onClick={() => setShowPass(p => !p)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#94a3b8" }}>{showPass ? "🙈" : "👁"}</button>
+            <input type={showPass ? "text" : "password"} value={password} placeholder="••••••••" onChange={e => { setPassword(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} onFocus={e => e.target.style.borderColor = VX.turquesa} onBlur={e => e.target.style.borderColor = "#2a4166"} style={{ ...inp, paddingRight: 44 }} autoComplete="current-password" />
+            <button onClick={() => setShowPass(p => !p)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "#5b76a0" }}>{showPass ? "🙈" : "👁"}</button>
           </div>
         </div>
-        {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#dc2626", marginBottom: 14 }}>⚠️ {error}</div>}
-        <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: loading ? "#94a3b8" : "linear-gradient(135deg, #22d3ee, #6366f1)", color: "#fff", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "Inter, sans-serif", boxShadow: "0 4px 14px rgba(34,211,238,.35)" }}>{loading ? "Entrando…" : "Entrar"}</button>
-        <div style={{ textAlign: "center", marginTop: 20, fontSize: 12, color: "#cbd5e1" }}>Acesso restrito · {HOSPITAL_NOME}</div>
+        {error && <div style={{ background: "#3d0f18", border: "1px solid #7f1d2e", borderRadius: 8, padding: "8px 12px", fontSize: 13, color: "#fda4af", marginBottom: 14 }}>⚠️ {error}</div>}
+        <button onClick={handleLogin} disabled={loading} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: loading ? "#5b76a0" : `linear-gradient(90deg, ${VX.turquesa}, ${VX.azul})`, color: "#062a35", fontSize: 15, fontWeight: 700, cursor: loading ? "default" : "pointer", fontFamily: "Inter, sans-serif", boxShadow: "0 4px 18px rgba(45,212,191,.3)" }}>{loading ? "Entrando…" : "Entrar"}</button>
+        <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: "#5b76a0", letterSpacing: ".06em" }}>VALENTRAX HEALTHCARE OPERATIONS</div>
+        <div style={{ textAlign: "center", marginTop: 6, fontSize: 12, color: "#7f97b8" }}>Acesso restrito · {HOSPITAL_NOME}</div>
       </div>
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}`}</style>
     </div>
@@ -2848,7 +2882,7 @@ export default function App() {
   const [active, setActive] = useState("overview");
   const [ambOpen, setAmbOpen] = useState(true);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("hnsn_theme") || "dark"; } catch { return "dark"; } });
-  useEffect(() => { document.title = `MedFlow ${HOSPITAL_SIGLA}`; }, []);
+  useEffect(() => { document.title = `Valentrax · ${HOSPITAL_SIGLA}`; }, []);
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); try { localStorage.setItem("hnsn_theme", theme); } catch {} }, [theme]);
   
   const handleSave = useCallback(newDb => {
@@ -2941,14 +2975,15 @@ export default function App() {
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
       {/* HEADER */}
       <div style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 1.5rem", flexShrink: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 6, background: "linear-gradient(135deg, #22d3ee, #a78bfa)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: ".9rem" }}>⚕</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+          <VxLogo size={30} />
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: ".02em" }}>MedFlow {HOSPITAL_SIGLA}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>Gestão de Atendimentos · Ambulatório</div>
+            <VxWordmark size={14} />
+            <div style={{ fontSize: 8.5, color: VX.turquesa, letterSpacing: ".18em", fontWeight: 600 }}>HEALTHCARE OPERATIONS</div>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 11, color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 11px", whiteSpace: "nowrap" }}>🏥 {HOSPITAL_NOME}</span>
           <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{now.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}</div>
           <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Alternar tema claro/escuro" style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 9px", color: "var(--text-3)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>{theme === "dark" ? "☀️" : "🌙"}</button>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
