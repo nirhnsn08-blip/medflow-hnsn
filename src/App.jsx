@@ -2219,6 +2219,43 @@ const CC_MOTIVOS_CANCELAMENTO = [
   "Falta de sala/tempo cirúrgico", "Ausência do paciente", "Ausência do cirurgião",
   "Exames pendentes", "Falta de leito para pós-operatório", "Outro",
 ];
+// Checklist de Cirurgia Segura (OMS) — 3 fases, itens oficiais adaptados
+const CHECKLIST_OMS = {
+  sign_in: {
+    campo: "chk_sign_in", label: "Sign In", quando: "antes da indução anestésica", cor: "#3b82f6",
+    itens: [
+      "Paciente confirmou identidade, sítio cirúrgico, procedimento e consentimento",
+      "Sítio cirúrgico demarcado (ou não se aplica)",
+      "Verificação de segurança anestésica concluída",
+      "Oxímetro de pulso instalado e funcionando",
+      "Alergias conhecidas verificadas",
+      "Risco de via aérea difícil / broncoaspiração avaliado",
+      "Risco de perda sanguínea > 500 ml (7 ml/kg em crianças) avaliado",
+    ],
+  },
+  time_out: {
+    campo: "chk_time_out", label: "Time Out", quando: "antes da incisão na pele", cor: "#d97706",
+    itens: [
+      "Toda a equipe se apresentou pelo nome e função",
+      "Confirmado em voz alta: paciente, sítio e procedimento",
+      "Antibiótico profilático administrado nos últimos 60 min (ou não se aplica)",
+      "Cirurgião revisou: passos críticos, duração e perda sanguínea prevista",
+      "Anestesia revisou: particularidades do paciente",
+      "Enfermagem revisou: esterilização confirmada e questões de materiais",
+      "Exames de imagem essenciais disponíveis na sala (ou não se aplica)",
+    ],
+  },
+  sign_out: {
+    campo: "chk_sign_out", label: "Sign Out", quando: "antes de o paciente sair da sala", cor: "#34d399",
+    itens: [
+      "Nome do procedimento realizado confirmado e registrado",
+      "Contagem de compressas, instrumentais e agulhas correta",
+      "Amostras cirúrgicas identificadas (nome do paciente) — ou não se aplica",
+      "Problemas com equipamentos anotados para correção",
+      "Equipe revisou as preocupações para a recuperação do paciente",
+    ],
+  },
+};
 async function loadCcSalas() {
   const rows = await sbFetch("cc_salas?select=*&order=ordem");
   return Array.isArray(rows) ? rows : [];
@@ -2267,6 +2304,7 @@ function BlocoPage({ currentUser, canEdit }) {
   const [showSalas, setShowSalas] = useState(false);
   const [agendando, setAgendando] = useState(false); // false | true (nova) | objeto (edição)
   const [cancelando, setCancelando] = useState(null);
+  const [checklist, setChecklist] = useState(null); // { cirurgia, fase }
   const [, setTick] = useState(0);
 
   function refresh(d = data) {
@@ -2295,6 +2333,17 @@ function BlocoPage({ currentUser, canEdit }) {
     await updateCcCirurgiaRemote(c.id, { status: "cancelada", cancelamento_motivo: motivo });
     addAuditLog(currentUser, "cancelar cirurgia", `${c.iniciais} · ${motivo}`, {});
     setCancelando(null); setTimeout(() => refresh(), 300);
+  }
+  async function marcar(c, campos, acao) {
+    await updateCcCirurgiaRemote(c.id, campos);
+    addAuditLog(currentUser, `bloco: ${acao}`, c.iniciais, {});
+    setTimeout(() => refresh(), 300);
+  }
+  async function concluirChecklist(c, faseKey) {
+    const fase = CHECKLIST_OMS[faseKey];
+    await updateCcCirurgiaRemote(c.id, { [fase.campo]: true });
+    addAuditLog(currentUser, `bloco: checklist ${fase.label}`, c.iniciais, {});
+    setChecklist(null); setTimeout(() => refresh(), 300);
   }
 
   const ativas = cirurgias.filter(c => c.status !== "cancelada");
@@ -2328,10 +2377,55 @@ function BlocoPage({ currentUser, canEdit }) {
       {c.opme && <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 3 }}>OPME/materiais: {c.opme}</div>}
       {c.observacao && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Obs.: {c.observacao}</div>}
       {c.status === "cancelada" && c.cancelamento_motivo && <div style={{ fontSize: 11.5, color: "#f43f5e", marginTop: 3, fontWeight: 600 }}>Motivo: {c.cancelamento_motivo}</div>}
-      {canEdit && c.status === "agendada" && (
+
+      {/* Selos do checklist de cirurgia segura */}
+      {!["agendada", "cancelada"].includes(c.status) && (
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+          {Object.entries(CHECKLIST_OMS).map(([k, fase]) => (
+            <span key={k} style={{ fontSize: 10, fontWeight: 800, borderRadius: 99, padding: "2px 8px", background: c[fase.campo] ? fase.cor + "22" : "var(--surface-3)", color: c[fase.campo] ? fase.cor : "var(--text-muted)", border: `1px solid ${c[fase.campo] ? fase.cor + "55" : "var(--border)"}` }}>
+              {c[fase.campo] ? "✓ " : ""}{fase.label}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Tempos registrados */}
+      {(c.entrada_sala_em || c.checkin_em) && c.status !== "cancelada" && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.7 }}>
+          {c.checkin_em && <span>Check-in {horaFmt(c.checkin_em).slice(-5)} · </span>}
+          {c.entrada_sala_em && <span>Sala {horaFmt(c.entrada_sala_em).slice(-5)} · </span>}
+          {c.inicio_anestesia_em && <span>Anestesia {horaFmt(c.inicio_anestesia_em).slice(-5)} · </span>}
+          {c.inicio_cirurgia_em && <span>Incisão {horaFmt(c.inicio_cirurgia_em).slice(-5)} · </span>}
+          {c.fim_cirurgia_em && <span>Fim {horaFmt(c.fim_cirurgia_em).slice(-5)} · </span>}
+          {c.inicio_cirurgia_em && c.fim_cirurgia_em && <strong style={{ color: "var(--text-3)" }}>cirurgia {fmtDur(diffMin(c.inicio_cirurgia_em, c.fim_cirurgia_em))} · </strong>}
+          {c.rpa_entrada_em && !c.rpa_saida_em && <strong style={{ color: "#d97706" }}>na RPA há {fmtDur(diffMin(c.rpa_entrada_em, nowISO()))}</strong>}
+          {c.rpa_entrada_em && c.rpa_saida_em && <span>RPA {fmtDur(diffMin(c.rpa_entrada_em, c.rpa_saida_em))}</span>}
+        </div>
+      )}
+
+      {canEdit && c.status !== "cancelada" && c.status !== "concluida" && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-          <button onClick={() => setAgendando(c)} style={btnLeito("var(--text-3)")}>Editar</button>
-          <button onClick={() => setCancelando(c)} style={btnLeito("#f43f5e")}>Cancelar cirurgia</button>
+          {c.status === "agendada" && <>
+            <button onClick={() => marcar(c, { status: "checkin", checkin_em: nowISO() }, "check-in")} style={btnLeito("#3b82f6")}>Check-in do paciente</button>
+            <button onClick={() => setAgendando(c)} style={btnLeito("var(--text-3)")}>Editar</button>
+            <button onClick={() => setCancelando(c)} style={btnLeito("#f43f5e")}>Cancelar cirurgia</button>
+          </>}
+          {c.status === "checkin" && <>
+            {!c.chk_sign_in && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_in" })} style={btnLeito("#3b82f6")}>Cirurgia segura: Sign In</button>}
+            <button onClick={() => { if (!c.chk_sign_in && !confirm("O checklist Sign In ainda não foi concluído. Entrar em sala mesmo assim?")) return; marcar(c, { status: "em_cirurgia", entrada_sala_em: nowISO() }, "entrada na sala"); }} style={btnLeito("#22d3ee")}>Entrada na sala</button>
+            <button onClick={() => setCancelando(c)} style={btnLeito("#f43f5e")}>Cancelar</button>
+          </>}
+          {c.status === "em_cirurgia" && <>
+            {!c.inicio_anestesia_em && <button onClick={() => marcar(c, { inicio_anestesia_em: nowISO() }, "inicio anestesia")} style={btnLeito("var(--text-3)")}>Início da anestesia</button>}
+            {!c.chk_time_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "time_out" })} style={btnLeito("#d97706")}>Cirurgia segura: Time Out</button>}
+            {!c.inicio_cirurgia_em && <button onClick={() => { if (!c.chk_time_out && !confirm("O checklist Time Out ainda não foi concluído. Registrar a incisão mesmo assim?")) return; marcar(c, { inicio_cirurgia_em: nowISO() }, "inicio cirurgia"); }} style={btnLeito("#22d3ee")}>Início da cirurgia</button>}
+            {c.inicio_cirurgia_em && !c.fim_cirurgia_em && <button onClick={() => marcar(c, { fim_cirurgia_em: nowISO() }, "fim cirurgia")} style={btnLeito("#22d3ee")}>Fim da cirurgia</button>}
+            {c.fim_cirurgia_em && !c.chk_sign_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_out" })} style={btnLeito("#34d399")}>Cirurgia segura: Sign Out</button>}
+            {c.fim_cirurgia_em && <button onClick={() => { if (!c.chk_sign_out && !confirm("O checklist Sign Out ainda não foi concluído. Enviar para a RPA mesmo assim?")) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnLeito("#d97706")}>Enviar para RPA</button>}
+          </>}
+          {c.status === "recuperacao" && (
+            <button onClick={() => marcar(c, { status: "concluida", rpa_saida_em: nowISO() }, "alta da RPA")} style={btnLeito("#34d399")}>Alta da RPA — concluir</button>
+          )}
         </div>
       )}
     </div>
@@ -2402,6 +2496,7 @@ function BlocoPage({ currentUser, canEdit }) {
 
       {agendando && <AgendarCirurgiaModal cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
       {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
+      {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={() => concluirChecklist(checklist.cirurgia, checklist.fase)} />}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
     </div>
   );
@@ -2489,6 +2584,38 @@ function CancelarCirurgiaModal({ cirurgia, onClose, onConfirm }) {
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Voltar</button>
           <button onClick={confirmar} style={{ background: "#f43f5e", color: "#fff", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Confirmar cancelamento</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Checklist de Cirurgia Segura (OMS) — todos os itens precisam ser marcados
+function ChecklistOmsModal({ cirurgia, fase, onClose, onConfirm }) {
+  const def = CHECKLIST_OMS[fase];
+  const [marcados, setMarcados] = useState(() => def.itens.map(() => false));
+  const [busy, setBusy] = useState(false);
+  const todos = marcados.every(Boolean);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Cirurgia Segura — <span style={{ color: def.cor }}>{def.label}</span></div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Momento: {def.quando} · Paciente {cirurgia.iniciais} · {cirurgia.procedimento}</div>
+        <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 14, lineHeight: 1.5 }}>Protocolo de Cirurgia Segura (OMS/Anvisa). Confirme cada item EM VOZ ALTA com a equipe antes de marcar.</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+          {def.itens.map((item, i) => (
+            <label key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", background: marcados[i] ? def.cor + "11" : "var(--surface-2)", border: `1px solid ${marcados[i] ? def.cor + "55" : "var(--border)"}`, borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontSize: 13, color: "var(--text-2)", lineHeight: 1.5 }}>
+              <input type="checkbox" checked={marcados[i]} onChange={() => setMarcados(m => m.map((v, j) => j === i ? !v : v))} style={{ marginTop: 2, accentColor: def.cor, width: 16, height: 16, flexShrink: 0 }} />
+              {item}
+            </label>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 11.5, color: todos ? def.cor : "var(--text-muted)", fontWeight: 700 }}>{marcados.filter(Boolean).length}/{def.itens.length} itens confirmados</span>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Voltar</button>
+            <button onClick={async () => { setBusy(true); await onConfirm(); }} disabled={!todos || busy} style={{ background: todos ? def.cor : "var(--surface-3)", color: todos ? "#fff" : "var(--text-muted)", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: todos ? "pointer" : "default", fontSize: 13 }}>{busy ? "…" : `Concluir ${def.label}`}</button>
+          </div>
         </div>
       </div>
     </div>
