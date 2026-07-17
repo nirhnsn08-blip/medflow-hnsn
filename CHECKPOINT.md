@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v3
+# 📍 Ponto de restauração — checkpoint-v4
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v3` (anteriores: `checkpoint-v2`, `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v4` (anteriores: `checkpoint-v3`, `checkpoint-v2`, `checkpoint-v1`)
 - **Data:** 2026-07-16
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -29,13 +29,21 @@ dá pra voltar exatamente para este estado.
 - **💊 Tratamento sugerido por CID:** cada referência de CID pode ter um texto de
   tratamento (base na literatura, revisado pela equipe). Aparece no 📚 Referências
   de CID e no modal de internação ao digitar o CID. 8 CIDs pré-preenchidos no HNSN.
+- **⏳ Fila de espera separada da ocupação:** a lista de espera por leito não conta
+  mais na % de ocupação do setor; aparece como selo âmbar com tempo de espera.
+- **🦠 Aba SCIH — Fase A:** precauções/isolamentos (aéreo/contato/gotículas, base
+  Anvisa/CDC), sinalização de isolamento por leito (selo + seletor no card),
+  cadastro de casos de vigilância (cultura, germe, multirresistente, antibiótico,
+  dias de ATB) com contagem de dias.
+- **🦠 Aba SCIH — Fase B:** base de germes (🧬) com embasamento literário; ao digitar
+  o germe no caso, sugere o isolamento e marca multirresistente. 14 germes pré-carregados.
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v3
+git reset --hard checkpoint-v4
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -44,7 +52,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v3
+git checkout -b recuperacao checkpoint-v4
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -60,6 +68,9 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `2678bdd` 🦠 SCIH Fase B — base de germes com embasamento + sugestão de isolamento
+- `8852264` 🦠 SCIH Fase A — isolamentos por leito + casos de vigilância
+- `1d97345` ⏳ fila de espera separada da ocupação do setor
 - `9b4ca54` 💊 Tratamento sugerido por CID (referências + modal de internação)
 - `baabe17` Fase 3 pt2 — Centro de Monitoramento (setores, solicitações, alertas)
 - `ebc40d3` Fase 3 pt1 — modo claro/escuro
