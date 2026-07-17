@@ -133,6 +133,37 @@ create policy cidref_insert on public.cid_referencia for insert to authenticated
 create policy cidref_update on public.cid_referencia for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy cidref_delete on public.cid_referencia for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- ===== SCIH: isolamento por leito + casos de vigilância =====
+alter table public.leitos add column if not exists isolamento text;  -- null | aereo | contato | goticulas
+
+create table if not exists public.scih_casos (
+  id bigserial primary key,
+  iniciais text not null,
+  prontuario text,
+  leito text,
+  isolamento text,                 -- aereo | contato | goticulas
+  data_coleta date,
+  data_resultado date,
+  germe text,
+  multirresistente boolean default false,
+  antibiotico text,
+  dias_antibiotico int,
+  observacao text,
+  status text not null default 'ativo',   -- ativo | encerrado
+  usuario text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.scih_casos enable row level security;
+drop policy if exists scih_casos_select on public.scih_casos;
+drop policy if exists scih_casos_insert on public.scih_casos;
+drop policy if exists scih_casos_update on public.scih_casos;
+drop policy if exists scih_casos_delete on public.scih_casos;
+create policy scih_casos_select on public.scih_casos for select to authenticated using (true);
+create policy scih_casos_insert on public.scih_casos for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy scih_casos_update on public.scih_casos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy scih_casos_delete on public.scih_casos for delete to authenticated using (public.my_role() = 'adm_master');
+
 -- ===== Monitoramento: setores + fila de solicitações de leito =====
 create table if not exists public.setores (
   nome text primary key,
