@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v7
+# 📍 Ponto de restauração — checkpoint-v8
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v7` (anteriores: `checkpoint-v6` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v8` (anteriores: `checkpoint-v7` … `checkpoint-v1`)
 - **Data:** 2026-07-17
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -50,13 +50,19 @@ dá pra voltar exatamente para este estado.
   paleta de gráficos categórica validada por script (contraste + daltonismo):
   teal/azul/âmbar/índigo/rosé; botões secundários neutros; cores de status
   (verde/âmbar/vermelho) reservadas para semântica real.
+- **🏥 Pronto-Socorro (1º módulo do HIS por processos):** chegada → triagem com
+  classificação de risco Manchester (guia embutido) → fila por prioridade com
+  cronômetro contra o tempo-alvo (alerta de estouro) → atendimento → desfecho.
+  Desfecho "Internação" abre a solicitação de leito automaticamente — primeira
+  **jornada do paciente ponta a ponta**: PS → fila → leito → alta → higienização.
+  Indicadores: porta→triagem, permanência média, atendidos hoje. Testado e validado.
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v7
+git reset --hard checkpoint-v8
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -65,7 +71,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v7
+git checkout -b recuperacao checkpoint-v8
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -81,6 +87,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `c6d1c0d` 🏥 Pronto-Socorro — triagem Manchester + jornada do paciente
 - `dc8b5a9` 🎨 paleta de gráficos profissional validada
 - `225b70e` 🎨 rebrand profundo — paleta marinho + interface sem emojis
 - `82e2604` ✨ rebrand Valentrax — marca, login, cabeçalho, favicon
