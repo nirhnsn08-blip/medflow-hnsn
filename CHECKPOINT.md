@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v16
+# 📍 Ponto de restauração — checkpoint-v17
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v16` (anteriores: `checkpoint-v15` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v17` (anteriores: `checkpoint-v16` … `checkpoint-v1`)
 - **Data:** 2026-07-18
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -77,8 +77,13 @@ dá pra voltar exatamente para este estado.
   Farmácia ganhou a aba **Dispensação**: fila de pacientes do PS com itens pendentes,
   baixa de estoque **por lote (FEFO)** respeitando o saldo, com o paciente vinculado
   ao movimento; e **dispensação avulsa** (paciente/setor digitados, ex.: internado).
-  Cada item mostra o status **pendente / parcial / dispensado**. Próxima fase: C
-  (indicadores de consumo, curva ABC, controlados e rupturas).
+  Cada item mostra o status **pendente / parcial / dispensado**.
+- **💊 Farmácia — Fase C (indicadores):** aba **Indicadores** (só leitura) com KPIs do
+  mês (itens/quantidade dispensada, entradas, perdas por vencimento, rupturas, lotes
+  vencendo ≤30d), **curva ABC** do consumo por medicamento (A 80% / B 15% / C 5%),
+  consumo por classe terapêutica, **controlados dispensados** (Portaria 344), painel
+  de validade & rupturas e **relatório mensal imprimível/PDF**. Valores por quantidade
+  (sem custo financeiro cadastrado). **Módulo Farmácia completo (A+B+C).**
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -97,7 +102,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v16
+git reset --hard checkpoint-v17
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -106,7 +111,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v16
+git checkout -b recuperacao checkpoint-v17
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -122,6 +127,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `0c1c782` 💊 Farmácia Fase C — indicadores (consumo, curva ABC, controlados, relatório)
 - `c26001b` 💊 Farmácia Fase B — prescrição estruturada no PS + dispensação (fila + avulsa, baixa por lote)
 - `6b14d10` 💊 Farmácia — classe terapêutica + catálogo agrupado (~164 medicamentos, 22 classes)
 - `c62dc56` 💊 Farmácia Fase A — catálogo + estoque (lote/validade, kardex FEFO)
