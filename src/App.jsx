@@ -3007,25 +3007,40 @@ function PSPage({ currentUser, canEdit }) {
         const total = doDia.length;
         const totalEst = dist.reduce((a, d) => a + d.estourados, 0);
         const noAlvo = ((total - totalEst) / total) * 100;
+        const th = { textAlign: "left", padding: "7px 14px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", borderBottom: "1px solid var(--border)" };
+        const td = { padding: "7px 14px", fontSize: 12.5, color: "var(--text-2)", borderBottom: "1px solid var(--border)" };
+        const num = { ...td, fontFamily: "JetBrains Mono, monospace", textAlign: "right", color: "var(--text)" };
         return (
           <div style={{ marginBottom: "1.25rem" }}>
-            <div style={secLbl}>Triagem do dia — distribuição e tempo-alvo</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
-              {dist.map(({ k, n, estourados }) => {
-                const m = MANCHESTER[k];
-                return (
-                  <div key={k} style={{ background: m.bg, border: `1px solid ${m.cor}44`, borderLeft: `4px solid ${m.cor}`, borderRadius: 8, padding: "8px 14px", minWidth: 110, flex: 1 }}>
-                    <div style={{ fontSize: 10.5, fontWeight: 800, color: m.cor }}>{m.label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: m.cor, fontFamily: "JetBrains Mono, monospace" }}>{n}<span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}> ({total > 0 ? Math.round((n / total) * 100) : 0}%)</span></div>
-                    {estourados > 0 && <div style={{ fontSize: 10.5, color: "#f43f5e", fontWeight: 700 }}>{estourados} fora do alvo</div>}
-                  </div>
-                );
-              })}
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${noAlvo >= 90 ? "#34d399" : noAlvo >= 70 ? "#d97706" : "#f43f5e"}`, borderRadius: 8, padding: "8px 14px", minWidth: 130, flex: 1 }}>
-                <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>No tempo-alvo</div>
-                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: noAlvo >= 90 ? "#34d399" : noAlvo >= 70 ? "#d97706" : "#f43f5e" }}>{noAlvo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%</div>
-                <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{totalEst} estouro(s) em {total}</div>
-              </div>
+            <div style={secLbl}>Triagem do dia</div>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr>
+                  <th style={th}>Classificação</th>
+                  <th style={{ ...th, textAlign: "right" }}>Atendimentos</th>
+                  <th style={{ ...th, textAlign: "right" }}>%</th>
+                  <th style={{ ...th, textAlign: "right" }}>Fora do alvo</th>
+                </tr></thead>
+                <tbody>
+                  {dist.map(({ k, n, estourados }) => {
+                    const m = MANCHESTER[k];
+                    return (
+                      <tr key={k}>
+                        <td style={td}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: m.cor, marginRight: 9, verticalAlign: "middle" }} />{m.label}</td>
+                        <td style={num}>{n}</td>
+                        <td style={{ ...num, color: "var(--text-3)" }}>{total > 0 ? Math.round((n / total) * 100) : 0}%</td>
+                        <td style={{ ...num, color: estourados > 0 ? "var(--text)" : "var(--text-muted)" }}>{estourados || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                  <tr>
+                    <td style={{ ...td, borderBottom: "none", fontWeight: 700, color: "var(--text)" }}>Dentro do tempo-alvo</td>
+                    <td style={{ ...num, borderBottom: "none" }}>{total - totalEst}/{total}</td>
+                    <td style={{ ...num, borderBottom: "none", fontWeight: 700 }}>{noAlvo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%</td>
+                    <td style={{ ...num, borderBottom: "none", color: "var(--text-muted)" }}>{totalEst || "—"}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         );
