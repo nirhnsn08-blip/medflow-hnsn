@@ -1662,6 +1662,10 @@ async function loadFarmMovimentos(medicamentoId, limit = 60) {
   const rows = await sbFetch(q);
   return Array.isArray(rows) ? rows : [];
 }
+async function loadFarmMovimentosPeriodo(fromISO, toISO) {
+  const rows = await sbFetch(`farm_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
+  return Array.isArray(rows) ? rows : [];
+}
 async function upsertFarmMedicamentoRemote(med, user) {
   if (!USE_SUPABASE) return null;
   const body = { ...med, usuario: user?.name || null, updated_at: nowISO() };
@@ -3955,7 +3959,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque."}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
         </div>
         {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
@@ -3963,9 +3967,11 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <button onClick={() => setSub("estoque")} style={subBtn(sub === "estoque")}>Estoque</button>
         <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
+        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
       </div>
 
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "indicadores" && <FarmIndicadoresView />}
 
       {sub === "estoque" && (<>
       {/* PAINÉIS DE ALERTA */}
@@ -4488,6 +4494,194 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
           <button onClick={confirmar} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Dispensar"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Indicadores da Farmácia — consumo, curva ABC, controlados, rupturas e validade
+function FarmIndicadoresView() {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [movs, setMovs] = useState([]);
+  const [meds, setMeds] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [preview, setPreview] = useState(false);
+  const [carregando, setCarregando] = useState(false);
+
+  const fromISO = new Date(ano, mes, 1).toISOString();
+  const toISO = new Date(ano, mes + 1, 1).toISOString();
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setLotes);
+    setCarregando(true);
+    loadFarmMovimentosPeriodo(fromISO, toISO).then(r => { setMovs(r); setCarregando(false); });
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, [mes, ano]);
+
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const nomeMed = id => medById[id]?.nome || "—";
+  const saidas = movs.filter(m => m.tipo === "saida");
+  const entradas = movs.filter(m => m.tipo === "entrada");
+  const dispensacoes = saidas.filter(m => (m.motivo || "") === "Dispensação");
+  const perdas = saidas.filter(m => /perda|vencim/i.test(m.motivo || ""));
+
+  // Consumo (dispensação) por medicamento + curva ABC
+  const consMap = {};
+  dispensacoes.forEach(m => { if (!m.medicamento_id) return; consMap[m.medicamento_id] = (consMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
+  const consumo = Object.entries(consMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  const totalCons = consumo.reduce((s, c) => s + c.qtd, 0);
+  let acc = 0;
+  const abc = consumo.map(c => { acc += c.qtd; const pctAcc = totalCons > 0 ? (acc / totalCons) * 100 : 0; return { ...c, pct: totalCons > 0 ? (c.qtd / totalCons) * 100 : 0, pctAcc, abc: pctAcc <= 80 ? "A" : pctAcc <= 95 ? "B" : "C" }; });
+  const abcCount = { A: abc.filter(x => x.abc === "A").length, B: abc.filter(x => x.abc === "B").length, C: abc.filter(x => x.abc === "C").length };
+
+  // Consumo por classe
+  const classeMap = {};
+  dispensacoes.forEach(m => { const cl = medById[m.medicamento_id]?.classe || "Outros"; classeMap[cl] = (classeMap[cl] || 0) + Number(m.quantidade || 0); });
+  const porClasse = Object.entries(classeMap).map(([cl, qtd]) => ({ cl, qtd })).sort((a, b) => b.qtd - a.qtd);
+  const maxClasse = Math.max(1, ...porClasse.map(x => x.qtd));
+
+  // Controlados dispensados
+  const controlMap = {};
+  dispensacoes.filter(m => medById[m.medicamento_id]?.controlado).forEach(m => { controlMap[m.medicamento_id] = (controlMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
+  const controlados = Object.entries(controlMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+
+  // Snapshot: rupturas e validade (independem do período)
+  const ativos = meds.filter(m => m.ativo !== false);
+  const saldo = m => farmSaldoTotal(m.id, lotes);
+  const rupturas = ativos.filter(m => saldo(m) <= 0);
+  const abaixoMin = ativos.filter(m => { const s = saldo(m); return s > 0 && Number(m.estoque_minimo || 0) > 0 && s <= Number(m.estoque_minimo); });
+  const lotesEstoque = lotes.filter(l => Number(l.quantidade) > 0);
+  const vencidosEstoque = lotesEstoque.filter(l => farmValidadeInfo(l.validade).status === "vencido");
+  const venc30 = lotesEstoque.filter(l => farmValidadeInfo(l.validade).status === "vencendo");
+
+  const qtdDispensada = dispensacoes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdEntradas = entradas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdPerdas = perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const pacientes = new Set(dispensacoes.map(m => m.paciente_prontuario || m.paciente_iniciais || "").filter(Boolean)).size;
+
+  const fmt = n => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const abcCor = c => c === "A" ? "#e11d48" : c === "B" ? "#d97706" : "#0d9488";
+  const KPI = ({ label, valor, unidade, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}{unidade && <span style={{ fontSize: 12, fontWeight: 600, marginLeft: 3, color: "var(--text-muted)" }}>{unidade}</span>}</div>
+      {sub && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  const printStyles = `@media print { body * { visibility: hidden !important; } #farm-print, #farm-print * { visibility: visible !important; } #farm-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+        <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <KPI label="Itens dispensados" valor={fmt(dispensacoes.length)} sub="baixas de dispensação" cor="#22d3ee" />
+        <KPI label="Qtd dispensada" valor={fmt(qtdDispensada)} sub={`${pacientes} paciente(s)`} cor="#3b82f6" />
+        <KPI label="Entradas" valor={fmt(qtdEntradas)} sub="unidades recebidas" cor="#34d399" />
+        <KPI label="Perdas / vencimento" valor={fmt(qtdPerdas)} sub="baixas por perda" cor={qtdPerdas > 0 ? "#f43f5e" : "var(--border)"} />
+        <KPI label="Rupturas agora" valor={fmt(rupturas.length)} sub="itens sem estoque" cor={rupturas.length ? "#f43f5e" : "#34d399"} />
+        <KPI label="Vencendo ≤30d" valor={fmt(venc30.length)} sub="lotes em estoque" cor={venc30.length ? "#d97706" : "#34d399"} />
+      </div>
+
+      {carregando && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Carregando movimentos…</div>}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Curva ABC — consumo de {MONTHS_FULL[mes]}/{ano}</div>
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>Classe A = 80% do consumo · B = próximos 15% · C = 5% restante. {abcCount.A} A · {abcCount.B} B · {abcCount.C} C.</div>
+      {abc.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>Nenhuma dispensação neste mês.</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 520 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 12px" }}>#</th><th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Consumo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>%</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Acum.</th><th style={{ padding: "8px 12px", textAlign: "center" }}>ABC</th>
+            </tr></thead>
+            <tbody>
+              {abc.slice(0, 25).map((x, i) => (
+                <tr key={x.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 12px", color: "var(--text-muted)" }}>{i + 1}</td>
+                  <td style={{ padding: "7px 12px" }}>{x.med?.nome || "—"}{x.med?.controlado && <span style={{ fontSize: 9, color: "#6366f1", marginLeft: 6, fontWeight: 800 }}>CONTROLADO</span>}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(x.qtd)} <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>{x.med?.unidade || ""}</span></td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--text-2)" }}>{fmt(x.pct)}%</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(x.pctAcc)}%</td>
+                  <td style={{ padding: "7px 12px", textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 800, color: abcCor(x.abc) }}>{x.abc}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {abc.length > 25 && <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 12px" }}>+{abc.length - 25} medicamentos</div>}
+        </div>
+      )}
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Consumo por classe terapêutica</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: "1.5rem" }}>
+        {porClasse.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem dados no mês.</div> : porClasse.map(c => (
+          <div key={c.cl} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 7 }}>
+            <span style={{ fontSize: 11.5, color: "var(--text-2)", width: 210, flexShrink: 0 }}>{c.cl}</span>
+            <div style={{ flex: 1, height: 12, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}><div style={{ width: Math.max(2, (c.qtd / maxClasse) * 100) + "%", height: "100%", background: "#3b82f6", borderRadius: 99 }} /></div>
+            <span style={{ fontSize: 11.5, fontWeight: 700, width: 60, textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{fmt(c.qtd)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: "1rem" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "var(--text-2)" }}>Controlados dispensados (Portaria 344)</div>
+          {controlados.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhum controlado dispensado no mês.</div> : controlados.map(c => (
+            <div key={c.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "3px 0", borderBottom: "1px solid var(--border)" }}><span>{c.med?.nome || "—"}</span><strong style={{ fontFamily: "JetBrains Mono, monospace", color: "#6366f1" }}>{fmt(c.qtd)}</strong></div>
+          ))}
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "var(--text-2)" }}>Validade & rupturas (agora)</div>
+          <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.9 }}>
+            <div>Sem estoque: <strong style={{ color: rupturas.length ? "#f43f5e" : "#34d399" }}>{rupturas.length}</strong></div>
+            <div>Abaixo do mínimo: <strong style={{ color: abaixoMin.length ? "#d97706" : "#34d399" }}>{abaixoMin.length}</strong></div>
+            <div>Lotes vencidos em estoque: <strong style={{ color: vencidosEstoque.length ? "#f43f5e" : "#34d399" }}>{vencidosEstoque.length}</strong></div>
+            <div>Lotes vencendo ≤30 dias: <strong style={{ color: venc30.length ? "#d97706" : "#34d399" }}>{venc30.length}</strong></div>
+          </div>
+          {(rupturas.length > 0 || vencidosEstoque.length > 0) && <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>{[...rupturas.slice(0, 5).map(m => m.nome), ...vencidosEstoque.slice(0, 3).map(l => `${nomeMed(l.medicamento_id)} (venc.)`)].join(" · ")}</div>}
+        </div>
+      </div>
+
+      {preview && (
+        <div id="farm-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12, marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>RELATÓRIO FARMÁCIA — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Consumo e estoque de medicamentos</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 11, color: "#64748b" }}>
+              <div style={{ fontWeight: 700, color: "#0f172a" }}>{MONTHS_FULL[mes]}/{ano}</div>
+              <div>emitido {new Date().toLocaleDateString("pt-BR")}</div>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+            {[["Itens dispensados", fmt(dispensacoes.length)], ["Qtd dispensada", fmt(qtdDispensada)], ["Entradas", fmt(qtdEntradas)], ["Perdas/vencimento", fmt(qtdPerdas)], ["Rupturas agora", fmt(rupturas.length)], ["Vencendo ≤30d", fmt(venc30.length)]].map(([l, v]) => (
+              <div key={l} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase" }}>{l}</div><div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{v}</div></div>
+            ))}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>Curva ABC — top 20 (A: {abcCount.A} · B: {abcCount.B} · C: {abcCount.C})</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 16 }}>
+            <thead><tr style={{ borderBottom: "1px solid #e5e7eb", textAlign: "left", color: "#64748b" }}><th style={{ padding: "4px 6px" }}>#</th><th style={{ padding: "4px 6px" }}>Medicamento</th><th style={{ padding: "4px 6px", textAlign: "right" }}>Consumo</th><th style={{ padding: "4px 6px", textAlign: "right" }}>%</th><th style={{ padding: "4px 6px", textAlign: "center" }}>ABC</th></tr></thead>
+            <tbody>{abc.slice(0, 20).map((x, i) => (<tr key={x.id} style={{ borderBottom: "1px solid #f1f5f9" }}><td style={{ padding: "3px 6px" }}>{i + 1}</td><td style={{ padding: "3px 6px" }}>{x.med?.nome || "—"}</td><td style={{ padding: "3px 6px", textAlign: "right" }}>{fmt(x.qtd)}</td><td style={{ padding: "3px 6px", textAlign: "right" }}>{fmt(x.pct)}%</td><td style={{ padding: "3px 6px", textAlign: "center", fontWeight: 700 }}>{x.abc}</td></tr>))}</tbody>
+          </table>
+          {controlados.length > 0 && (<>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", marginBottom: 6 }}>Controlados dispensados (Portaria 344)</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 16 }}><tbody>{controlados.map(c => (<tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}><td style={{ padding: "3px 6px" }}>{c.med?.nome || "—"}</td><td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{fmt(c.qtd)}</td></tr>))}</tbody></table>
+          </>)}
+          <div style={{ fontSize: 11, color: "#64748b", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Sem estoque: {rupturas.length} · Abaixo do mínimo: {abaixoMin.length} · Lotes vencidos em estoque: {vencidosEstoque.length} · Vencendo ≤30d: {venc30.length}. Valores por quantidade (unidades) — sem custo financeiro cadastrado.</div>
+        </div>
+      )}
     </div>
   );
 }
