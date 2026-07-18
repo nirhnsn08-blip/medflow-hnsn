@@ -91,6 +91,7 @@ const ICON_PATHS = {
   activity:  <path d="M3 12 h4 l2.5-6.5 5 13 2.5-6.5 H21"/>,
   record:    <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 13 h2 l1-2.5 2 5 1-2.5 H16"/><path d="M9 7 h6"/></>,
   scissors:  <><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.6 L20 18 M8.2 16.4 L20 6 M13.2 12 l1.6 1.4"/></>,
+  pill:      <><rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M8.5 8.5 l7 7"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -1610,6 +1611,87 @@ function sugerirGerme(digitado, germes) {
   let m = germes.find(g => (g.nome || "").toLowerCase() === c);
   if (!m) m = germes.find(g => { const gn = (g.nome || "").toLowerCase(); return gn && (c.includes(gn) || gn.includes(c)); });
   return m || null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex FEFO)
+// ═══════════════════════════════════════════════════════════
+const FARM_FORMAS   = ["Comprimido", "Cápsula", "Ampola", "Frasco", "Frasco-ampola", "Bolsa/Soro", "Bisnaga/Pomada", "Sachê", "Solução oral", "Outro"];
+const FARM_UNIDADES = ["unidade", "comprimido", "cápsula", "ampola", "frasco", "mL", "g", "dose"];
+const FARM_MOTIVOS_SAIDA = ["Dispensação", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
+const FARM_VENC_DIAS = 30; // janela de "vencendo em breve" (dias)
+
+async function loadFarmMedicamentos() {
+  const rows = await sbFetch("farm_medicamentos?select=*&order=nome");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadFarmLotes() {
+  const rows = await sbFetch("farm_lotes?select=*&order=validade.asc.nullslast");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadFarmMovimentos(medicamentoId, limit = 60) {
+  const q = medicamentoId
+    ? `farm_movimentos?medicamento_id=eq.${medicamentoId}&select=*&order=created_at.desc&limit=${limit}`
+    : `farm_movimentos?select=*&order=created_at.desc&limit=${limit}`;
+  const rows = await sbFetch(q);
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertFarmMedicamentoRemote(med, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...med, usuario: user?.name || null, updated_at: nowISO() };
+  if (med.id) {
+    await sbFetch(`farm_medicamentos?id=eq.${med.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    return null;
+  }
+  delete body.id;
+  return await sbFetch("farm_medicamentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deleteFarmMedicamentoRemote(id) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`farm_medicamentos?id=eq.${id}`, { method: "DELETE" });
+}
+// Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
+// e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
+async function addFarmMovimentoRemote(mov, user) {
+  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/farm_movimentos`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify({ ...mov, usuario: user?.name || null }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, erro: body?.message || `Erro ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: String(e?.message || e) };
+  }
+}
+// Saldo total de um medicamento = soma dos lotes
+function farmSaldoTotal(medId, lotes) {
+  return lotes.filter(l => l.medicamento_id === medId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
+}
+// Formata uma data ISO (YYYY-MM-DD) para dd/mm/aaaa, sem escorregar de fuso
+function fmtDataBR(iso) {
+  if (!iso) return "—";
+  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
+}
+// Situação de validade de um lote em relação a hoje
+function farmValidadeInfo(validade) {
+  if (!validade) return { status: "sem", dias: null };
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const v = new Date(validade + "T00:00:00");
+  const dias = Math.round((v - hoje) / 86400000);
+  if (dias < 0) return { status: "vencido", dias };
+  if (dias <= FARM_VENC_DIAS) return { status: "vencendo", dias };
+  return { status: "ok", dias };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3611,6 +3693,373 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex)
+// ═══════════════════════════════════════════════════════════
+const farmFmtQtd = n => { const v = Number(n || 0); return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ","); };
+const farmInp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+const farmLbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+
+function FarmaciaPage({ currentUser, canEdit }) {
+  const [meds, setMeds]   = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [busca, setBusca] = useState("");
+  const [showMed, setShowMed] = useState(null);   // objeto (novo/editar) ou null
+  const [movMed, setMovMed]   = useState(null);   // { med, tipo }
+  const [kardex, setKardex]   = useState(null);   // med para histórico
+  const [, setTick] = useState(0);
+  const isMaster = currentUser?.role === "adm_master";
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setLotes);
+  }
+  useEffect(() => {
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => setTick(t => t + 1), 60000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+  }, []);
+
+  const medsOrd = [...meds].filter(m => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return true;
+    return [m.nome, m.principio_ativo, m.forma].some(x => (x || "").toLowerCase().includes(q));
+  }).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+
+  // Situação de estoque de cada medicamento
+  function statusMed(m) {
+    const saldo = farmSaldoTotal(m.id, lotes);
+    const min = Number(m.estoque_minimo || 0);
+    if (saldo <= 0) return { key: "zerado", cor: "#f43f5e", label: "Sem estoque", saldo };
+    if (min > 0 && saldo <= min) return { key: "baixo", cor: "#d97706", label: "Abaixo do mínimo", saldo };
+    return { key: "ok", cor: "#34d399", label: "OK", saldo };
+  }
+  // Lote de validade mais próxima (com saldo) de um medicamento
+  function loteCritico(m) {
+    const ls = lotes.filter(l => l.medicamento_id === m.id && Number(l.quantidade) > 0 && l.validade);
+    if (!ls.length) return null;
+    return ls.sort((a, b) => a.validade.localeCompare(b.validade))[0];
+  }
+
+  // Painéis de alerta
+  const alertasBaixo = medsOrd.filter(m => m.ativo !== false && ["baixo", "zerado"].includes(statusMed(m).key));
+  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+
+  async function salvarMed(med) {
+    await upsertFarmMedicamentoRemote(med, currentUser);
+    addAuditLog(currentUser, med.id ? "editar medicamento" : "cadastrar medicamento", med.nome, {});
+    setShowMed(null);
+    setTimeout(refresh, 350);
+  }
+  async function excluirMed(m) {
+    if (!confirm(`Excluir "${m.nome}" e todo o seu histórico de estoque? Essa ação não pode ser desfeita.`)) return;
+    await deleteFarmMedicamentoRemote(m.id);
+    addAuditLog(currentUser, "excluir medicamento", m.nome, {});
+    setTimeout(refresh, 300);
+  }
+  async function registrarMov(mov) {
+    const r = await addFarmMovimentoRemote(mov, currentUser);
+    if (!r.ok) { alert("Não foi possível registrar o movimento.\n" + (r.erro || "")); return false; }
+    const med = meds.find(x => x.id === mov.medicamento_id);
+    addAuditLog(currentUser, mov.tipo === "entrada" ? "entrada de estoque" : "saída de estoque", `${med?.nome || mov.medicamento_id} · ${farmFmtQtd(mov.quantidade)}`, {});
+    setMovMed(null);
+    setTimeout(refresh, 350);
+    return true;
+  }
+
+  const totalItens = meds.length;
+  const totalAtivos = meds.filter(m => m.ativo !== false).length;
+
+  return (
+    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia — Estoque</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Catálogo de medicamentos, entradas e saídas por lote e validade (FEFO). {totalAtivos} ativos · {totalItens} cadastrados.</div>
+        </div>
+        {canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
+      </div>
+
+      {/* PAINÉIS DE ALERTA */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.25rem" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${alertasBaixo.length ? "#d97706" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Reposição</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: alertasBaixo.length ? "#d97706" : "var(--text)" }}>{alertasBaixo.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{alertasBaixo.length ? "medicamentos abaixo do mínimo / zerados" : "nenhum item abaixo do mínimo"}</div>
+          {alertasBaixo.length > 0 && <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 5 }}>{alertasBaixo.slice(0, 6).map(m => <span key={m.id} style={{ fontSize: 10.5, color: statusMed(m).cor, border: `1px solid ${statusMed(m).cor}55`, borderRadius: 99, padding: "1px 7px" }}>{m.nome}</span>)}{alertasBaixo.length > 6 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{alertasBaixo.length - 6}</span>}</div>}
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${lotesAlerta.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Validade</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: lotesAlerta.length ? "#f43f5e" : "var(--text)" }}>{lotesAlerta.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${FARM_VENC_DIAS} dias` : "nenhum lote vencendo"}</div>
+          {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const m = meds.find(x => x.id === l.medicamento_id); const vi = farmValidadeInfo(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {m?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
+        </div>
+      </div>
+
+      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, princípio ativo ou forma…" style={{ ...farmInp, maxWidth: 420, marginBottom: 14 }} />
+
+      {/* TABELA DE ESTOQUE */}
+      {medsOrd.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>
+          {meds.length === 0 ? "Nenhum medicamento cadastrado ainda. Clique em “+ Novo medicamento”." : "Nenhum resultado para a busca."}
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 720 }}>
+            <thead>
+              <tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                <th style={{ padding: "9px 12px" }}>Medicamento</th>
+                <th style={{ padding: "9px 12px" }}>Apresentação</th>
+                <th style={{ padding: "9px 12px", textAlign: "right" }}>Saldo</th>
+                <th style={{ padding: "9px 12px", textAlign: "right" }}>Mínimo</th>
+                <th style={{ padding: "9px 12px" }}>Situação</th>
+                <th style={{ padding: "9px 12px" }}>Validade</th>
+                <th style={{ padding: "9px 12px", textAlign: "right" }}>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {medsOrd.map(m => {
+                const st = statusMed(m);
+                const lc = loteCritico(m);
+                const vi = lc ? farmValidadeInfo(lc.validade) : null;
+                const inativo = m.ativo === false;
+                return (
+                  <tr key={m.id} style={{ borderTop: "1px solid var(--border)", opacity: inativo ? 0.55 : 1 }}>
+                    <td style={{ padding: "9px 12px" }}>
+                      <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        {m.nome}
+                        {m.controlado && <span style={{ fontSize: 9.5, color: "#6366f1", border: "1px solid #6366f155", borderRadius: 99, padding: "0 6px", fontWeight: 800, letterSpacing: ".03em" }}>CONTROLADO</span>}
+                        {inativo && <span style={{ fontSize: 9.5, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 6px" }}>inativo</span>}
+                      </div>
+                      {m.principio_ativo && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.principio_ativo}</div>}
+                    </td>
+                    <td style={{ padding: "9px 12px", color: "var(--text-2)" }}>{[m.forma, m.concentracao].filter(Boolean).join(" · ") || "—"}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{farmFmtQtd(st.saldo)} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "Inter, sans-serif", fontWeight: 400 }}>{m.unidade || ""}</span></td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{Number(m.estoque_minimo) > 0 ? farmFmtQtd(m.estoque_minimo) : "—"}</td>
+                    <td style={{ padding: "9px 12px" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: st.cor, marginRight: 6 }} /><span style={{ fontSize: 12, color: st.cor === "#34d399" ? "var(--text-2)" : st.cor, fontWeight: st.key === "ok" ? 400 : 700 }}>{st.label}</span></td>
+                    <td style={{ padding: "9px 12px", fontSize: 12 }}>{lc ? <span style={{ color: vi.status === "vencido" ? "#f43f5e" : vi.status === "vencendo" ? "#d97706" : "var(--text-2)", fontWeight: vi.status === "ok" ? 400 : 700 }}>{fmtDataBR(lc.validade)}{vi.status === "vencido" ? " (vencido)" : vi.status === "vencendo" ? ` (${vi.dias}d)` : ""}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      {canEdit && <>
+                        <button onClick={() => setMovMed({ med: m, tipo: "entrada" })} style={btnLeito("#34d399")}>Entrada</button>{" "}
+                        <button onClick={() => setMovMed({ med: m, tipo: "saida" })} style={btnLeito("#d97706")}>Saída</button>{" "}
+                      </>}
+                      <button onClick={() => setKardex(m)} style={btnLeito("#8d99ab")}>Kardex</button>{" "}
+                      {canEdit && <button onClick={() => setShowMed(m)} style={btnLeito("#3b82f6")}>Editar</button>}
+                      {isMaster && <> <button onClick={() => excluirMed(m)} style={btnLeito("#f43f5e")}>Excluir</button></>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showMed && <FarmMedModal med={showMed} onClose={() => setShowMed(null)} onSave={salvarMed} />}
+      {movMed && <FarmMovModal med={movMed.med} tipoInicial={movMed.tipo} lotes={lotes.filter(l => l.medicamento_id === movMed.med.id)} onClose={() => setMovMed(null)} onSave={registrarMov} />}
+      {kardex && <FarmKardexModal med={kardex} onClose={() => setKardex(null)} />}
+    </div>
+  );
+}
+
+// Cadastro / edição de medicamento
+function FarmMedModal({ med, onClose, onSave }) {
+  const [f, setF] = useState({ ...med });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  async function salvar() {
+    if (!f.nome.trim()) { alert("Informe o nome / apresentação do medicamento."); return; }
+    setBusy(true);
+    await onSave({
+      ...(med.id ? { id: med.id } : {}),
+      nome: f.nome.trim(),
+      principio_ativo: f.principio_ativo?.trim() || null,
+      forma: f.forma || null,
+      concentracao: f.concentracao?.trim() || null,
+      unidade: f.unidade || "unidade",
+      estoque_minimo: f.estoque_minimo === "" || f.estoque_minimo == null ? 0 : Number(f.estoque_minimo),
+      controlado: !!f.controlado,
+      ativo: f.ativo !== false,
+      observacao: f.observacao?.trim() || null,
+    });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 520, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{med.id ? "Editar medicamento" : "Novo medicamento"}</div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Nome / apresentação *</label>
+          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Dipirona 500 mg comprimido" style={farmInp} autoFocus />
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Princípio ativo</label>
+          <input value={f.principio_ativo || ""} onChange={e => set("principio_ativo", e.target.value)} placeholder="Ex.: Dipirona sódica" style={farmInp} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Forma farmacêutica</label>
+            <select value={f.forma || ""} onChange={e => set("forma", e.target.value)} style={farmInp}>
+              <option value="">—</option>
+              {FARM_FORMAS.map(x => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={farmLbl}>Concentração</label>
+            <input value={f.concentracao || ""} onChange={e => set("concentracao", e.target.value)} placeholder="500 mg · 10 mg/mL" style={farmInp} />
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Unidade de controle</label>
+            <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={farmInp}>
+              {FARM_UNIDADES.map(x => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={farmLbl}>Estoque mínimo</label>
+            <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={farmInp} />
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 12 }}>
+          <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}>
+            <input type="checkbox" checked={!!f.controlado} onChange={e => set("controlado", e.target.checked)} style={{ accentColor: "#6366f1", width: 15, height: 15 }} /> Controlado (Portaria 344)
+          </label>
+          <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}>
+            <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
+          </label>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={farmLbl}>Observação</label>
+          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Cuidados, armazenamento, etc." style={{ ...farmInp, resize: "vertical" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Entrada / saída de estoque
+function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
+  const [tipo, setTipo] = useState(tipoInicial || "entrada");
+  const lotesComSaldo = [...lotes].filter(l => Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")); // FEFO
+  const [f, setF] = useState({
+    lote: "", validade: "", quantidade: "", documento: "",
+    lote_id: lotesComSaldo[0]?.id || "", motivo: "Dispensação",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const loteSel = lotesComSaldo.find(l => String(l.id) === String(f.lote_id));
+
+  async function salvar() {
+    const q = Number(f.quantidade);
+    if (!q || q <= 0) { alert("Informe uma quantidade maior que zero."); return; }
+    let mov;
+    if (tipo === "entrada") {
+      mov = { medicamento_id: med.id, tipo: "entrada", quantidade: q, lote: f.lote.trim() || null, validade: f.validade || null, motivo: "Compra / nota fiscal", documento: f.documento.trim() || null };
+    } else {
+      if (!loteSel) { alert("Selecione o lote de onde sairá o medicamento."); return; }
+      if (q > Number(loteSel.quantidade)) { alert(`Saída maior que o saldo do lote (disponível: ${farmFmtQtd(loteSel.quantidade)}).`); return; }
+      mov = { medicamento_id: med.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null };
+    }
+    setBusy(true);
+    const ok = await onSave(mov);
+    setBusy(false);
+    if (!ok) return;
+  }
+  const cor = tipo === "entrada" ? "#34d399" : "#d97706";
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Movimentar estoque</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>{med.nome}{med.unidade ? ` · em ${med.unidade}` : ""}</div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {["entrada", "saida"].map(t => (
+            <button key={t} onClick={() => setTipo(t)} style={{ flex: 1, background: tipo === t ? (t === "entrada" ? "#34d399" : "#d97706") : "transparent", color: tipo === t ? "#000" : "var(--text-3)", border: `1px solid ${tipo === t ? (t === "entrada" ? "#34d399" : "#d97706") : "var(--border)"}`, borderRadius: 7, padding: "8px 0", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{t === "entrada" ? "Entrada" : "Saída / baixa"}</button>
+          ))}
+        </div>
+
+        {tipo === "entrada" ? (<>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div><label style={farmLbl}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} placeholder="Ex.: AB1234" style={farmInp} /></div>
+            <div><label style={farmLbl}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={farmInp} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
+            <div><label style={farmLbl}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={farmInp} /></div>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>Sem lote/validade? Deixe em branco — entra num lote genérico. Lançar por lote permite rastrear vencimento e recall.</div>
+        </>) : (<>
+          {lotesComSaldo.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
+          ) : (<>
+            <div style={{ marginBottom: 10 }}>
+              <label style={farmLbl}>Lote (FEFO — vence primeiro no topo)</label>
+              <select value={f.lote_id} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+                {lotesComSaldo.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+              </select>
+            </div>
+            {loteSel && farmValidadeInfo(loteSel.validade).status === "vencido" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10, fontWeight: 600 }}>⚠ Lote vencido — a baixa deve ser por perda/descarte, não dispensação.</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+              <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
+              <div><label style={farmLbl}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={farmInp}>{FARM_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
+            </div>
+            {loteSel && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16 }}>Saldo do lote: <strong style={{ color: "var(--text-2)" }}>{farmFmtQtd(loteSel.quantidade)} {med.unidade || ""}</strong></div>}
+          </>)}
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy || (tipo === "saida" && lotesComSaldo.length === 0)} style={{ background: cor, color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || (tipo === "saida" && lotesComSaldo.length === 0)) ? 0.5 : 1 }}>{busy ? "…" : tipo === "entrada" ? "Registrar entrada" : "Registrar saída"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Kardex — histórico de movimentos do medicamento
+function FarmKardexModal({ med, onClose }) {
+  const [movs, setMovs] = useState(null);
+  useEffect(() => { loadFarmMovimentos(med.id).then(setMovs); }, [med.id]);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Kardex — {med.nome}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Histórico de entradas e saídas (imutável). Últimos movimentos.</div>
+        {movs == null ? <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem" }}>Carregando…</div>
+          : movs.length === 0 ? <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem" }}>Nenhum movimento registrado ainda.</div>
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {movs.map(mv => {
+                const ent = mv.tipo === "entrada";
+                const cor = ent ? "#34d399" : "#d97706";
+                return (
+                  <div key={mv.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: cor, fontSize: 14, minWidth: 62, textAlign: "right" }}>{ent ? "+" : "−"}{farmFmtQtd(mv.quantidade)}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.paciente_iniciais ? ` · ${mv.paciente_iniciais}` : ""}</div>
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{mv.created_at ? new Date(mv.created_at).toLocaleString("pt-BR") : ""}{mv.documento ? ` · doc ${mv.documento}` : ""}{mv.usuario ? ` · ${mv.usuario}` : ""}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Página SCIH (Fase A): isolamentos + casos de vigilância ──
 function ScihPage({ currentUser, canEdit }) {
   const [leitos, setLeitos] = useState([]);
@@ -4774,6 +5223,7 @@ export default function App() {
     { id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" },
     { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
     { id: "scih",     icon: "shield", label: "SCIH" },
+    { id: "farmacia", icon: "pill", label: "Farmácia" },
     { id: "paciente", icon: "record", label: "Paciente 360" },
     ...(canPrint    ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
     ...(canAudit    ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
@@ -4863,6 +5313,7 @@ export default function App() {
           {active === "bloco"     && <BlocoPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
           {active === "auditoria" && canAudit    && <AuditoriaPage />}
