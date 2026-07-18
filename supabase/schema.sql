@@ -303,6 +303,31 @@ drop policy if exists pss_insert on public.ps_sinais;
 create policy pss_select on public.ps_sinais for select to authenticated using (true);
 create policy pss_insert on public.ps_sinais for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
 
+-- Registros do atendimento médico no PS: evolução, prescrição e exames.
+-- Evolução/prescrição são IMUTÁVEIS (update só para tipo=exame: status/resultado).
+create table if not exists public.ps_registros (
+  id bigserial primary key,
+  atendimento_id bigint not null,
+  tipo text not null,
+  categoria text,
+  texto text not null,
+  status text,
+  resultado text,
+  resultado_em timestamptz,
+  usuario text,
+  criado_em timestamptz not null default now()
+);
+create index if not exists ps_registros_atend_idx on public.ps_registros (atendimento_id, criado_em desc);
+alter table public.ps_registros enable row level security;
+drop policy if exists psr_select on public.ps_registros;
+drop policy if exists psr_insert on public.ps_registros;
+drop policy if exists psr_update on public.ps_registros;
+create policy psr_select on public.ps_registros for select to authenticated using (true);
+create policy psr_insert on public.ps_registros for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy psr_update on public.ps_registros for update to authenticated
+  using (public.my_role() in ('adm_master','adm_silver') and tipo = 'exame')
+  with check (tipo = 'exame');
+
 -- ===== SCIH Fase B: base de germes com embasamento =====
 create table if not exists public.scih_germes (
   nome text primary key,

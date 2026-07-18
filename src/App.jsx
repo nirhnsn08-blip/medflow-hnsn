@@ -1655,6 +1655,25 @@ async function loadPsSinais(atendimentoId) {
   const rows = await sbFetch(`ps_sinais?atendimento_id=eq.${atendimentoId}&select=*&order=aferido_em.desc&limit=5`);
   return Array.isArray(rows) ? rows : [];
 }
+// Registros do atendimento (evolução médica, prescrição, exames)
+const PS_EXAME_CATEGORIAS = { laboratorial: "Laboratorial", imagem: "Imagem", outro: "Outro" };
+async function loadPsRegistros(atendimentoId) {
+  const rows = await sbFetch(`ps_registros?atendimento_id=eq.${atendimentoId}&select=*&order=criado_em.desc`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadPsExamesPendentes(ids) {
+  if (!ids.length) return [];
+  const rows = await sbFetch(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.exame&status=neq.visto&select=atendimento_id,status`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addPsRegistroRemote(reg, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("ps_registros", { method: "POST", body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
+}
+async function updatePsRegistroRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`ps_registros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
+}
 // Prioridade de ordenação da fila (menor = mais urgente)
 const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
 
@@ -1972,11 +1991,19 @@ async function loadPaciente360(prontuario) {
     sbFetch(`scih_casos?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
     sbFetch(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`),
   ]);
+  const psRows = Array.isArray(ps) ? ps : [];
+  let registrosPS = [];
+  if (psRows.length) {
+    const ids = psRows.map(a => a.id).join(",");
+    const regs = await sbFetch(`ps_registros?atendimento_id=in.(${ids})&select=*&order=criado_em.desc`).catch(() => []);
+    registrosPS = Array.isArray(regs) ? regs : [];
+  }
   return {
     cadastro: Array.isArray(cad) && cad[0] ? cad[0] : null,
-    ps: Array.isArray(ps) ? ps : [], leitoAtual: Array.isArray(leitoAtual) ? leitoAtual : [],
+    ps: psRows, leitoAtual: Array.isArray(leitoAtual) ? leitoAtual : [],
     saidas: Array.isArray(saidas) ? saidas : [], scih: Array.isArray(scih) ? scih : [],
     evolucoes: Array.isArray(evolucoes) ? evolucoes : [],
+    registrosPS,
   };
 }
 async function buscarPacientesPorIniciais(termo) {
@@ -2018,6 +2045,14 @@ function montarTimeline(d) {
   });
   d.evolucoes.forEach(e => {
     push(e.criado_em, TIPOS_EVOLUCAO[e.tipo]?.label || "Evolução", TIPOS_EVOLUCAO[e.tipo]?.cor || "#3b82f6", TIPOS_EVOLUCAO[e.tipo]?.label || e.tipo, e.texto);
+  });
+  (d.registrosPS || []).forEach(r => {
+    if (r.tipo === "evolucao") push(r.criado_em, "PS", "#3b82f6", "Evolução médica no PS", r.texto);
+    else if (r.tipo === "prescricao") push(r.criado_em, "PS", "#6366f1", "Prescrição no PS", r.texto);
+    else if (r.tipo === "exame") {
+      push(r.criado_em, "PS", "#d97706", `Exame solicitado: ${r.texto}`, null);
+      if (r.resultado_em) push(r.resultado_em, "PS", "#d97706", `Resultado de exame: ${r.texto}`, r.resultado || null);
+    }
   });
   return ev.sort((a, b) => new Date(b.quando) - new Date(a.quando));
 }
@@ -2891,12 +2926,22 @@ function PSPage({ currentUser, canEdit }) {
   const [triando, setTriando] = useState(null);
   const [reavaliando, setReavaliando] = useState(null);
   const [desfechando, setDesfechando] = useState(null);
+  const [atendendo, setAtendendo] = useState(null);
+  const [examesPend, setExamesPend] = useState({});
   const [busy, setBusy] = useState(false);
   const [, setTick] = useState(0);
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadPsAtendimentos().then(setFila);
+    loadPsAtendimentos().then(r => {
+      setFila(r);
+      const ids = r.filter(p => p.status === "em_atendimento").map(p => p.id);
+      loadPsExamesPendentes(ids).then(list => {
+        const m = {};
+        list.forEach(x => { m[x.atendimento_id] = m[x.atendimento_id] || { aguardando: 0, prontos: 0 }; if (x.status === "resultado_disponivel") m[x.atendimento_id].prontos++; else m[x.atendimento_id].aguardando++; });
+        setExamesPend(m);
+      });
+    });
     loadPsFinalizadosHoje().then(setFinalizados);
     loadSetoresFromSupabase().then(r => r && setSetores(r));
   }
@@ -3115,7 +3160,14 @@ function PSPage({ currentUser, canEdit }) {
             <ClasseBadge c={p.classificacao} />
             {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
             <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>em atendimento há {fmtDur(diffMin(p.atendimento_em, agora))}</span>
+            {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir atendimento</button>}
             {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+            {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0) && (
+              <div style={{ width: "100%", display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
+                {examesPend[p.id]?.aguardando > 0 && <span style={{ color: "#d97706" }}>{examesPend[p.id].aguardando} exame(s) aguardando resultado</span>}
+                {examesPend[p.id]?.prontos > 0 && <span style={{ color: "#3b82f6" }}>{examesPend[p.id].prontos} resultado(s) disponível(is)</span>}
+              </div>
+            )}
             {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
           </div>
         ))}
@@ -3144,6 +3196,9 @@ function PSPage({ currentUser, canEdit }) {
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
+
+      {/* PAINEL DO ATENDIMENTO (evolução, prescrição, exames) */}
+      {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} onClose={() => { setAtendendo(null); refresh(); }} onChanged={() => {}} />}
     </div>
   );
 }
@@ -3187,6 +3242,153 @@ function PsDesfechoModal({ paciente, setores, onClose, onSave }) {
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar desfecho"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Painel do atendimento médico no PS: evolução, prescrição e exames
+function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
+  const [registros, setRegistros] = useState([]);
+  const [aba, setAba] = useState("evolucao"); // evolucao | prescricao | exames
+  const [texto, setTexto] = useState("");
+  const [gravando, setGravando] = useState(false);
+  const [exForm, setExForm] = useState({ categoria: "laboratorial", nome: "" });
+  const [resultadoDe, setResultadoDe] = useState(null); // { id, texto }
+  const [busy, setBusy] = useState(false);
+  const recRef = useRef(null);
+  const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
+  useEffect(() => { carregarRegistros(); }, []);
+  useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
+
+  function toggleVoz() {
+    if (gravando) { recRef.current?.stop(); setGravando(false); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = "pt-BR"; rec.continuous = true; rec.interimResults = false;
+    rec.onresult = ev => { let novo = ""; for (let i = ev.resultIndex; i < ev.results.length; i++) if (ev.results[i].isFinal) novo += ev.results[i][0].transcript; if (novo) setTexto(t => (t ? t.trimEnd() + " " : "") + novo.trim()); };
+    rec.onend = () => setGravando(false); rec.onerror = () => setGravando(false);
+    recRef.current = rec; rec.start(); setGravando(true);
+  }
+  async function salvarTexto(tipo) {
+    if (!texto.trim()) { alert("Escreva (ou dite) o texto."); return; }
+    if (!confirm(`Salvar esta ${tipo === "evolucao" ? "evolução" : "prescrição"}? Ela NÃO poderá ser editada nem apagada depois (registro clínico).`)) return;
+    setBusy(true);
+    if (gravando) { recRef.current?.stop(); setGravando(false); }
+    await addPsRegistroRemote({ atendimento_id: paciente.id, tipo, texto: texto.trim(), criado_em: nowISO() }, currentUser);
+    addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? "evolução" : "prescrição"}`, paciente.iniciais, {});
+    setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
+  }
+  async function solicitarExame() {
+    if (!exForm.nome.trim()) { alert("Informe o nome do exame."); return; }
+    setBusy(true);
+    await addPsRegistroRemote({ atendimento_id: paciente.id, tipo: "exame", categoria: exForm.categoria, texto: exForm.nome.trim(), status: "solicitado", criado_em: nowISO() }, currentUser);
+    addAuditLog(currentUser, "PS: solicitar exame", `${paciente.iniciais} · ${exForm.nome.trim()}`, {});
+    setExForm(p => ({ ...p, nome: "" })); setBusy(false); carregarRegistros(); onChanged?.();
+  }
+  async function lancarResultado() {
+    if (!resultadoDe?.texto?.trim()) { alert("Cole ou descreva o resultado."); return; }
+    await updatePsRegistroRemote(resultadoDe.id, { status: "resultado_disponivel", resultado: resultadoDe.texto.trim(), resultado_em: nowISO() });
+    addAuditLog(currentUser, "PS: resultado de exame", paciente.iniciais, {});
+    setResultadoDe(null); carregarRegistros(); onChanged?.();
+  }
+  async function marcarVisto(reg) {
+    await updatePsRegistroRemote(reg.id, { status: "visto" });
+    addAuditLog(currentUser, "PS: exame visto", `${paciente.iniciais} · ${reg.texto}`, {});
+    carregarRegistros(); onChanged?.();
+  }
+
+  const evolucoes = registros.filter(r => r.tipo === "evolucao");
+  const prescricoes = registros.filter(r => r.tipo === "prescricao");
+  const exames = registros.filter(r => r.tipo === "exame");
+  const abaBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
+  const EX_STATUS = { solicitado: { label: "Aguardando resultado", cor: "#d97706" }, resultado_disponivel: { label: "Resultado disponível", cor: "#3b82f6" }, visto: { label: "Visto pelo médico", cor: "#34d399" } };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 700, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Atendimento — {paciente.iniciais}{paciente.prontuario ? ` · reg. ${paciente.prontuario}` : ""}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
+          {paciente.queixa || "Sem queixa registrada"}
+          {paciente.classificacao && MANCHESTER[paciente.classificacao] ? <> · <span style={{ color: MANCHESTER[paciente.classificacao].cor, fontWeight: 700 }}>{MANCHESTER[paciente.classificacao].label}</span></> : ""}
+          {paciente.atendimento_em ? ` · em atendimento há ${fmtDur(diffMin(paciente.atendimento_em, nowISO()))}` : ""}
+        </div>
+        {fmtSinaisVitais(paciente) && <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace", marginBottom: 12 }}>{fmtSinaisVitais(paciente)}</div>}
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <button onClick={() => setAba("evolucao")} style={abaBtn(aba === "evolucao")}>Evolução médica ({evolucoes.length})</button>
+          <button onClick={() => setAba("prescricao")} style={abaBtn(aba === "prescricao")}>Prescrição ({prescricoes.length})</button>
+          <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>Exames ({exames.length})</button>
+        </div>
+
+        {(aba === "evolucao" || aba === "prescricao") && (
+          <>
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder={aba === "evolucao" ? "Escreva a evolução médica — ou clique em Ditar e fale." : "Escreva a prescrição (medicamentos, doses, vias, cuidados)."} style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
+              {suportaVoz && <button onClick={toggleVoz} style={{ background: gravando ? "#f43f5e" : "transparent", color: gravando ? "#fff" : "var(--text-2)", border: `1px solid ${gravando ? "#f43f5e" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{gravando ? "● Gravando… (parar)" : "Ditar por voz"}</button>}
+              <button onClick={() => salvarTexto(aba)} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : aba === "evolucao" ? "Salvar evolução" : "Salvar prescrição"}</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(aba === "evolucao" ? evolucoes : prescricoes).map(r => (
+                <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginBottom: 4 }}>{horaFmt(r.criado_em)} · {r.usuario || "?"}</div>
+                  <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{r.texto}</div>
+                </div>
+              ))}
+              {(aba === "evolucao" ? evolucoes : prescricoes).length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum registro ainda.</div>}
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Registros assinados com data/hora e imutáveis (não podem ser editados nem apagados).</div>
+          </>
+        )}
+
+        {aba === "exames" && (
+          <>
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <select value={exForm.categoria} onChange={e => setExForm(p => ({ ...p, categoria: e.target.value }))} style={{ ...inp, width: 150 }}>
+                {Object.entries(PS_EXAME_CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+              <input value={exForm.nome} onChange={e => setExForm(p => ({ ...p, nome: e.target.value }))} onKeyDown={e => e.key === "Enter" && solicitarExame()} placeholder="Ex.: Hemograma completo, RX de tórax PA…" style={{ ...inp, flex: 1, minWidth: 200 }} />
+              <button onClick={solicitarExame} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "+ Solicitar"}</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {exames.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum exame solicitado.</div>}
+              {exames.map(r => {
+                const st = EX_STATUS[r.status] || EX_STATUS.solicitado;
+                return (
+                  <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 8, padding: "10px 13px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 13 }}>{r.texto}</strong>
+                      <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{PS_EXAME_CATEGORIAS[r.categoria] || r.categoria}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: st.cor }}>{st.label}</span>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 2 }}>Solicitado {horaFmt(r.criado_em)}{r.resultado_em ? ` · resultado ${horaFmt(r.resultado_em)}` : ""}</div>
+                    {r.resultado && <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap", marginTop: 6, background: "var(--input-bg)", borderRadius: 6, padding: "8px 10px" }}>{r.resultado}</div>}
+                    {resultadoDe?.id === r.id ? (
+                      <div style={{ marginTop: 8 }}>
+                        <textarea value={resultadoDe.texto} onChange={e => setResultadoDe(p => ({ ...p, texto: e.target.value }))} rows={3} placeholder="Cole ou descreva o resultado do exame." style={{ ...inp, resize: "vertical", lineHeight: 1.5, marginBottom: 6 }} />
+                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                          <button onClick={() => setResultadoDe(null)} style={btnLeito("var(--text-muted)")}>Cancelar</button>
+                          <button onClick={lancarResultado} style={btnLeito("#3b82f6")}>Salvar resultado</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                        {r.status === "solicitado" && <button onClick={() => setResultadoDe({ id: r.id, texto: "" })} style={btnLeito("#3b82f6")}>Lançar resultado</button>}
+                        {r.status === "resultado_disponivel" && <button onClick={() => marcarVisto(r)} style={btnLeito("#34d399")}>Marcar como visto</button>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
         </div>
       </div>
     </div>
