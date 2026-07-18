@@ -407,6 +407,7 @@ create table if not exists public.farm_medicamentos (
   id bigserial primary key,
   nome text not null,                    -- descrição/apresentação (ex.: "Dipirona 500mg comprimido")
   principio_ativo text,
+  classe text,                           -- classe terapêutica (analgésicos, antibióticos, insulinas...)
   forma text,                            -- comprimido, ampola, frasco...
   concentracao text,                     -- 500 mg, 10 mg/mL...
   unidade text default 'unidade',        -- unidade de dispensação (comprimido, mL, ampola)

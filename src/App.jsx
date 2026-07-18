@@ -1616,8 +1616,34 @@ function sugerirGerme(digitado, germes) {
 // ═══════════════════════════════════════════════════════════
 // FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex FEFO)
 // ═══════════════════════════════════════════════════════════
-const FARM_FORMAS   = ["Comprimido", "Cápsula", "Ampola", "Frasco", "Frasco-ampola", "Bolsa/Soro", "Bisnaga/Pomada", "Sachê", "Solução oral", "Outro"];
-const FARM_UNIDADES = ["unidade", "comprimido", "cápsula", "ampola", "frasco", "mL", "g", "dose"];
+const FARM_FORMAS   = ["Comprimido", "Cápsula", "Ampola", "Frasco-ampola", "Frasco", "Bolsa/Soro", "Seringa", "Bisnaga/Pomada", "Spray/Aerossol", "Solução oral", "Sachê", "Outro"];
+const FARM_UNIDADES = ["unidade", "comprimido", "cápsula", "ampola", "frasco-ampola", "frasco", "bolsa", "seringa", "mL", "g", "dose"];
+// Classes terapêuticas (ordem de exibição no agrupamento)
+const FARM_CLASSES = [
+  "Analgésicos e antipiréticos",
+  "Anti-inflamatórios (AINEs)",
+  "Opioides",
+  "Anestésicos",
+  "Antibióticos",
+  "Antifúngicos",
+  "Antivirais",
+  "Insulinas",
+  "Antidiabéticos orais",
+  "Cardiovasculares e anti-hipertensivos",
+  "Diuréticos",
+  "Anticoagulantes e antitrombóticos",
+  "Drogas vasoativas",
+  "Respiratório / broncodilatadores",
+  "Corticoides",
+  "Antieméticos",
+  "Antiulcerosos / protetores gástricos",
+  "Sedativos e anticonvulsivantes",
+  "Antipsicóticos e antidepressivos",
+  "Anti-histamínicos / antialérgicos",
+  "Soluções, eletrólitos e soros",
+  "Vitaminas e suplementos",
+  "Outros",
+];
 const FARM_MOTIVOS_SAIDA = ["Dispensação", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
 const FARM_VENC_DIAS = 30; // janela de "vencendo em breve" (dias)
 
@@ -3704,6 +3730,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
   const [meds, setMeds]   = useState([]);
   const [lotes, setLotes] = useState([]);
   const [busca, setBusca] = useState("");
+  const [classeFiltro, setClasseFiltro] = useState("");
   const [showMed, setShowMed] = useState(null);   // objeto (novo/editar) ou null
   const [movMed, setMovMed]   = useState(null);   // { med, tipo }
   const [kardex, setKardex]   = useState(null);   // med para histórico
@@ -3728,6 +3755,13 @@ function FarmaciaPage({ currentUser, canEdit }) {
     if (!q) return true;
     return [m.nome, m.principio_ativo, m.forma].some(x => (x || "").toLowerCase().includes(q));
   }).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+
+  const ordClasse = (a, b) => { const ia = FARM_CLASSES.indexOf(a), ib = FARM_CLASSES.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, "pt-BR"); };
+  const classesPresentes = [...new Set(meds.map(m => m.classe || "Outros"))].sort(ordClasse);
+  const medsView = medsOrd.filter(m => !classeFiltro || (m.classe || "Outros") === classeFiltro);
+  const grupos = {};
+  medsView.forEach(m => { const c = m.classe || "Outros"; (grupos[c] = grupos[c] || []).push(m); });
+  const gruposOrd = Object.keys(grupos).sort(ordClasse);
 
   // Situação de estoque de cada medicamento
   function statusMed(m) {
@@ -3780,7 +3814,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia — Estoque</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Catálogo de medicamentos, entradas e saídas por lote e validade (FEFO). {totalAtivos} ativos · {totalItens} cadastrados.</div>
         </div>
-        {canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
+        {canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
 
       {/* PAINÉIS DE ALERTA */}
@@ -3799,10 +3833,16 @@ function FarmaciaPage({ currentUser, canEdit }) {
         </div>
       </div>
 
-      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, princípio ativo ou forma…" style={{ ...farmInp, maxWidth: 420, marginBottom: 14 }} />
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, princípio ativo ou forma…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
+        <select value={classeFiltro} onChange={e => setClasseFiltro(e.target.value)} style={{ ...farmInp, maxWidth: 280 }}>
+          <option value="">Todas as classes</option>
+          {classesPresentes.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
 
-      {/* TABELA DE ESTOQUE */}
-      {medsOrd.length === 0 ? (
+      {/* TABELA DE ESTOQUE (agrupada por classe terapêutica) */}
+      {medsView.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>
           {meds.length === 0 ? "Nenhum medicamento cadastrado ainda. Clique em “+ Novo medicamento”." : "Nenhum resultado para a busca."}
         </div>
@@ -3820,8 +3860,12 @@ function FarmaciaPage({ currentUser, canEdit }) {
                 <th style={{ padding: "9px 12px", textAlign: "right" }}>Ações</th>
               </tr>
             </thead>
-            <tbody>
-              {medsOrd.map(m => {
+            {gruposOrd.map(classe => (
+              <tbody key={classe}>
+                {!classeFiltro && (
+                  <tr><td colSpan={7} style={{ padding: "10px 12px 5px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", fontSize: 11, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{classe} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>· {grupos[classe].length}</span></td></tr>
+                )}
+                {grupos[classe].map(m => {
                 const st = statusMed(m);
                 const lc = loteCritico(m);
                 const vi = lc ? farmValidadeInfo(lc.validade) : null;
@@ -3852,8 +3896,9 @@ function FarmaciaPage({ currentUser, canEdit }) {
                     </td>
                   </tr>
                 );
-              })}
-            </tbody>
+                })}
+              </tbody>
+            ))}
           </table>
         </div>
       )}
@@ -3877,6 +3922,7 @@ function FarmMedModal({ med, onClose, onSave }) {
       ...(med.id ? { id: med.id } : {}),
       nome: f.nome.trim(),
       principio_ativo: f.principio_ativo?.trim() || null,
+      classe: f.classe || null,
       forma: f.forma || null,
       concentracao: f.concentracao?.trim() || null,
       unidade: f.unidade || "unidade",
@@ -3895,9 +3941,18 @@ function FarmMedModal({ med, onClose, onSave }) {
           <label style={farmLbl}>Nome / apresentação *</label>
           <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Dipirona 500 mg comprimido" style={farmInp} autoFocus />
         </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Princípio ativo</label>
-          <input value={f.principio_ativo || ""} onChange={e => set("principio_ativo", e.target.value)} placeholder="Ex.: Dipirona sódica" style={farmInp} />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Princípio ativo</label>
+            <input value={f.principio_ativo || ""} onChange={e => set("principio_ativo", e.target.value)} placeholder="Ex.: Dipirona sódica" style={farmInp} />
+          </div>
+          <div>
+            <label style={farmLbl}>Classe terapêutica</label>
+            <select value={f.classe || ""} onChange={e => set("classe", e.target.value)} style={farmInp}>
+              <option value="">—</option>
+              {FARM_CLASSES.map(x => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
