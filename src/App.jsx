@@ -2922,6 +2922,8 @@ function PSPage({ currentUser, canEdit }) {
   const [fila, setFila] = useState([]);
   const [finalizados, setFinalizados] = useState([]);
   const [setores, setSetores] = useState([]);
+  const [leitos, setLeitos] = useState([]);
+  const [obitosInternacao, setObitosInternacao] = useState(0);
   const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "" });
   const [triando, setTriando] = useState(null);
   const [reavaliando, setReavaliando] = useState(null);
@@ -2944,6 +2946,10 @@ function PSPage({ currentUser, canEdit }) {
     });
     loadPsFinalizadosHoje().then(setFinalizados);
     loadSetoresFromSupabase().then(r => r && setSetores(r));
+    loadLeitosFromSupabase().then(r => r && setLeitos(r));
+    // óbitos ocorridos APÓS internação, hoje (fonte: leitos_saidas)
+    const hoje = todayStr();
+    sbFetch(`leitos_saidas?desfecho=eq.obito&data_alta=eq.${hoje}&select=id`).then(r => setObitosInternacao(Array.isArray(r) ? r.length : 0));
   }
   useEffect(() => {
     refresh();
@@ -2981,13 +2987,25 @@ function PSPage({ currentUser, canEdit }) {
     addAuditLog(currentUser, "PS: inicio atendimento", p.iniciais, {});
     setTimeout(refresh, 300);
   }
-  async function darDesfecho(p, desfecho, setorDestino, observacao) {
-    await updatePsAtendimentoRemote(p.id, { desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null, observacao: observacao || null, status: "finalizado" });
-    // Jornada do paciente: internação no PS abre automaticamente a solicitação de leito
-    if (desfecho === "internacao" && setorDestino) {
-      await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
+  async function darDesfecho(p, d) {
+    const { desfecho, setorDestino, observacao, medico, leito } = d;
+    await updatePsAtendimentoRemote(p.id, { desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null, observacao: observacao || null, medico: medico || null, status: "finalizado" });
+    if (desfecho === "internacao") {
+      if (leito) {
+        // Alocação direta: interna o paciente no leito escolhido e o encaminha
+        await upsertLeitoRemote({
+          identificacao: leito.identificacao, status: "ocupado",
+          iniciais: p.iniciais, prontuario: p.prontuario || null, motivo: p.queixa || null,
+          cid: null, dias_previstos: null, data_internacao: todayStr(), entrada_em: nowISO(),
+          solic_em: null, disp_em: null, pronto_em: null, interdicao_motivo: null,
+        }, currentUser);
+        addAuditLog(currentUser, "PS: internar em leito", `${p.iniciais} → ${leito.identificacao}`, {});
+      } else if (setorDestino) {
+        // Sem leito agora → fila de espera do setor
+        await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
+      }
     }
-    addAuditLog(currentUser, "PS: desfecho", `${p.iniciais} → ${desfecho}${setorDestino ? " (" + setorDestino + ")" : ""}`, {});
+    addAuditLog(currentUser, "PS: desfecho", `${p.iniciais} → ${desfecho}${medico ? " · Dr(a). " + medico : ""}${leito ? " · leito " + leito.identificacao : setorDestino ? " (" + setorDestino + ")" : ""}`, {});
     setDesfechando(null); setTimeout(refresh, 300);
   }
 
@@ -3087,6 +3105,48 @@ function PSPage({ currentUser, canEdit }) {
                 </tbody>
               </table>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* DESFECHOS DE HOJE */}
+      {finalizados.length > 0 && (() => {
+        const th = { textAlign: "left", padding: "7px 14px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", borderBottom: "1px solid var(--border)" };
+        const td = { padding: "7px 14px", fontSize: 12.5, color: "var(--text-2)", borderBottom: "1px solid var(--border)" };
+        const num = { ...td, fontFamily: "JetBrains Mono, monospace", textAlign: "right", color: "var(--text)" };
+        const cont = Object.keys(PS_DESFECHOS).map(k => ({ k, n: finalizados.filter(p => p.desfecho === k).length }));
+        // evasões agrupadas por médico
+        const evasoes = finalizados.filter(p => p.desfecho === "evasao");
+        const porMedico = {};
+        evasoes.forEach(p => { const m = p.medico || "Sem médico registrado"; porMedico[m] = (porMedico[m] || 0) + 1; });
+        const medicosOrd = Object.entries(porMedico).sort((a, b) => b[1] - a[1]);
+        return (
+          <div style={{ marginBottom: "1.25rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+            <div>
+              <div style={secLbl}>Desfechos de hoje</div>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr><th style={th}>Desfecho</th><th style={{ ...th, textAlign: "right" }}>Qtd.</th></tr></thead>
+                  <tbody>
+                    {cont.map(({ k, n }) => (
+                      <tr key={k}><td style={td}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: PS_DESFECHOS[k].cor, marginRight: 9, verticalAlign: "middle" }} />{PS_DESFECHOS[k].label}{k === "obito" ? " (no PS, antes de internar)" : ""}</td><td style={num}>{n}</td></tr>
+                    ))}
+                    <tr><td style={{ ...td, borderBottom: "none" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: "#f43f5e", marginRight: 9, verticalAlign: "middle" }} />Óbito após internação</td><td style={{ ...num, borderBottom: "none" }}>{obitosInternacao}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            {medicosOrd.length > 0 && (
+              <div>
+                <div style={secLbl}>Evasões por médico (hoje)</div>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr><th style={th}>Médico</th><th style={{ ...th, textAlign: "right" }}>Evasões</th></tr></thead>
+                    <tbody>{medicosOrd.map(([m, n]) => <tr key={m}><td style={td}>{m}</td><td style={num}>{n}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
@@ -3195,7 +3255,7 @@ function PSPage({ currentUser, canEdit }) {
       {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug) => reavaliar(reavaliando, cls, vitais, sug)} />}
 
       {/* MODAL DESFECHO */}
-      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
+      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
 
       {/* PAINEL DO ATENDIMENTO (evolução, prescrição, exames) */}
       {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} onClose={() => { setAtendendo(null); refresh(); }} onChanged={() => {}} />}
@@ -3204,39 +3264,77 @@ function PSPage({ currentUser, canEdit }) {
 }
 
 // Modal de desfecho do PS (alta/internação/transferência/evasão/óbito)
-function PsDesfechoModal({ paciente, setores, onClose, onSave }) {
+function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
   const [desfecho, setDesfecho] = useState("");
   const [setorDestino, setSetorDestino] = useState("");
+  const [medico, setMedico] = useState("");
   const [obs, setObs] = useState("");
+  const [leitoSel, setLeitoSel] = useState("fila"); // "fila" | identificacao do leito
   const [busy, setBusy] = useState(false);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
+
+  // Leitos vagos, com os do setor escolhido primeiro
+  const livres = leitos.filter(l => l.status === "livre")
+    .sort((a, b) => ((b.setor === setorDestino) - (a.setor === setorDestino)) || (a.identificacao || "").localeCompare(b.identificacao || "", "pt-BR", { numeric: true }));
+
   async function salvar() {
     if (!desfecho) { alert("Escolha o desfecho."); return; }
     if (desfecho === "internacao" && !setorDestino) { alert("Escolha o setor de destino da internação."); return; }
+    const leitoObj = desfecho === "internacao" && leitoSel !== "fila" ? livres.find(l => l.identificacao === leitoSel) : null;
+    if (desfecho === "internacao" && leitoObj) {
+      if (!confirm(`Internar ${paciente.iniciais} diretamente no leito ${leitoObj.identificacao}${leitoObj.setor ? ` (${leitoObj.setor})` : ""}?`)) return;
+    }
     setBusy(true);
-    await onSave(paciente, desfecho, setorDestino, obs.trim());
+    await onSave(paciente, { desfecho, setorDestino, observacao: obs.trim(), medico: medico.trim(), leito: leitoObj });
     setBusy(false);
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 460, maxWidth: "94vw" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 500, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Desfecho — {paciente.iniciais}</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           {Object.entries(PS_DESFECHOS).map(([k, v]) => (
-            <button key={k} onClick={() => setDesfecho(k)} style={{ background: desfecho === k ? v.cor : "transparent", color: desfecho === k ? "#000" : v.cor, border: `1px solid ${v.cor}66`, borderRadius: 7, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{v.label}</button>
+            <button key={k} onClick={() => setDesfecho(k)} style={{ background: desfecho === k ? "var(--surface-3)" : "transparent", color: desfecho === k ? v.cor : "var(--text-3)", border: `1px solid ${desfecho === k ? v.cor : "var(--border-2)"}`, borderRadius: 7, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{v.label}</button>
           ))}
         </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={lbl}>Médico responsável{desfecho === "evasao" ? " (evasão será contabilizada por médico)" : ""}</label>
+          <input value={medico} onChange={e => setMedico(e.target.value)} placeholder="Sobrenome do médico" style={inp} />
+        </div>
+
         {desfecho === "internacao" && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 }}>Setor de destino (abre solicitação de leito automaticamente)</label>
-            <select value={setorDestino} onChange={e => setSetorDestino(e.target.value)} style={inp}>
-              <option value="">Escolha o setor…</option>
-              {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
-            </select>
-          </div>
+          <>
+            <div style={{ marginBottom: 12 }}>
+              <label style={lbl}>Setor de destino *</label>
+              <select value={setorDestino} onChange={e => { setSetorDestino(e.target.value); setLeitoSel("fila"); }} style={inp}>
+                <option value="">Escolha o setor…</option>
+                {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+              </select>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={lbl}>Encaminhamento</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <button onClick={() => setLeitoSel("fila")} style={{ textAlign: "left", background: leitoSel === "fila" ? "var(--surface-3)" : "transparent", border: `1px solid ${leitoSel === "fila" ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "9px 12px", cursor: "pointer", color: "var(--text-2)", fontSize: 12.5 }}>
+                  Enviar para a fila de espera por leito {setorDestino ? `(${setorDestino})` : ""}
+                </button>
+                {livres.length === 0 && <div style={{ fontSize: 11.5, color: "var(--text-muted)", padding: "2px 2px" }}>Nenhum leito livre no momento — o paciente irá para a fila de espera.</div>}
+                {livres.map(l => (
+                  <button key={l.identificacao} onClick={() => setLeitoSel(l.identificacao)} style={{ textAlign: "left", background: leitoSel === l.identificacao ? "var(--surface-3)" : "transparent", border: `1px solid ${leitoSel === l.identificacao ? "#34d399" : "var(--border)"}`, borderRadius: 7, padding: "9px 12px", cursor: "pointer", fontSize: 12.5, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: "#34d399", flexShrink: 0 }} />
+                    <strong style={{ color: "var(--text)" }}>Leito {l.identificacao}</strong>
+                    {l.setor && <span style={{ color: l.setor === setorDestino ? "#34d399" : "var(--text-muted)" }}>{l.setor}{l.setor === setorDestino ? " · mesmo setor" : ""}</span>}
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>internar aqui →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
         )}
+
         <div style={{ marginBottom: 16 }}>
-          <label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 }}>Observação (opcional)</label>
+          <label style={lbl}>Observação (opcional)</label>
           <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Ex.: encaminhado com acompanhante" style={inp} />
         </div>
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -4102,21 +4200,25 @@ function LeitosPage({ currentUser, canEdit }) {
     addAuditLog(currentUser, editando ? "editar internação" : "internar", leito.identificacao, { cid: dados.cid });
     setModal(null);
   }
-  async function darAlta(leito) {
-    if (!confirm(`Dar alta do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`)) return;
+  async function encerrarLeito(leito, desfecho) {
+    const obito = desfecho === "obito";
+    if (!confirm(obito
+      ? `Registrar ÓBITO do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`
+      : `Dar alta do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`)) return;
     const now = nowISO();
     const dias = leito.data_internacao ? Math.max(0, Math.round((new Date(todayStr() + "T00:00:00") - new Date(leito.data_internacao + "T00:00:00")) / 86400000)) : null;
     await registrarSaidaRemote({
       leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
       motivo: leito.motivo, data_internacao: leito.data_internacao, data_alta: todayStr(),
-      disp_em: now, dias_permanencia: dias,
+      disp_em: now, dias_permanencia: dias, desfecho,
     }, currentUser);
     await salvarLeito({
       identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
       iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null,
     });
-    addAuditLog(currentUser, "dar alta", leito.identificacao, {});
+    addAuditLog(currentUser, obito ? "óbito no leito" : "dar alta", leito.identificacao, {});
   }
+  const darAlta = leito => encerrarLeito(leito, "alta");
   async function marcarPronto(leito) {
     await salvarLeito({ identificacao: leito.identificacao, status: "livre", pronto_em: nowISO() });
     addAuditLog(currentUser, "leito pronto", leito.identificacao, {});
@@ -4256,6 +4358,7 @@ function LeitosPage({ currentUser, canEdit }) {
                     </>}
                     {l.status === "ocupado" && <>
                       <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
+                      <button onClick={() => encerrarLeito(l, "obito")} style={btnLeito("#f43f5e")}>Óbito</button>
                       <button onClick={() => setModal(l)} style={btnLeito("var(--text-3)")}>Editar</button>
                     </>}
                     {l.status === "higienizacao" && <>

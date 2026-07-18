@@ -101,7 +101,8 @@ alter table public.leitos
   add column if not exists solic_em   timestamptz, add column if not exists disp_em    timestamptz,
   add column if not exists pronto_em  timestamptz, add column if not exists entrada_em timestamptz;
 alter table public.leitos_saidas
-  add column if not exists disp_em timestamptz, add column if not exists dias_permanencia int;
+  add column if not exists disp_em timestamptz, add column if not exists dias_permanencia int,
+  add column if not exists desfecho text default 'alta';   -- alta | obito
 create table if not exists public.leitos_turnover (
   id bigserial primary key, leito text,
   solic_em timestamptz, disp_em timestamptz, pronto_em timestamptz, entrada_em timestamptz,
@@ -283,7 +284,8 @@ alter table public.ps_atendimentos
   add column if not exists temp numeric(4,1),
   add column if not exists dor int,
   add column if not exists consciencia text,
-  add column if not exists glicemia int;
+  add column if not exists glicemia int,
+  add column if not exists medico text;   -- médico responsável no desfecho
 
 -- Histórico de aferições de sinais vitais (triagem + reavaliações) — APPEND-ONLY
 create table if not exists public.ps_sinais (
