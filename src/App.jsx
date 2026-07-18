@@ -1650,6 +1650,82 @@ async function updatePsAtendimentoRemote(id, campos) {
 // Prioridade de ordenação da fila (menor = mais urgente)
 const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
 
+// Nível de consciência (AVPU)
+const PS_CONSCIENCIA = {
+  A: "Alerta", V: "Responde à voz", D: "Responde à dor", U: "Inconsciente",
+};
+// Avalia os sinais vitais (adulto) e sugere a classificação de Manchester.
+// APOIO À DECISÃO: cada alteração vira um "motivo" com o nível que ela dispara;
+// a sugestão final é o pior nível encontrado. A palavra final é da triadora.
+function avaliarSinaisVitais(v) {
+  const motivos = [];
+  const add = (nivel, texto) => motivos.push({ nivel, texto });
+  const n = x => (x === "" || x == null ? null : Number(x));
+  const spo2 = n(v.spo2), fr = n(v.fr), fc = n(v.fc), pas = n(v.pa_sist), temp = n(v.temp), dor = n(v.dor), gli = n(v.glicemia);
+
+  if (v.consciencia === "U") add("vermelho", "Inconsciente (AVPU: U)");
+  else if (v.consciencia === "D") add("laranja", "Responde apenas à dor (AVPU: D)");
+  else if (v.consciencia === "V") add("laranja", "Responde apenas à voz (AVPU: V)");
+
+  if (spo2 != null) {
+    if (spo2 < 85) add("vermelho", `SpO2 ${spo2}% (muito baixa)`);
+    else if (spo2 <= 91) add("laranja", `SpO2 ${spo2}% (baixa)`);
+    else if (spo2 <= 94) add("amarelo", `SpO2 ${spo2}%`);
+  }
+  if (fr != null) {
+    if (fr < 8 || fr > 35) add("vermelho", `FR ${fr} irpm (crítica)`);
+    else if (fr <= 9 || fr >= 25) add("laranja", `FR ${fr} irpm`);
+    else if (fr >= 21) add("amarelo", `FR ${fr} irpm`);
+  }
+  if (fc != null) {
+    if (fc < 40 || fc > 150) add("vermelho", `FC ${fc} bpm (crítica)`);
+    else if (fc <= 49 || fc >= 121) add("laranja", `FC ${fc} bpm`);
+    else if (fc <= 59 || fc >= 100) add("amarelo", `FC ${fc} bpm`);
+  }
+  if (pas != null) {
+    if (pas < 80) add("vermelho", `PA sistólica ${pas} mmHg (choque?)`);
+    else if (pas <= 89) add("laranja", `PA sistólica ${pas} mmHg`);
+    else if (pas <= 99) add("amarelo", `PA sistólica ${pas} mmHg`);
+    else if (pas >= 220) add("laranja", `PA sistólica ${pas} mmHg (crise hipertensiva)`);
+    else if (pas >= 180) add("amarelo", `PA sistólica ${pas} mmHg (elevada)`);
+  }
+  if (temp != null) {
+    if (temp < 35) add("laranja", `Temperatura ${temp}°C (hipotermia)`);
+    else if (temp >= 40) add("laranja", `Temperatura ${temp}°C (hiperpirexia)`);
+    else if (temp >= 38.5) add("amarelo", `Temperatura ${temp}°C (febre alta)`);
+    else if (temp >= 37.8) add("verde", `Temperatura ${temp}°C (febril)`);
+  }
+  if (dor != null && dor > 0) {
+    if (dor >= 8) add("laranja", `Dor intensa (${dor}/10)`);
+    else if (dor >= 4) add("amarelo", `Dor moderada (${dor}/10)`);
+    else add("verde", `Dor leve (${dor}/10)`);
+  }
+  if (gli != null) {
+    if (gli < 60) add("laranja", `Glicemia ${gli} mg/dL (hipoglicemia)`);
+    else if (gli > 400) add("amarelo", `Glicemia ${gli} mg/dL (muito elevada)`);
+  }
+
+  const temAlgum = [spo2, fr, fc, pas, temp, dor, gli].some(x => x != null) || !!v.consciencia;
+  if (!temAlgum) return { sugestao: null, motivos: [] };
+  const ordem = ["vermelho", "laranja", "amarelo", "verde"];
+  const pior = ordem.find(nv => motivos.some(m => m.nivel === nv));
+  return { sugestao: pior || "verde", motivos };
+}
+// Linha compacta dos sinais vitais registrados (fila e Paciente 360)
+function fmtSinaisVitais(p) {
+  const parts = [];
+  if (p.pa_sist && p.pa_diast) parts.push(`PA ${p.pa_sist}x${p.pa_diast}`);
+  else if (p.pa_sist) parts.push(`PAS ${p.pa_sist}`);
+  if (p.fc) parts.push(`FC ${p.fc}`);
+  if (p.fr) parts.push(`FR ${p.fr}`);
+  if (p.spo2) parts.push(`SpO2 ${p.spo2}%`);
+  if (p.temp) parts.push(`T ${p.temp}°C`);
+  if (p.dor) parts.push(`Dor ${p.dor}/10`);
+  if (p.glicemia) parts.push(`HGT ${p.glicemia}`);
+  if (p.consciencia && p.consciencia !== "A") parts.push(PS_CONSCIENCIA[p.consciencia] || p.consciencia);
+  return parts.join(" · ");
+}
+
 // ── Fase C: indicadores mensais do SCIH ──
 async function loadScihIndicadores() {
   const rows = await sbFetch("scih_indicadores?select=*&order=competencia");
@@ -1916,7 +1992,7 @@ function montarTimeline(d) {
   const push = (quando, modulo, cor, titulo, detalhe) => { if (quando) ev.push({ quando, modulo, cor, titulo, detalhe }); };
   d.ps.forEach(a => {
     push(a.chegada_em, "PS", "#6366f1", "Chegada no Pronto-Socorro", a.queixa || null);
-    if (a.triagem_em) push(a.triagem_em, "PS", MANCHESTER[a.classificacao]?.cor || "#6366f1", `Triagem: ${MANCHESTER[a.classificacao]?.label || a.classificacao || "—"}`, null);
+    if (a.triagem_em) push(a.triagem_em, "PS", MANCHESTER[a.classificacao]?.cor || "#6366f1", `Triagem: ${MANCHESTER[a.classificacao]?.label || a.classificacao || "—"}`, fmtSinaisVitais(a) || null);
     if (a.atendimento_em) push(a.atendimento_em, "PS", "#6366f1", "Início do atendimento", null);
     if (a.desfecho_em) push(a.desfecho_em, "PS", PS_DESFECHOS[a.desfecho]?.cor || "#6366f1", `Desfecho no PS: ${PS_DESFECHOS[a.desfecho]?.label || a.desfecho}${a.setor_destino ? " → " + a.setor_destino : ""}`, a.observacao || null);
   });
@@ -2834,8 +2910,8 @@ function PSPage({ currentUser, canEdit }) {
     setNovo({ iniciais: "", prontuario: "", queixa: "" });
     setBusy(false); setTimeout(refresh, 400);
   }
-  async function triar(p, classificacao) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento" });
+  async function triar(p, classificacao, vitais) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}) });
     addAuditLog(currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
   }
@@ -2950,6 +3026,7 @@ function PSPage({ currentUser, canEdit }) {
             {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
             <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
             {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar atendimento</button>}
+            {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
           </div>
         ))}
       </div>
@@ -2965,6 +3042,7 @@ function PSPage({ currentUser, canEdit }) {
             {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
             <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>em atendimento há {fmtDur(diffMin(p.atendimento_em, agora))}</span>
             {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+            {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
           </div>
         ))}
       </div>
@@ -2987,25 +3065,7 @@ function PSPage({ currentUser, canEdit }) {
       )}
 
       {/* MODAL TRIAGEM */}
-      {triando && (
-        <div onClick={() => setTriando(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 500, maxWidth: "94vw" }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Triagem — {triando.iniciais}</div>
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>{triando.queixa || "Sem queixa registrada"} · chegou há {fmtDur(diffMin(triando.chegada_em, agora))}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {Object.entries(MANCHESTER).map(([k, v]) => (
-                <button key={k} onClick={() => triar(triando, k)} style={{ display: "flex", alignItems: "center", gap: 12, background: v.bg, border: `1px solid ${v.cor}55`, borderLeft: `5px solid ${v.cor}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", textAlign: "left" }}>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: v.cor, minWidth: 110 }}>{v.label}</span>
-                  <span style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.4 }}>{v.desc}</span>
-                </button>
-              ))}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-              <button onClick={() => setTriando(null)} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais) => triar(triando, cls, vitais)} />}
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
@@ -3052,6 +3112,91 @@ function PsDesfechoModal({ paciente, setores, onClose, onSave }) {
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar desfecho"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Modal de triagem: sinais vitais → sugestão automática de Manchester → decisão da triadora
+function TriagemModal({ paciente, onClose, onTriar }) {
+  const [v, setV] = useState({ pa_sist: "", pa_diast: "", fc: "", fr: "", spo2: "", temp: "", dor: "", consciencia: "A", glicemia: "" });
+  const [busy, setBusy] = useState(false);
+  const set = (k, val) => setV(p => ({ ...p, [k]: val }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 };
+  const av = avaliarSinaisVitais(v);
+  const sug = av.sugestao ? MANCHESTER[av.sugestao] : null;
+
+  function vitaisPayload() {
+    const n = x => (x === "" || x == null ? null : Number(x));
+    return {
+      pa_sist: n(v.pa_sist), pa_diast: n(v.pa_diast), fc: n(v.fc), fr: n(v.fr),
+      spo2: n(v.spo2), temp: n(v.temp), dor: n(v.dor), glicemia: n(v.glicemia),
+      consciencia: v.consciencia || null,
+    };
+  }
+  async function classificar(k) {
+    setBusy(true);
+    await onTriar(k, vitaisPayload());
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Triagem — {paciente.iniciais}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{paciente.queixa || "Sem queixa registrada"} · chegou há {fmtDur(diffMin(paciente.chegada_em, nowISO()))}</div>
+
+        {/* SINAIS VITAIS */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Sinais vitais</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 8 }}>
+          <div><label style={lbl}>PA sist. (mmHg)</label><input type="number" value={v.pa_sist} onChange={e => set("pa_sist", e.target.value)} placeholder="120" style={inp} /></div>
+          <div><label style={lbl}>PA diast.</label><input type="number" value={v.pa_diast} onChange={e => set("pa_diast", e.target.value)} placeholder="80" style={inp} /></div>
+          <div><label style={lbl}>FC (bpm)</label><input type="number" value={v.fc} onChange={e => set("fc", e.target.value)} placeholder="80" style={inp} /></div>
+          <div><label style={lbl}>FR (irpm)</label><input type="number" value={v.fr} onChange={e => set("fr", e.target.value)} placeholder="16" style={inp} /></div>
+          <div><label style={lbl}>SpO2 (%)</label><input type="number" value={v.spo2} onChange={e => set("spo2", e.target.value)} placeholder="98" style={inp} /></div>
+          <div><label style={lbl}>Temp. (°C)</label><input type="number" step="0.1" value={v.temp} onChange={e => set("temp", e.target.value)} placeholder="36.5" style={inp} /></div>
+          <div><label style={lbl}>Dor (0–10)</label><input type="number" min="0" max="10" value={v.dor} onChange={e => set("dor", e.target.value)} placeholder="0" style={inp} /></div>
+          <div><label style={lbl}>Glicemia (mg/dL)</label><input type="number" value={v.glicemia} onChange={e => set("glicemia", e.target.value)} placeholder="—" style={inp} /></div>
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={lbl}>Nível de consciência (AVPU)</label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {Object.entries(PS_CONSCIENCIA).map(([k, label]) => (
+              <button key={k} onClick={() => set("consciencia", k)} style={{ background: v.consciencia === k ? (k === "A" ? "#34d399" : k === "U" ? "#ef4444" : "#f97316") : "transparent", color: v.consciencia === k ? "#000" : "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{k} — {label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* SUGESTÃO AO VIVO */}
+        {sug ? (
+          <div style={{ background: sug.bg, border: `1px solid ${sug.cor}66`, borderLeft: `5px solid ${sug.cor}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: sug.cor }}>Sugestão pelos sinais vitais: {sug.label.toUpperCase()}</div>
+            {av.motivos.length > 0 ? (
+              <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4, lineHeight: 1.5 }}>
+                {av.motivos.map((m, i) => <span key={i}>{m.texto}{i < av.motivos.length - 1 ? " · " : ""}</span>)}
+              </div>
+            ) : <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4 }}>Sinais vitais dentro da normalidade. Considerar Azul se a queixa não for urgente.</div>}
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 5 }}>Apoio à decisão — a classificação final é da triadora, conforme o fluxograma da queixa (Protocolo de Manchester).</div>
+          </div>
+        ) : (
+          <div style={{ background: "var(--surface-2)", border: "1px dashed var(--border)", borderRadius: 8, padding: "9px 14px", marginBottom: 12, fontSize: 12, color: "var(--text-muted)" }}>
+            Preencha os sinais vitais para receber a sugestão de classificação.
+          </div>
+        )}
+
+        {/* CLASSIFICAÇÃO */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Classificação de risco</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {Object.entries(MANCHESTER).map(([k, m]) => (
+            <button key={k} onClick={() => classificar(k)} disabled={busy} style={{ display: "flex", alignItems: "center", gap: 12, background: m.bg, border: `1px solid ${m.cor}55`, borderLeft: `5px solid ${m.cor}`, outline: av.sugestao === k ? `2px solid ${m.cor}` : "none", borderRadius: 8, padding: "10px 14px", cursor: "pointer", textAlign: "left" }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: m.cor, minWidth: 110 }}>{m.label}</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.4, flex: 1 }}>{m.desc}</span>
+              {av.sugestao === k && <span style={{ background: m.cor, color: "#000", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>SUGERIDA</span>}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
         </div>
       </div>
     </div>

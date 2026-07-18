@@ -273,6 +273,18 @@ create policy ps_insert on public.ps_atendimentos for insert to authenticated wi
 create policy ps_update on public.ps_atendimentos for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy ps_delete on public.ps_atendimentos for delete to authenticated using (public.my_role() = 'adm_master');
 
+-- Sinais vitais coletados na triagem (sugerem a classificação de Manchester)
+alter table public.ps_atendimentos
+  add column if not exists pa_sist int,
+  add column if not exists pa_diast int,
+  add column if not exists fc int,
+  add column if not exists fr int,
+  add column if not exists spo2 int,
+  add column if not exists temp numeric(4,1),
+  add column if not exists dor int,
+  add column if not exists consciencia text,
+  add column if not exists glicemia int;
+
 -- ===== SCIH Fase B: base de germes com embasamento =====
 create table if not exists public.scih_germes (
   nome text primary key,
