@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v13
+# 📍 Ponto de restauração — checkpoint-v14
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v13` (anteriores: `checkpoint-v12` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v14` (anteriores: `checkpoint-v13` … `checkpoint-v1`)
 - **Data:** 2026-07-17
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -80,7 +80,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v13
+git reset --hard checkpoint-v14
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -89,7 +89,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v13
+git checkout -b recuperacao checkpoint-v14
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -105,6 +105,8 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `4ebd602` 🩺 Desfecho do PS — médico, alocação de leito vago, contabilização (óbitos, evasão por médico)
+- `536bb14` 🩺 Painel de atendimento médico no PS (evolução, prescrição, exames)
 - `329e8dc` 🚑 Pacote triagem — aviso pediátrico, reavaliação com histórico, indicadores
 - `a01445b` 🚑 Triagem com sinais vitais + sugestão automática de Manchester
 - `ab00284` 🔪 Bloco Cirúrgico Fase C — indicadores (ocupação, cancelamentos, produtividade)
