@@ -3233,7 +3233,7 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
 
         {/* AVISO PEDIÁTRICO */}
         {pediatrico && (
-          <div style={{ background: "#3d0f18", border: "1px solid #ef444466", borderLeft: "5px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: "#ef4444" }}>Paciente pediátrico ({idade} anos)</div>
             <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>As faixas de referência do apoio à decisão são para ADULTOS e não se aplicam. Registre os sinais vitais e classifique pelo protocolo pediátrico — a sugestão automática foi desativada para este paciente.</div>
           </div>
@@ -3270,14 +3270,14 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
           <label style={lbl}>Nível de consciência (AVPU)</label>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {Object.entries(PS_CONSCIENCIA).map(([k, label]) => (
-              <button key={k} onClick={() => set("consciencia", k)} style={{ background: v.consciencia === k ? (k === "A" ? "#34d399" : k === "U" ? "#ef4444" : "#f97316") : "transparent", color: v.consciencia === k ? "#000" : "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{k} — {label}</button>
+              <button key={k} onClick={() => set("consciencia", k)} style={{ background: v.consciencia === k ? "var(--surface-3)" : "transparent", color: v.consciencia === k ? (k === "A" ? "#34d399" : k === "U" ? "#ef4444" : "#f97316") : "var(--text-3)", border: `1px solid ${v.consciencia === k ? (k === "A" ? "#34d399" : k === "U" ? "#ef4444" : "#f97316") : "var(--border-2)"}`, borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{k} — {label}</button>
             ))}
           </div>
         </div>
 
         {/* SUGESTÃO AO VIVO */}
         {!pediatrico && (sug ? (
-          <div style={{ background: sug.bg, border: `1px solid ${sug.cor}66`, borderLeft: `5px solid ${sug.cor}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${sug.cor}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: sug.cor }}>Sugestão pelos sinais vitais: {sug.label.toUpperCase()}</div>
             {av.motivos.length > 0 ? (
               <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4, lineHeight: 1.5 }}>
@@ -3296,10 +3296,10 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Classificação de risco</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {Object.entries(MANCHESTER).map(([k, m]) => (
-            <button key={k} onClick={() => classificar(k)} disabled={busy} style={{ display: "flex", alignItems: "center", gap: 12, background: m.bg, border: `1px solid ${m.cor}55`, borderLeft: `5px solid ${m.cor}`, outline: av.sugestao === k ? `2px solid ${m.cor}` : "none", borderRadius: 8, padding: "10px 14px", cursor: "pointer", textAlign: "left" }}>
+            <button key={k} onClick={() => classificar(k)} disabled={busy} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${m.cor}`, outline: av.sugestao === k ? `2px solid ${m.cor}` : "none", borderRadius: 8, padding: "10px 14px", cursor: "pointer", textAlign: "left" }}>
               <span style={{ fontSize: 13, fontWeight: 800, color: m.cor, minWidth: 110 }}>{m.label}</span>
               <span style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.4, flex: 1 }}>{m.desc}</span>
-              {av.sugestao === k && <span style={{ background: m.cor, color: "#000", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>SUGERIDA</span>}
+              {av.sugestao === k && <span style={{ background: "transparent", color: m.cor, border: `1px solid ${m.cor}`, borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>SUGERIDA</span>}
             </button>
           ))}
         </div>
