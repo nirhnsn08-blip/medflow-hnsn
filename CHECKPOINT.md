@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v12
+# 📍 Ponto de restauração — checkpoint-v13
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v12` (anteriores: `checkpoint-v11` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v13` (anteriores: `checkpoint-v12` … `checkpoint-v1`)
 - **Data:** 2026-07-17
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -55,7 +55,10 @@ dá pra voltar exatamente para este estado.
   cronômetro contra o tempo-alvo (alerta de estouro) → atendimento → desfecho.
   Triagem coleta **sinais vitais** (PA, FC, FR, SpO2, temp, dor, AVPU, glicemia) e
   **sugere a classificação automaticamente** pelos discriminadores (selo SUGERIDA;
-  decisão final da triadora). Desfecho "Internação" abre a solicitação de leito
+  decisão final da triadora; aviso pediátrico <13 anos desativa a sugestão).
+  Reavaliação com histórico de aferições (ps_sinais append-only, sugerida × escolhida)
+  e indicadores do dia (distribuição por cor, % no tempo-alvo, matriz sóbria).
+  Desfecho "Internação" abre a solicitação de leito
   automaticamente — primeira
   **jornada do paciente ponta a ponta**: PS → fila → leito → alta → higienização.
   Indicadores: porta→triagem, permanência média, atendidos hoje. Testado e validado.
@@ -77,7 +80,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v12
+git reset --hard checkpoint-v13
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -86,7 +89,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v12
+git checkout -b recuperacao checkpoint-v13
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -102,6 +105,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `329e8dc` 🚑 Pacote triagem — aviso pediátrico, reavaliação com histórico, indicadores
 - `a01445b` 🚑 Triagem com sinais vitais + sugestão automática de Manchester
 - `ab00284` 🔪 Bloco Cirúrgico Fase C — indicadores (ocupação, cancelamentos, produtividade)
 - `0a48ef5` 🔪 Bloco Cirúrgico Fase B — check-in, checklist OMS, tempos, RPA
