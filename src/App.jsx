@@ -1647,6 +1647,14 @@ async function updatePsAtendimentoRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`ps_atendimentos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
+async function addPsSinalRemote(sinal, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("ps_sinais", { method: "POST", body: JSON.stringify({ ...sinal, usuario: user?.name || null }) });
+}
+async function loadPsSinais(atendimentoId) {
+  const rows = await sbFetch(`ps_sinais?atendimento_id=eq.${atendimentoId}&select=*&order=aferido_em.desc&limit=5`);
+  return Array.isArray(rows) ? rows : [];
+}
 // Prioridade de ordenação da fila (menor = mais urgente)
 const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
 
@@ -2881,6 +2889,7 @@ function PSPage({ currentUser, canEdit }) {
   const [setores, setSetores] = useState([]);
   const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "" });
   const [triando, setTriando] = useState(null);
+  const [reavaliando, setReavaliando] = useState(null);
   const [desfechando, setDesfechando] = useState(null);
   const [busy, setBusy] = useState(false);
   const [, setTick] = useState(0);
@@ -2910,10 +2919,17 @@ function PSPage({ currentUser, canEdit }) {
     setNovo({ iniciais: "", prontuario: "", queixa: "" });
     setBusy(false); setTimeout(refresh, 400);
   }
-  async function triar(p, classificacao, vitais) {
+  async function triar(p, classificacao, vitais, sugerida) {
     await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}) });
+    await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
+  }
+  async function reavaliar(p, classificacao, vitais, sugerida) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, ...(vitais || {}) });
+    await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
+    addAuditLog(currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
+    setReavaliando(null); setTimeout(refresh, 300);
   }
   async function iniciarAtendimento(p) {
     await updatePsAtendimentoRemote(p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
@@ -2974,6 +2990,47 @@ function PSPage({ currentUser, canEdit }) {
         <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
       </div>
 
+      {/* INDICADORES DE TRIAGEM DO DIA */}
+      {(() => {
+        const doDia = fila.concat(finalizados).filter(p => p.classificacao);
+        if (doDia.length === 0) return null;
+        const dist = Object.keys(MANCHESTER).map(k => {
+          const lista = doDia.filter(p => p.classificacao === k);
+          const estourados = lista.filter(p => {
+            const alvo = MANCHESTER[k].alvoMin;
+            if (!alvo || !p.triagem_em) return false;
+            const fimEspera = p.atendimento_em || (p.status === "aguardando_atendimento" ? agora : null);
+            return fimEspera ? diffMin(p.triagem_em, fimEspera) > alvo : false;
+          }).length;
+          return { k, n: lista.length, estourados };
+        });
+        const total = doDia.length;
+        const totalEst = dist.reduce((a, d) => a + d.estourados, 0);
+        const noAlvo = ((total - totalEst) / total) * 100;
+        return (
+          <div style={{ marginBottom: "1.25rem" }}>
+            <div style={secLbl}>Triagem do dia — distribuição e tempo-alvo</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch" }}>
+              {dist.map(({ k, n, estourados }) => {
+                const m = MANCHESTER[k];
+                return (
+                  <div key={k} style={{ background: m.bg, border: `1px solid ${m.cor}44`, borderLeft: `4px solid ${m.cor}`, borderRadius: 8, padding: "8px 14px", minWidth: 110, flex: 1 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 800, color: m.cor }}>{m.label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: m.cor, fontFamily: "JetBrains Mono, monospace" }}>{n}<span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}> ({total > 0 ? Math.round((n / total) * 100) : 0}%)</span></div>
+                    {estourados > 0 && <div style={{ fontSize: 10.5, color: "#f43f5e", fontWeight: 700 }}>{estourados} fora do alvo</div>}
+                  </div>
+                );
+              })}
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${noAlvo >= 90 ? "#34d399" : noAlvo >= 70 ? "#d97706" : "#f43f5e"}`, borderRadius: 8, padding: "8px 14px", minWidth: 130, flex: 1 }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--text-muted)", textTransform: "uppercase" }}>No tempo-alvo</div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: noAlvo >= 90 ? "#34d399" : noAlvo >= 70 ? "#d97706" : "#f43f5e" }}>{noAlvo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%</div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{totalEst} estouro(s) em {total}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Legenda Manchester — autoexplicativa */}
       <details style={{ marginBottom: "1.25rem" }}>
         <summary style={{ ...secLbl, cursor: "pointer", marginBottom: 8 }}>Protocolo de Manchester — o que significa cada cor</summary>
@@ -3025,6 +3082,8 @@ function PSPage({ currentUser, canEdit }) {
             <ClasseBadge c={p.classificacao} />
             {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
             <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
+            {canEdit && (() => { const min = diffMin(p.triagem_em, agora); const alvo = MANCHESTER[p.classificacao]?.alvoMin; const estourou = alvo != null && alvo > 0 && min != null && min > alvo;
+              return <button onClick={() => setReavaliando(p)} style={btnLeito(estourou ? "#f97316" : "var(--text-3)")}>{estourou ? "Reavaliar (tempo estourado)" : "Reavaliar"}</button>; })()}
             {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar atendimento</button>}
             {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
           </div>
@@ -3064,8 +3123,9 @@ function PSPage({ currentUser, canEdit }) {
         </details>
       )}
 
-      {/* MODAL TRIAGEM */}
-      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais) => triar(triando, cls, vitais)} />}
+      {/* MODAL TRIAGEM / REAVALIAÇÃO */}
+      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug) => triar(triando, cls, vitais, sug)} />}
+      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug) => reavaliar(reavaliando, cls, vitais, sug)} />}
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
@@ -3118,14 +3178,24 @@ function PsDesfechoModal({ paciente, setores, onClose, onSave }) {
   );
 }
 
-// Modal de triagem: sinais vitais → sugestão automática de Manchester → decisão da triadora
-function TriagemModal({ paciente, onClose, onTriar }) {
+// Modal de triagem/reavaliação: sinais vitais → sugestão de Manchester → decisão da triadora
+function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   const [v, setV] = useState({ pa_sist: "", pa_diast: "", fc: "", fr: "", spo2: "", temp: "", dor: "", consciencia: "A", glicemia: "" });
   const [busy, setBusy] = useState(false);
+  const [idade, setIdade] = useState(null);       // idade pelo cadastro do Paciente 360
+  const [historico, setHistorico] = useState([]); // aferições anteriores (reavaliação)
   const set = (k, val) => setV(p => ({ ...p, [k]: val }));
+  useEffect(() => {
+    if (paciente.prontuario && USE_SUPABASE) {
+      sbFetch(`pacientes?prontuario=eq.${encodeURIComponent(paciente.prontuario)}&select=ano_nascimento`)
+        .then(r => { const ano = Array.isArray(r) && r[0]?.ano_nascimento; if (ano) setIdade(new Date().getFullYear() - ano); });
+    }
+    if (reavaliacao) loadPsSinais(paciente.id).then(setHistorico);
+  }, []);
+  const pediatrico = idade != null && idade < 13;
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 };
-  const av = avaliarSinaisVitais(v);
+  const av = pediatrico ? { sugestao: null, motivos: [] } : avaliarSinaisVitais(v);
   const sug = av.sugestao ? MANCHESTER[av.sugestao] : null;
 
   function vitaisPayload() {
@@ -3138,13 +3208,36 @@ function TriagemModal({ paciente, onClose, onTriar }) {
   }
   async function classificar(k) {
     setBusy(true);
-    await onTriar(k, vitaisPayload());
+    await onTriar(k, vitaisPayload(), av.sugestao || null);
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Triagem — {paciente.iniciais}</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{paciente.queixa || "Sem queixa registrada"} · chegou há {fmtDur(diffMin(paciente.chegada_em, nowISO()))}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{reavaliacao ? "Reavaliação" : "Triagem"} — {paciente.iniciais}{idade != null ? ` (${idade} anos)` : ""}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{paciente.queixa || "Sem queixa registrada"} · chegou há {fmtDur(diffMin(paciente.chegada_em, nowISO()))}{reavaliacao && paciente.classificacao ? ` · classificação atual: ${MANCHESTER[paciente.classificacao]?.label || paciente.classificacao}` : ""}</div>
+
+        {/* AVISO PEDIÁTRICO */}
+        {pediatrico && (
+          <div style={{ background: "#3d0f18", border: "1px solid #ef444466", borderLeft: "5px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#ef4444" }}>Paciente pediátrico ({idade} anos)</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>As faixas de referência do apoio à decisão são para ADULTOS e não se aplicam. Registre os sinais vitais e classifique pelo protocolo pediátrico — a sugestão automática foi desativada para este paciente.</div>
+          </div>
+        )}
+        {!pediatrico && idade == null && paciente.prontuario && (
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 10 }}>Idade não cadastrada no Paciente 360 — as faixas do apoio à decisão assumem paciente adulto.</div>
+        )}
+
+        {/* HISTÓRICO DE AFERIÇÕES (reavaliação) */}
+        {reavaliacao && historico.length > 0 && (
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 13px", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>Aferições anteriores</div>
+            {historico.map(h => (
+              <div key={h.id} style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1.8 }}>
+                {horaFmt(h.aferido_em)} — {fmtSinaisVitais(h) || "sem registro"}{h.classificacao_escolhida && MANCHESTER[h.classificacao_escolhida] ? ` → ${MANCHESTER[h.classificacao_escolhida].label}` : ""}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* SINAIS VITAIS */}
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Sinais vitais</div>
@@ -3168,7 +3261,7 @@ function TriagemModal({ paciente, onClose, onTriar }) {
         </div>
 
         {/* SUGESTÃO AO VIVO */}
-        {sug ? (
+        {!pediatrico && (sug ? (
           <div style={{ background: sug.bg, border: `1px solid ${sug.cor}66`, borderLeft: `5px solid ${sug.cor}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: sug.cor }}>Sugestão pelos sinais vitais: {sug.label.toUpperCase()}</div>
             {av.motivos.length > 0 ? (
@@ -3182,7 +3275,7 @@ function TriagemModal({ paciente, onClose, onTriar }) {
           <div style={{ background: "var(--surface-2)", border: "1px dashed var(--border)", borderRadius: 8, padding: "9px 14px", marginBottom: 12, fontSize: 12, color: "var(--text-muted)" }}>
             Preencha os sinais vitais para receber a sugestão de classificação.
           </div>
-        )}
+        ))}
 
         {/* CLASSIFICAÇÃO */}
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Classificação de risco</div>

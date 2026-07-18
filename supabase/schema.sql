@@ -285,6 +285,24 @@ alter table public.ps_atendimentos
   add column if not exists consciencia text,
   add column if not exists glicemia int;
 
+-- Histórico de aferições de sinais vitais (triagem + reavaliações) — APPEND-ONLY
+create table if not exists public.ps_sinais (
+  id bigserial primary key,
+  atendimento_id bigint not null,
+  pa_sist int, pa_diast int, fc int, fr int, spo2 int,
+  temp numeric, dor int, consciencia text, glicemia int,
+  classificacao_sugerida text,
+  classificacao_escolhida text,
+  aferido_em timestamptz not null default now(),
+  usuario text
+);
+create index if not exists ps_sinais_atend_idx on public.ps_sinais (atendimento_id, aferido_em desc);
+alter table public.ps_sinais enable row level security;
+drop policy if exists pss_select on public.ps_sinais;
+drop policy if exists pss_insert on public.ps_sinais;
+create policy pss_select on public.ps_sinais for select to authenticated using (true);
+create policy pss_insert on public.ps_sinais for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+
 -- ===== SCIH Fase B: base de germes com embasamento =====
 create table if not exists public.scih_germes (
   nome text primary key,
