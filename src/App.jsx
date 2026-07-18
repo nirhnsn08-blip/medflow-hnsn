@@ -1775,12 +1775,39 @@ async function loadPsExamesPendentes(ids) {
   return Array.isArray(rows) ? rows : [];
 }
 async function addPsRegistroRemote(reg, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("ps_registros", { method: "POST", body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("ps_registros", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
 }
 async function updatePsRegistroRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`ps_registros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
+}
+// Vias de administração da prescrição
+const PS_VIAS = ["VO", "IV", "IM", "SC", "SL", "Inalatória", "Tópica", "Retal", "Ocular", "Nasal", "Sonda"];
+// Itens estruturados da prescrição (Farmácia Fase B)
+async function addPsPrescricaoItens(itens, user) {
+  if (!USE_SUPABASE || !itens.length) return null;
+  const body = itens.map(it => ({ ...it, usuario: user?.name || null }));
+  return await sbFetch("ps_prescricao_itens", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function loadPsPrescricaoItens(atendimentoId) {
+  const rows = await sbFetch(`ps_prescricao_itens?atendimento_id=eq.${atendimentoId}&select=*&order=created_at`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadPsPrescricaoItensByAtendimentos(ids) {
+  if (!ids.length) return [];
+  const rows = await sbFetch(`ps_prescricao_itens?atendimento_id=in.(${ids.join(",")})&select=*&order=created_at`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
+async function loadFarmSaidasByAtendimentos(ids) {
+  if (!ids.length) return [];
+  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&tipo=eq.saida&select=atendimento_id,prescricao_item_id,quantidade`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadFarmSaidasByAtendimento(atendimentoId) {
+  const rows = await sbFetch(`farm_movimentos?atendimento_id=eq.${atendimentoId}&tipo=eq.saida&select=*&order=created_at.desc`);
+  return Array.isArray(rows) ? rows : [];
 }
 // Prioridade de ordenação da fila (menor = mais urgente)
 const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
@@ -3463,11 +3490,20 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [exForm, setExForm] = useState({ categoria: "laboratorial", nome: "" });
   const [resultadoDe, setResultadoDe] = useState(null); // { id, texto }
   const [busy, setBusy] = useState(false);
+  // Prescrição estruturada (Farmácia Fase B)
+  const [catalogo, setCatalogo] = useState([]);
+  const [presItens, setPresItens] = useState([]);            // itens sendo montados
+  const [presForm, setPresForm] = useState({ medId: "", dose: "", via: "VO", quantidade: "" });
+  const [presObs, setPresObs] = useState("");
+  const [presItensSalvos, setPresItensSalvos] = useState([]); // itens já assinados neste atendimento
+  const [saidas, setSaidas] = useState([]);                   // dispensações deste atendimento
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
+  const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(paciente.id).then(setSaidas); };
   useEffect(() => { carregarRegistros(); }, []);
+  useEffect(() => { loadFarmMedicamentos().then(setCatalogo); carregarPrescricao(); }, []);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
@@ -3488,6 +3524,29 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
     addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? "evolução" : "prescrição"}`, paciente.iniciais, {});
     setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
   }
+  function addItemPrescricao() {
+    const med = catalogo.find(m => String(m.id) === String(presForm.medId));
+    if (!med) { alert("Escolha um medicamento do catálogo."); return; }
+    setPresItens(p => [...p, { medicamento_id: med.id, medicamento_nome: med.nome, unidade: med.unidade || null, dose: presForm.dose.trim(), via: presForm.via, quantidade: presForm.quantidade }]);
+    setPresForm({ medId: "", dose: "", via: presForm.via, quantidade: "" });
+  }
+  async function assinarPrescricao() {
+    if (!presItens.length && !presObs.trim()) { alert("Adicione ao menos um medicamento à prescrição."); return; }
+    if (!confirm("Assinar esta prescrição? Ela NÃO poderá ser editada nem apagada depois (registro clínico).")) return;
+    setBusy(true);
+    const linhas = presItens.map(it => `• ${it.medicamento_nome}${it.dose ? " — " + it.dose : ""}${it.via ? " (" + it.via + ")" : ""}${it.quantidade ? " — qtd " + farmFmtQtd(it.quantidade) + (it.unidade ? " " + it.unidade : "") : ""}`);
+    const texto = (linhas.join("\n") + (presObs.trim() ? `\nObs.: ${presObs.trim()}` : "")).trim();
+    const regRows = await addPsRegistroRemote({ atendimento_id: paciente.id, tipo: "prescricao", texto, criado_em: nowISO() }, currentUser);
+    const registroId = Array.isArray(regRows) ? regRows[0]?.id : null;
+    if (presItens.length) {
+      const itens = presItens.map(it => ({ atendimento_id: paciente.id, registro_id: registroId, medicamento_id: it.medicamento_id || null, medicamento_nome: it.medicamento_nome, unidade: it.unidade || null, dose: it.dose || null, via: it.via || null, quantidade: it.quantidade ? Number(it.quantidade) : null }));
+      await addPsPrescricaoItens(itens, currentUser);
+    }
+    addAuditLog(currentUser, "PS: prescrição", `${paciente.iniciais} · ${presItens.length} item(ns)`, {});
+    setPresItens([]); setPresObs(""); setBusy(false);
+    carregarRegistros(); carregarPrescricao(); onChanged?.();
+  }
+  const dispensadoDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
   async function solicitarExame() {
     if (!exForm.nome.trim()) { alert("Informe o nome do exame."); return; }
     setBusy(true);
@@ -3530,23 +3589,105 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
           <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>Exames ({exames.length})</button>
         </div>
 
-        {(aba === "evolucao" || aba === "prescricao") && (
+        {aba === "evolucao" && (
           <>
-            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder={aba === "evolucao" ? "Escreva a evolução médica — ou clique em Ditar e fale." : "Escreva a prescrição (medicamentos, doses, vias, cuidados)."} style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder="Escreva a evolução médica — ou clique em Ditar e fale." style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
               {suportaVoz && <button onClick={toggleVoz} style={{ background: gravando ? "#f43f5e" : "transparent", color: gravando ? "#fff" : "var(--text-2)", border: `1px solid ${gravando ? "#f43f5e" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{gravando ? "● Gravando… (parar)" : "Ditar por voz"}</button>}
-              <button onClick={() => salvarTexto(aba)} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : aba === "evolucao" ? "Salvar evolução" : "Salvar prescrição"}</button>
+              <button onClick={() => salvarTexto("evolucao")} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {(aba === "evolucao" ? evolucoes : prescricoes).map(r => (
+              {evolucoes.map(r => (
                 <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
                   <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginBottom: 4 }}>{horaFmt(r.criado_em)} · {r.usuario || "?"}</div>
                   <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{r.texto}</div>
                 </div>
               ))}
-              {(aba === "evolucao" ? evolucoes : prescricoes).length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum registro ainda.</div>}
+              {evolucoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum registro ainda.</div>}
             </div>
             <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Registros assinados com data/hora e imutáveis (não podem ser editados nem apagados).</div>
+          </>
+        )}
+
+        {aba === "prescricao" && (
+          <>
+            {/* Construtor de prescrição estruturada */}
+            <div style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "12px 13px", marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>Nova prescrição</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+                <div style={{ flex: "2 1 240px", minWidth: 200 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Medicamento</label>
+                  <select value={presForm.medId} onChange={e => setPresForm(p => ({ ...p, medId: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>
+                    <option value="">Escolha…</option>
+                    {FARM_CLASSES.filter(c => catalogo.some(m => (m.classe || "Outros") === c && m.ativo !== false)).map(c => (
+                      <optgroup key={c} label={c}>
+                        {catalogo.filter(m => (m.classe || "Outros") === c && m.ativo !== false).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ flex: "1 1 140px", minWidth: 120 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Dose / posologia</label>
+                  <input value={presForm.dose} onChange={e => setPresForm(p => ({ ...p, dose: e.target.value }))} placeholder="1 comp 8/8h" style={{ ...inp, padding: "8px 9px" }} />
+                </div>
+                <div style={{ flex: "0 1 96px", minWidth: 84 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Via</label>
+                  <select value={presForm.via} onChange={e => setPresForm(p => ({ ...p, via: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>
+                    {PS_VIAS.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: "0 1 84px", minWidth: 72 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Qtd</label>
+                  <input type="number" min="0" step="any" value={presForm.quantidade} onChange={e => setPresForm(p => ({ ...p, quantidade: e.target.value }))} placeholder="0" style={{ ...inp, padding: "8px 9px" }} />
+                </div>
+                <button onClick={addItemPrescricao} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #22d3ee88", borderRadius: 6, padding: "9px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Adicionar</button>
+              </div>
+              {presItens.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 10 }}>
+                  {presItens.map((it, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
+                      <span style={{ flex: 1 }}><strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via}{it.quantidade ? ` · qtd ${farmFmtQtd(it.quantidade)} ${it.unidade || ""}` : ""}</span></span>
+                      <button onClick={() => setPresItens(p => p.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 15, lineHeight: 1 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <textarea value={presObs} onChange={e => setPresObs(e.target.value)} rows={2} placeholder="Observações / cuidados (opcional)" style={{ ...inp, resize: "vertical", marginBottom: 10 }} />
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button onClick={assinarPrescricao} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Assinar prescrição"}</button>
+              </div>
+            </div>
+
+            {/* Prescrições assinadas */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {prescricoes.map(r => {
+                const itens = presItensSalvos.filter(i => i.registro_id === r.id);
+                return (
+                  <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
+                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginBottom: 6 }}>{horaFmt(r.criado_em)} · {r.usuario || "?"}</div>
+                    {itens.length > 0 ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {itens.map(it => {
+                          const disp = dispensadoDoItem(it.id);
+                          const qtd = Number(it.quantidade || 0);
+                          const st = qtd <= 0 ? null : disp >= qtd ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `parcial ${farmFmtQtd(disp)}/${farmFmtQtd(qtd)}` } : { c: "#8d99ab", t: "pendente" };
+                          return (
+                            <div key={it.id} style={{ fontSize: 12.5, color: "var(--text-2)", display: "flex", gap: 8, alignItems: "baseline" }}>
+                              <span style={{ flex: 1 }}>• <strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via}{qtd ? ` · qtd ${farmFmtQtd(qtd)} ${it.unidade || ""}` : ""}</span></span>
+                              {st && <span style={{ fontSize: 10.5, color: st.c, fontWeight: 700, whiteSpace: "nowrap" }}>{st.t}</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{r.texto}</div>
+                    )}
+                  </div>
+                );
+              })}
+              {prescricoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhuma prescrição assinada ainda.</div>}
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Prescrições são assinadas com data/hora e imutáveis. A dispensação (baixa de estoque) é feita na Farmácia.</div>
           </>
         )}
 
@@ -3734,8 +3875,10 @@ function FarmaciaPage({ currentUser, canEdit }) {
   const [showMed, setShowMed] = useState(null);   // objeto (novo/editar) ou null
   const [movMed, setMovMed]   = useState(null);   // { med, tipo }
   const [kardex, setKardex]   = useState(null);   // med para histórico
+  const [sub, setSub] = useState("estoque");      // estoque | dispensacao
   const [, setTick] = useState(0);
   const isMaster = currentUser?.role === "adm_master";
+  const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   function refresh() {
     if (!USE_SUPABASE) return;
@@ -3809,14 +3952,22 @@ function FarmaciaPage({ currentUser, canEdit }) {
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia — Estoque</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Catálogo de medicamentos, entradas e saídas por lote e validade (FEFO). {totalAtivos} ativos · {totalItens} cadastrados.</div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque."}</div>
         </div>
-        {canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
+        {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
 
+      <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
+        <button onClick={() => setSub("estoque")} style={subBtn(sub === "estoque")}>Estoque</button>
+        <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
+      </div>
+
+      {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
+
+      {sub === "estoque" && (<>
       {/* PAINÉIS DE ALERTA */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.25rem" }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${alertasBaixo.length ? "#d97706" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
@@ -3902,6 +4053,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
           </table>
         </div>
       )}
+      </>)}
 
       {showMed && <FarmMedModal med={showMed} onClose={() => setShowMed(null)} onSave={salvarMed} />}
       {movMed && <FarmMovModal med={movMed.med} tipoInicial={movMed.tipo} lotes={lotes.filter(l => l.medicamento_id === movMed.med.id)} onClose={() => setMovMed(null)} onSave={registrarMov} />}
@@ -4109,6 +4261,231 @@ function FarmKardexModal({ med, onClose }) {
           )}
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Dispensação — fila do PS (prescrição estruturada) + avulsa, com baixa de estoque
+function FarmDispensacaoView({ currentUser, canEdit }) {
+  const [atends, setAtends] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [saidas, setSaidas] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [meds, setMeds] = useState([]);
+  const [disp, setDisp] = useState(null);       // atendimento selecionado p/ dispensar
+  const [avulsa, setAvulsa] = useState(false);
+  const [, setTick] = useState(0);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadPsAtendimentos().then(async ats => {
+      setAtends(ats);
+      const ids = ats.map(a => a.id);
+      setItens(await loadPsPrescricaoItensByAtendimentos(ids));
+      setSaidas(await loadFarmSaidasByAtendimentos(ids));
+    });
+    loadFarmLotes().then(setLotes);
+    loadFarmMedicamentos().then(setMeds);
+  }
+  useEffect(() => {
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => setTick(t => t + 1), 60000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+  }, []);
+
+  const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  const fila = atends.map(a => {
+    const its = itens.filter(i => i.atendimento_id === a.id);
+    const pend = its.filter(i => { const q = Number(i.quantidade || 0); return q > 0 && dispDoItem(i.id) < q; });
+    return { at: a, itens: its, pendentes: pend.length };
+  }).filter(x => x.itens.length > 0).sort((a, b) => b.pendentes - a.pendentes);
+  const comPendencia = fila.filter(f => f.pendentes > 0);
+
+  async function registrarDispensacao(mov) {
+    const r = await addFarmMovimentoRemote(mov, currentUser);
+    if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; }
+    const med = meds.find(m => m.id === mov.medicamento_id);
+    addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"} · ${med?.nome || mov.medicamento_id} · ${farmFmtQtd(mov.quantidade)}`, {});
+    setTimeout(refresh, 350);
+    return true;
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{comPendencia.length} paciente(s) do PS com itens pendentes de dispensação.</div>
+        {canEdit && <button onClick={() => setAvulsa(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Dispensação avulsa</button>}
+      </div>
+      {fila.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma prescrição com itens no PS no momento. Prescreva pelo Pronto-Socorro (aba Prescrição) — ou use a dispensação avulsa.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {fila.map(f => (
+            <div key={f.at.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${f.pendentes ? "#d97706" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                <div style={{ fontWeight: 700 }}>{f.at.iniciais}{f.at.prontuario ? ` · reg. ${f.at.prontuario}` : ""}</div>
+                <span style={{ fontSize: 11, color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700, whiteSpace: "nowrap" }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>{f.itens.length} item(ns) prescrito(s){f.at.classificacao && MANCHESTER[f.at.classificacao] ? ` · ${MANCHESTER[f.at.classificacao].label}` : ""}</div>
+              {canEdit && <button onClick={() => setDisp(f.at)} style={{ background: f.pendentes ? "#22d3ee" : "transparent", color: f.pendentes ? "#000" : "var(--text-3)", border: f.pendentes ? "none" : "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{f.pendentes ? "Dispensar" : "Ver itens"}</button>}
+            </div>
+          ))}
+        </div>
+      )}
+      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
+      {avulsa && <FarmAvulsaModal meds={meds} lotes={lotes} onClose={() => setAvulsa(false)} onDispensar={registrarDispensacao} />}
+    </div>
+  );
+}
+
+// Dispensar os itens da prescrição de um paciente do PS
+function FarmDispensarModal({ atendimento, itens, saidas, lotes, onClose, onDispensar }) {
+  const [selItem, setSelItem] = useState(null);   // item aberto p/ dispensar (com _lotes)
+  const [f, setF] = useState({ lote_id: "", quantidade: "" });
+  const [busy, setBusy] = useState(false);
+  const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+
+  function abrir(item) {
+    const ls = lotes.filter(l => l.medicamento_id === item.medicamento_id && Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999"));
+    const pend = Math.max(0, Number(item.quantidade || 0) - dispDoItem(item.id));
+    setSelItem({ ...item, _lotes: ls });
+    setF({ lote_id: ls[0]?.id || "", quantidade: pend || "" });
+  }
+  async function confirmar() {
+    const q = Number(f.quantidade);
+    if (!q || q <= 0) { alert("Informe a quantidade a dispensar."); return; }
+    const lote = selItem._lotes.find(l => String(l.id) === String(f.lote_id));
+    if (!lote) { alert("Sem lote em estoque para este medicamento. Registre uma entrada no Estoque."); return; }
+    if (q > Number(lote.quantidade)) { alert(`Maior que o saldo do lote (disponível: ${farmFmtQtd(lote.quantidade)}).`); return; }
+    setBusy(true);
+    const ok = await onDispensar({ medicamento_id: selItem.medicamento_id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", atendimento_id: atendimento.id, prescricao_item_id: selItem.id, paciente_iniciais: atendimento.iniciais || null, paciente_prontuario: atendimento.prontuario || null });
+    setBusy(false);
+    if (ok) setSelItem(null);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "96vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Dispensar — {atendimento.iniciais}{atendimento.prontuario ? ` · reg. ${atendimento.prontuario}` : ""}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Itens prescritos no PS. A baixa é feita por lote (o que vence antes é sugerido).</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {itens.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1rem" }}>Sem itens estruturados nesta prescrição.</div>}
+          {itens.map(it => {
+            const q = Number(it.quantidade || 0);
+            const disp = dispDoItem(it.id);
+            const pend = Math.max(0, q - disp);
+            const st = q <= 0 ? { c: "#8d99ab", t: "sem quantidade" } : pend <= 0 ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `parcial ${farmFmtQtd(disp)}/${farmFmtQtd(q)}` } : { c: "#8d99ab", t: "pendente" };
+            const semVinculo = !it.medicamento_id;
+            const aberto = selItem?.id === it.id;
+            return (
+              <div key={it.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 160 }}>
+                    <strong style={{ fontSize: 13 }}>{it.medicamento_nome}</strong>
+                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.dose ? `${it.dose} · ` : ""}{it.via || ""}{q ? ` · prescrito ${farmFmtQtd(q)} ${it.unidade || ""}` : ""}</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: st.c, fontWeight: 700 }}>{st.t}</span>
+                  {q > 0 && pend > 0 && !semVinculo && <button onClick={() => aberto ? setSelItem(null) : abrir(it)} style={btnLeito("#22d3ee")}>{aberto ? "Fechar" : "Dispensar"}</button>}
+                  {semVinculo && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>item livre — baixa avulsa</span>}
+                </div>
+                {aberto && (
+                  <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+                    {selItem._lotes.length === 0 ? (
+                      <div style={{ fontSize: 12.5, color: "#f43f5e" }}>Sem estoque deste medicamento. Registre uma entrada no Estoque.</div>
+                    ) : (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                        <div style={{ flex: "2 1 220px" }}>
+                          <label style={farmLbl}>Lote (FEFO)</label>
+                          <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
+                            {selItem._lotes.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+                          </select>
+                        </div>
+                        <div style={{ flex: "0 1 100px" }}>
+                          <label style={farmLbl}>Qtd</label>
+                          <input type="number" min="0" step="any" value={f.quantidade} onChange={e => setF(p => ({ ...p, quantidade: e.target.value }))} style={farmInp} />
+                        </div>
+                        <button onClick={confirmar} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar baixa"}</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Dispensação avulsa (paciente digitado — ex.: internado no leito)
+function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
+  const [f, setF] = useState({ iniciais: "", prontuario: "", setor: "", medId: "", lote_id: "", quantidade: "" });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const lotesMed = f.medId ? lotes.filter(l => String(l.medicamento_id) === String(f.medId) && Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")) : [];
+  const loteEfetivo = f.lote_id || (lotesMed[0]?.id ? String(lotesMed[0].id) : "");
+
+  async function confirmar() {
+    if (!f.iniciais.trim()) { alert("Informe as iniciais do paciente."); return; }
+    const med = meds.find(m => String(m.id) === String(f.medId));
+    if (!med) { alert("Escolha o medicamento."); return; }
+    const lote = lotesMed.find(l => String(l.id) === String(loteEfetivo));
+    if (!lote) { alert("Sem lote em estoque para este medicamento. Registre uma entrada no Estoque."); return; }
+    const q = Number(f.quantidade);
+    if (!q || q <= 0) { alert("Informe a quantidade."); return; }
+    if (q > Number(lote.quantidade)) { alert(`Maior que o saldo do lote (disponível: ${farmFmtQtd(lote.quantidade)}).`); return; }
+    setBusy(true);
+    const ok = await onDispensar({ medicamento_id: med.id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", paciente_iniciais: f.iniciais.trim(), paciente_prontuario: f.prontuario.trim() || null, setor: f.setor.trim() || null });
+    setBusy(false);
+    if (ok) onClose();
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Dispensação avulsa</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Dados de saúde — use iniciais e prontuário (LGPD).</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={farmLbl}>Iniciais *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: M.S.O." style={farmInp} autoFocus /></div>
+          <div><label style={farmLbl}>Prontuário</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="registro" style={farmInp} /></div>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Setor / leito (opcional)</label>
+          <input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Ex.: Enfermaria 2 · leito 12" style={farmInp} />
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Medicamento</label>
+          <select value={f.medId} onChange={e => set("medId", e.target.value)} style={farmInp}>
+            <option value="">Escolha…</option>
+            {FARM_CLASSES.filter(c => meds.some(m => (m.classe || "Outros") === c && m.ativo !== false)).map(c => (
+              <optgroup key={c} label={c}>
+                {meds.filter(m => (m.classe || "Outros") === c && m.ativo !== false).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+        {f.medId && (
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 8 }}>
+            <div>
+              <label style={farmLbl}>Lote (FEFO)</label>
+              {lotesMed.length === 0 ? <div style={{ ...farmInp, color: "#f43f5e" }}>Sem estoque</div> : (
+                <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+                  {lotesMed.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+                </select>
+              )}
+            </div>
+            <div><label style={farmLbl}>Qtd</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} /></div>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={confirmar} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Dispensar"}</button>
         </div>
       </div>
     </div>

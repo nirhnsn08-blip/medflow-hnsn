@@ -330,6 +330,27 @@ create policy psr_update on public.ps_registros for update to authenticated
   using (public.my_role() in ('adm_master','adm_silver') and tipo = 'exame')
   with check (tipo = 'exame');
 
+-- Itens estruturados da prescrição (Farmácia Fase B) — imutável
+create table if not exists public.ps_prescricao_itens (
+  id bigserial primary key,
+  atendimento_id bigint not null,
+  registro_id bigint,
+  medicamento_id bigint,
+  medicamento_nome text not null,
+  unidade text,
+  dose text,
+  via text,
+  quantidade numeric,
+  usuario text,
+  created_at timestamptz default now()
+);
+create index if not exists ps_presc_itens_at_idx on public.ps_prescricao_itens (atendimento_id);
+alter table public.ps_prescricao_itens enable row level security;
+drop policy if exists ps_presc_itens_select on public.ps_prescricao_itens;
+drop policy if exists ps_presc_itens_insert on public.ps_prescricao_itens;
+create policy ps_presc_itens_select on public.ps_prescricao_itens for select to authenticated using (true);
+create policy ps_presc_itens_insert on public.ps_prescricao_itens for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+
 -- ===== SCIH Fase B: base de germes com embasamento =====
 create table if not exists public.scih_germes (
   nome text primary key,
@@ -457,10 +478,15 @@ create table if not exists public.farm_movimentos (
   motivo text,                           -- compra/nota, dispensação, perda/vencimento, ajuste...
   documento text,                        -- nº nota fiscal / requisição
   paciente_iniciais text, paciente_prontuario text,   -- p/ dispensação (Fase B)
+  atendimento_id bigint,                -- ps_atendimentos.id (dispensação vinda do PS)
+  prescricao_item_id bigint,            -- ps_prescricao_itens.id (item dispensado)
+  setor text,                           -- destino (dispensação avulsa a internados)
   usuario text,
   created_at timestamptz default now()
 );
 create index if not exists farm_mov_medic_idx on public.farm_movimentos (medicamento_id, created_at desc);
+create index if not exists farm_mov_presc_idx on public.farm_movimentos (prescricao_item_id);
+create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendimento_id);
 alter table public.farm_movimentos enable row level security;
 drop policy if exists farm_mov_select on public.farm_movimentos;
 drop policy if exists farm_mov_insert on public.farm_movimentos;
