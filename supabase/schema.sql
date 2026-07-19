@@ -614,3 +614,7 @@ create policy farm_prep_select on public.farm_preparo for select to authenticate
 create policy farm_prep_insert on public.farm_preparo for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
 create policy farm_prep_update on public.farm_preparo for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy farm_prep_delete on public.farm_preparo for delete to authenticated using (public.my_role() = 'adm_master');
+
+-- ===== Farmácia — custo unitário por medicamento (custos por paciente) =====
+alter table public.farm_medicamentos
+  add column if not exists custo_unitario numeric;

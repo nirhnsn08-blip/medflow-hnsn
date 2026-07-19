@@ -2036,7 +2036,7 @@ async function loadPsPrescricaoItensByAtendimentos(ids) {
 // Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
 async function loadFarmSaidasByAtendimentos(ids) {
   if (!ids.length) return [];
-  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&tipo=eq.saida&select=atendimento_id,prescricao_item_id,quantidade`);
+  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&tipo=eq.saida&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade`);
   return Array.isArray(rows) ? rows : [];
 }
 async function loadFarmSaidasByAtendimento(atendimentoId) {
@@ -4186,6 +4186,8 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
 // FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex)
 // ═══════════════════════════════════════════════════════════
 const farmFmtQtd = n => { const v = Number(n || 0); return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(".", ","); };
+const fmtReais = v => "R$ " + Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const custoUnit = med => Number(med?.custo_unitario || 0);
 const farmInp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
 const farmLbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
 
@@ -4408,6 +4410,7 @@ function FarmMedModal({ med, onClose, onSave }) {
       concentracao: f.concentracao?.trim() || null,
       unidade: f.unidade || "unidade",
       estoque_minimo: f.estoque_minimo === "" || f.estoque_minimo == null ? 0 : Number(f.estoque_minimo),
+      custo_unitario: f.custo_unitario === "" || f.custo_unitario == null ? null : Number(f.custo_unitario),
       controlado: !!f.controlado,
       ativo: f.ativo !== false,
       observacao: f.observacao?.trim() || null,
@@ -4461,7 +4464,7 @@ function FarmMedModal({ med, onClose, onSave }) {
             <input value={f.concentracao || ""} onChange={e => set("concentracao", e.target.value)} placeholder="500 mg · 10 mg/mL" style={farmInp} />
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
             <label style={farmLbl}>Unidade de controle</label>
             <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={farmInp}>
@@ -4471,6 +4474,10 @@ function FarmMedModal({ med, onClose, onSave }) {
           <div>
             <label style={farmLbl}>Estoque mínimo</label>
             <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={farmInp} />
+          </div>
+          <div>
+            <label style={farmLbl}>Custo unit. (R$)</label>
+            <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={farmInp} />
           </div>
         </div>
         <div style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 12 }}>
@@ -4702,7 +4709,8 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
     const tipos = new Set(alertas.map(x => x.tipo));
     const temControlado = its.some(i => medById[i.medicamento_id]?.controlado);
-    return { at: a, itens: its, pendentes: pend.length, alertas, tipos, temControlado, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
+    const custoDisp = saidas.filter(s => s.atendimento_id === a.id).reduce((sum, s) => sum + Number(s.quantidade || 0) * custoUnit(medById[s.medicamento_id]), 0);
+    return { at: a, itens: its, pendentes: pend.length, alertas, tipos, temControlado, custoDisp, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
   }).filter(x => x.itens.length > 0);
 
   const fila = todas.filter(x => {
@@ -4788,7 +4796,7 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
                 <span title={`Score da prescrição: ${f.score}/3`} style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[f.score], borderRadius: 6, padding: "1px 8px", whiteSpace: "nowrap" }}>score {f.score}</span>
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 0 8px" }}>
-                {mc && <span style={{ color: mc.cor, fontWeight: 700 }}>{mc.label}</span>}{mc ? " · " : ""}{f.itens.length} item(ns) · <span style={{ color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700 }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>{f.temControlado ? <span style={{ color: "#6366f1", fontWeight: 700 }}> · controlado</span> : ""}
+                {mc && <span style={{ color: mc.cor, fontWeight: 700 }}>{mc.label}</span>}{mc ? " · " : ""}{f.itens.length} item(ns) · <span style={{ color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700 }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>{f.temControlado ? <span style={{ color: "#6366f1", fontWeight: 700 }}> · controlado</span> : ""}{f.custoDisp > 0 ? <span style={{ color: "#0d9488", fontWeight: 700 }}> · {fmtReais(f.custoDisp)}</span> : ""}
               </div>
               {[...f.tipos].length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
@@ -5025,6 +5033,14 @@ function FarmIndicadoresView() {
   const qtdPerdas = perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
   const pacientes = new Set(dispensacoes.map(m => m.paciente_prontuario || m.paciente_iniciais || "").filter(Boolean)).size;
 
+  // Custos (por medicamento e por paciente)
+  const custoDe = m => Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]);
+  const custoTotal = dispensacoes.reduce((s, m) => s + custoDe(m), 0);
+  const semPreco = new Set(dispensacoes.filter(m => !custoUnit(medById[m.medicamento_id])).map(m => m.medicamento_id)).size;
+  const custoPacMap = {};
+  dispensacoes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + custoDe(m); });
+  const custoPaciente = Object.entries(custoPacMap).map(([pac, v]) => ({ pac, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+
   const fmt = n => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
   const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
   const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
@@ -5054,10 +5070,36 @@ function FarmIndicadoresView() {
         <KPI label="Entradas" valor={fmt(qtdEntradas)} sub="unidades recebidas" cor="#34d399" />
         <KPI label="Perdas / vencimento" valor={fmt(qtdPerdas)} sub="baixas por perda" cor={qtdPerdas > 0 ? "#f43f5e" : "var(--border)"} />
         <KPI label="Rupturas agora" valor={fmt(rupturas.length)} sub="itens sem estoque" cor={rupturas.length ? "#f43f5e" : "#34d399"} />
-        <KPI label="Vencendo ≤30d" valor={fmt(venc30.length)} sub="lotes em estoque" cor={venc30.length ? "#d97706" : "#34d399"} />
+        <KPI label="Custo dispensado" valor={fmtReais(custoTotal)} sub={semPreco ? `${semPreco} sem preço` : "no mês"} cor="#0d9488" />
       </div>
 
       {carregando && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Carregando movimentos…</div>}
+
+      {/* CUSTO POR PACIENTE */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Custo por paciente — {MONTHS_FULL[mes]}/{ano}</div>
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>Custo = quantidade dispensada × custo unitário do medicamento (cadastrado em Estoque → Editar).{semPreco ? ` ${semPreco} medicamento(s) dispensado(s) ainda sem preço.` : ""}</div>
+      {custoPaciente.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>Sem custo apurado no mês. Cadastre o custo unitário dos medicamentos e registre dispensações.</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 360 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 12px" }}>#</th><th style={{ padding: "8px 12px" }}>Paciente</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Custo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>% do total</th>
+            </tr></thead>
+            <tbody>
+              {custoPaciente.slice(0, 20).map((x, i) => (
+                <tr key={x.pac} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 12px", color: "var(--text-muted)" }}>{i + 1}</td>
+                  <td style={{ padding: "7px 12px" }}>{x.pac}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: "#0d9488" }}>{fmtReais(x.v)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--text-muted)" }}>{custoTotal > 0 ? fmt((x.v / custoTotal) * 100) : 0}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {custoPaciente.length > 20 && <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "6px 12px" }}>+{custoPaciente.length - 20} pacientes</div>}
+        </div>
+      )}
 
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Curva ABC — consumo de {MONTHS_FULL[mes]}/{ano}</div>
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>Classe A = 80% do consumo · B = próximos 15% · C = 5% restante. {abcCount.A} A · {abcCount.B} B · {abcCount.C} C.</div>
@@ -5067,7 +5109,7 @@ function FarmIndicadoresView() {
         <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 520 }}>
             <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
-              <th style={{ padding: "8px 12px" }}>#</th><th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Consumo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>%</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Acum.</th><th style={{ padding: "8px 12px", textAlign: "center" }}>ABC</th>
+              <th style={{ padding: "8px 12px" }}>#</th><th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Consumo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Custo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>%</th><th style={{ padding: "8px 12px", textAlign: "center" }}>ABC</th>
             </tr></thead>
             <tbody>
               {abc.slice(0, 25).map((x, i) => (
@@ -5075,8 +5117,8 @@ function FarmIndicadoresView() {
                   <td style={{ padding: "7px 12px", color: "var(--text-muted)" }}>{i + 1}</td>
                   <td style={{ padding: "7px 12px" }}>{x.med?.nome || "—"}{x.med?.controlado && <span style={{ fontSize: 9, color: "#6366f1", marginLeft: 6, fontWeight: 800 }}>CONTROLADO</span>}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(x.qtd)} <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>{x.med?.unidade || ""}</span></td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", color: "#0d9488", fontFamily: "JetBrains Mono, monospace" }}>{custoUnit(x.med) ? fmtReais(x.qtd * custoUnit(x.med)) : "—"}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--text-2)" }}>{fmt(x.pct)}%</td>
-                  <td style={{ padding: "7px 12px", textAlign: "right", color: "var(--text-muted)" }}>{fmt(x.pctAcc)}%</td>
                   <td style={{ padding: "7px 12px", textAlign: "center" }}><span style={{ fontSize: 11, fontWeight: 800, color: abcCor(x.abc) }}>{x.abc}</span></td>
                 </tr>
               ))}
