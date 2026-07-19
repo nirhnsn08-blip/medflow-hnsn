@@ -1,4 +1,4 @@
-# 🤝 Handoff — Valentrax (progresso até checkpoint-v24)
+# 🤝 Handoff — Valentrax (progresso até checkpoint-v25)
 
 Documento de passagem para retomar o trabalho num **novo chat**. Resumo de onde
 estamos, como continuar e o que falta. Detalhes completos em
@@ -8,7 +8,7 @@ estamos, como continuar e o que falta. Detalhes completos em
 - **Marca:** Valentrax Healthcare Operations (repo/URLs continuam `medflow-*`).
 - **App:** React + Vite, arquivo único `src/App.jsx` (JS/JSX, sem TypeScript).
 - **Back-end:** Supabase (Auth + Postgres + REST). Deploy Vercel a partir do `git push` em `main`.
-- **Ponto seguro atual:** **`checkpoint-v24`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
+- **Ponto seguro atual:** **`checkpoint-v25`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
 - **Banco DEMO congelado** desde 2026-07-16: trabalhar só no **HNSN**.
 
 ## Ciclo de trabalho (importante)
@@ -35,6 +35,10 @@ estamos, como continuar e o que falta. Detalhes completos em
   - **Farmácia Clínica = motor de 9 alertas** (dose máx, interação, incompatibilidade em Y,
     alergia + reatividade cruzada, duplicidade, tempo de tratamento, ajuste renal/hepático,
     idoso Beers, criança, sonda) + **score de prescrição 0–3** (local).
+  - **Refino (v25):** a intervenção do farmacêutico **avisa o prescritor no PS** (banner com
+    problema/conduta; médico responde aceita/não aceita, fecha o ciclo, com bipe). Assistente
+    AI ampliado (panorama, zerados, consumo por classe, dispensações mês/hoje, catálogo,
+    validade detalhada). **Sem tabela nova.**
 
 ## Migrações já rodadas no HNSN (referência p/ recriar do zero)
 Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
@@ -57,12 +61,12 @@ Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
 - **Painel do PS no Monitoramento** (Visão Geral) — menor esforço, sem tabela nova.
 - **Faturamento (AIH/SUS)** — módulo grande.
 - **Modo autodidático** (ajuda/onboarding contextual).
-- Refinos possíveis na Farmácia: custo por lote/compra (em vez de custo unitário),
-  notificar o prescritor da intervenção na tela do PS, assistente com mais intents.
+- Refinos possíveis na Farmácia: custo por lote/compra (em vez de custo unitário).
+  (Feitos em v25: notificar o prescritor da intervenção no PS · assistente com mais intents.)
 
 ## Como restaurar este ponto
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v24
+git reset --hard checkpoint-v25
 git push --force-with-lease origin main
 ```
