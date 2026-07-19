@@ -1815,6 +1815,20 @@ async function updatePsAtendimentoRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`ps_atendimentos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
+// PATCH com captura de erro (o sbFetch engole !ok) — usado no contexto clínico
+async function patchPsAtendimentoDireto(id, campos) {
+  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/ps_atendimentos?id=eq.${id}`, {
+      method: "PATCH",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+      body: JSON.stringify({ ...campos, updated_at: nowISO() }),
+    });
+    if (!res.ok) { const b = await res.json().catch(() => null); return { ok: false, erro: b?.message || b?.hint || `Erro ${res.status}` }; }
+    const rows = await res.json().catch(() => null);
+    return { ok: true, row: Array.isArray(rows) ? rows[0] : null };
+  } catch (e) { return { ok: false, erro: String(e?.message || e) }; }
+}
 async function addPsSinalRemote(sinal, user) {
   if (!USE_SUPABASE) return;
   await sbFetch("ps_sinais", { method: "POST", body: JSON.stringify({ ...sinal, usuario: user?.name || null }) });
@@ -3560,6 +3574,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [ctx, setCtx] = useState({ idade: paciente.idade ?? "", peso: paciente.peso ?? "", clearance_renal: paciente.clearance_renal ?? "", funcao_hepatica: paciente.funcao_hepatica ?? "", alergias: paciente.alergias ?? "", em_sonda: !!paciente.em_sonda, gestante: !!paciente.gestante });
   const [ctxAberto, setCtxAberto] = useState(false);
   const [ctxBusy, setCtxBusy] = useState(false);
+  const [ctxMsg, setCtxMsg] = useState("");
   const catById = {}; catalogo.forEach(m => catById[m.id] = m);
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -3588,10 +3603,16 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
     addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? "evolução" : "prescrição"}`, paciente.iniciais, {});
     setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
   }
-  function salvarContexto() {
-    setCtxBusy(true);
+  async function salvarContexto() {
+    setCtxBusy(true); setCtxMsg("");
     const payload = { idade: ctx.idade === "" ? null : Number(ctx.idade), peso: ctx.peso === "" ? null : Number(ctx.peso), clearance_renal: ctx.clearance_renal === "" ? null : Number(ctx.clearance_renal), funcao_hepatica: ctx.funcao_hepatica || null, alergias: ctx.alergias?.trim() || null, em_sonda: !!ctx.em_sonda, gestante: !!ctx.gestante };
-    updatePsAtendimentoRemote(paciente.id, payload).then(() => { setCtxBusy(false); onChanged?.(); });
+    const r = await patchPsAtendimentoDireto(paciente.id, payload);
+    setCtxBusy(false);
+    if (!r.ok) { setCtxMsg("erro: " + (r.erro || "falha ao salvar")); return; }
+    Object.assign(paciente, payload);           // reflete no episódio aberto
+    setCtxMsg("✓ contexto salvo");
+    setTimeout(() => setCtxMsg(""), 3000);
+    onChanged?.();
   }
   function addItemPrescricao() {
     const med = catalogo.find(m => String(m.id) === String(presForm.medId));
@@ -3702,7 +3723,8 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
                   <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
                     <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={ctx.em_sonda} onChange={e => setCtx(p => ({ ...p, em_sonda: e.target.checked }))} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Em uso de sonda</label>
                     <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={ctx.gestante} onChange={e => setCtx(p => ({ ...p, gestante: e.target.checked }))} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Gestante</label>
-                    <button onClick={salvarContexto} disabled={ctxBusy} style={{ marginLeft: "auto", background: "transparent", color: "#22d3ee", border: "1px solid #22d3ee88", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{ctxBusy ? "…" : "Salvar contexto"}</button>
+                    {ctxMsg && <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 700, color: ctxMsg.startsWith("erro") ? "#f43f5e" : "#34d399" }}>{ctxMsg}</span>}
+                    <button onClick={salvarContexto} disabled={ctxBusy} style={{ marginLeft: ctxMsg ? 8 : "auto", background: "transparent", color: "#22d3ee", border: "1px solid #22d3ee88", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{ctxBusy ? "…" : "Salvar contexto"}</button>
                   </div>
                 </div>
               )}
