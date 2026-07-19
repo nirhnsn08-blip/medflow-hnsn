@@ -6254,12 +6254,123 @@ function FarmInteracoesView({ currentUser, canEdit }) {
   );
 }
 
-// Assistente local (grátis) — placeholder da Fase 4
+// Assistente local (grátis) — responde perguntas sobre o setor a partir dos dados
+const FARM_ASSIST_HELP = 'Posso responder sobre: pendências/solicitações, prontos para retirada, o que vai faltar (previsão de 7 dias), medicamentos mais usados, custos (por paciente), controlados, rupturas e estoque mínimo, validade, alertas clínicos e intervenções. Ex.: "o que vai faltar?", "top do mês", "custo do paciente MSO", "controlados com saldo baixo", "saldo de dipirona".';
 function FarmAssistenteView() {
+  const [meds, setMeds] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [saidas30, setSaidas30] = useState([]);
+  const [movsMes, setMovsMes] = useState([]);
+  const [ats, setAts] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [pres, setPres] = useState([]);
+  const [prep, setPrep] = useState([]);
+  const [intervs, setIntervs] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local da farmácia. " + FARM_ASSIST_HELP }]);
+  const [q, setQ] = useState("");
+  const fimRef = useRef(null);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setLotes);
+    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidas30);
+    const ini = new Date(); ini.setDate(1); ini.setHours(0, 0, 0, 0);
+    const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
+    loadFarmMovimentosPeriodo(ini.toISOString(), fim.toISOString()).then(setMovsMes);
+    loadFarmIntervencoes().then(setIntervs);
+    loadFarmInteracoes().then(setInteracoes);
+    loadFarmIncompatY().then(setIncompatY);
+    loadFarmPreparo().then(setPrep);
+    loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); });
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const prepByReg = {}; prep.forEach(p => prepByReg[p.registro_id] = p);
+  const atSet = new Set(ats.map(a => a.id));
+  const aguardando = pres.filter(r => atSet.has(r.atendimento_id) && !prepByReg[r.id]).length;
+  const emPreparo = prep.filter(p => p.status === "preparo").length;
+  const prontos = prep.filter(p => p.status === "pronto").length;
+  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; });
+  const intervPend = intervs.filter(i => i.status === "pendente").length;
+  const iA = intervs.filter(i => i.status === "aceita").length, iN = intervs.filter(i => i.status === "nao_aceita").length;
+  const intervTaxa = (iA + iN) ? (iA / (iA + iN)) * 100 : null;
+  const ativos = meds.filter(m => m.ativo !== false);
+  const saldo = m => farmSaldoTotal(m.id, lotes);
+  const rupturas = ativos.filter(m => saldo(m) <= 0);
+  const abaixoMin = ativos.filter(m => { const s = saldo(m); return s > 0 && Number(m.estoque_minimo || 0) > 0 && s <= Number(m.estoque_minimo); });
+  const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
+  const vencidos = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencido");
+  const vencendo = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencendo");
+  const cons30 = {}; saidas30.forEach(s => { if (s.medicamento_id) cons30[s.medicamento_id] = (cons30[s.medicamento_id] || 0) + Number(s.quantidade || 0); });
+  const emRisco = ativos.map(m => { const media = (cons30[m.id] || 0) / FARM_PREV_JANELA; const s = saldo(m); return { m, media, cobertura: media > 0 ? s / media : null, sugestao: Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(m.estoque_minimo || 0) - s)) }; }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).sort((a, b) => a.cobertura - b.cobertura);
+  const dispMes = movsMes.filter(m => m.tipo === "saida" && (m.motivo || "") === "Dispensação");
+  const consMesMap = {}; dispMes.forEach(m => { if (m.medicamento_id) consMesMap[m.medicamento_id] = (consMesMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
+  const topMes = Object.entries(consMesMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  const custoPacMap = {}; dispMes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]); });
+  const custoPac = Object.entries(custoPacMap).map(([pac, v]) => ({ pac, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const custoTotal = custoPac.reduce((s, x) => s + x.v, 0);
+
+  function responder(pergunta) {
+    const s = normTxt(pergunta);
+    const has = (...ks) => ks.some(k => s.includes(k));
+    if (!s) return FARM_ASSIST_HELP;
+    if (has("ajuda", "o que voce", "o que posso", "pode responder", "comando") || s === "?") return FARM_ASSIST_HELP;
+    if (has("saldo", "estoque de", "quanto tem", "tem quanto")) {
+      const alvo = meds.find(m => normTxt(m.nome).split(/[ ,]/).some(w => w.length >= 4 && s.includes(w))) || meds.find(m => m.principio_ativo && s.includes(normTxt(m.principio_ativo).split(" ")[0]));
+      if (alvo) return `${alvo.nome}: saldo atual ${farmFmtQtd(saldo(alvo))} ${alvo.unidade || ""}.`;
+      return `Estoque geral: ${rupturas.length} sem saldo, ${abaixoMin.length} abaixo do mínimo. Pergunte "saldo de <medicamento>" para um item.`;
+    }
+    if (has("faltar", "ruptura", "acabar", "previsao", "demanda", "cobertura")) {
+      if (!emRisco.length) return `Nenhum medicamento com previsão de ruptura em ${FARM_PREV_HORIZONTE} dias (consumo dos últimos ${FARM_PREV_JANELA}d).`;
+      return `Previsão de ruptura em ${FARM_PREV_HORIZONTE} dias (${emRisco.length}):\n` + emRisco.slice(0, 8).map(x => `• ${x.m.nome} — cobertura ${x.cobertura < 1 ? "<1" : Math.floor(x.cobertura)}d · comprar ${x.sugestao}`).join("\n");
+    }
+    if (has("mais usado", "mais utilizado", "top", "mais consumido", "ranking")) {
+      if (!topMes.length) return "Sem dispensações registradas no mês.";
+      return "Top medicamentos do mês:\n" + topMes.slice(0, 5).map((c, i) => `${i + 1}. ${c.med?.nome || "—"} — ${farmFmtQtd(c.qtd)}`).join("\n");
+    }
+    if (has("custo", "gasto", "gastou", "valor", "preco")) {
+      const pacHit = custoPac.find(p => s.includes(normTxt(p.pac)) && normTxt(p.pac).length >= 2);
+      if (pacHit) return `Custo dispensado para ${pacHit.pac} no mês: ${fmtReais(pacHit.v)}.`;
+      if (!custoPac.length) return "Ainda não há custo apurado. Cadastre o custo unitário dos medicamentos (Estoque → Editar).";
+      return `Custo total dispensado no mês: ${fmtReais(custoTotal)}.\nTop pacientes:\n` + custoPac.slice(0, 5).map(p => `• ${p.pac}: ${fmtReais(p.v)}`).join("\n");
+    }
+    if (has("controlado", "portaria 344", "psicotropico", "entorpecente")) {
+      const ctrl = ativos.filter(m => m.controlado);
+      const baixo = ctrl.filter(m => { const sd = saldo(m); return sd <= 0 || (Number(m.estoque_minimo || 0) > 0 && sd <= Number(m.estoque_minimo)); });
+      return `${ctrl.length} medicamentos controlados. ${baixo.length} com saldo baixo/zerado${baixo.length ? ":\n" + baixo.slice(0, 8).map(m => `• ${m.nome} — ${farmFmtQtd(saldo(m))}`).join("\n") : "."}`;
+    }
+    if (has("pendencia", "pendente", "aguardando", "solicitac", "preparar", "preparo", "fila")) return `Fluxo de preparo agora: ${aguardando} aguardando · ${emPreparo} em preparo · ${prontos} pronto(s) para retirada.`;
+    if (has("pronto", "retirada", "retirar")) return `${prontos} prescrição(ões) pronta(s) para retirada.`;
+    if (has("intervencao", "aceitacao", "aceita")) return `Intervenções: ${intervPend} pendente(s). Taxa de aceitação: ${intervTaxa != null ? Math.round(intervTaxa) + "%" : "—"}.`;
+    if (has("alerta", "interacao", "alergia", "risco", "problema")) return `${comAlerta.length} paciente(s) com alertas clínicos na prescrição (veja em Prescrições / Análise clínica).`;
+    if (has("minimo", "repor", "reposicao", "comprar")) return `${abaixoMin.length} medicamento(s) abaixo do mínimo/zerado${abaixoMin.length ? ":\n" + abaixoMin.slice(0, 8).map(m => `• ${m.nome} — saldo ${farmFmtQtd(saldo(m))}`).join("\n") : "."}`;
+    if (has("validade", "vencer", "vencendo", "vencido", "vence")) return `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS} dias.`;
+    return "Não entendi a pergunta. " + FARM_ASSIST_HELP;
+  }
+  function enviar(texto) { const t = (texto != null ? texto : q).trim(); if (!t) return; setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: responder(t) }]); setQ(""); }
+  const sugestoes = ["O que vai faltar?", "Top do mês", "Pendências", "Controlados com saldo baixo", "Custo por paciente", "Validade"];
+
   return (
-    <div style={{ background: "var(--surface)", border: "1px dashed var(--border-2)", borderRadius: 12, padding: "2rem", textAlign: "center", maxWidth: 560, margin: "1rem auto" }}>
-      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: VX.turquesa }}>Assistente da Farmácia</div>
-      <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6 }}>Assistente <strong>local e gratuito</strong> para perguntas sobre o setor (pendências, medicamentos mais usados, o que vai faltar em 7 dias, custos, controlados). Chega na próxima fase da reformulação.</div>
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: 360, maxWidth: 760 }}>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: "4px 2px 12px" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "u" ? "flex-end" : "flex-start", maxWidth: "85%", background: m.role === "u" ? VX.royal : "var(--surface)", color: m.role === "u" ? "#fff" : "var(--text)", border: m.role === "u" ? "none" : "1px solid var(--border)", borderRadius: 12, padding: "9px 13px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
+        ))}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {sugestoes.map(sg => <button key={sg} onClick={() => enviar(sg)} style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 99, padding: "4px 11px", fontSize: 11.5, cursor: "pointer" }}>{sg}</button>)}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && enviar()} placeholder="Pergunte sobre o setor…" style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
+        <button onClick={() => enviar()} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Enviar</button>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>Assistente local — responde a partir dos dados do sistema; nada é enviado para fora.</div>
     </div>
   );
 }
