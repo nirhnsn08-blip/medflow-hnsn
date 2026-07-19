@@ -92,6 +92,12 @@ const ICON_PATHS = {
   record:    <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 13 h2 l1-2.5 2 5 1-2.5 H16"/><path d="M9 7 h6"/></>,
   scissors:  <><circle cx="6" cy="6" r="2.6"/><circle cx="6" cy="18" r="2.6"/><path d="M8.2 7.6 L20 18 M8.2 16.4 L20 6 M13.2 12 l1.6 1.4"/></>,
   pill:      <><rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M8.5 8.5 l7 7"/></>,
+  list:      <><path d="M8 6h12M8 12h12M8 18h10"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></>,
+  box:       <><path d="M12 3 l8 4.5 v9 L12 21 l-8-4.5 v-9 z"/><path d="M4 7.5 l8 4.5 8-4.5"/><path d="M12 12 v9"/></>,
+  flask:     <><path d="M9 3h6"/><path d="M10 3v6l-4.5 8.5A1.6 1.6 0 0 0 7 20h10a1.6 1.6 0 0 0 1.5-2.5L14 9V3"/><path d="M7.5 14h9"/></>,
+  lock:      <><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></>,
+  chart:     <><path d="M4 4v16h16"/><rect x="7.5" y="12" width="2.6" height="5"/><rect x="12" y="8" width="2.6" height="9"/><rect x="16.5" y="5" width="2.6" height="12"/></>,
+  chat:      <><path d="M4 5h16v11H9l-4 4v-4H4z"/><path d="M8 9h8M8 12.5h5"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -1856,6 +1862,20 @@ function farmBeep(dbl) {
 const somAtivo = () => { try { return localStorage.getItem("hnsn_som") === "1"; } catch { return false; } };
 const setSomAtivo = v => { try { localStorage.setItem("hnsn_som", v ? "1" : "0"); } catch {} };
 const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
+// Barra lateral interna da Farmácia (mantém as chaves internas das telas)
+const FARM_NAV = [
+  { key: "dashboard",   label: "Dashboard",         icon: "dashboard" },
+  { key: "analise",     label: "Prescrições",       icon: "clipboard" },
+  { key: "preparo",     label: "Solicitações",      icon: "list" },
+  { key: "dispensacao", label: "Dispensações",      icon: "pill" },
+  { key: "intervencao", label: "Intervenção",       icon: "shield" },
+  { key: "estoque",     label: "Estoque",           icon: "box" },
+  { key: "interacoes",  label: "Interações",        icon: "flask" },
+  { key: "controlados", label: "Controlados",       icon: "lock" },
+  { key: "naopad",      label: "Não padronizados",  icon: "record" },
+  { key: "indicadores", label: "Relatórios & BI",   icon: "chart" },
+  { key: "assistente",  label: "Assistente AI",     icon: "chat" },
+];
 // Rótulos dos tipos de alerta (para filtrar prescrições)
 const FARM_ALERTA_TIPOS = {
   alergia: "Alergia", interacao: "Interação", incompat_y: "Incompatibilidade em Y",
@@ -4246,7 +4266,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
   const [showMed, setShowMed] = useState(null);   // objeto (novo/editar) ou null
   const [movMed, setMovMed]   = useState(null);   // { med, tipo }
   const [kardex, setKardex]   = useState(null);   // med para histórico
-  const [sub, setSub] = useState("estoque");      // estoque | dispensacao
+  const [sub, setSub] = useState("dashboard");    // ver FARM_NAV
   const [, setTick] = useState(0);
   const isMaster = currentUser?.role === "adm_master";
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
@@ -4321,27 +4341,36 @@ function FarmaciaPage({ currentUser, canEdit }) {
   const totalItens = meds.length;
   const totalAtivos = meds.filter(m => m.ativo !== false).length;
 
+  const navAtual = FARM_NAV.find(n => n.key === sub) || FARM_NAV[0];
+  const subTexto = { dashboard: "Visão geral do setor com atalhos.", estoque: `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.`, preparo: "Solicitações: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada.", dispensacao: "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque.", analise: "Análise clínica das prescrições — alertas de duplicidade, dose, interação, alergia, sonda e adequação idoso/criança.", intervencao: "Intervenção farmacêutica — registrar o problema, propor a conduta e acompanhar o desfecho.", interacoes: "Base de interações medicamentosas e incompatibilidade em Y.", controlados: "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação.", naopad: "Medicamentos fora do catálogo trazidos pelo paciente/família.", indicadores: "Relatórios & BI — consumo, curva ABC, custos por paciente, controlados, rupturas.", assistente: "Assistente local para perguntas sobre o setor." };
+
   return (
-    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* BARRA LATERAL DA FARMÁCIA */}
+      <nav style={{ width: 194, minWidth: 194, background: "var(--bg-2)", borderRight: "1px solid var(--border)", padding: "1rem 0", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
+          <Icon name="pill" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>FARMÁCIA</span>
+        </div>
+        {FARM_NAV.map(it => { const active = sub === it.key; return (
+          <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
+            <Icon name={it.icon} size={16} />{it.label}
+          </button>
+        ); })}
+      </nav>
+
+      {/* CONTEÚDO */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "preparo" ? "Fluxo de preparo: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada." : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : sub === "intervencao" ? "Intervenção farmacêutica — registrar o problema, propor a conduta e acompanhar o desfecho (aceita/não aceita)." : sub === "controlados" ? "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação, com relatório imprimível." : sub === "naopad" ? "Medicamentos fora do catálogo trazidos pelo paciente/família — recebimento, conferência e controle." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{subTexto[sub] || ""}</div>
         </div>
-        {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
+        {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
-        <button onClick={() => setSub("estoque")} style={subBtn(sub === "estoque")}>Estoque</button>
-        <button onClick={() => setSub("preparo")} style={subBtn(sub === "preparo")}>Preparo</button>
-        <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
-        <button onClick={() => setSub("analise")} style={subBtn(sub === "analise")}>Análise clínica</button>
-        <button onClick={() => setSub("intervencao")} style={subBtn(sub === "intervencao")}>Intervenção</button>
-        <button onClick={() => setSub("controlados")} style={subBtn(sub === "controlados")}>Controlados</button>
-        <button onClick={() => setSub("naopad")} style={subBtn(sub === "naopad")}>Não padronizados</button>
-        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
-      </div>
-
+      {sub === "dashboard" && <FarmDashboardView currentUser={currentUser} canEdit={canEdit} onNav={setSub} />}
+      {sub === "interacoes" && <FarmInteracoesView currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "assistente" && <FarmAssistenteView />}
       {sub === "preparo" && <FarmPreparoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "analise" && <FarmAnaliseView currentUser={currentUser} canEdit={canEdit} />}
@@ -4441,6 +4470,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       {showMed && <FarmMedModal med={showMed} onClose={() => setShowMed(null)} onSave={salvarMed} />}
       {movMed && <FarmMovModal med={movMed.med} tipoInicial={movMed.tipo} lotes={lotes.filter(l => l.medicamento_id === movMed.med.id)} onClose={() => setMovMed(null)} onSave={registrarMov} />}
       {kardex && <FarmKardexModal med={kardex} onClose={() => setKardex(null)} />}
+      </div>
     </div>
   );
 }
@@ -6005,6 +6035,123 @@ function FarmIntervencaoModal({ prefill, onClose, onSave }) {
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Dashboard da Farmácia — visão geral com atalhos
+function FarmDashboardView({ currentUser, canEdit, onNav }) {
+  const [ats, setAts] = useState([]);
+  const [pres, setPres] = useState([]);
+  const [prep, setPrep] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [meds, setMeds] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [intervs, setIntervs] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [, setTick] = useState(0);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setLotes);
+    loadFarmIntervencoes().then(setIntervs);
+    loadFarmInteracoes().then(setInteracoes);
+    loadFarmIncompatY().then(setIncompatY);
+    loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); });
+    loadFarmPreparo().then(setPrep);
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => setTick(t => t + 1), 60000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
+
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const prepByReg = {}; prep.forEach(p => prepByReg[p.registro_id] = p);
+  const atSet = new Set(ats.map(a => a.id));
+  const aguardando = pres.filter(r => atSet.has(r.atendimento_id) && !prepByReg[r.id]).length;
+  const emPreparo = prep.filter(p => p.status === "preparo").length;
+  const prontos = prep.filter(p => p.status === "pronto").length;
+  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; }).length;
+  const intervPend = intervs.filter(i => i.status === "pendente").length;
+  const ativos = meds.filter(m => m.ativo !== false);
+  const rupturas = ativos.filter(m => farmSaldoTotal(m.id, lotes) <= 0).length;
+  const abaixoMin = ativos.filter(m => { const s = farmSaldoTotal(m.id, lotes); return s > 0 && Number(m.estoque_minimo || 0) > 0 && s <= Number(m.estoque_minimo); }).length;
+  const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
+  const venc = lotesEst.filter(l => ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status)).length;
+
+  const Card = ({ label, valor, cor, sub, nav }) => (
+    <button onClick={() => nav && onNav && onNav(nav)} style={{ textAlign: "left", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "14px 16px", cursor: nav ? "pointer" : "default" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: valor ? cor : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </button>
+  );
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+        <Card label="Solicitações a preparar" valor={aguardando} cor={VX.azul} sub="prescrições aguardando" nav="preparo" />
+        <Card label="Em preparo" valor={emPreparo} cor="#d97706" sub="separando" nav="preparo" />
+        <Card label="Prontos p/ retirada" valor={prontos} cor={VX.turquesa} sub="aguardando enfermagem" nav="preparo" />
+        <Card label="Prescrições com alerta" valor={comAlerta} cor="#f43f5e" sub="análise clínica" nav="analise" />
+        <Card label="Intervenções pendentes" valor={intervPend} cor="#d97706" sub="aguardando resposta" nav="intervencao" />
+        <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
+        <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
+        <Card label="Validade em risco" valor={venc} cor={venc ? "#d97706" : "#34d399"} sub="vencidos / ≤30 dias" nav="estoque" />
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 16 }}>Clique nos cartões para ir direto à ferramenta. Atualiza automaticamente.</div>
+    </div>
+  );
+}
+
+// Interações — base de interações + incompatibilidade em Y (página)
+function FarmInteracoesView({ currentUser, canEdit }) {
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [showBase, setShowBase] = useState(false);
+  const gravCor = g => g === "grave" ? "#f43f5e" : g === "leve" ? "#3b82f6" : "#d97706";
+  function refresh() { if (USE_SUPABASE) { loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); } }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Base de interações medicamentosas e incompatibilidade em Y — usada pela análise clínica. {interacoes.length} interações · {incompatY.length} incompatibilidades.</div>
+        {canEdit && <button onClick={() => setShowBase(true)} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Gerenciar base</button>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}>Interações ({interacoes.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 420, overflowY: "auto" }}>
+            {interacoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma interação cadastrada.</div>}
+            {interacoes.map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: gravCor(r.gravidade), border: `1px solid ${gravCor(r.gravidade)}66`, borderRadius: 99, padding: "0 6px", textTransform: "uppercase", whiteSpace: "nowrap" }}>{r.gravidade}</span>
+                <span style={{ flex: 1 }}><strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}>Incompatibilidade em Y ({incompatY.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 420, overflowY: "auto" }}>
+            {incompatY.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma cadastrada.</div>}
+            {incompatY.map(r => (
+              <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
+                <strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      {showBase && <FarmInteracoesModal interacoes={interacoes} incompatY={incompatY} currentUser={currentUser} canEdit={canEdit} onClose={() => { setShowBase(false); refresh(); }} />}
+    </div>
+  );
+}
+
+// Assistente local (grátis) — placeholder da Fase 4
+function FarmAssistenteView() {
+  return (
+    <div style={{ background: "var(--surface)", border: "1px dashed var(--border-2)", borderRadius: 12, padding: "2rem", textAlign: "center", maxWidth: 560, margin: "1rem auto" }}>
+      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: VX.turquesa }}>Assistente da Farmácia</div>
+      <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6 }}>Assistente <strong>local e gratuito</strong> para perguntas sobre o setor (pendências, medicamentos mais usados, o que vai faltar em 7 dias, custos, controlados). Chega na próxima fase da reformulação.</div>
     </div>
   );
 }
