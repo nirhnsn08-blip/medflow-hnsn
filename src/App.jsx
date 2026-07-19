@@ -1672,6 +1672,14 @@ async function loadFarmMovimentosPeriodo(fromISO, toISO) {
   const rows = await sbFetch(`farm_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
   return Array.isArray(rows) ? rows : [];
 }
+// Saídas desde uma data (para previsão de demanda)
+async function loadFarmSaidasDesde(fromISO) {
+  const rows = await sbFetch(`farm_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=medicamento_id,quantidade&limit=12000`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Previsão de demanda: janela de histórico (dias) e horizonte da previsão (dias)
+const FARM_PREV_JANELA = 30;
+const FARM_PREV_HORIZONTE = 7;
 async function upsertFarmMedicamentoRemote(med, user) {
   if (!USE_SUPABASE) return null;
   const body = { ...med, usuario: user?.name || null, updated_at: nowISO() };
@@ -4267,14 +4275,15 @@ function FarmaciaPage({ currentUser, canEdit }) {
   const [movMed, setMovMed]   = useState(null);   // { med, tipo }
   const [kardex, setKardex]   = useState(null);   // med para histórico
   const [sub, setSub] = useState("dashboard");    // ver FARM_NAV
+  const [saidasHist, setSaidasHist] = useState([]);
   const [, setTick] = useState(0);
   const isMaster = currentUser?.role === "adm_master";
-  const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   function refresh() {
     if (!USE_SUPABASE) return;
     loadFarmMedicamentos().then(setMeds);
     loadFarmLotes().then(setLotes);
+    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
   }
   useEffect(() => {
     refresh();
@@ -4315,6 +4324,22 @@ function FarmaciaPage({ currentUser, canEdit }) {
   // Painéis de alerta
   const alertasBaixo = medsOrd.filter(m => m.ativo !== false && ["baixo", "zerado"].includes(statusMed(m).key));
   const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+
+  // Previsão de demanda (consumo dos últimos FARM_PREV_JANELA dias)
+  const consumoMap = {};
+  saidasHist.forEach(s => { if (s.medicamento_id) consumoMap[s.medicamento_id] = (consumoMap[s.medicamento_id] || 0) + Number(s.quantidade || 0); });
+  const consumoDia = m => (consumoMap[m.id] || 0) / FARM_PREV_JANELA;
+  const previsao = m => {
+    const media = consumoDia(m);
+    const saldo = farmSaldoTotal(m.id, lotes);
+    const cobertura = media > 0 ? saldo / media : null;      // dias de estoque
+    const demanda7 = media * FARM_PREV_HORIZONTE;
+    const sugestao = Math.max(0, Math.ceil(demanda7 + Number(m.estoque_minimo || 0) - saldo));
+    return { media, saldo, cobertura, demanda7, sugestao };
+  };
+  const emRisco = meds.filter(m => m.ativo !== false).map(m => ({ m, ...previsao(m) }))
+    .filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE)
+    .sort((a, b) => a.cobertura - b.cobertura);
 
   async function salvarMed(med) {
     await upsertFarmMedicamentoRemote(med, currentUser);
@@ -4394,7 +4419,37 @@ function FarmaciaPage({ currentUser, canEdit }) {
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${FARM_VENC_DIAS} dias` : "nenhum lote vencendo"}</div>
           {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const m = meds.find(x => x.id === l.medicamento_id); const vi = farmValidadeInfo(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {m?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
         </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${emRisco.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Previsão de ruptura ({FARM_PREV_HORIZONTE}d)</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: emRisco.length ? "#f43f5e" : "var(--text)" }}>{emRisco.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{emRisco.length ? `devem acabar em até ${FARM_PREV_HORIZONTE} dias (consumo dos últimos ${FARM_PREV_JANELA}d)` : "cobertura ≥ 7 dias em todos com consumo"}</div>
+          {emRisco.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{emRisco.slice(0, 4).map(x => <div key={x.m.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: x.cobertura <= 3 ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{x.cobertura < 1 ? "<1d" : `${Math.floor(x.cobertura)}d`}</span> · {x.m.nome}</div>)}{emRisco.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{emRisco.length - 4}</span>}</div>}
+        </div>
       </div>
+
+      {emRisco.length > 0 && (<>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Previsão de demanda — próximos {FARM_PREV_HORIZONTE} dias</div>
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.25rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Consumo/dia</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Cobertura</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Demanda 7d</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Comprar</th>
+            </tr></thead>
+            <tbody>
+              {emRisco.map(x => (
+                <tr key={x.m.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 12px", fontWeight: 600 }}>{x.m.nome}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(Math.round(x.media * 10) / 10)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(x.saldo)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: x.cobertura <= 3 ? "#f43f5e" : "#d97706" }}>{x.cobertura < 1 ? "< 1 dia" : `${Math.floor(x.cobertura)} dias`}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(Math.ceil(x.demanda7))}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: VX.azul }}>{farmFmtQtd(x.sugestao)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Estimativa por média de consumo — assume demanda estável. "Comprar" cobre 7 dias + estoque mínimo.</div>
+        </div>
+      </>)}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, princípio ativo ou forma…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
