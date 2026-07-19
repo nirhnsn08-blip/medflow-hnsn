@@ -557,3 +557,37 @@ alter table public.ps_atendimentos
   add column if not exists alergias text,
   add column if not exists em_sonda boolean default false,
   add column if not exists gestante boolean default false;
+
+-- ===== Farmácia Clínica — Fase 2: interações + incompatibilidade em Y (pares) =====
+create table if not exists public.farm_interacoes (
+  id bigserial primary key,
+  substancia_a text not null, substancia_b text not null,
+  gravidade text not null default 'moderada',   -- grave | moderada | leve
+  descricao text, conduta text,
+  usuario text, created_at timestamptz default now(), updated_at timestamptz default now()
+);
+alter table public.farm_interacoes enable row level security;
+drop policy if exists farm_inter_select on public.farm_interacoes;
+drop policy if exists farm_inter_insert on public.farm_interacoes;
+drop policy if exists farm_inter_update on public.farm_interacoes;
+drop policy if exists farm_inter_delete on public.farm_interacoes;
+create policy farm_inter_select on public.farm_interacoes for select to authenticated using (true);
+create policy farm_inter_insert on public.farm_interacoes for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy farm_inter_update on public.farm_interacoes for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy farm_inter_delete on public.farm_interacoes for delete to authenticated using (public.my_role() = 'adm_master');
+
+create table if not exists public.farm_incompat_y (
+  id bigserial primary key,
+  substancia_a text not null, substancia_b text not null,
+  descricao text,
+  usuario text, created_at timestamptz default now(), updated_at timestamptz default now()
+);
+alter table public.farm_incompat_y enable row level security;
+drop policy if exists farm_incy_select on public.farm_incompat_y;
+drop policy if exists farm_incy_insert on public.farm_incompat_y;
+drop policy if exists farm_incy_update on public.farm_incompat_y;
+drop policy if exists farm_incy_delete on public.farm_incompat_y;
+create policy farm_incy_select on public.farm_incompat_y for select to authenticated using (true);
+create policy farm_incy_insert on public.farm_incompat_y for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy farm_incy_update on public.farm_incompat_y for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy farm_incy_delete on public.farm_incompat_y for delete to authenticated using (public.my_role() = 'adm_master');

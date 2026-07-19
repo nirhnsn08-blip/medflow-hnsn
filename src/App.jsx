@@ -1708,6 +1708,31 @@ async function addFarmMovimentoRemote(mov, user) {
 function farmSaldoTotal(medId, lotes) {
   return lotes.filter(l => l.medicamento_id === medId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
 }
+// Pares clínicos: interações medicamentosas e incompatibilidade em Y (Fase 2)
+async function loadFarmInteracoes() {
+  const rows = await sbFetch("farm_interacoes?select=*&order=gravidade");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadFarmIncompatY() {
+  const rows = await sbFetch("farm_incompat_y?select=*&order=substancia_a");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertFarmInteracaoRemote(row, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...row, usuario: user?.name || null, updated_at: nowISO() };
+  if (row.id) { await sbFetch(`farm_interacoes?id=eq.${row.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
+  delete body.id;
+  return await sbFetch("farm_interacoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deleteFarmInteracaoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_interacoes?id=eq.${id}`, { method: "DELETE" }); }
+async function upsertFarmIncompatRemote(row, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...row, usuario: user?.name || null, updated_at: nowISO() };
+  if (row.id) { await sbFetch(`farm_incompat_y?id=eq.${row.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
+  delete body.id;
+  return await sbFetch("farm_incompat_y", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deleteFarmIncompatRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_incompat_y?id=eq.${id}`, { method: "DELETE" }); }
 // Formata uma data ISO (YYYY-MM-DD) para dd/mm/aaaa, sem escorregar de fuso
 function fmtDataBR(iso) {
   if (!iso) return "—";
@@ -1767,10 +1792,11 @@ function checarAlergia(med, termos) {
 
 // Analisa a lista de itens da prescrição contra a base clínica + contexto do paciente.
 // APOIO À DECISÃO — não substitui o julgamento do farmacêutico. Base sujeita a validação local.
-function analisarPrescricaoClinica(itens, ctx, medById) {
+function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], incompatY = []) {
   const alertas = [];
   const push = (tipo, gravidade, titulo, detalhe, refs) => alertas.push({ tipo, gravidade, titulo, detalhe, itens: refs || [] });
   const comMed = (itens || []).filter(i => i.medicamento_id && medById[i.medicamento_id]);
+  const matchSub = (med, sub) => { const s = normTxt(sub); return !!s && normTxt([med.principio_ativo, med.nome, med.grupo_terapeutico].join(" ")).includes(s); };
   const idade = ctx && ctx.idade !== "" && ctx.idade != null ? Number(ctx.idade) : null;
   const termosAlergia = parseAlergias(ctx?.alergias);
 
@@ -1808,6 +1834,32 @@ function analisarPrescricaoClinica(itens, ctx, medById) {
     if (al.match === "direta") push("alergia", "alta", "Alergia declarada ao medicamento", `${nome}: paciente alérgico a "${al.termo}"${al.grupo ? ` (${al.grupo})` : ""}. NÃO administrar sem reavaliação médica.`, [nome]);
     else if (al.match === "cruzada") push("alergia", "alta", "Possível reatividade cruzada com alergia", `${nome}: paciente alérgico a "${al.termo}" — reatividade cruzada com ${al.grupo}. Avaliar o risco antes de administrar.`, [nome]);
   });
+
+  // 8) Interações medicamentosas (pares)
+  if (interacoes && interacoes.length) {
+    for (let x = 0; x < comMed.length; x++) for (let y = x + 1; y < comMed.length; y++) {
+      const a = medById[comMed[x].medicamento_id], b = medById[comMed[y].medicamento_id];
+      for (const it of interacoes) {
+        const hit = (matchSub(a, it.substancia_a) && matchSub(b, it.substancia_b)) || (matchSub(a, it.substancia_b) && matchSub(b, it.substancia_a));
+        if (hit) {
+          const grav = it.gravidade === "grave" ? "alta" : it.gravidade === "leve" ? "baixa" : "media";
+          push("interacao", grav, `Interação ${it.gravidade || "medicamentosa"}`, `${comMed[x].medicamento_nome} + ${comMed[y].medicamento_nome}: ${it.descricao || "interação medicamentosa"}${it.conduta ? " — " + it.conduta : ""}.`, [comMed[x].medicamento_nome, comMed[y].medicamento_nome]);
+          break; // um alerta por par
+        }
+      }
+    }
+  }
+  // 9) Incompatibilidade em Y (ambos por via IV)
+  if (incompatY && incompatY.length) {
+    const iv = comMed.filter(i => (i.via || "").toUpperCase() === "IV");
+    for (let x = 0; x < iv.length; x++) for (let y = x + 1; y < iv.length; y++) {
+      const a = medById[iv[x].medicamento_id], b = medById[iv[y].medicamento_id];
+      for (const it of incompatY) {
+        const hit = (matchSub(a, it.substancia_a) && matchSub(b, it.substancia_b)) || (matchSub(a, it.substancia_b) && matchSub(b, it.substancia_a));
+        if (hit) { push("incompat_y", "alta", "Incompatibilidade em Y (IV)", `${iv[x].medicamento_nome} + ${iv[y].medicamento_nome}: ${it.descricao || "incompatíveis na mesma linha"}. Não infundir juntos.`, [iv[x].medicamento_nome, iv[y].medicamento_nome]); break; }
+      }
+    }
+  }
 
   return alertas.sort((a, b) => FARM_GRAV[a.gravidade].ordem - FARM_GRAV[b.gravidade].ordem);
 }
@@ -3598,6 +3650,8 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [busy, setBusy] = useState(false);
   // Prescrição estruturada (Farmácia Fase B) + farmácia clínica (Fase 1)
   const [catalogo, setCatalogo] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
   const [presItens, setPresItens] = useState([]);            // itens sendo montados
   const [presForm, setPresForm] = useState({ medId: "", dose_valor: "", dose_unidade: "mg", freqLabel: "8/8h (3x)", via: "VO", duracao: "", quantidade: "" });
   const [presObs, setPresObs] = useState("");
@@ -3614,7 +3668,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
   const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(paciente.id).then(setSaidas); };
   useEffect(() => { carregarRegistros(); }, []);
-  useEffect(() => { loadFarmMedicamentos().then(setCatalogo); carregarPrescricao(); }, []);
+  useEffect(() => { loadFarmMedicamentos().then(setCatalogo); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); carregarPrescricao(); }, []);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
@@ -3697,7 +3751,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const evolucoes = registros.filter(r => r.tipo === "evolucao");
   const prescricoes = registros.filter(r => r.tipo === "prescricao");
   const exames = registros.filter(r => r.tipo === "exame");
-  const alertasClinicos = analisarPrescricaoClinica([...presItensSalvos, ...presItens], ctx, catById);
+  const alertasClinicos = analisarPrescricaoClinica([...presItensSalvos, ...presItens], ctx, catById, interacoes, incompatY);
   const abaBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
   const EX_STATUS = { solicitado: { label: "Aguardando resultado", cor: "#d97706" }, resultado_disponivel: { label: "Resultado disponível", cor: "#3b82f6" }, visto: { label: "Visto pelo médico", cor: "#34d399" } };
 
@@ -4158,7 +4212,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       </div>
 
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
-      {sub === "analise" && <FarmAnaliseView />}
+      {sub === "analise" && <FarmAnaliseView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "indicadores" && <FarmIndicadoresView />}
 
       {sub === "estoque" && (<>
@@ -4927,16 +4981,21 @@ function FarmIndicadoresView() {
 }
 
 // Análise clínica — roda o motor de alertas por paciente do PS
-function FarmAnaliseView() {
+function FarmAnaliseView({ currentUser, canEdit }) {
   const [atends, setAtends] = useState([]);
   const [itens, setItens] = useState([]);
   const [meds, setMeds] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [showBase, setShowBase] = useState(false);
   const [aberto, setAberto] = useState({});
   const [, setTick] = useState(0);
 
   function refresh() {
     if (!USE_SUPABASE) return;
     loadFarmMedicamentos().then(setMeds);
+    loadFarmInteracoes().then(setInteracoes);
+    loadFarmIncompatY().then(setIncompatY);
     loadPsAtendimentos().then(async ats => {
       setAtends(ats);
       setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id)));
@@ -4954,7 +5013,7 @@ function FarmAnaliseView() {
   const linhas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
     const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
-    return { at: a, itens: its, alertas: analisarPrescricaoClinica(its, ctx, medById) };
+    return { at: a, itens: its, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
   }).filter(x => x.itens.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
   const totalAlertas = linhas.reduce((s, l) => s + l.alertas.length, 0);
   const comAlerta = linhas.filter(l => l.alertas.length > 0);
@@ -4962,7 +5021,11 @@ function FarmAnaliseView() {
 
   return (
     <div>
-      <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>{comAlerta.length} paciente(s) com alertas · {totalAlertas} alerta(s). Apoio à decisão — os alertas assistem o farmacêutico e não substituem o julgamento clínico; a base é sujeita a validação da equipe.</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", flex: 1, minWidth: 240 }}>{comAlerta.length} paciente(s) com alertas · {totalAlertas} alerta(s). Apoio à decisão — os alertas assistem o farmacêutico e não substituem o julgamento clínico; a base é sujeita a validação da equipe.</div>
+        <button onClick={() => setShowBase(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de interações ({interacoes.length + incompatY.length})</button>
+      </div>
+      {showBase && <FarmInteracoesModal interacoes={interacoes} incompatY={incompatY} currentUser={currentUser} canEdit={canEdit} onClose={() => { setShowBase(false); refresh(); }} />}
       {linhas.length === 0 ? (
         <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma prescrição estruturada no PS no momento. Prescreva pela aba Prescrição do Pronto-Socorro.</div>
       ) : (
@@ -5015,6 +5078,101 @@ function FarmAnaliseView() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Editor da base de pares: interações medicamentosas + incompatibilidade em Y
+function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onClose }) {
+  const [sub, setSub] = useState("inter");
+  const [lstI, setLstI] = useState(interacoes);
+  const [lstY, setLstY] = useState(incompatY);
+  const [fi, setFi] = useState({ substancia_a: "", substancia_b: "", gravidade: "moderada", descricao: "", conduta: "" });
+  const [fy, setFy] = useState({ substancia_a: "", substancia_b: "", descricao: "" });
+  const isMaster = currentUser?.role === "adm_master";
+  const reload = () => { loadFarmInteracoes().then(setLstI); loadFarmIncompatY().then(setLstY); };
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 9px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 12.5, outline: "none", width: "100%", boxSizing: "border-box" };
+  const gravCor = g => g === "grave" ? "#f43f5e" : g === "leve" ? "#3b82f6" : "#d97706";
+  const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
+
+  async function addInter() {
+    if (!fi.substancia_a.trim() || !fi.substancia_b.trim()) { alert("Informe as duas substâncias."); return; }
+    await upsertFarmInteracaoRemote({ substancia_a: fi.substancia_a.trim().toLowerCase(), substancia_b: fi.substancia_b.trim().toLowerCase(), gravidade: fi.gravidade, descricao: fi.descricao.trim() || null, conduta: fi.conduta.trim() || null }, currentUser);
+    addAuditLog(currentUser, "farmácia: nova interação", `${fi.substancia_a} × ${fi.substancia_b}`, {});
+    setFi({ substancia_a: "", substancia_b: "", gravidade: "moderada", descricao: "", conduta: "" });
+    setTimeout(reload, 300);
+  }
+  async function delInter(id) { if (confirm("Remover esta interação?")) { await deleteFarmInteracaoRemote(id); setTimeout(reload, 200); } }
+  async function addY() {
+    if (!fy.substancia_a.trim() || !fy.substancia_b.trim()) { alert("Informe as duas substâncias."); return; }
+    await upsertFarmIncompatRemote({ substancia_a: fy.substancia_a.trim().toLowerCase(), substancia_b: fy.substancia_b.trim().toLowerCase(), descricao: fy.descricao.trim() || null }, currentUser);
+    addAuditLog(currentUser, "farmácia: nova incompatibilidade Y", `${fy.substancia_a} × ${fy.substancia_b}`, {});
+    setFy({ substancia_a: "", substancia_b: "", descricao: "" });
+    setTimeout(reload, 300);
+  }
+  async function delY(id) { if (confirm("Remover esta incompatibilidade?")) { await deleteFarmIncompatRemote(id); setTimeout(reload, 200); } }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 680, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Base de pares — farmácia clínica</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Substâncias casam por princípio ativo, nome ou grupo (ex.: "aine", "opioide", "benzodiazep"). Revise com a equipe.</div>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <button onClick={() => setSub("inter")} style={subBtn(sub === "inter")}>Interações ({lstI.length})</button>
+          <button onClick={() => setSub("y")} style={subBtn(sub === "y")}>Incompatibilidade em Y ({lstY.length})</button>
+        </div>
+
+        {sub === "inter" ? (<>
+          {canEdit && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 110px", gap: 8, marginBottom: 8 }}>
+                <input value={fi.substancia_a} onChange={e => setFi(p => ({ ...p, substancia_a: e.target.value }))} placeholder="substância A" style={inp} />
+                <input value={fi.substancia_b} onChange={e => setFi(p => ({ ...p, substancia_b: e.target.value }))} placeholder="substância B" style={inp} />
+                <select value={fi.gravidade} onChange={e => setFi(p => ({ ...p, gravidade: e.target.value }))} style={inp}><option value="grave">grave</option><option value="moderada">moderada</option><option value="leve">leve</option></select>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+                <input value={fi.descricao} onChange={e => setFi(p => ({ ...p, descricao: e.target.value }))} placeholder="descrição / mecanismo" style={inp} />
+                <input value={fi.conduta} onChange={e => setFi(p => ({ ...p, conduta: e.target.value }))} placeholder="conduta" style={inp} />
+                <button onClick={addInter} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>+ Add</button>
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {lstI.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>Nenhuma interação cadastrada.</div>}
+            {lstI.map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: gravCor(r.gravidade), border: `1px solid ${gravCor(r.gravidade)}66`, borderRadius: 99, padding: "0 6px", textTransform: "uppercase", whiteSpace: "nowrap" }}>{r.gravidade}</span>
+                <span style={{ flex: 1 }}><strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}</span>
+                {isMaster && <button onClick={() => delInter(r.id)} style={btnLeito("#f43f5e")}>Excluir</button>}
+              </div>
+            ))}
+          </div>
+        </>) : (<>
+          {canEdit && (
+            <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.4fr auto", gap: 8 }}>
+                <input value={fy.substancia_a} onChange={e => setFy(p => ({ ...p, substancia_a: e.target.value }))} placeholder="substância A" style={inp} />
+                <input value={fy.substancia_b} onChange={e => setFy(p => ({ ...p, substancia_b: e.target.value }))} placeholder="substância B" style={inp} />
+                <input value={fy.descricao} onChange={e => setFy(p => ({ ...p, descricao: e.target.value }))} placeholder="descrição (ex.: precipitação)" style={inp} />
+                <button onClick={addY} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>+ Add</button>
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {lstY.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>Nenhuma incompatibilidade cadastrada.</div>}
+            {lstY.map(r => (
+              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
+                <span style={{ flex: 1 }}><strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}</span>
+                {isMaster && <button onClick={() => delY(r.id)} style={btnLeito("#f43f5e")}>Excluir</button>}
+              </div>
+            ))}
+          </div>
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
     </div>
   );
 }
