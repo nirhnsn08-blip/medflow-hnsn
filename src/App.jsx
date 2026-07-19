@@ -1833,6 +1833,12 @@ function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], incompa
     const al = checarAlergia(med, termosAlergia);
     if (al.match === "direta") push("alergia", "alta", "Alergia declarada ao medicamento", `${nome}: paciente alérgico a "${al.termo}"${al.grupo ? ` (${al.grupo})` : ""}. NÃO administrar sem reavaliação médica.`, [nome]);
     else if (al.match === "cruzada") push("alergia", "alta", "Possível reatividade cruzada com alergia", `${nome}: paciente alérgico a "${al.termo}" — reatividade cruzada com ${al.grupo}. Avaliar o risco antes de administrar.`, [nome]);
+    // 8) Ajuste pela função renal (ClCr/TFG)
+    const clcr = ctx && ctx.clearance_renal !== "" && ctx.clearance_renal != null ? Number(ctx.clearance_renal) : null;
+    if (clcr != null && clcr < 60 && med.ajuste_renal) push("ajuste_renal", clcr < 30 ? "alta" : "media", "Ajuste pela função renal", `${nome} (ClCr ${clcr} mL/min): ${med.ajuste_renal}`, [nome]);
+    // 9) Ajuste pela função hepática
+    const fh = (ctx?.funcao_hepatica || "");
+    if ((fh === "moderada" || fh === "grave") && med.ajuste_hepatico) push("ajuste_hepatico", fh === "grave" ? "alta" : "media", "Ajuste pela função hepática", `${nome} (função hepática ${fh}): ${med.ajuste_hepatico}`, [nome]);
   });
 
   // 8) Interações medicamentosas (pares)
@@ -4341,6 +4347,8 @@ function FarmMedModal({ med, onClose, onSave }) {
       inapropriado_pediatrico: !!f.inapropriado_pediatrico,
       motivo_pediatrico: f.motivo_pediatrico?.trim() || null,
       idade_pediatrica: f.idade_pediatrica === "" || f.idade_pediatrica == null ? null : Number(f.idade_pediatrica),
+      ajuste_renal: f.ajuste_renal?.trim() || null,
+      ajuste_hepatico: f.ajuste_hepatico?.trim() || null,
       obs_clinica: f.obs_clinica?.trim() || null,
     });
     setBusy(false);
@@ -4437,6 +4445,8 @@ function FarmMedModal({ med, onClose, onSave }) {
                   <input type="number" min="0" value={f.idade_pediatrica ?? ""} onChange={e => set("idade_pediatrica", e.target.value)} placeholder="< anos (12)" style={farmInp} />
                 </div>
               )}
+              <div style={{ marginBottom: 8 }}><label style={farmLbl}>Ajuste pela função renal (ClCr &lt; 60)</label><input value={f.ajuste_renal || ""} onChange={e => set("ajuste_renal", e.target.value)} placeholder="Ex.: reduzir dose se ClCr < 30; nefrotóxico" style={farmInp} /></div>
+              <div style={{ marginBottom: 8 }}><label style={farmLbl}>Ajuste pela função hepática (moderada/grave)</label><input value={f.ajuste_hepatico || ""} onChange={e => set("ajuste_hepatico", e.target.value)} placeholder="Ex.: reduzir dose na hepatopatia" style={farmInp} /></div>
               <div><label style={farmLbl}>Observação clínica (ex.: como administrar por sonda)</label><textarea value={f.obs_clinica || ""} onChange={e => set("obs_clinica", e.target.value)} rows={2} placeholder="Ex.: abrir a cápsula, não triturar os grânulos" style={{ ...farmInp, resize: "vertical" }} /></div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>Estes campos alimentam os alertas de farmácia clínica. Revise com a equipe.</div>
             </div>
