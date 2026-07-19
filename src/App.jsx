@@ -1870,6 +1870,21 @@ function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], incompa
   return alertas.sort((a, b) => FARM_GRAV[a.gravidade].ordem - FARM_GRAV[b.gravidade].ordem);
 }
 
+// Score de prescrição (estilo NoHarm): 0 (boa) → 3 (ruim), local, sem IA paga.
+// Deriva da gravidade dos alertas que tocam o item + completude da dose.
+const FARM_SCORE_COR = ["#34d399", "#3b82f6", "#d97706", "#f43f5e"];
+function scoreItemClinico(item, alertas) {
+  const rel = (alertas || []).filter(a => a.itens && a.itens.includes(item.medicamento_nome));
+  let s = rel.some(a => a.gravidade === "alta") ? 3 : rel.some(a => a.gravidade === "media") ? 2 : rel.some(a => a.gravidade === "baixa") ? 1 : 0;
+  if (s < 1 && item.medicamento_id && !item.dose_valor) s = 1;   // dose não especificada
+  return s;
+}
+function scorePrescricao(itens, alertas) {
+  const comMed = (itens || []).filter(i => i.medicamento_id);
+  if (!comMed.length) return 0;
+  return Math.max(0, ...comMed.map(i => scoreItemClinico(i, alertas)));
+}
+
 // ═══════════════════════════════════════════════════════════
 // PRONTO-SOCORRO — triagem Manchester + jornada do paciente
 // ═══════════════════════════════════════════════════════════
@@ -4584,6 +4599,9 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
   const [saidas, setSaidas] = useState([]);
   const [lotes, setLotes] = useState([]);
   const [meds, setMeds] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [busca, setBusca] = useState("");
   const [disp, setDisp] = useState(null);       // atendimento selecionado p/ dispensar
   const [avulsa, setAvulsa] = useState(false);
   const [, setTick] = useState(0);
@@ -4598,6 +4616,8 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
     });
     loadFarmLotes().then(setLotes);
     loadFarmMedicamentos().then(setMeds);
+    loadFarmInteracoes().then(setInteracoes);
+    loadFarmIncompatY().then(setIncompatY);
   }
   useEffect(() => {
     refresh();
@@ -4607,12 +4627,19 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
     return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
   }, []);
 
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
   const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  const q = busca.trim().toLowerCase();
   const fila = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
     const pend = its.filter(i => { const q = Number(i.quantidade || 0); return q > 0 && dispDoItem(i.id) < q; });
-    return { at: a, itens: its, pendentes: pend.length };
-  }).filter(x => x.itens.length > 0).sort((a, b) => b.pendentes - a.pendentes);
+    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
+    const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
+    return { at: a, itens: its, pendentes: pend.length, alertas, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
+  }).filter(x => x.itens.length > 0)
+    .filter(x => !q || `${x.at.iniciais} ${x.at.prontuario || ""}`.toLowerCase().includes(q))
+    // priorização: mais urgente (Manchester) → pior score → mais pendências
+    .sort((a, b) => (a.pendentes ? 0 : 1) - (b.pendentes ? 0 : 1) || a.prio - b.prio || b.score - a.score || b.pendentes - a.pendentes);
   const comPendencia = fila.filter(f => f.pendentes > 0);
 
   async function registrarDispensacao(mov) {
@@ -4626,34 +4653,39 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{comPendencia.length} paciente(s) do PS com itens pendentes de dispensação.</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{comPendencia.length} paciente(s) do PS com itens pendentes · fila priorizada por gravidade (Manchester) e score.</div>
         {canEdit && <button onClick={() => setAvulsa(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Dispensação avulsa</button>}
       </div>
+      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais ou prontuário…" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", maxWidth: 360, width: "100%", boxSizing: "border-box", marginBottom: 14 }} />
       {fila.length === 0 ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma prescrição com itens no PS no momento. Prescreva pelo Pronto-Socorro (aba Prescrição) — ou use a dispensação avulsa.</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>{atends.length && itens.length ? "Nenhum resultado para a busca." : "Nenhuma prescrição com itens no PS no momento. Prescreva pelo Pronto-Socorro (aba Prescrição) — ou use a dispensação avulsa."}</div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-          {fila.map(f => (
-            <div key={f.at.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${f.pendentes ? "#d97706" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                <div style={{ fontWeight: 700 }}>{f.at.iniciais}{f.at.prontuario ? ` · reg. ${f.at.prontuario}` : ""}</div>
-                <span style={{ fontSize: 11, color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700, whiteSpace: "nowrap" }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>
+          {fila.map(f => {
+            const mc = f.at.classificacao && MANCHESTER[f.at.classificacao];
+            return (
+            <div key={f.at.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${mc ? mc.cor : f.pendentes ? "#d97706" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <div style={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{f.at.iniciais}{f.at.prontuario ? ` · reg. ${f.at.prontuario}` : ""}</div>
+                <span title={`Score da prescrição: ${f.score}/3`} style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[f.score], borderRadius: 6, padding: "1px 8px", whiteSpace: "nowrap" }}>score {f.score}</span>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>{f.itens.length} item(ns) prescrito(s){f.at.classificacao && MANCHESTER[f.at.classificacao] ? ` · ${MANCHESTER[f.at.classificacao].label}` : ""}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 0 10px" }}>
+                {mc && <span style={{ color: mc.cor, fontWeight: 700 }}>{mc.label}</span>}{mc ? " · " : ""}{f.itens.length} item(ns) · <span style={{ color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700 }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>
+              </div>
               {canEdit && <button onClick={() => setDisp(f.at)} style={{ background: f.pendentes ? "#22d3ee" : "transparent", color: f.pendentes ? "#000" : "var(--text-3)", border: f.pendentes ? "none" : "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{f.pendentes ? "Dispensar" : "Ver itens"}</button>}
             </div>
-          ))}
+          );})}
         </div>
       )}
-      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
+      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(fila.find(f => f.at.id === disp.id) || {}).alertas || []} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
       {avulsa && <FarmAvulsaModal meds={meds} lotes={lotes} onClose={() => setAvulsa(false)} onDispensar={registrarDispensacao} />}
     </div>
   );
 }
 
 // Dispensar os itens da prescrição de um paciente do PS
-function FarmDispensarModal({ atendimento, itens, saidas, lotes, onClose, onDispensar }) {
+function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], onClose, onDispensar }) {
   const [selItem, setSelItem] = useState(null);   // item aberto p/ dispensar (com _lotes)
   const [f, setF] = useState({ lote_id: "", quantidade: "" });
   const [busy, setBusy] = useState(false);
@@ -4693,7 +4725,8 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, onClose, onDisp
             return (
               <div key={it.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ flex: 1, minWidth: 160 }}>
+                  <span title={`Score do item: ${scoreItemClinico(it, alertas)}/3`} style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[scoreItemClinico(it, alertas)], borderRadius: 5, padding: "1px 6px", flexShrink: 0 }}>{scoreItemClinico(it, alertas)}</span>
+                  <div style={{ flex: 1, minWidth: 150 }}>
                     <strong style={{ fontSize: 13 }}>{it.medicamento_nome}</strong>
                     <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.dose ? `${it.dose} · ` : ""}{it.via || ""}{q ? ` · prescrito ${farmFmtQtd(q)} ${it.unidade || ""}` : ""}</div>
                   </div>
@@ -5054,6 +5087,7 @@ function FarmAnaliseView({ currentUser, canEdit }) {
                     </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{l.itens.length} item(ns) · {ctxResumo(l.at)}</div>
                   </div>
+                  <span title={`Score da prescrição: ${scorePrescricao(l.itens, l.alertas)}/3`} style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[scorePrescricao(l.itens, l.alertas)], borderRadius: 6, padding: "1px 8px", whiteSpace: "nowrap" }}>score {scorePrescricao(l.itens, l.alertas)}</span>
                   {l.alertas.length === 0 ? <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>sem alertas</span> : (
                     <div style={{ display: "flex", gap: 5 }}>
                       {cont.alta > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#f43f5e", border: "1px solid #f43f5e66", borderRadius: 99, padding: "1px 8px" }}>{cont.alta} alta</span>}
