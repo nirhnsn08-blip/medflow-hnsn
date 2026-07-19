@@ -5117,6 +5117,8 @@ function FarmIndicadoresView() {
   const [lotes, setLotes] = useState([]);
   const [preview, setPreview] = useState(false);
   const [carregando, setCarregando] = useState(false);
+  const [prep, setPrep] = useState([]);
+  const [presAtivas, setPresAtivas] = useState(0);
 
   const fromISO = new Date(ano, mes, 1).toISOString();
   const toISO = new Date(ano, mes + 1, 1).toISOString();
@@ -5125,10 +5127,28 @@ function FarmIndicadoresView() {
     if (!USE_SUPABASE) return;
     loadFarmMedicamentos().then(setMeds);
     loadFarmLotes().then(setLotes);
+    loadFarmPreparo().then(setPrep);
+    loadPsAtendimentos().then(async ats => {
+      const ids = ats.map(a => a.id);
+      const pres = await loadPsPrescricoesByAtendimentos(ids);
+      const atSet = new Set(ids);
+      const prepRows = await loadFarmPreparo();
+      const prepReg = {}; prepRows.forEach(p => prepReg[p.registro_id] = p);
+      setPresAtivas(pres.filter(r => atSet.has(r.atendimento_id) && !prepReg[r.id]).length);
+    });
     setCarregando(true);
     loadFarmMovimentosPeriodo(fromISO, toISO).then(r => { setMovs(r); setCarregando(false); });
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, [mes, ano]);
+
+  // Prescrição por status (snapshot atual): aguardando (sem linha de preparo) + estados do preparo
+  const statusPresc = [
+    { key: "aguardando", label: "Aguardando", cor: "#8d99ab", n: presAtivas },
+    { key: "preparo", label: "Em preparo", cor: "#d97706", n: prep.filter(p => p.status === "preparo").length },
+    { key: "pronto", label: "Pronto", cor: "#3b82f6", n: prep.filter(p => p.status === "pronto").length },
+    { key: "retirado", label: "Retirado", cor: "#34d399", n: prep.filter(p => p.status === "retirado").length },
+  ];
+  const totalPresc = statusPresc.reduce((s, x) => s + x.n, 0);
 
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const nomeMed = id => medById[id]?.nome || "—";
@@ -5212,6 +5232,39 @@ function FarmIndicadoresView() {
       </div>
 
       {carregando && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Carregando movimentos…</div>}
+
+      {/* BI — TOP 5 + PRESCRIÇÃO POR STATUS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: "1.5rem" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>Top 5 medicamentos do mês</div>
+          {consumo.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem dispensações no mês.</div> : consumo.slice(0, 5).map((c, i) => { const max = consumo[0].qtd || 1; return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 16 }}>{i + 1}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.med?.nome || "—"}</div>
+                <div style={{ height: 8, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden", marginTop: 2 }}><div style={{ width: Math.max(3, (c.qtd / max) * 100) + "%", height: "100%", background: VX.azul, borderRadius: 99 }} /></div>
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "JetBrains Mono, monospace", minWidth: 44, textAlign: "right" }}>{fmt(c.qtd)}</span>
+            </div>
+          ); })}
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>Prescrições por status (agora)</div>
+          {totalPresc === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma prescrição no fluxo.</div> : (<>
+            <div style={{ display: "flex", height: 14, borderRadius: 99, overflow: "hidden", marginBottom: 10 }}>
+              {statusPresc.filter(s => s.n > 0).map(s => <div key={s.key} title={`${s.label}: ${s.n}`} style={{ width: (s.n / totalPresc) * 100 + "%", background: s.cor }} />)}
+            </div>
+            {statusPresc.map(s => (
+              <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5, fontSize: 12.5 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 99, background: s.cor, flexShrink: 0 }} />
+                <span style={{ flex: 1, color: "var(--text-2)" }}>{s.label}</span>
+                <span style={{ fontWeight: 700, fontFamily: "JetBrains Mono, monospace" }}>{s.n}</span>
+                <span style={{ color: "var(--text-muted)", width: 42, textAlign: "right" }}>{Math.round((s.n / totalPresc) * 100)}%</span>
+              </div>
+            ))}
+          </>)}
+        </div>
+      </div>
 
       {/* CUSTO POR PACIENTE */}
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 6 }}>Custo por paciente — {MONTHS_FULL[mes]}/{ano}</div>
