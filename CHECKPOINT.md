@@ -1,10 +1,10 @@
-# 📍 Ponto de restauração — checkpoint-v17
+# 📍 Ponto de restauração — checkpoint-v18
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v17` (anteriores: `checkpoint-v16` … `checkpoint-v1`)
-- **Data:** 2026-07-18
+- **Tag Git mais recente:** `checkpoint-v18` (anteriores: `checkpoint-v17` … `checkpoint-v1`)
+- **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
   O site demo recebe o código novo, mas sem as migrações de banco — salvar nas
@@ -84,6 +84,19 @@ dá pra voltar exatamente para este estado.
   consumo por classe terapêutica, **controlados dispensados** (Portaria 344), painel
   de validade & rupturas e **relatório mensal imprimível/PDF**. Valores por quantidade
   (sem custo financeiro cadastrado). **Módulo Farmácia completo (A+B+C).**
+- **💊 Farmácia Clínica — Fase 1 (motor de alertas, estilo NoHarm.ai):** apoio à
+  decisão que analisa a prescrição estruturada do PS. **Contexto clínico** do paciente
+  (idade, peso, ClCr/TFG, função hepática, alergias, sonda, gestante) na aba Prescrição.
+  Prescrição estruturada com **dose (valor + unidade + frequência + duração)**. Motor
+  gera **7 tipos de alerta** por gravidade (alta/média/baixa): **duplicidade** (princípio
+  ativo/grupo), **dose máxima diária**, **tempo de tratamento**, **sonda (não triturar)**,
+  **inapropriado idoso (Beers)**, **inapropriado criança** e **alergia + reatividade
+  cruzada** (betalactâmicos, sulfonamidas, AINEs). Ao prescrever um medicamento a que o
+  paciente é alérgico, o sistema **bloqueia** exigindo confirmação do prescritor. Alertas
+  ao vivo na aba Prescrição + sub-aba **Farmácia → Análise clínica** (com selo de alérgico
+  por paciente). **Base de conhecimento editável** por medicamento (~50 pré-carregados de
+  Beers/pediatria/dose máx/sonda — para validação da equipe). É apoio à decisão, não
+  certificado. Próximas: Fase 2 (interação medicamentosa + incompatibilidade em Y).
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -102,7 +115,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v17
+git reset --hard checkpoint-v18
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -111,7 +124,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v17
+git checkout -b recuperacao checkpoint-v18
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -127,6 +140,9 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `0a70c95` 💊 Farmácia Clínica — alerta de alergia + reatividade cruzada (bloqueio na prescrição)
+- `b6dcb15` 🩺 fix: salvar contexto clínico do PS com feedback
+- `a2a0db7` 💊 Farmácia Clínica Fase 1 — motor de alertas (Beers, dose máx, sonda, duplicidade)
 - `0c1c782` 💊 Farmácia Fase C — indicadores (consumo, curva ABC, controlados, relatório)
 - `c26001b` 💊 Farmácia Fase B — prescrição estruturada no PS + dispensação (fila + avulsa, baixa por lote)
 - `6b14d10` 💊 Farmácia — classe terapêutica + catálogo agrupado (~164 medicamentos, 22 classes)
