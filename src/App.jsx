@@ -1548,6 +1548,9 @@ const DESFECHO_LEITO = {
   obito:         { label: "Óbito",                cor: "#f43f5e" },
   transferencia: { label: "Transferência ext.",   cor: "#38bdf8" },
 };
+// Ordem corporativa fixa dos setores no mapa de leitos (fora dela → alfabético; "Sem setor" por último)
+const LEITOS_SETOR_ORDEM = ["emergencia", "avc", "posto 1", "posto 2", "posto 3", "psiquiatria", "uti"];
+const ordSetor = nome => { const n = normTxt(nome); const i = LEITOS_SETOR_ORDEM.findIndex(o => n === o || n.startsWith(o)); return i === -1 ? 500 : i; };
 // Barra lateral interna do Giro de Leitos (padrão da Farmácia)
 const LEITOS_NAV = [
   { key: "dashboard",      label: "Dashboard",            icon: "dashboard" },
@@ -7557,7 +7560,11 @@ function LeitosPage({ currentUser, canEdit }) {
 
   // Agrupamento por setor (mapa + dashboard)
   const grupos = {}; ordenados.forEach(l => { const s = l.setor || "Sem setor"; (grupos[s] = grupos[s] || []).push(l); });
-  const nomesGrupos = Object.keys(grupos).sort((a, b) => (a === "Sem setor") - (b === "Sem setor") || a.localeCompare(b, "pt-BR"));
+  const nomesGrupos = Object.keys(grupos).sort((a, b) => {
+    const oa = a === "Sem setor" ? 999 : ordSetor(a);
+    const ob = b === "Sem setor" ? 999 : ordSetor(b);
+    return oa - ob || a.localeCompare(b, "pt-BR");
+  });
 
   // ── Listas da Fase 2 ──
   const bq = normTxt(busca);
@@ -7619,61 +7626,71 @@ function LeitosPage({ currentUser, canEdit }) {
             const st = STATUS_LEITO[l.status] || STATUS_LEITO.livre;
             const sinal = l.status === "ocupado" ? sinalLeito(l.data_internacao, l.dias_previstos) : null;
             const borda = sinal ? sinal.cor : st.cor;
+            const selCorp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", maxWidth: "100%", cursor: "pointer" };
             return (
-              <div key={l.identificacao} style={{ background: "var(--surface-2)", border: `1px solid var(--border)`, borderLeft: `4px solid ${borda}`, borderRadius: 10, padding: "12px 14px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800 }}>Leito {l.identificacao}</div>
-                  <span style={{ background: st.bg, color: st.cor, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{st.label}</span>
-                </div>
+              <div key={l.identificacao} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: `3px solid ${borda}`, borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,.10)", overflow: "hidden" }}>
+                <div style={{ padding: "12px 15px 14px" }}>
+                  {/* Cabeçalho */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 99, background: st.cor, flexShrink: 0, boxShadow: `0 0 0 3px ${st.cor}22` }} />
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".08em" }}>Leito</span>
+                      <span style={{ fontSize: 16, fontWeight: 800, letterSpacing: ".01em", fontFamily: "JetBrains Mono, monospace" }}>{l.identificacao}</span>
+                    </div>
+                    <span style={{ background: st.bg, color: st.cor, border: `1px solid ${st.cor}44`, borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{st.label}</span>
+                  </div>
 
-                {l.isolamento && ISOLAMENTOS[l.isolamento] && (
-                  <div title={ISOLAMENTOS[l.isolamento].curto} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: ISOLAMENTOS[l.isolamento].bg, color: ISOLAMENTOS[l.isolamento].cor, border: `1px solid ${ISOLAMENTOS[l.isolamento].cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 800, marginBottom: 8 }}>
-                    Isolamento {ISOLAMENTOS[l.isolamento].label}
-                  </div>
-                )}
+                  {l.isolamento && ISOLAMENTOS[l.isolamento] && (
+                    <div title={ISOLAMENTOS[l.isolamento].curto} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: ISOLAMENTOS[l.isolamento].bg, color: ISOLAMENTOS[l.isolamento].cor, border: `1px solid ${ISOLAMENTOS[l.isolamento].cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 10.5, fontWeight: 800, marginTop: 9 }}>
+                      Isolamento {ISOLAMENTOS[l.isolamento].label}
+                    </div>
+                  )}
 
-                {canEdit ? (
-                  <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                    <select value={l.setor || ""} onChange={e => setSetorLeito(l, e.target.value)} style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 7px", color: l.setor ? "#60a5fa" : "var(--text-muted)", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", maxWidth: "100%", cursor: "pointer" }}>
-                      <option value="">sem setor</option>
-                      {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
-                    </select>
-                    <select value={l.isolamento || ""} onChange={e => setIsolamentoLeito(l, e.target.value)} title="Marcar leito como isolamento" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 7px", color: l.isolamento && ISOLAMENTOS[l.isolamento] ? ISOLAMENTOS[l.isolamento].cor : "var(--text-muted)", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", maxWidth: "100%", cursor: "pointer" }}>
-                      <option value="">sem isolamento</option>
-                      {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                    </select>
-                  </div>
-                ) : l.setor && <div style={{ marginBottom: 8, fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>{l.setor}</div>}
+                  {canEdit ? (
+                    <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                      <select value={l.setor || ""} onChange={e => setSetorLeito(l, e.target.value)} style={{ ...selCorp, color: l.setor ? "#60a5fa" : "var(--text-muted)" }}>
+                        <option value="">sem setor</option>
+                        {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+                      </select>
+                      <select value={l.isolamento || ""} onChange={e => setIsolamentoLeito(l, e.target.value)} title="Marcar leito como isolamento" style={{ ...selCorp, color: l.isolamento && ISOLAMENTOS[l.isolamento] ? ISOLAMENTOS[l.isolamento].cor : "var(--text-muted)" }}>
+                        <option value="">sem isolamento</option>
+                        {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      </select>
+                    </div>
+                  ) : l.setor && <div style={{ marginTop: 9, fontSize: 10.5, color: "#60a5fa", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{l.setor}</div>}
 
-                {l.status === "ocupado" && (
-                  <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
-                    <div><strong style={{ color: "var(--text)" }}>{l.iniciais}</strong>{l.prontuario ? ` · reg. ${l.prontuario}` : ""}</div>
-                    {l.cid && <div style={{ color: "var(--text-3)" }}>CID {l.cid}{l.motivo ? ` · ${l.motivo}` : ""}</div>}
-                    {!l.cid && l.motivo && <div style={{ color: "var(--text-3)" }}>{l.motivo}</div>}
-                    <div style={{ color: "var(--text-muted)" }}>Internação: {l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"} · {l.dias_previstos}d prev.</div>
-                    {sinal && <div style={{ marginTop: 6, color: sinal.cor, fontWeight: 700, fontSize: 12 }}>{sinal.texto}</div>}
-                  </div>
-                )}
-                {l.status === "livre" && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    Disponível para internação.
-                    {l.pronto_em && <div style={{ color: "#34d399", marginTop: 2 }}>Pronto desde {horaFmt(l.pronto_em)}</div>}
-                  </div>
-                )}
-                {l.status === "higienizacao" && (
-                  <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.7 }}>
-                    <div>Em higienização</div>
-                    <div style={{ color: "var(--text-muted)" }}>Vagou: {horaFmt(l.disp_em)}</div>
-                    <div style={{ marginTop: 4, color: "#fbbf24", fontWeight: 700 }}>Limpando há {fmtDur(diffMin(l.disp_em, nowISO()))}</div>
-                  </div>
-                )}
-                {l.status === "interditado" && <div style={{ fontSize: 12, color: "#fb7185" }}>Interditado{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
-                {l.status === "manutencao" && <div style={{ fontSize: 12, color: "#f97316" }}>Em manutenção{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
-                {l.status === "bloqueado" && <div style={{ fontSize: 12, color: "#8d99ab" }}>Bloqueado externo{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
-                {l.status === "reservado" && <div style={{ fontSize: 12, color: "#818cf8" }}>Reservado{l.motivo ? `: ${l.motivo}` : ""}</div>}
+                  <div style={{ height: 1, background: "var(--border)", margin: "11px 0" }} />
+
+                  {l.status === "ocupado" && (
+                    <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{l.iniciais}{l.prontuario ? <span style={{ color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}> · reg. {l.prontuario}</span> : ""}</div>
+                      {(l.cid || l.motivo) && <div style={{ color: "var(--text-3)", marginTop: 3 }}>{l.cid ? `CID ${l.cid}` : ""}{l.cid && l.motivo ? " · " : ""}{l.motivo || ""}</div>}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Internado {l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"}{l.dias_previstos ? ` · ${l.dias_previstos}d prev.` : ""}</span>
+                        {sinal && <span style={{ fontSize: 10.5, fontWeight: 800, color: sinal.cor, background: sinal.cor + "1a", border: `1px solid ${sinal.cor}44`, borderRadius: 99, padding: "1px 9px", whiteSpace: "nowrap" }}>{sinal.texto}</span>}
+                      </div>
+                    </div>
+                  )}
+                  {l.status === "livre" && (
+                    <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                      Disponível para internação.
+                      {l.pronto_em && <div style={{ color: "#34d399", marginTop: 3, fontWeight: 600 }}>Pronto desde {horaFmt(l.pronto_em)}</div>}
+                    </div>
+                  )}
+                  {l.status === "higienizacao" && (
+                    <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>
+                      <div style={{ fontWeight: 600 }}>Em higienização</div>
+                      <div style={{ color: "var(--text-muted)", marginTop: 2 }}>Vagou às {horaFmt(l.disp_em)}</div>
+                      <div style={{ marginTop: 5, display: "inline-block", color: "#fbbf24", fontWeight: 800, fontSize: 11, background: "#fbbf241a", border: "1px solid #fbbf2444", borderRadius: 99, padding: "1px 9px" }}>Limpando há {fmtDur(diffMin(l.disp_em, nowISO()))}</div>
+                    </div>
+                  )}
+                  {l.status === "interditado" && <div style={{ fontSize: 12.5, color: "#fb7185" }}>Interditado{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
+                  {l.status === "manutencao" && <div style={{ fontSize: 12.5, color: "#f97316" }}>Em manutenção{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
+                  {l.status === "bloqueado" && <div style={{ fontSize: 12.5, color: "#8d99ab" }}>Bloqueado externo{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
+                  {l.status === "reservado" && <div style={{ fontSize: 12.5, color: "#818cf8" }}>Reservado{l.motivo ? `: ${l.motivo}` : ""}</div>}
 
                 {canEdit && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 13 }}>
                     {l.status === "livre" && <>
                       <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>Internar</button>
                       <button onClick={() => reservar(l)} style={btnLeito("#818cf8")}>Reservar</button>
@@ -7703,6 +7720,7 @@ function LeitosPage({ currentUser, canEdit }) {
                     </>}
                   </div>
                 )}
+                </div>
               </div>
             );
   };
