@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v22
+# 📍 Ponto de restauração — checkpoint-v23
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v22` (anteriores: `checkpoint-v21` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v23` (anteriores: `checkpoint-v22` … `checkpoint-v1`)
 - **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -130,6 +130,15 @@ dá pra voltar exatamente para este estado.
   **ranking de custo por paciente** e coluna de **custo na curva ABC**; o card da
   Dispensação mostra o custo já dispensado do paciente. (Modelo por custo unitário do
   medicamento — dá pra evoluir para custo por lote/compra.)
+- **💊 Livro de controlados (Portaria 344):** aba **Controlados** com **saldo, balanço
+  mensal** (saldo inicial · entradas · saídas · saldo final) e **livro de movimentação**
+  (saldo corrente linha a linha, com paciente/documento/usuário) dos medicamentos
+  marcados como Controlado; **balanço imprimível/PDF**. Sem migração — apura do histórico.
+- **💊 Medicamentos não padronizados (trazidos pela família):** aba própria para
+  **registrar e controlar** medicamentos **fora do catálogo** que o paciente/família
+  traz — recebimento (paciente, medicamento, apresentação, quantidade, lote/validade,
+  quem trouxe), **conferência** pelo farmacêutico e status **recebido → em uso →
+  devolvido/descartado**, com busca e filtro. **Módulo de Farmácia bem completo.**
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -148,7 +157,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v22
+git reset --hard checkpoint-v23
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -157,7 +166,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v22
+git checkout -b recuperacao checkpoint-v23
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -173,6 +182,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `6332c94` 💊 Livro de controlados (Portaria 344) + medicamentos não padronizados
 - `fa2dde5` 💊 Custos por paciente (custo unitário por medicamento)
 - `fa6f510` 💊 fix: dispensação de itens sem Qtd + "dispensado" falso + match de lote
 - `d72fd9a` 💊 Fluxo de preparo da farmácia com notificação e bipe
