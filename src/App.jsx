@@ -3489,6 +3489,7 @@ function PSPage({ currentUser, canEdit }) {
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Classificação de risco (Protocolo de Manchester) e jornada do paciente. Dados de saúde — use iniciais e prontuário (LGPD).</div>
 
       <PsRetiradaBanner currentUser={currentUser} canEdit={canEdit} />
+      <PsIntervencaoBanner currentUser={currentUser} canEdit={canEdit} />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <Card label="Aguardando triagem" valor={aguardandoTriagem.length} cor={aguardandoTriagem.length > 0 ? "#fbbf24" : "#34d399"} />
@@ -5746,6 +5747,65 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
   );
 }
 
+// Banner no PS: intervenções da farmácia clínica aguardando o prescritor.
+// Fecha o ciclo — o médico vê o problema/conduta e responde (aceita/não aceita).
+function PsIntervencaoBanner({ currentUser, canEdit }) {
+  const [pend, setPend] = useState([]);
+  const [, setTick] = useState(0);
+  const seenRef = useRef(null);
+  async function refresh() {
+    if (!USE_SUPABASE) return;
+    const ats = await loadPsAtendimentos();
+    const atById = {}, porProntuario = {};
+    ats.forEach(a => { atById[a.id] = a; if (a.prontuario) porProntuario[normTxt(String(a.prontuario))] = a; });
+    const ivs = await loadFarmIntervencoes();
+    const lista = ivs.filter(i => i.status === "pendente").map(i => {
+      let at = i.atendimento_id ? atById[i.atendimento_id] : null;
+      if (!at && i.paciente_prontuario) at = porProntuario[normTxt(String(i.paciente_prontuario))];
+      return at ? { iv: i, at } : null;
+    }).filter(Boolean);
+    setPend(lista);
+    const ids = new Set(lista.map(x => x.iv.id));
+    if (seenRef.current) { const novas = [...ids].filter(x => !seenRef.current.has(x)); if (novas.length && somAtivo()) farmBeep(false); }
+    seenRef.current = ids;
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => { refresh(); setTick(t => t + 1); }, 12000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
+  async function responder(x, status) {
+    let campos = { status };
+    if (status === "nao_aceita") { const d = prompt("Motivo da não aceitação (opcional):", ""); if (d === null) return; campos.desfecho = d || null; }
+    await updateFarmIntervencaoRemote(x.iv.id, campos);
+    addAuditLog(currentUser, "PS: resposta à intervenção — " + status, x.at?.iniciais || "", {});
+    setTimeout(refresh, 300);
+  }
+  if (pend.length === 0) return null;
+  return (
+    <div style={{ background: "#d9770614", border: "1px solid #d9770666", borderLeft: "4px solid #d97706", borderRadius: 10, padding: "10px 14px", marginBottom: 14 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#d97706", marginBottom: 8 }}>🔔 {pend.length} intervenção(ões) da farmácia aguardando o prescritor</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {pend.map(x => (
+          <div key={x.iv.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <strong style={{ fontSize: 13 }}>{x.at?.iniciais || x.iv.paciente_iniciais || "?"}{x.at?.prontuario ? ` · reg. ${x.at.prontuario}` : ""}</strong>
+              {x.iv.medicamento_nome && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>· {x.iv.medicamento_nome}</span>}
+              {x.iv.tipo && <span style={{ fontSize: 10, color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 6px" }}>{FARM_ALERTA_TIPOS[x.iv.tipo] || x.iv.tipo}</span>}
+              {x.iv.gravidade && FARM_GRAV[x.iv.gravidade] && <span style={{ fontSize: 9.5, fontWeight: 800, color: FARM_GRAV[x.iv.gravidade].cor, textTransform: "uppercase" }}>{FARM_GRAV[x.iv.gravidade].label}</span>}
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 5, lineHeight: 1.5 }}><strong>Problema:</strong> {x.iv.problema}</div>
+            {x.iv.conduta && <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 2, lineHeight: 1.5 }}><strong>Conduta sugerida:</strong> {x.iv.conduta}</div>}
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Farmácia: {x.iv.farmaceutico || "?"} · {x.iv.created_at ? new Date(x.iv.created_at).toLocaleString("pt-BR") : ""}</div>
+            {canEdit && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                <button onClick={() => responder(x, "aceita")} style={btnLeito("#34d399")}>Aceitar conduta</button>
+                <button onClick={() => responder(x, "nao_aceita")} style={btnLeito("#f43f5e")}>Não aceitar</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Livro de controlados (Portaria 344): saldo, balanço e movimentação — imprimível
 function FarmControladosView() {
   const now = new Date();
@@ -6255,7 +6315,7 @@ function FarmInteracoesView({ currentUser, canEdit }) {
 }
 
 // Assistente local (grátis) — responde perguntas sobre o setor a partir dos dados
-const FARM_ASSIST_HELP = 'Posso responder sobre: pendências/solicitações, prontos para retirada, o que vai faltar (previsão de 7 dias), medicamentos mais usados, custos (por paciente), controlados, rupturas e estoque mínimo, validade, alertas clínicos e intervenções. Ex.: "o que vai faltar?", "top do mês", "custo do paciente MSO", "controlados com saldo baixo", "saldo de dipirona".';
+const FARM_ASSIST_HELP = 'Posso responder sobre: panorama do setor, pendências/solicitações, prontos para retirada, o que vai faltar (previsão de 7 dias), medicamentos mais usados, consumo por classe, dispensações do mês/hoje, custos (por paciente), controlados, zerados, estoque mínimo, validade (lista de lotes), tamanho do catálogo, alertas clínicos e intervenções. Ex.: "panorama", "o que vai faltar?", "top do mês", "consumo por classe", "quais vencendo?", "custo do paciente MSO", "saldo de dipirona".';
 function FarmAssistenteView() {
   const [meds, setMeds] = useState([]);
   const [lotes, setLotes] = useState([]);
@@ -6314,16 +6374,31 @@ function FarmAssistenteView() {
   const custoPacMap = {}; dispMes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]); });
   const custoPac = Object.entries(custoPacMap).map(([pac, v]) => ({ pac, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
   const custoTotal = custoPac.reduce((s, x) => s + x.v, 0);
+  const classeConsMap = {}; dispMes.forEach(m => { const c = medById[m.medicamento_id]?.classe || "Outros"; classeConsMap[c] = (classeConsMap[c] || 0) + Number(m.quantidade || 0); });
+  const classeTop = Object.entries(classeConsMap).map(([c, qtd]) => ({ c, qtd })).sort((a, b) => b.qtd - a.qtd);
+  const qtdDispMes = dispMes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const dispHoje = dispMes.filter(m => (m.created_at || "").slice(0, 10) === todayStr());
+  const qtdDispHoje = dispHoje.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const numClasses = new Set(ativos.map(m => m.classe || "Outros")).size;
+  const vencendoDet = vencendo.map(l => ({ ...l, nome: medById[l.medicamento_id]?.nome || l.medicamento_id })).sort((a, b) => (a.validade || "").localeCompare(b.validade || ""));
 
   function responder(pergunta) {
     const s = normTxt(pergunta);
     const has = (...ks) => ks.some(k => s.includes(k));
     if (!s) return FARM_ASSIST_HELP;
     if (has("ajuda", "o que voce", "o que posso", "pode responder", "comando") || s === "?") return FARM_ASSIST_HELP;
+    if (has("bom dia", "boa tarde", "boa noite", "tudo bem", "obrigad", "valeu", "de nada") || s === "oi" || s === "ola") return "Olá! " + FARM_ASSIST_HELP;
+    if (has("panorama", "resumo", "visao geral", "situacao", "como esta o setor", "como anda", "status do setor", "como esta a farmacia")) {
+      return `Panorama da farmácia agora:\n• Preparo: ${aguardando} aguardando · ${emPreparo} em preparo · ${prontos} pronto(s) para retirada\n• Clínica: ${comAlerta.length} prescrição(ões) com alerta · ${intervPend} intervenção(ões) pendente(s)\n• Estoque: ${rupturas.length} zerado(s) · ${abaixoMin.length} abaixo do mínimo · ${emRisco.length} em risco de ruptura (${FARM_PREV_HORIZONTE}d)\n• Validade: ${vencidos.length} lote(s) vencido(s) · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS}d`;
+    }
     if (has("saldo", "estoque de", "quanto tem", "tem quanto")) {
       const alvo = meds.find(m => normTxt(m.nome).split(/[ ,]/).some(w => w.length >= 4 && s.includes(w))) || meds.find(m => m.principio_ativo && s.includes(normTxt(m.principio_ativo).split(" ")[0]));
       if (alvo) return `${alvo.nome}: saldo atual ${farmFmtQtd(saldo(alvo))} ${alvo.unidade || ""}.`;
       return `Estoque geral: ${rupturas.length} sem saldo, ${abaixoMin.length} abaixo do mínimo. Pergunte "saldo de <medicamento>" para um item.`;
+    }
+    if (has("zerado", "esgotad", "sem estoque", "sem saldo", "estoque zero")) {
+      if (!rupturas.length) return "Nenhum medicamento zerado no momento. 👍";
+      return `${rupturas.length} medicamento(s) sem saldo:\n` + rupturas.slice(0, 12).map(m => `• ${m.nome}`).join("\n") + (rupturas.length > 12 ? `\n… e mais ${rupturas.length - 12}.` : "");
     }
     if (has("faltar", "ruptura", "acabar", "previsao", "demanda", "cobertura")) {
       if (!emRisco.length) return `Nenhum medicamento com previsão de ruptura em ${FARM_PREV_HORIZONTE} dias (consumo dos últimos ${FARM_PREV_JANELA}d).`;
@@ -6332,6 +6407,16 @@ function FarmAssistenteView() {
     if (has("mais usado", "mais utilizado", "top", "mais consumido", "ranking")) {
       if (!topMes.length) return "Sem dispensações registradas no mês.";
       return "Top medicamentos do mês:\n" + topMes.slice(0, 5).map((c, i) => `${i + 1}. ${c.med?.nome || "—"} — ${farmFmtQtd(c.qtd)}`).join("\n");
+    }
+    if (has("classe", "categoria", "terapeutic", "grupo")) {
+      if (!classeTop.length) return "Sem dispensações no mês para agrupar por classe.";
+      return "Consumo por classe terapêutica (mês):\n" + classeTop.slice(0, 8).map(c => `• ${c.c} — ${farmFmtQtd(c.qtd)}`).join("\n");
+    }
+    if (has("dispensad", "dispensacao", "dispensou", "quanto saiu", "saida do mes", "saidas do mes")) {
+      return `Dispensações no mês: ${dispMes.length} movimento(s) · ${farmFmtQtd(qtdDispMes)} unidade(s).\nHoje: ${dispHoje.length} movimento(s) · ${farmFmtQtd(qtdDispHoje)} unidade(s).`;
+    }
+    if (has("quantos medicamento", "catalogo", "quantos itens", "quantos remedio", "quantas classes", "tamanho do catalogo")) {
+      return `Catálogo ativo: ${ativos.length} medicamento(s) em ${numClasses} classe(s) terapêutica(s).`;
     }
     if (has("custo", "gasto", "gastou", "valor", "preco")) {
       const pacHit = custoPac.find(p => s.includes(normTxt(p.pac)) && normTxt(p.pac).length >= 2);
@@ -6349,11 +6434,16 @@ function FarmAssistenteView() {
     if (has("intervencao", "aceitacao", "aceita")) return `Intervenções: ${intervPend} pendente(s). Taxa de aceitação: ${intervTaxa != null ? Math.round(intervTaxa) + "%" : "—"}.`;
     if (has("alerta", "interacao", "alergia", "risco", "problema")) return `${comAlerta.length} paciente(s) com alertas clínicos na prescrição (veja em Prescrições / Análise clínica).`;
     if (has("minimo", "repor", "reposicao", "comprar")) return `${abaixoMin.length} medicamento(s) abaixo do mínimo/zerado${abaixoMin.length ? ":\n" + abaixoMin.slice(0, 8).map(m => `• ${m.nome} — saldo ${farmFmtQtd(saldo(m))}`).join("\n") : "."}`;
-    if (has("validade", "vencer", "vencendo", "vencido", "vence")) return `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS} dias.`;
+    if (has("validade", "vencer", "vencendo", "vencido", "vence")) {
+      const base = `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS} dias.`;
+      if (has("quais", "lista", "listar", "detalh", "quem", "mostra") && vencendoDet.length)
+        return base + "\nVencendo em breve:\n" + vencendoDet.slice(0, 10).map(l => `• ${l.nome} — lote ${l.lote || "?"} vence ${fmtDataBR(l.validade)} (${farmFmtQtd(l.quantidade)})`).join("\n");
+      return base;
+    }
     return "Não entendi a pergunta. " + FARM_ASSIST_HELP;
   }
   function enviar(texto) { const t = (texto != null ? texto : q).trim(); if (!t) return; setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: responder(t) }]); setQ(""); }
-  const sugestoes = ["O que vai faltar?", "Top do mês", "Pendências", "Controlados com saldo baixo", "Custo por paciente", "Validade"];
+  const sugestoes = ["Panorama", "O que vai faltar?", "Top do mês", "Consumo por classe", "Quais vencendo?", "Zerados", "Custo por paciente"];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: 360, maxWidth: 760 }}>
