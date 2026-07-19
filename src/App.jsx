@@ -1733,6 +1733,29 @@ async function upsertFarmIncompatRemote(row, user) {
   return await sbFetch("farm_incompat_y", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
 }
 async function deleteFarmIncompatRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_incompat_y?id=eq.${id}`, { method: "DELETE" }); }
+// Fluxo de preparo (uma linha por prescrição assinada = registro_id)
+async function loadFarmPreparo() {
+  const rows = await sbFetch("farm_preparo?select=*&order=updated_at.desc");
+  return Array.isArray(rows) ? rows : [];
+}
+async function receberPreparoRemote(registroId, atendimentoId, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("farm_preparo?on_conflict=registro_id", {
+    method: "POST",
+    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ registro_id: registroId, atendimento_id: atendimentoId || null, status: "preparo", recebido_em: nowISO(), recebido_por: user?.name || null, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+async function atualizarPreparoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`farm_preparo?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Prescrições assinadas (cabeçalho) de vários atendimentos
+async function loadPsPrescricoesByAtendimentos(ids) {
+  if (!ids.length) return [];
+  const rows = await sbFetch(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.prescricao&select=id,atendimento_id,criado_em,usuario&order=criado_em.desc`);
+  return Array.isArray(rows) ? rows : [];
+}
 // Formata uma data ISO (YYYY-MM-DD) para dd/mm/aaaa, sem escorregar de fuso
 function fmtDataBR(iso) {
   if (!iso) return "—";
@@ -1760,6 +1783,31 @@ const PS_FREQUENCIAS = [
   { label: "6/6h (4x)", dia: 4 }, { label: "4/4h (6x)", dia: 6 }, { label: "Dose única", dia: 0 },
   { label: "Se necessário (SN)", dia: null },
 ];
+// Fluxo de preparo da farmácia — estados e cores
+const PREPARO_STATUS = {
+  aguardando: { label: "Aguardando farmácia", cor: "#8d99ab" },
+  preparo:    { label: "Em preparo",          cor: "#d97706" },
+  pronto:     { label: "Pronto p/ retirada",  cor: "#3b82f6" },
+  retirado:   { label: "Retirado",            cor: "#34d399" },
+  cancelado:  { label: "Cancelado",           cor: "#f43f5e" },
+};
+// Bipe curto (WebAudio, sem arquivo externo — respeita a CSP)
+function farmBeep(dbl) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const ctx = new AC();
+    const toca = (t0, freq) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination); o.type = "sine"; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.32); o.start(t0); o.stop(t0 + 0.34);
+    };
+    toca(ctx.currentTime, 880); if (dbl) toca(ctx.currentTime + 0.18, 1175);
+    setTimeout(() => ctx.close(), 800);
+  } catch (e) {}
+}
+const somAtivo = () => { try { return localStorage.getItem("hnsn_som") === "1"; } catch { return false; } };
+const setSomAtivo = v => { try { localStorage.setItem("hnsn_som", v ? "1" : "0"); } catch {} };
 const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
 // Rótulos dos tipos de alerta (para filtrar prescrições)
 const FARM_ALERTA_TIPOS = {
@@ -3365,6 +3413,8 @@ function PSPage({ currentUser, canEdit }) {
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pronto-Socorro — Triagem e Fluxo</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Classificação de risco (Protocolo de Manchester) e jornada do paciente. Dados de saúde — use iniciais e prontuário (LGPD).</div>
 
+      <PsRetiradaBanner currentUser={currentUser} canEdit={canEdit} />
+
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
         <Card label="Aguardando triagem" valor={aguardandoTriagem.length} cor={aguardandoTriagem.length > 0 ? "#fbbf24" : "#34d399"} />
         <Card label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" />
@@ -4227,18 +4277,20 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "preparo" ? "Fluxo de preparo: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada." : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
         </div>
         {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <button onClick={() => setSub("estoque")} style={subBtn(sub === "estoque")}>Estoque</button>
+        <button onClick={() => setSub("preparo")} style={subBtn(sub === "preparo")}>Preparo</button>
         <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
         <button onClick={() => setSub("analise")} style={subBtn(sub === "analise")}>Análise clínica</button>
         <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
       </div>
 
+      {sub === "preparo" && <FarmPreparoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "analise" && <FarmAnaliseView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "indicadores" && <FarmIndicadoresView />}
@@ -5287,6 +5339,172 @@ function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onCl
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Quadro de preparo: aguardando → em preparo → pronto → retirado (com bipe/notificação)
+function FarmPreparoView({ currentUser, canEdit }) {
+  const [atends, setAtends] = useState([]);
+  const [prescricoes, setPrescricoes] = useState([]);
+  const [preparo, setPreparo] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [saidas, setSaidas] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [meds, setMeds] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [disp, setDisp] = useState(null);
+  const [som, setSom] = useState(somAtivo());
+  const [toasts, setToasts] = useState([]);
+  const [verRetirados, setVerRetirados] = useState(false);
+  const [, setTick] = useState(0);
+  const seenRef = useRef(null);
+
+  function pushToast(msg) { const id = Date.now() + Math.random(); setToasts(t => [...t, { id, msg }]); setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 6000); }
+
+  async function refresh() {
+    if (!USE_SUPABASE) return;
+    const ats = await loadPsAtendimentos(); setAtends(ats);
+    const ids = ats.map(a => a.id);
+    const [pres, prep, its, sai] = await Promise.all([loadPsPrescricoesByAtendimentos(ids), loadFarmPreparo(), loadPsPrescricaoItensByAtendimentos(ids), loadFarmSaidasByAtendimentos(ids)]);
+    setPrescricoes(pres); setPreparo(prep); setItens(its); setSaidas(sai);
+    loadFarmLotes().then(setLotes); loadFarmMedicamentos().then(setMeds); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY);
+    // detectar prescrições novas aguardando → bipe + toast
+    const prepReg = {}; prep.forEach(p => prepReg[p.registro_id] = p);
+    const atSet = new Set(ids);
+    const agIds = new Set(pres.filter(r => atSet.has(r.atendimento_id) && !prepReg[r.id]).map(r => r.id));
+    if (seenRef.current) {
+      const novas = [...agIds].filter(x => !seenRef.current.has(x));
+      if (novas.length) { if (somAtivo()) farmBeep(false); const nomes = novas.map(rid => { const r = pres.find(p => p.id === rid); return ats.find(a => a.id === r?.atendimento_id)?.iniciais || "?"; }); pushToast(`🔔 Nova prescrição para preparar: ${nomes.join(", ")}`); }
+    }
+    seenRef.current = agIds;
+  }
+  useEffect(() => {
+    refresh();
+    const onF = () => refresh();
+    window.addEventListener("focus", onF);
+    const id = setInterval(() => { refresh(); setTick(t => t + 1); }, 12000);
+    return () => { window.removeEventListener("focus", onF); clearInterval(id); };
+  }, []);
+
+  const atendById = {}; atends.forEach(a => atendById[a.id] = a);
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const prepByReg = {}; preparo.forEach(p => prepByReg[p.registro_id] = p);
+  const atSet = new Set(atends.map(a => a.id));
+  const scoreDe = atId => { const its = itens.filter(i => i.atendimento_id === atId); const a = atendById[atId] || {}; const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }; return scorePrescricao(its, analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY)); };
+
+  const cards = prescricoes.filter(r => atSet.has(r.atendimento_id)).map(r => ({ reg: r, prep: prepByReg[r.id], status: prepByReg[r.id] ? prepByReg[r.id].status : "aguardando", at: atendById[r.atendimento_id], nItens: itens.filter(i => i.registro_id === r.id).length, score: scoreDe(r.atendimento_id) }));
+  const cols = [
+    { key: "aguardando", lista: cards.filter(c => c.status === "aguardando") },
+    { key: "preparo", lista: cards.filter(c => c.status === "preparo") },
+    { key: "pronto", lista: cards.filter(c => c.status === "pronto") },
+  ];
+  const retirados = cards.filter(c => c.status === "retirado");
+
+  async function receber(c) { await receberPreparoRemote(c.reg.id, c.reg.atendimento_id, currentUser); addAuditLog(currentUser, "farmácia: receber prescrição", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  async function marcarPronto(c) { await atualizarPreparoRemote(c.prep.id, { status: "pronto", pronto_em: nowISO(), pronto_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: preparo pronto", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  async function confirmarRetirada(c) { if (!confirm(`Confirmar retirada da prescrição de ${c.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(c.prep.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: retirada confirmada", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  function ativarSom() { setSomAtivo(true); setSom(true); farmBeep(false); }
+  async function registrarDispensacao(mov) { const r = await addFarmMovimentoRemote(mov, currentUser); if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; } addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {}); setTimeout(refresh, 300); return true; }
+
+  const Card = ({ c }) => {
+    const st = PREPARO_STATUS[c.status];
+    return (
+      <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 9, padding: "10px 12px", marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <strong style={{ fontSize: 13 }}>{c.at?.iniciais || "?"}{c.at?.prontuario ? ` · ${c.at.prontuario}` : ""}</strong>
+          <span title={`Score ${c.score}/3`} style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[c.score], borderRadius: 5, padding: "1px 6px" }}>{c.score}</span>
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "3px 0 8px" }}>{c.nItens} item(ns) · {horaFmt(c.reg.criado_em)}{c.at?.classificacao && MANCHESTER[c.at.classificacao] ? ` · ${MANCHESTER[c.at.classificacao].label}` : ""}</div>
+        {canEdit && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {c.status === "aguardando" && <button onClick={() => receber(c)} style={btnLeito("#d97706")}>Receber</button>}
+            {c.status === "preparo" && <>
+              <button onClick={() => setDisp(c.at)} style={btnLeito("#22d3ee")}>Separar</button>
+              <button onClick={() => marcarPronto(c)} style={btnLeito("#3b82f6")}>Marcar pronto</button>
+            </>}
+            {c.status === "pronto" && <button onClick={() => confirmarRetirada(c)} style={btnLeito("#34d399")}>Confirmar retirada</button>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      {/* Toasts */}
+      <div style={{ position: "fixed", top: 64, right: 18, zIndex: 300, display: "flex", flexDirection: "column", gap: 8, maxWidth: 320 }}>
+        {toasts.map(t => <div key={t.id} style={{ background: "var(--bg-2)", border: "1px solid #3b82f6", borderLeft: "4px solid #3b82f6", borderRadius: 8, padding: "10px 13px", fontSize: 12.5, color: "var(--text)", boxShadow: "0 4px 16px rgba(0,0,0,.3)" }}>{t.msg}</div>)}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Ao assinar no PS, a prescrição chega aqui. Receber → separar (baixa de estoque) → marcar pronto → confirmar retirada.</div>
+        <button onClick={ativarSom} style={{ background: som ? "#34d39922" : "transparent", color: som ? "#34d399" : "var(--text-2)", border: `1px solid ${som ? "#34d399" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{som ? "🔊 Som ativo" : "🔈 Ativar som"}</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+        {cols.map(col => (
+          <div key={col.key}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 99, background: PREPARO_STATUS[col.key].cor }} />
+              <span style={{ fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--text-2)" }}>{PREPARO_STATUS[col.key].label}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>({col.lista.length})</span>
+            </div>
+            {col.lista.length === 0 ? <div style={{ fontSize: 11.5, color: "var(--text-muted)", padding: "6px 2px" }}>—</div> : col.lista.map(c => <Card key={c.reg.id} c={c} />)}
+          </div>
+        ))}
+      </div>
+
+      {retirados.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <button onClick={() => setVerRetirados(v => !v)} style={{ background: "transparent", border: "none", color: "var(--text-3)", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{verRetirados ? "▾" : "▸"} Retirados hoje ({retirados.length})</button>
+          {verRetirados && <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>{retirados.map(c => <span key={c.reg.id} style={{ fontSize: 11.5, color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 99, padding: "3px 10px" }}>{c.at?.iniciais || "?"} · retirado {c.prep?.retirado_em ? horaFmt(c.prep.retirado_em) : ""}</span>)}</div>}
+        </div>
+      )}
+
+      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }, medById, interacoes, incompatY); })()} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
+    </div>
+  );
+}
+
+// Banner no PS: medicações prontas para retirada (com bipe ao ficarem prontas)
+function PsRetiradaBanner({ currentUser, canEdit }) {
+  const [prontos, setProntos] = useState([]);
+  const [som, setSom] = useState(somAtivo());
+  const [, setTick] = useState(0);
+  const seenRef = useRef(null);
+  async function refresh() {
+    if (!USE_SUPABASE) return;
+    const ats = await loadPsAtendimentos();
+    const atById = {}; ats.forEach(a => atById[a.id] = a);
+    const prep = await loadFarmPreparo();
+    const lista = prep.filter(p => p.status === "pronto" && atById[p.atendimento_id]).map(p => ({ ...p, at: atById[p.atendimento_id] }));
+    setProntos(lista);
+    const ids = new Set(lista.map(p => p.id));
+    if (seenRef.current) { const novas = [...ids].filter(x => !seenRef.current.has(x)); if (novas.length && somAtivo()) farmBeep(true); }
+    seenRef.current = ids;
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => { refresh(); setTick(t => t + 1); }, 12000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
+  async function confirmar(p) { if (!confirm(`Confirmar retirada da medicação de ${p.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(p.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "PS: retirada de medicação", p.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  function ativar() { setSomAtivo(true); setSom(true); farmBeep(true); }
+  if (prontos.length === 0 && som) return null;
+  return (
+    <div style={{ background: prontos.length ? "#3b82f614" : "var(--surface)", border: `1px solid ${prontos.length ? "#3b82f666" : "var(--border)"}`, borderLeft: `4px solid ${prontos.length ? "#3b82f6" : "var(--border-2)"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      {prontos.length > 0 ? (
+        <>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#3b82f6" }}>🔔 {prontos.length} medicação(ões) pronta(s) na farmácia:</span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flex: 1 }}>
+            {prontos.map(p => (
+              <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 99, padding: "3px 6px 3px 11px", fontSize: 12 }}>
+                {p.at?.iniciais || "?"}{p.at?.prontuario ? ` · ${p.at.prontuario}` : ""}
+                {canEdit && <button onClick={() => confirmar(p)} style={{ ...btnLeito("#34d399"), padding: "2px 8px" }}>Retirar</button>}
+              </span>
+            ))}
+          </div>
+        </>
+      ) : <span style={{ fontSize: 12.5, color: "var(--text-muted)", flex: 1 }}>Avisos sonoros de medicação pronta estão desligados neste computador.</span>}
+      {!som && <button onClick={ativar} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>🔈 Ativar som</button>}
     </div>
   );
 }
