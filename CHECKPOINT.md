@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v20
+# 📍 Ponto de restauração — checkpoint-v21
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v20` (anteriores: `checkpoint-v19` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v21` (anteriores: `checkpoint-v20` … `checkpoint-v1`)
 - **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -116,6 +116,15 @@ dá pra voltar exatamente para este estado.
   incompatibilidade em Y, dose máxima, duplicidade, tempo, sonda, idoso, criança,
   ajuste renal/hepático), **só controlados** e ordenação (prioridade/score/nome/chegada).
   Cada card mostra os chips dos alertas presentes.
+- **💊 Fluxo de preparo com notificação sonora:** ao assinar a prescrição no PS, ela
+  entra no ciclo **aguardando farmácia → em preparo → pronto → retirada** (tabela
+  `farm_preparo`). Nova aba **Farmácia → Preparo** (quadro): a farmácia **recebe**
+  (🔔 bipe + aviso), **separa** (baixa de estoque), **marca pronto** (🔔 avisa o posto)
+  e a enfermagem **confirma a retirada**. Banner no topo do **Pronto-Socorro** lista as
+  medicações **prontas para retirada** com bipe e botão Retirar. Botão **"Ativar som"**
+  por computador (áudio local via WebAudio, sem depender de arquivo). Avisos por
+  polling (~12s), sem custo. Itens prescritos **sem quantidade** também podem ser
+  dispensados (a farmácia digita a quantidade, sugerida pela dose).
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -134,7 +143,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v20
+git reset --hard checkpoint-v21
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -143,7 +152,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v20
+git checkout -b recuperacao checkpoint-v21
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -159,6 +168,8 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `fa6f510` 💊 fix: dispensação de itens sem Qtd + "dispensado" falso + match de lote
+- `d72fd9a` 💊 Fluxo de preparo da farmácia com notificação e bipe
 - `5fdd520` 💊 Filtros de prescrição estilo NoHarm na dispensação
 - `4c3a6a8` 💊 Dispensação priorizada + score de prescrição 0–3
 - `9ad2b65` 💊 Farmácia Clínica Fase 3 — ajuste de posologia renal/hepática
