@@ -7171,6 +7171,181 @@ function LeitosBIView({ leitos, saidas, turnover, operacionais }) {
   );
 }
 
+// Motor de alertas inteligentes do Giro de Leitos (local, a partir do estado atual)
+function leitosAlertas(leitos, solic) {
+  const out = []; const now = nowISO();
+  const push = (gravidade, titulo, detalhe) => out.push({ gravidade, titulo, detalhe });
+  const operacionais = leitos.filter(l => !LEITO_FORA_OPERACAO.includes(l.status)).length;
+  const ocupados = leitos.filter(l => l.status === "ocupado").length;
+  const livres = leitos.filter(l => l.status === "livre").length;
+  const ocg = operacionais > 0 ? Math.round((ocupados / operacionais) * 100) : 0;
+  if (operacionais > 0 && ocg >= 90) push("alta", "Ocupação global crítica", `${ocg}% dos leitos operacionais ocupados (${ocupados}/${operacionais}).`);
+  else if (operacionais > 0 && ocg >= 80) push("media", "Ocupação global alta", `${ocg}% ocupados (${ocupados}/${operacionais}).`);
+  if (livres === 0 && operacionais > 0) push("alta", "Sem leitos livres", "Nenhum leito disponível para internação no momento.");
+  leitos.filter(l => l.status === "ocupado").forEach(l => {
+    const s = sinalLeito(l.data_internacao, l.dias_previstos);
+    if (s.restam != null && s.restam < 0) push("alta", `Alta vencida — leito ${l.identificacao}`, `${l.iniciais || "paciente"} · previsão passou ${Math.abs(s.restam)}d. ${s.texto}`);
+    else if (s.restam != null && s.restam <= 1) push("media", `Alta próxima — leito ${l.identificacao}`, `${l.iniciais || "paciente"} · ${s.texto}`);
+  });
+  leitos.filter(l => l.status === "higienizacao").forEach(l => {
+    const min = diffMin(l.disp_em, now);
+    if (min != null && min > 120) push("alta", `Higienização demorada — leito ${l.identificacao}`, `em higienização há ${fmtDur(min)}.`);
+    else if (min != null && min > 60) push("media", `Higienização em atraso — leito ${l.identificacao}`, `em higienização há ${fmtDur(min)}.`);
+  });
+  const setoresMap = {}; leitos.forEach(l => { const s = l.setor || "Sem setor"; (setoresMap[s] = setoresMap[s] || []).push(l); });
+  Object.entries(setoresMap).forEach(([nome, ls]) => {
+    const op = ls.filter(x => !LEITO_FORA_OPERACAO.includes(x.status)).length;
+    const oc = ls.filter(x => x.status === "ocupado").length;
+    const pct = op ? Math.round((oc / op) * 100) : 0;
+    if (nome !== "Sem setor" && op > 0 && pct >= 90) push("media", `Setor lotado — ${nome}`, `${pct}% ocupado (${oc}/${op}).`);
+  });
+  (solic || []).forEach(s => {
+    const esp = diffMin(s.hora_pedido, now);
+    if (esp != null && esp > 240) push("alta", `Espera longa por leito — ${s.iniciais || "paciente"}`, `aguardando ${fmtDur(esp)}${s.setor_destino ? " para " + s.setor_destino : ""}.`);
+    else if (esp != null && esp > 120) push("media", `Fila de internação — ${s.iniciais || "paciente"}`, `aguardando ${fmtDur(esp)}${s.setor_destino ? " para " + s.setor_destino : ""}.`);
+  });
+  return out.sort((a, b) => FARM_GRAV[a.gravidade].ordem - FARM_GRAV[b.gravidade].ordem);
+}
+
+// Alertas inteligentes do Giro de Leitos (Fase 4)
+function LeitosAlertasView({ leitos, solic }) {
+  const alertas = leitosAlertas(leitos, solic);
+  const nAlta = alertas.filter(a => a.gravidade === "alta").length;
+  const nMedia = alertas.filter(a => a.gravidade === "media").length;
+  const KPI = ({ label, valor, cor }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+    </div>
+  );
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <KPI label="Alertas altos" valor={nAlta} cor={nAlta ? "#f43f5e" : "#34d399"} />
+        <KPI label="Alertas médios" valor={nMedia} cor={nMedia ? "#d97706" : "#34d399"} />
+        <KPI label="Total" valor={alertas.length} cor={alertas.length ? "#818cf8" : "#34d399"} />
+      </div>
+      {alertas.length === 0 ? (
+        <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Nenhum alerta no momento. 👍 O setor está sob controle.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {alertas.map((a, i) => { const g = FARM_GRAV[a.gravidade]; return (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, background: g.cor + "11", border: `1px solid ${g.cor}44`, borderRadius: 9, padding: "10px 13px" }}>
+              <span style={{ fontSize: 9.5, fontWeight: 800, color: g.cor, textTransform: "uppercase", marginTop: 2, minWidth: 42 }}>{g.label}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{a.titulo}</div>
+                <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 1 }}>{a.detalhe}</div>
+              </div>
+            </div>
+          ); })}
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 14, lineHeight: 1.5 }}>Alertas calculados automaticamente do estado atual: ocupação, previsão de alta (sinaleira), tempo de higienização e fila de internação. Atualiza ao voltar para a aba.</div>
+    </div>
+  );
+}
+
+const LEITOS_ASSIST_HELP = 'Posso responder sobre: panorama do setor, ocupação (global e por setor), leitos livres, fila de internação, altas previstas/vencidas, giro de leitos, permanência média, tempos de higienização/giro, transferências e alertas. Ex.: "panorama", "quanto está a ocupação?", "quantos leitos livres?", "quem tem alta vencida?", "como está a UTI?".';
+// IA Assistente local do Giro de Leitos (Fase 4) — gratuito, dados não saem do navegador
+function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais }) {
+  const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do Giro de Leitos. " + LEITOS_ASSIST_HELP }]);
+  const [q, setQ] = useState("");
+  const fimRef = useRef(null);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  const now = new Date(); const mesA = now.getMonth(), anoA = now.getFullYear();
+  const inMesData = (dstr, m, y) => { if (!dstr) return false; const d = new Date(dstr + "T00:00:00"); return d.getMonth() === m && d.getFullYear() === y; };
+  const inMesISO = (iso, m, y) => { if (!iso) return false; const d = new Date(iso); return d.getMonth() === m && d.getFullYear() === y; };
+  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  const permDe = s => s.dias_permanencia != null ? s.dias_permanencia : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null);
+  const op = operacionais || leitos.filter(l => !LEITO_FORA_OPERACAO.includes(l.status)).length;
+  const ocupados = leitos.filter(l => l.status === "ocupado").length;
+  const livres = leitos.filter(l => l.status === "livre").length;
+  const higienizando = leitos.filter(l => l.status === "higienizacao").length;
+  const ocg = op > 0 ? Math.round((ocupados / op) * 100) : 0;
+  const setoresMap = {}; leitos.forEach(l => { const s = l.setor || "Sem setor"; (setoresMap[s] = setoresMap[s] || []).push(l); });
+  const setorPct = Object.entries(setoresMap).map(([nome, ls]) => { const o = ls.filter(x => !LEITO_FORA_OPERACAO.includes(x.status)).length; const oc = ls.filter(x => x.status === "ocupado").length; return { nome, pct: o ? Math.round((oc / o) * 100) : 0, oc, o, livres: ls.filter(x => x.status === "livre").length }; });
+  const filaEspera = (solic || []).map(s => diffMin(s.hora_pedido, nowISO())).filter(v => v != null);
+  const maiorEspera = filaEspera.length ? Math.max(...filaEspera) : null;
+  const ocupadosArr = leitos.filter(l => l.status === "ocupado").map(l => ({ l, s: sinalLeito(l.data_internacao, l.dias_previstos) }));
+  const vencidas = ocupadosArr.filter(x => x.s.restam != null && x.s.restam < 0);
+  const proximas = ocupadosArr.filter(x => x.s.restam != null && x.s.restam >= 0 && x.s.restam <= 1);
+  const sMes = (saidas || []).filter(s => inMesData(s.data_alta, mesA, anoA));
+  const altasMes = sMes.filter(s => (s.desfecho || "alta") === "alta").length;
+  const transfMes = sMes.filter(s => s.desfecho === "transferencia").length;
+  const permMedia = avg(sMes.map(permDe).filter(v => v != null));
+  const giro = op > 0 ? sMes.length / op : null;
+  const tMes = (turnover || []).filter(t => inMesISO(t.entrada_em, mesA, anoA));
+  const tHig = avg(tMes.map(t => diffMin(t.disp_em, t.pronto_em)).filter(v => v != null && v >= 0));
+  const tSolDisp = avg(tMes.map(t => diffMin(t.solic_em, t.disp_em)).filter(v => v != null && v >= 0));
+  const tProntoEnt = avg(tMes.map(t => diffMin(t.pronto_em, t.entrada_em)).filter(v => v != null && v >= 0));
+  const alertas = leitosAlertas(leitos, solic);
+
+  function responder(pergunta) {
+    const s = normTxt(pergunta);
+    const has = (...ks) => ks.some(k => s.includes(k));
+    if (!s) return LEITOS_ASSIST_HELP;
+    if (has("ajuda", "o que voce", "o que posso", "pode responder", "comando") || s === "?") return LEITOS_ASSIST_HELP;
+    if (has("bom dia", "boa tarde", "boa noite", "tudo bem", "obrigad", "valeu") || s === "oi" || s === "ola") return "Olá! " + LEITOS_ASSIST_HELP;
+    if (has("panorama", "resumo", "visao geral", "situacao", "como esta o setor", "como anda")) {
+      return `Panorama dos leitos:\n• Ocupação global: ${ocg}% (${ocupados}/${op} operacionais)\n• Livres: ${livres} · em higienização: ${higienizando}\n• Fila de internação: ${(solic || []).length}${maiorEspera != null ? ` (maior espera ${fmtDur(maiorEspera)})` : ""}\n• Altas previstas: ${proximas.length} · vencidas: ${vencidas.length}\n• Alertas: ${alertas.filter(a => a.gravidade === "alta").length} alto(s) · ${alertas.filter(a => a.gravidade === "media").length} médio(s)`;
+    }
+    // Setor específico
+    const setorHit = setorPct.find(x => x.nome !== "Sem setor" && normTxt(x.nome).length >= 2 && s.includes(normTxt(x.nome)));
+    if (setorHit) return `${setorHit.nome}: ${setorHit.pct}% ocupado (${setorHit.oc}/${setorHit.o}) · ${setorHit.livres} livre(s).`;
+    if (has("livre", "disponivel", "vaga", "vazio")) {
+      const porSetor = setorPct.filter(x => x.livres > 0).map(x => `• ${x.nome}: ${x.livres}`).join("\n");
+      return `${livres} leito(s) livre(s) no total.${porSetor ? "\n" + porSetor : ""}`;
+    }
+    if (has("ocupacao", "lotacao", "lotado", "ocupad")) {
+      const top = [...setorPct].filter(x => x.o > 0).sort((a, b) => b.pct - a.pct).slice(0, 6).map(x => `• ${x.nome}: ${x.pct}% (${x.oc}/${x.o})`).join("\n");
+      return `Ocupação global: ${ocg}% (${ocupados}/${op}).${top ? "\nPor setor:\n" + top : ""}`;
+    }
+    if (has("fila", "aguardando", "espera", "internacao", "solicitac")) {
+      if (!(solic || []).length) return "Nenhuma solicitação de leito aguardando no momento.";
+      return `${(solic || []).length} paciente(s) na fila de internação. Maior espera: ${fmtDur(maiorEspera)}.`;
+    }
+    if (has("vencida", "vencid", "atrasada", "passou", "estourou")) {
+      if (!vencidas.length) return "Nenhuma previsão de alta vencida. 👍";
+      return `${vencidas.length} alta(s) vencida(s):\n` + vencidas.slice(0, 8).map(x => `• leito ${x.l.identificacao} — ${x.l.iniciais || "?"} (${x.s.texto})`).join("\n");
+    }
+    if (has("alta prevista", "alta proxima", "previsao", "sinaleira", "alta hoje", "vai receber alta")) {
+      if (!proximas.length && !vencidas.length) return "Nenhuma alta prevista para as próximas 24h.";
+      return `Altas próximas (≤24h): ${proximas.length}${proximas.length ? "\n" + proximas.slice(0, 8).map(x => `• leito ${x.l.identificacao} — ${x.l.iniciais || "?"}`).join("\n") : ""}\nVencidas: ${vencidas.length}.`;
+    }
+    if (has("alta", "receberam alta", "deram alta")) return `Altas no mês: ${altasMes}. Transferências: ${transfMes}.`;
+    if (has("giro")) return `Giro de leitos no mês: ${giro != null ? giro.toFixed(2) : "—"} (saídas ÷ ${op} leitos operacionais).`;
+    if (has("permanencia", "media de dias", "quanto tempo interna")) return `Permanência média (altas do mês): ${permMedia != null ? permMedia.toFixed(1) + " dias" : "—"}.`;
+    if (has("higieniz", "limpeza", "tempo de giro", "tempo", "disponibilizado", "pronto")) return `Tempos do mês:\n• Solicitado → Disponibilizado: ${fmtDur(tSolDisp)}\n• Higienização (Disp → Pronto): ${fmtDur(tHig)}\n• Pronto → Entrada: ${fmtDur(tProntoEnt)}\nEm higienização agora: ${higienizando}.`;
+    if (has("transfer")) return `Transferências externas no mês: ${transfMes}.`;
+    if (has("alerta", "problema", "risco", "atencao")) {
+      if (!alertas.length) return "Nenhum alerta no momento. 👍";
+      return `${alertas.length} alerta(s) (${alertas.filter(a => a.gravidade === "alta").length} alto):\n` + alertas.slice(0, 8).map(a => `• [${FARM_GRAV[a.gravidade].label}] ${a.titulo}`).join("\n");
+    }
+    return "Não entendi a pergunta. " + LEITOS_ASSIST_HELP;
+  }
+  function enviar(texto) { const t = (texto != null ? texto : q).trim(); if (!t) return; setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: responder(t) }]); setQ(""); }
+  const sugestoes = ["Panorama", "Ocupação", "Leitos livres", "Fila de internação", "Alta vencida", "Alertas"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: 360, maxWidth: 760 }}>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: "4px 2px 12px" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "u" ? "flex-end" : "flex-start", maxWidth: "85%", background: m.role === "u" ? VX.royal : "var(--surface)", color: m.role === "u" ? "#fff" : "var(--text)", border: m.role === "u" ? "none" : "1px solid var(--border)", borderRadius: 12, padding: "9px 13px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
+        ))}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {sugestoes.map(sg => <button key={sg} onClick={() => enviar(sg)} style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 99, padding: "4px 11px", fontSize: 11.5, cursor: "pointer" }}>{sg}</button>)}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && enviar()} placeholder="Pergunte sobre os leitos…" style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
+        <button onClick={() => enviar()} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Enviar</button>
+      </div>
+    </div>
+  );
+}
+
 function LeitosPage({ currentUser, canEdit }) {
   const [sub, setSub] = useState("dashboard"); // tela da barra lateral interna
   const [leitos, setLeitos] = useState(() => loadLeitos());
@@ -7435,7 +7610,6 @@ function LeitosPage({ currentUser, canEdit }) {
     alertas: "Alertas automáticos do setor (alta vencida, limpeza demorada, ocupação alta).",
     assistente: "Assistente local para perguntas sobre leitos e giro.",
   };
-  const fasePendente = { alertas: 4, assistente: 4 };
   const inpBusca = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 280, maxWidth: "100%" };
   const ChipDesf = ({ d }) => { const v = DESFECHO_LEITO[d] || DESFECHO_LEITO.alta; return <span style={{ fontSize: 10, fontWeight: 800, color: v.cor, border: `1px solid ${v.cor}66`, borderRadius: 99, padding: "1px 8px", textTransform: "uppercase" }}>{v.label}</span>; };
   const permDe = s => s.dias_permanencia != null ? s.dias_permanencia : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null);
@@ -7784,12 +7958,9 @@ function LeitosPage({ currentUser, canEdit }) {
         {/* ── RELATÓRIOS & BI (Fase 3) ── */}
         {sub === "indicadores" && <LeitosBIView leitos={leitos} saidas={saidas} turnover={turnover} operacionais={operacionais} />}
 
-        {/* ── TELAS DAS PRÓXIMAS FASES ── */}
-        {fasePendente[sub] && (
-          <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
-            Em desenvolvimento — chega na <strong>Fase {fasePendente[sub]}</strong> da reformulação do Giro de Leitos.
-          </div>
-        )}
+        {/* ── ALERTAS INTELIGENTES + IA ASSISTENTE (Fase 4) ── */}
+        {sub === "alertas" && <LeitosAlertasView leitos={leitos} solic={solic} />}
+        {sub === "assistente" && <LeitosAssistenteView leitos={leitos} solic={solic} saidas={saidas} turnover={turnover} operacionais={operacionais} />}
 
         {modal && <InternarModal leito={modal} refs={cidRef} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
         {tempos && <TemposModal leito={tempos} onClose={() => setTempos(null)} onSave={campos => salvarTempos(tempos, campos)} />}
