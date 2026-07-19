@@ -1782,6 +1782,27 @@ const NAOPAD_STATUS = {
   devolvido:  { label: "Devolvido",  cor: "#34d399" },
   descartado: { label: "Descartado", cor: "#8d99ab" },
 };
+// Intervenção farmacêutica (estilo NoHarm)
+const INTERV_STATUS = {
+  pendente:   { label: "Pendente",   cor: "#d97706" },
+  aceita:     { label: "Aceita",     cor: "#34d399" },
+  nao_aceita: { label: "Não aceita", cor: "#f43f5e" },
+  resolvida:  { label: "Resolvida",  cor: "#3b82f6" },
+  cancelada:  { label: "Cancelada",  cor: "#8d99ab" },
+};
+async function loadFarmIntervencoes() {
+  const rows = await sbFetch("farm_intervencoes?select=*&order=created_at.desc");
+  return Array.isArray(rows) ? rows : [];
+}
+async function addFarmIntervencaoRemote(row, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("farm_intervencoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...row, farmaceutico: user?.name || null, usuario: user?.name || null }) });
+}
+async function updateFarmIntervencaoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`farm_intervencoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+async function deleteFarmIntervencaoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_intervencoes?id=eq.${id}`, { method: "DELETE" }); }
 // Formata uma data ISO (YYYY-MM-DD) para dd/mm/aaaa, sem escorregar de fuso
 function fmtDataBR(iso) {
   if (!iso) return "—";
@@ -4305,7 +4326,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "preparo" ? "Fluxo de preparo: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada." : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : sub === "controlados" ? "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação, com relatório imprimível." : sub === "naopad" ? "Medicamentos fora do catálogo trazidos pelo paciente/família — recebimento, conferência e controle." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "preparo" ? "Fluxo de preparo: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada." : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : sub === "intervencao" ? "Intervenção farmacêutica — registrar o problema, propor a conduta e acompanhar o desfecho (aceita/não aceita)." : sub === "controlados" ? "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação, com relatório imprimível." : sub === "naopad" ? "Medicamentos fora do catálogo trazidos pelo paciente/família — recebimento, conferência e controle." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
         </div>
         {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
@@ -4315,6 +4336,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
         <button onClick={() => setSub("preparo")} style={subBtn(sub === "preparo")}>Preparo</button>
         <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
         <button onClick={() => setSub("analise")} style={subBtn(sub === "analise")}>Análise clínica</button>
+        <button onClick={() => setSub("intervencao")} style={subBtn(sub === "intervencao")}>Intervenção</button>
         <button onClick={() => setSub("controlados")} style={subBtn(sub === "controlados")}>Controlados</button>
         <button onClick={() => setSub("naopad")} style={subBtn(sub === "naopad")}>Não padronizados</button>
         <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
@@ -4323,6 +4345,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       {sub === "preparo" && <FarmPreparoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "analise" && <FarmAnaliseView currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "intervencao" && <FarmIntervencaoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "controlados" && <FarmControladosView />}
       {sub === "naopad" && <FarmNaoPadronizadosView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "indicadores" && <FarmIndicadoresView />}
@@ -5800,6 +5823,188 @@ function FarmNaoPadronizadosView({ currentUser, canEdit }) {
           ); })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Intervenção farmacêutica (estilo NoHarm): identifica o problema, propõe conduta, acompanha o desfecho
+function FarmIntervencaoView({ currentUser, canEdit }) {
+  const [atends, setAtends] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [meds, setMeds] = useState([]);
+  const [interacoes, setInteracoes] = useState([]);
+  const [incompatY, setIncompatY] = useState([]);
+  const [intervs, setIntervs] = useState([]);
+  const [nova, setNova] = useState(null);
+  const [fStatus, setFStatus] = useState("");
+  const [aberto, setAberto] = useState({});
+  const [, setTick] = useState(0);
+  const isMaster = currentUser?.role === "adm_master";
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmInteracoes().then(setInteracoes);
+    loadFarmIncompatY().then(setIncompatY);
+    loadFarmIntervencoes().then(setIntervs);
+    loadPsAtendimentos().then(async ats => { setAtends(ats); setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id))); });
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => setTick(t => t + 1), 60000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
+
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const comAlerta = atends.map(a => {
+    const its = itens.filter(i => i.atendimento_id === a.id);
+    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
+    return { at: a, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
+  }).filter(x => x.alertas.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
+
+  const jaIntervencionado = (atId, tipo, med) => intervs.some(i => i.atendimento_id === atId && i.tipo === tipo && (i.medicamento_nome || "") === (med || "") && i.status !== "cancelada");
+
+  const pend = intervs.filter(i => i.status === "pendente").length;
+  const aceitas = intervs.filter(i => i.status === "aceita").length;
+  const naoAceitas = intervs.filter(i => i.status === "nao_aceita").length;
+  const taxa = (aceitas + naoAceitas) ? (aceitas / (aceitas + naoAceitas)) * 100 : null;
+  const intervsFiltradas = intervs.filter(i => !fStatus || i.status === fStatus);
+
+  async function salvar(row) { await addFarmIntervencaoRemote(row, currentUser); addAuditLog(currentUser, "intervenção farmacêutica", `${row.paciente_iniciais || "?"} · ${row.medicamento_nome || row.tipo || ""}`, {}); setNova(null); setTimeout(refresh, 350); }
+  async function mudarStatus(iv, status) { let desfecho = iv.desfecho; if (status === "nao_aceita" || status === "resolvida") { const d = prompt(status === "nao_aceita" ? "Motivo da não aceitação (opcional):" : "Observação do desfecho (opcional):", iv.desfecho || ""); if (d !== null) desfecho = d; } await updateFarmIntervencaoRemote(iv.id, { status, desfecho: desfecho || null }); addAuditLog(currentUser, "intervenção: " + status, iv.paciente_iniciais || "", {}); setTimeout(refresh, 250); }
+  async function excluir(iv) { if (!confirm("Excluir esta intervenção?")) return; await deleteFarmIntervencaoRemote(iv.id); setTimeout(refresh, 250); }
+  const intervirDoAlerta = (at, alerta) => setNova({ atendimento_id: at.id, paciente_iniciais: at.iniciais, paciente_prontuario: at.prontuario || "", medicamento_nome: (alerta.itens && alerta.itens[0]) || "", tipo: alerta.tipo, gravidade: alerta.gravidade, problema: `${alerta.titulo}: ${alerta.detalhe}`, conduta: "" });
+
+  const KPI = ({ label, valor, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", flex: 1, minWidth: 240 }}>Intervenção farmacêutica: identifique o problema, proponha a conduta e acompanhe o desfecho (aceita/não aceita).</div>
+        {canEdit && <button onClick={() => setNova({ paciente_iniciais: "", paciente_prontuario: "", medicamento_nome: "", tipo: "", gravidade: "media", problema: "", conduta: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Nova intervenção</button>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <KPI label="Pendentes" valor={pend} cor={pend ? "#d97706" : "#34d399"} sub="aguardando resposta" />
+        <KPI label="Aceitas" valor={aceitas} cor="#34d399" sub="pelo prescritor" />
+        <KPI label="Não aceitas" valor={naoAceitas} cor={naoAceitas ? "#f43f5e" : "var(--border)"} />
+        <KPI label="Taxa de aceitação" valor={taxa != null ? Math.round(taxa) + "%" : "—"} cor="#3b82f6" sub="aceitas ÷ respondidas" />
+      </div>
+
+      {/* CANDIDATAS — prescrições com alerta */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Prescrições com alerta ({comAlerta.length})</div>
+      {comAlerta.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>Nenhuma prescrição com alerta no momento.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.5rem" }}>
+          {comAlerta.map(c => {
+            const exp = aberto[c.at.id];
+            return (
+              <div key={c.at.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 9 }}>
+                <button onClick={() => setAberto(o => ({ ...o, [c.at.id]: !o[c.at.id] }))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: "10px 13px", cursor: "pointer", textAlign: "left", color: "var(--text)" }}>
+                  <strong style={{ flex: 1 }}>{c.at.iniciais}{c.at.prontuario ? ` · reg. ${c.at.prontuario}` : ""}</strong>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#d97706", border: "1px solid #d9770666", borderRadius: 99, padding: "1px 8px" }}>{c.alertas.length} alerta(s)</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{exp ? "▾" : "▸"}</span>
+                </button>
+                {exp && (
+                  <div style={{ padding: "0 13px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    {c.alertas.map((a, i) => { const jah = jaIntervencionado(c.at.id, a.tipo, (a.itens && a.itens[0]) || ""); return (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: FARM_GRAV[a.gravidade].cor + "11", border: `1px solid ${FARM_GRAV[a.gravidade].cor}44`, borderRadius: 8, padding: "8px 11px" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700 }}><span style={{ fontSize: 9.5, fontWeight: 800, color: FARM_GRAV[a.gravidade].cor, marginRight: 6, textTransform: "uppercase" }}>{FARM_GRAV[a.gravidade].label}</span>{a.titulo}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>{a.detalhe}</div>
+                        </div>
+                        {canEdit && (jah ? <span style={{ fontSize: 10.5, color: "#34d399", fontWeight: 700, whiteSpace: "nowrap" }}>✓ intervenção</span> : <button onClick={() => intervirDoAlerta(c.at, a)} style={btnLeito("#22d3ee")}>Intervir</button>)}
+                      </div>
+                    ); })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* INTERVENÇÕES REGISTRADAS */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em" }}>Intervenções registradas ({intervs.length})</div>
+        <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 9px", color: "var(--text)", fontSize: 12.5, outline: "none", marginLeft: "auto" }}>
+          <option value="">Todos os status</option>
+          {Object.entries(INTERV_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+      </div>
+      {intervsFiltradas.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma intervenção registrada.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {intervsFiltradas.map(iv => { const st = INTERV_STATUS[iv.status] || INTERV_STATUS.pendente; return (
+            <div key={iv.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 9, padding: "10px 13px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13 }}>{iv.paciente_iniciais || "?"}{iv.paciente_prontuario ? ` · ${iv.paciente_prontuario}` : ""}</strong>
+                {iv.medicamento_nome && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>· {iv.medicamento_nome}</span>}
+                {iv.tipo && <span style={{ fontSize: 10, color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 6px" }}>{FARM_ALERTA_TIPOS[iv.tipo] || iv.tipo}</span>}
+                <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 800, color: st.cor, border: `1px solid ${st.cor}66`, borderRadius: 99, padding: "0 7px", textTransform: "uppercase" }}>{st.label}</span>
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 5, lineHeight: 1.5 }}><strong>Problema:</strong> {iv.problema}</div>
+              {iv.conduta && <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 2, lineHeight: 1.5 }}><strong>Conduta:</strong> {iv.conduta}</div>}
+              {iv.desfecho && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Desfecho: {iv.desfecho}</div>}
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>{iv.farmaceutico || "?"} · {iv.created_at ? new Date(iv.created_at).toLocaleString("pt-BR") : ""}</div>
+              {canEdit && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  {iv.status === "pendente" && <>
+                    <button onClick={() => mudarStatus(iv, "aceita")} style={btnLeito("#34d399")}>Aceita</button>
+                    <button onClick={() => mudarStatus(iv, "nao_aceita")} style={btnLeito("#f43f5e")}>Não aceita</button>
+                  </>}
+                  {iv.status !== "resolvida" && iv.status !== "cancelada" && <button onClick={() => mudarStatus(iv, "resolvida")} style={btnLeito("#3b82f6")}>Resolvida</button>}
+                  {iv.status !== "cancelada" && <button onClick={() => mudarStatus(iv, "cancelada")} style={btnLeito("#8d99ab")}>Cancelar</button>}
+                  {isMaster && <button onClick={() => excluir(iv)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                </div>
+              )}
+            </div>
+          ); })}
+        </div>
+      )}
+
+      {nova && <FarmIntervencaoModal prefill={nova} onClose={() => setNova(null)} onSave={salvar} />}
+    </div>
+  );
+}
+
+// Modal de registro de intervenção farmacêutica
+function FarmIntervencaoModal({ prefill, onClose, onSave }) {
+  const [f, setF] = useState({ ...prefill });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  async function salvar() {
+    if (!f.paciente_iniciais?.trim()) { alert("Informe as iniciais do paciente."); return; }
+    if (!f.problema?.trim()) { alert("Descreva o problema."); return; }
+    setBusy(true);
+    await onSave({ atendimento_id: f.atendimento_id || null, prescricao_item_id: f.prescricao_item_id || null, medicamento_nome: f.medicamento_nome?.trim() || null, paciente_iniciais: f.paciente_iniciais.trim(), paciente_prontuario: f.paciente_prontuario?.trim() || null, tipo: f.tipo || null, gravidade: f.gravidade || "media", problema: f.problema.trim(), conduta: f.conduta?.trim() || null, status: "pendente" });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 540, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Registrar intervenção farmacêutica</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={lbl}>Iniciais *</label><input value={f.paciente_iniciais || ""} onChange={e => set("paciente_iniciais", e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Prontuário</label><input value={f.paciente_prontuario || ""} onChange={e => set("paciente_prontuario", e.target.value)} style={inp} /></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={lbl}>Medicamento</label><input value={f.medicamento_nome || ""} onChange={e => set("medicamento_nome", e.target.value)} placeholder="Medicamento envolvido" style={inp} /></div>
+          <div><label style={lbl}>Gravidade</label><select value={f.gravidade || "media"} onChange={e => set("gravidade", e.target.value)} style={inp}><option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option></select></div>
+        </div>
+        <div style={{ marginBottom: 10 }}><label style={lbl}>Problema identificado *</label><textarea value={f.problema || ""} onChange={e => set("problema", e.target.value)} rows={3} placeholder="Ex.: dose acima da máxima, interação, duplicidade…" style={{ ...inp, resize: "vertical" }} /></div>
+        <div style={{ marginBottom: 16 }}><label style={lbl}>Conduta proposta</label><textarea value={f.conduta || ""} onChange={e => set("conduta", e.target.value)} rows={2} placeholder="Recomendação ao prescritor" style={{ ...inp, resize: "vertical" }} /></div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar"}</button>
+        </div>
+      </div>
     </div>
   );
 }

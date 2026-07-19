@@ -642,3 +642,26 @@ create policy farm_naopad_select on public.farm_nao_padronizados for select to a
 create policy farm_naopad_insert on public.farm_nao_padronizados for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
 create policy farm_naopad_update on public.farm_nao_padronizados for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
 create policy farm_naopad_delete on public.farm_nao_padronizados for delete to authenticated using (public.my_role() = 'adm_master');
+
+-- ===== Farmácia — Intervenção farmacêutica (estilo NoHarm) =====
+create table if not exists public.farm_intervencoes (
+  id bigserial primary key,
+  atendimento_id bigint, prescricao_item_id bigint, medicamento_nome text,
+  paciente_iniciais text, paciente_prontuario text,
+  tipo text, gravidade text,
+  problema text not null, conduta text,
+  status text not null default 'pendente',  -- pendente | aceita | nao_aceita | resolvida | cancelada
+  desfecho text, farmaceutico text,
+  usuario text, created_at timestamptz default now(), updated_at timestamptz default now()
+);
+create index if not exists farm_interv_at_idx on public.farm_intervencoes (atendimento_id);
+create index if not exists farm_interv_status_idx on public.farm_intervencoes (status);
+alter table public.farm_intervencoes enable row level security;
+drop policy if exists farm_interv2_select on public.farm_intervencoes;
+drop policy if exists farm_interv2_insert on public.farm_intervencoes;
+drop policy if exists farm_interv2_update on public.farm_intervencoes;
+drop policy if exists farm_interv2_delete on public.farm_intervencoes;
+create policy farm_interv2_select on public.farm_intervencoes for select to authenticated using (true);
+create policy farm_interv2_insert on public.farm_intervencoes for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+create policy farm_interv2_update on public.farm_intervencoes for update to authenticated using (public.my_role() in ('adm_master','adm_silver')) with check (public.my_role() in ('adm_master','adm_silver'));
+create policy farm_interv2_delete on public.farm_intervencoes for delete to authenticated using (public.my_role() = 'adm_master');
