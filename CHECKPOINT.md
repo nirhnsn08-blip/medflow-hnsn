@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v18
+# 📍 Ponto de restauração — checkpoint-v19
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v18` (anteriores: `checkpoint-v17` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v19` (anteriores: `checkpoint-v18` … `checkpoint-v1`)
 - **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -96,7 +96,17 @@ dá pra voltar exatamente para este estado.
   ao vivo na aba Prescrição + sub-aba **Farmácia → Análise clínica** (com selo de alérgico
   por paciente). **Base de conhecimento editável** por medicamento (~50 pré-carregados de
   Beers/pediatria/dose máx/sonda — para validação da equipe). É apoio à decisão, não
-  certificado. Próximas: Fase 2 (interação medicamentosa + incompatibilidade em Y).
+  certificado.
+- **💊 Farmácia Clínica — Fases 2 e 3 (interações, incompatibilidade em Y, ajuste
+  renal/hepático):** completa os **9 tipos de alerta** (estilo NoHarm.ai). **Interação
+  medicamentosa** (base `farm_interacoes` com gravidade grave/moderada/leve; ~27 pares
+  clássicos) e **incompatibilidade em Y** (base `farm_incompat_y`; ~14 pares; só quando
+  ambos IV) — as substâncias casam por princípio ativo, nome **ou grupo** (ex.: um par
+  "opioide × benzo" cobre a classe toda). **Editor curável** "Base de interações" na
+  Análise clínica. **Ajuste de posologia por função renal (ClCr/TFG) e hepática** — alerta
+  quando o paciente tem função reduzida e o medicamento tem orientação de ajuste (~45
+  medicamentos pré-carregados; editável por medicamento). Tudo apoio à decisão, base
+  sujeita a validação da equipe.
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -115,7 +125,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v18
+git reset --hard checkpoint-v19
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -124,7 +134,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v18
+git checkout -b recuperacao checkpoint-v19
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -140,6 +150,8 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `9ad2b65` 💊 Farmácia Clínica Fase 3 — ajuste de posologia renal/hepática
+- `fbc7d7b` 💊 Farmácia Clínica Fase 2 — interações medicamentosas + incompatibilidade em Y
 - `0a70c95` 💊 Farmácia Clínica — alerta de alergia + reatividade cruzada (bloqueio na prescrição)
 - `b6dcb15` 🩺 fix: salvar contexto clínico do PS com feedback
 - `a2a0db7` 💊 Farmácia Clínica Fase 1 — motor de alertas (Beers, dose máx, sonda, duplicidade)
