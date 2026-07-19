@@ -526,3 +526,34 @@ end $$;
 drop trigger if exists farm_movimento_trg on public.farm_movimentos;
 create trigger farm_movimento_trg before insert on public.farm_movimentos
   for each row execute function public.farm_aplica_movimento();
+
+-- ===== Farmácia Clínica — Fase 1: motor de alertas (atributos clínicos) =====
+alter table public.farm_medicamentos
+  add column if not exists grupo_terapeutico text,
+  add column if not exists dose_maxima_dia numeric,
+  add column if not exists dose_maxima_unid text,
+  add column if not exists duracao_maxima_dias int,
+  add column if not exists nao_triturar boolean default false,
+  add column if not exists inapropriado_idoso boolean default false,
+  add column if not exists motivo_idoso text,
+  add column if not exists inapropriado_pediatrico boolean default false,
+  add column if not exists motivo_pediatrico text,
+  add column if not exists idade_pediatrica int,
+  add column if not exists ajuste_renal text,
+  add column if not exists ajuste_hepatico text,
+  add column if not exists obs_clinica text;
+
+alter table public.ps_prescricao_itens
+  add column if not exists dose_valor numeric,
+  add column if not exists dose_unidade text,
+  add column if not exists frequencia_dia numeric,
+  add column if not exists duracao_dias numeric;
+
+alter table public.ps_atendimentos
+  add column if not exists idade int,
+  add column if not exists peso numeric(5,1),
+  add column if not exists clearance_renal numeric,
+  add column if not exists funcao_hepatica text,
+  add column if not exists alergias text,
+  add column if not exists em_sonda boolean default false,
+  add column if not exists gestante boolean default false;

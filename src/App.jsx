@@ -1724,6 +1724,62 @@ function farmValidadeInfo(validade) {
   return { status: "ok", dias };
 }
 
+// ── Farmácia clínica (motor de alertas, Fase 1) ──
+const FARM_GRAV = {
+  alta:  { label: "Alta",  cor: "#f43f5e", ordem: 0 },
+  media: { label: "Média", cor: "#d97706", ordem: 1 },
+  baixa: { label: "Baixa", cor: "#3b82f6", ordem: 2 },
+};
+const PS_FREQUENCIAS = [
+  { label: "1x/dia", dia: 1 }, { label: "12/12h (2x)", dia: 2 }, { label: "8/8h (3x)", dia: 3 },
+  { label: "6/6h (4x)", dia: 4 }, { label: "4/4h (6x)", dia: 6 }, { label: "Dose única", dia: 0 },
+  { label: "Se necessário (SN)", dia: null },
+];
+const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
+const freqDia = label => { const f = PS_FREQUENCIAS.find(x => x.label === label); return f ? f.dia : null; };
+
+// Analisa a lista de itens da prescrição contra a base clínica + contexto do paciente.
+// APOIO À DECISÃO — não substitui o julgamento do farmacêutico. Base sujeita a validação local.
+function analisarPrescricaoClinica(itens, ctx, medById) {
+  const alertas = [];
+  const push = (tipo, gravidade, titulo, detalhe, refs) => alertas.push({ tipo, gravidade, titulo, detalhe, itens: refs || [] });
+  const comMed = (itens || []).filter(i => i.medicamento_id && medById[i.medicamento_id]);
+  const idade = ctx && ctx.idade !== "" && ctx.idade != null ? Number(ctx.idade) : null;
+
+  // 1) Duplicidade — mesmo princípio ativo OU mesmo grupo terapêutico
+  const porPA = {}, porGrupo = {};
+  comMed.forEach(i => {
+    const med = medById[i.medicamento_id];
+    const pa = (med.principio_ativo || "").trim().toLowerCase();
+    if (pa) (porPA[pa] = porPA[pa] || []).push(i.medicamento_nome);
+    const g = (med.grupo_terapeutico || "").trim();
+    if (g) (porGrupo[g] = porGrupo[g] || []).push({ nome: i.medicamento_nome, pa });
+  });
+  Object.values(porPA).forEach(nomes => { if (nomes.length > 1) push("duplicidade", "media", "Duplicidade — mesmo princípio ativo", `${[...new Set(nomes)].join(", ")} têm o mesmo princípio ativo.`, [...new Set(nomes)]); });
+  Object.entries(porGrupo).forEach(([g, arr]) => { const pas = new Set(arr.map(a => a.pa)); if (arr.length > 1 && pas.size > 1) push("duplicidade", "baixa", `Duplicidade terapêutica — ${g}`, `${[...new Set(arr.map(a => a.nome))].join(", ")} são do mesmo grupo (${g}). Revisar se a associação é intencional.`, [...new Set(arr.map(a => a.nome))]); });
+
+  comMed.forEach(i => {
+    const med = medById[i.medicamento_id];
+    const nome = i.medicamento_nome;
+    // 2) Dose máxima diária (quando a unidade prescrita bate com a da base)
+    if (med.dose_maxima_dia && i.dose_valor && i.frequencia_dia && med.dose_maxima_unid && (i.dose_unidade || "").toLowerCase() === (med.dose_maxima_unid || "").toLowerCase()) {
+      const diaria = Number(i.dose_valor) * Number(i.frequencia_dia);
+      if (diaria > Number(med.dose_maxima_dia)) push("dose_maxima", "alta", "Dose acima da máxima diária", `${nome}: ${farmFmtQtd(diaria)} ${med.dose_maxima_unid}/dia prescritos — máximo ${farmFmtQtd(med.dose_maxima_dia)} ${med.dose_maxima_unid}/dia.`, [nome]);
+    }
+    // 3) Tempo de tratamento
+    if (med.duracao_maxima_dias && i.duracao_dias && Number(i.duracao_dias) > Number(med.duracao_maxima_dias)) push("tempo_tratamento", "media", "Tempo de tratamento acima do recomendado", `${nome}: ${farmFmtQtd(i.duracao_dias)} dias — recomendado até ${med.duracao_maxima_dias} dias.`, [nome]);
+    // 4) Sonda — não triturar
+    if (ctx?.em_sonda && med.nao_triturar) push("sonda", "alta", "Contraindicado por sonda (não triturar)", `${nome}: ${med.obs_clinica || "não deve ser triturado/administrado por sonda."}`, [nome]);
+    // 5) Idoso (Beers)
+    if (idade != null && idade >= 65 && med.inapropriado_idoso) push("idoso", "media", "Potencialmente inapropriado no idoso (Beers)", `${nome}: ${med.motivo_idoso || "potencialmente inapropriado em idosos."}`, [nome]);
+    // 6) Pediátrico
+    const limPed = med.idade_pediatrica != null ? Number(med.idade_pediatrica) : 12;
+    if (idade != null && med.inapropriado_pediatrico && idade < limPed) push("pediatrico", "alta", `Inapropriado para menor de ${limPed} anos`, `${nome}: ${med.motivo_pediatrico || "inapropriado nesta faixa etária."}`, [nome]);
+  });
+
+  return alertas.sort((a, b) => FARM_GRAV[a.gravidade].ordem - FARM_GRAV[b.gravidade].ordem);
+}
+
 // ═══════════════════════════════════════════════════════════
 // PRONTO-SOCORRO — triagem Manchester + jornada do paciente
 // ═══════════════════════════════════════════════════════════
@@ -3494,13 +3550,17 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [exForm, setExForm] = useState({ categoria: "laboratorial", nome: "" });
   const [resultadoDe, setResultadoDe] = useState(null); // { id, texto }
   const [busy, setBusy] = useState(false);
-  // Prescrição estruturada (Farmácia Fase B)
+  // Prescrição estruturada (Farmácia Fase B) + farmácia clínica (Fase 1)
   const [catalogo, setCatalogo] = useState([]);
   const [presItens, setPresItens] = useState([]);            // itens sendo montados
-  const [presForm, setPresForm] = useState({ medId: "", dose: "", via: "VO", quantidade: "" });
+  const [presForm, setPresForm] = useState({ medId: "", dose_valor: "", dose_unidade: "mg", freqLabel: "8/8h (3x)", via: "VO", duracao: "", quantidade: "" });
   const [presObs, setPresObs] = useState("");
   const [presItensSalvos, setPresItensSalvos] = useState([]); // itens já assinados neste atendimento
   const [saidas, setSaidas] = useState([]);                   // dispensações deste atendimento
+  const [ctx, setCtx] = useState({ idade: paciente.idade ?? "", peso: paciente.peso ?? "", clearance_renal: paciente.clearance_renal ?? "", funcao_hepatica: paciente.funcao_hepatica ?? "", alergias: paciente.alergias ?? "", em_sonda: !!paciente.em_sonda, gestante: !!paciente.gestante });
+  const [ctxAberto, setCtxAberto] = useState(false);
+  const [ctxBusy, setCtxBusy] = useState(false);
+  const catById = {}; catalogo.forEach(m => catById[m.id] = m);
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
@@ -3528,11 +3588,18 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
     addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? "evolução" : "prescrição"}`, paciente.iniciais, {});
     setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
   }
+  function salvarContexto() {
+    setCtxBusy(true);
+    const payload = { idade: ctx.idade === "" ? null : Number(ctx.idade), peso: ctx.peso === "" ? null : Number(ctx.peso), clearance_renal: ctx.clearance_renal === "" ? null : Number(ctx.clearance_renal), funcao_hepatica: ctx.funcao_hepatica || null, alergias: ctx.alergias?.trim() || null, em_sonda: !!ctx.em_sonda, gestante: !!ctx.gestante };
+    updatePsAtendimentoRemote(paciente.id, payload).then(() => { setCtxBusy(false); onChanged?.(); });
+  }
   function addItemPrescricao() {
     const med = catalogo.find(m => String(m.id) === String(presForm.medId));
     if (!med) { alert("Escolha um medicamento do catálogo."); return; }
-    setPresItens(p => [...p, { medicamento_id: med.id, medicamento_nome: med.nome, unidade: med.unidade || null, dose: presForm.dose.trim(), via: presForm.via, quantidade: presForm.quantidade }]);
-    setPresForm({ medId: "", dose: "", via: presForm.via, quantidade: "" });
+    const fdia = freqDia(presForm.freqLabel);
+    const doseTxt = [presForm.dose_valor && `${presForm.dose_valor} ${presForm.dose_unidade}`, presForm.freqLabel, presForm.duracao && `por ${presForm.duracao} dia(s)`].filter(Boolean).join(" · ");
+    setPresItens(p => [...p, { medicamento_id: med.id, medicamento_nome: med.nome, unidade: med.unidade || null, dose: doseTxt || null, dose_valor: presForm.dose_valor ? Number(presForm.dose_valor) : null, dose_unidade: presForm.dose_unidade || null, frequencia_dia: fdia, duracao_dias: presForm.duracao ? Number(presForm.duracao) : null, via: presForm.via, quantidade: presForm.quantidade }]);
+    setPresForm({ medId: "", dose_valor: "", dose_unidade: presForm.dose_unidade, freqLabel: presForm.freqLabel, via: presForm.via, duracao: "", quantidade: "" });
   }
   async function assinarPrescricao() {
     if (!presItens.length && !presObs.trim()) { alert("Adicione ao menos um medicamento à prescrição."); return; }
@@ -3543,7 +3610,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
     const regRows = await addPsRegistroRemote({ atendimento_id: paciente.id, tipo: "prescricao", texto, criado_em: nowISO() }, currentUser);
     const registroId = Array.isArray(regRows) ? regRows[0]?.id : null;
     if (presItens.length) {
-      const itens = presItens.map(it => ({ atendimento_id: paciente.id, registro_id: registroId, medicamento_id: it.medicamento_id || null, medicamento_nome: it.medicamento_nome, unidade: it.unidade || null, dose: it.dose || null, via: it.via || null, quantidade: it.quantidade ? Number(it.quantidade) : null }));
+      const itens = presItens.map(it => ({ atendimento_id: paciente.id, registro_id: registroId, medicamento_id: it.medicamento_id || null, medicamento_nome: it.medicamento_nome, unidade: it.unidade || null, dose: it.dose || null, dose_valor: it.dose_valor ?? null, dose_unidade: it.dose_unidade || null, frequencia_dia: it.frequencia_dia ?? null, duracao_dias: it.duracao_dias ?? null, via: it.via || null, quantidade: it.quantidade ? Number(it.quantidade) : null }));
       await addPsPrescricaoItens(itens, currentUser);
     }
     addAuditLog(currentUser, "PS: prescrição", `${paciente.iniciais} · ${presItens.length} item(ns)`, {});
@@ -3573,6 +3640,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const evolucoes = registros.filter(r => r.tipo === "evolucao");
   const prescricoes = registros.filter(r => r.tipo === "prescricao");
   const exames = registros.filter(r => r.tipo === "exame");
+  const alertasClinicos = analisarPrescricaoClinica([...presItensSalvos, ...presItens], ctx, catById);
   const abaBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
   const EX_STATUS = { solicitado: { label: "Aguardando resultado", cor: "#d97706" }, resultado_disponivel: { label: "Resultado disponível", cor: "#3b82f6" }, visto: { label: "Visto pelo médico", cor: "#34d399" } };
 
@@ -3615,32 +3683,67 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
 
         {aba === "prescricao" && (
           <>
+            {/* Contexto clínico do paciente (alimenta os alertas) */}
+            <div style={{ border: "1px solid var(--border)", borderRadius: 9, marginBottom: 12 }}>
+              <button onClick={() => setCtxAberto(a => !a)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", padding: "10px 13px", cursor: "pointer", color: "var(--text-2)", textAlign: "left" }}>
+                <span style={{ fontSize: 12, fontWeight: 700 }}>Contexto clínico</span>
+                <span style={{ fontSize: 11.5, color: "var(--text-muted)", flex: 1 }}>{[ctx.idade !== "" ? `${ctx.idade} anos` : null, ctx.peso !== "" ? `${ctx.peso} kg` : null, ctx.clearance_renal !== "" ? `ClCr ${ctx.clearance_renal}` : null, ctx.em_sonda ? "sonda" : null, ctx.gestante ? "gestante" : null, ctx.alergias ? `alergia: ${ctx.alergias}` : null].filter(Boolean).join(" · ") || "não informado — informe para habilitar os alertas"}</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{ctxAberto ? "▾" : "▸"}</span>
+              </button>
+              {ctxAberto && (
+                <div style={{ padding: "0 13px 12px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 8 }}>
+                    <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Idade (anos)</label><input type="number" min="0" value={ctx.idade} onChange={e => setCtx(p => ({ ...p, idade: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
+                    <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Peso (kg)</label><input type="number" min="0" step="any" value={ctx.peso} onChange={e => setCtx(p => ({ ...p, peso: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
+                    <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>ClCr / TFG (mL/min)</label><input type="number" min="0" step="any" value={ctx.clearance_renal} onChange={e => setCtx(p => ({ ...p, clearance_renal: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
+                    <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Função hepática</label><select value={ctx.funcao_hepatica} onChange={e => setCtx(p => ({ ...p, funcao_hepatica: e.target.value }))} style={{ ...inp, padding: "7px 9px" }}><option value="">—</option><option value="normal">Normal</option><option value="leve">Leve</option><option value="moderada">Moderada</option><option value="grave">Grave</option></select></div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Alergias</label><input value={ctx.alergias} onChange={e => setCtx(p => ({ ...p, alergias: e.target.value }))} placeholder="Ex.: penicilina, dipirona" style={{ ...inp, padding: "7px 9px" }} /></div>
+                  <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={ctx.em_sonda} onChange={e => setCtx(p => ({ ...p, em_sonda: e.target.checked }))} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Em uso de sonda</label>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={ctx.gestante} onChange={e => setCtx(p => ({ ...p, gestante: e.target.checked }))} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Gestante</label>
+                    <button onClick={salvarContexto} disabled={ctxBusy} style={{ marginLeft: "auto", background: "transparent", color: "#22d3ee", border: "1px solid #22d3ee88", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{ctxBusy ? "…" : "Salvar contexto"}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Construtor de prescrição estruturada */}
             <div style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "12px 13px", marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>Nova prescrição</div>
+              <div style={{ marginBottom: 8 }}>
+                <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Medicamento</label>
+                <select value={presForm.medId} onChange={e => setPresForm(p => ({ ...p, medId: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>
+                  <option value="">Escolha…</option>
+                  {FARM_CLASSES.filter(c => catalogo.some(m => (m.classe || "Outros") === c && m.ativo !== false)).map(c => (
+                    <optgroup key={c} label={c}>
+                      {catalogo.filter(m => (m.classe || "Outros") === c && m.ativo !== false).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
-                <div style={{ flex: "2 1 240px", minWidth: 200 }}>
-                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Medicamento</label>
-                  <select value={presForm.medId} onChange={e => setPresForm(p => ({ ...p, medId: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>
-                    <option value="">Escolha…</option>
-                    {FARM_CLASSES.filter(c => catalogo.some(m => (m.classe || "Outros") === c && m.ativo !== false)).map(c => (
-                      <optgroup key={c} label={c}>
-                        {catalogo.filter(m => (m.classe || "Outros") === c && m.ativo !== false).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
+                <div style={{ flex: "0 1 80px", minWidth: 70 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Dose</label>
+                  <input type="number" min="0" step="any" value={presForm.dose_valor} onChange={e => setPresForm(p => ({ ...p, dose_valor: e.target.value }))} placeholder="500" style={{ ...inp, padding: "8px 9px" }} />
                 </div>
-                <div style={{ flex: "1 1 140px", minWidth: 120 }}>
-                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Dose / posologia</label>
-                  <input value={presForm.dose} onChange={e => setPresForm(p => ({ ...p, dose: e.target.value }))} placeholder="1 comp 8/8h" style={{ ...inp, padding: "8px 9px" }} />
+                <div style={{ flex: "0 1 92px", minWidth: 80 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Unid.</label>
+                  <select value={presForm.dose_unidade} onChange={e => setPresForm(p => ({ ...p, dose_unidade: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>{PS_DOSE_UNID.map(u => <option key={u} value={u}>{u}</option>)}</select>
                 </div>
-                <div style={{ flex: "0 1 96px", minWidth: 84 }}>
+                <div style={{ flex: "1 1 110px", minWidth: 100 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Frequência</label>
+                  <select value={presForm.freqLabel} onChange={e => setPresForm(p => ({ ...p, freqLabel: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>{PS_FREQUENCIAS.map(f => <option key={f.label} value={f.label}>{f.label}</option>)}</select>
+                </div>
+                <div style={{ flex: "0 1 78px", minWidth: 68 }}>
                   <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Via</label>
-                  <select value={presForm.via} onChange={e => setPresForm(p => ({ ...p, via: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>
-                    {PS_VIAS.map(v => <option key={v} value={v}>{v}</option>)}
-                  </select>
+                  <select value={presForm.via} onChange={e => setPresForm(p => ({ ...p, via: e.target.value }))} style={{ ...inp, padding: "8px 9px" }}>{PS_VIAS.map(v => <option key={v} value={v}>{v}</option>)}</select>
                 </div>
-                <div style={{ flex: "0 1 84px", minWidth: 72 }}>
+                <div style={{ flex: "0 1 70px", minWidth: 62 }}>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Dias</label>
+                  <input type="number" min="0" step="any" value={presForm.duracao} onChange={e => setPresForm(p => ({ ...p, duracao: e.target.value }))} placeholder="—" style={{ ...inp, padding: "8px 9px" }} />
+                </div>
+                <div style={{ flex: "0 1 70px", minWidth: 62 }}>
                   <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Qtd</label>
                   <input type="number" min="0" step="any" value={presForm.quantidade} onChange={e => setPresForm(p => ({ ...p, quantidade: e.target.value }))} placeholder="0" style={{ ...inp, padding: "8px 9px" }} />
                 </div>
@@ -3661,6 +3764,25 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
                 <button onClick={assinarPrescricao} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Assinar prescrição"}</button>
               </div>
             </div>
+
+            {/* Alertas de farmácia clínica */}
+            {alertasClinicos.length > 0 && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 7 }}>Alertas de farmácia clínica ({alertasClinicos.length})</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {alertasClinicos.map((a, i) => (
+                    <div key={i} style={{ background: FARM_GRAV[a.gravidade].cor + "11", border: `1px solid ${FARM_GRAV[a.gravidade].cor}55`, borderLeft: `4px solid ${FARM_GRAV[a.gravidade].cor}`, borderRadius: 8, padding: "8px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 800, color: FARM_GRAV[a.gravidade].cor, border: `1px solid ${FARM_GRAV[a.gravidade].cor}66`, borderRadius: 99, padding: "0 6px", textTransform: "uppercase" }}>{FARM_GRAV[a.gravidade].label}</span>
+                        <strong style={{ fontSize: 12.5, color: "var(--text)" }}>{a.titulo}</strong>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.45 }}>{a.detalhe}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>Apoio à decisão — revise clinicamente. Base sujeita a validação da equipe de farmácia.</div>
+              </div>
+            )}
 
             {/* Prescrições assinadas */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -3959,7 +4081,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
         </div>
         {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
@@ -3967,10 +4089,12 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <button onClick={() => setSub("estoque")} style={subBtn(sub === "estoque")}>Estoque</button>
         <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
+        <button onClick={() => setSub("analise")} style={subBtn(sub === "analise")}>Análise clínica</button>
         <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
       </div>
 
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "analise" && <FarmAnaliseView />}
       {sub === "indicadores" && <FarmIndicadoresView />}
 
       {sub === "estoque" && (<>
@@ -4072,6 +4196,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
 function FarmMedModal({ med, onClose, onSave }) {
   const [f, setF] = useState({ ...med });
   const [busy, setBusy] = useState(false);
+  const [clinAberto, setClinAberto] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   async function salvar() {
     if (!f.nome.trim()) { alert("Informe o nome / apresentação do medicamento."); return; }
@@ -4088,6 +4213,17 @@ function FarmMedModal({ med, onClose, onSave }) {
       controlado: !!f.controlado,
       ativo: f.ativo !== false,
       observacao: f.observacao?.trim() || null,
+      grupo_terapeutico: f.grupo_terapeutico?.trim() || null,
+      dose_maxima_dia: f.dose_maxima_dia === "" || f.dose_maxima_dia == null ? null : Number(f.dose_maxima_dia),
+      dose_maxima_unid: f.dose_maxima_unid || null,
+      duracao_maxima_dias: f.duracao_maxima_dias === "" || f.duracao_maxima_dias == null ? null : Number(f.duracao_maxima_dias),
+      nao_triturar: !!f.nao_triturar,
+      inapropriado_idoso: !!f.inapropriado_idoso,
+      motivo_idoso: f.motivo_idoso?.trim() || null,
+      inapropriado_pediatrico: !!f.inapropriado_pediatrico,
+      motivo_pediatrico: f.motivo_pediatrico?.trim() || null,
+      idade_pediatrica: f.idade_pediatrica === "" || f.idade_pediatrica == null ? null : Number(f.idade_pediatrica),
+      obs_clinica: f.obs_clinica?.trim() || null,
     });
     setBusy(false);
   }
@@ -4145,10 +4281,50 @@ function FarmMedModal({ med, onClose, onSave }) {
             <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
           </label>
         </div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <label style={farmLbl}>Observação</label>
           <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Cuidados, armazenamento, etc." style={{ ...farmInp, resize: "vertical" }} />
         </div>
+
+        {/* Atributos de farmácia clínica (base dos alertas) */}
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, marginBottom: 16 }}>
+          <button onClick={() => setClinAberto(a => !a)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", padding: "10px 12px", cursor: "pointer", color: "var(--text-2)", textAlign: "left" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>Atributos de farmácia clínica (base dos alertas)</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{clinAberto ? "▾" : "▸"}</span>
+          </button>
+          {clinAberto && (
+            <div style={{ padding: "0 12px 12px" }}>
+              <div style={{ marginBottom: 8 }}>
+                <label style={farmLbl}>Grupo terapêutico (p/ duplicidade)</label>
+                <input value={f.grupo_terapeutico || ""} onChange={e => set("grupo_terapeutico", e.target.value)} placeholder="Ex.: AINE, IBP, Opioide" style={farmInp} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                <div><label style={farmLbl}>Dose máx./dia</label><input type="number" min="0" step="any" value={f.dose_maxima_dia ?? ""} onChange={e => set("dose_maxima_dia", e.target.value)} placeholder="4000" style={farmInp} /></div>
+                <div><label style={farmLbl}>Unid.</label><select value={f.dose_maxima_unid || ""} onChange={e => set("dose_maxima_unid", e.target.value)} style={farmInp}><option value="">—</option>{PS_DOSE_UNID.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
+                <div><label style={farmLbl}>Duração máx. (dias)</label><input type="number" min="0" value={f.duracao_maxima_dias ?? ""} onChange={e => set("duracao_maxima_dias", e.target.value)} placeholder="—" style={farmInp} /></div>
+              </div>
+              <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 8 }}>
+                <input type="checkbox" checked={!!f.nao_triturar} onChange={e => set("nao_triturar", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Não triturar / contraindicado por sonda
+              </label>
+              <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 4 }}>
+                <input type="checkbox" checked={!!f.inapropriado_idoso} onChange={e => set("inapropriado_idoso", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Inapropriado para idoso (Beers)
+              </label>
+              {f.inapropriado_idoso && <input value={f.motivo_idoso || ""} onChange={e => set("motivo_idoso", e.target.value)} placeholder="Motivo (Beers)" style={{ ...farmInp, marginBottom: 8 }} />}
+              <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 4 }}>
+                <input type="checkbox" checked={!!f.inapropriado_pediatrico} onChange={e => set("inapropriado_pediatrico", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Inapropriado para criança
+              </label>
+              {f.inapropriado_pediatrico && (
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <input value={f.motivo_pediatrico || ""} onChange={e => set("motivo_pediatrico", e.target.value)} placeholder="Motivo" style={farmInp} />
+                  <input type="number" min="0" value={f.idade_pediatrica ?? ""} onChange={e => set("idade_pediatrica", e.target.value)} placeholder="< anos (12)" style={farmInp} />
+                </div>
+              )}
+              <div><label style={farmLbl}>Observação clínica (ex.: como administrar por sonda)</label><textarea value={f.obs_clinica || ""} onChange={e => set("obs_clinica", e.target.value)} rows={2} placeholder="Ex.: abrir a cápsula, não triturar os grânulos" style={{ ...farmInp, resize: "vertical" }} /></div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>Estes campos alimentam os alertas de farmácia clínica. Revise com a equipe.</div>
+            </div>
+          )}
+        </div>
+
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar"}</button>
@@ -4680,6 +4856,96 @@ function FarmIndicadoresView() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 16 }}><tbody>{controlados.map(c => (<tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}><td style={{ padding: "3px 6px" }}>{c.med?.nome || "—"}</td><td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{fmt(c.qtd)}</td></tr>))}</tbody></table>
           </>)}
           <div style={{ fontSize: 11, color: "#64748b", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Sem estoque: {rupturas.length} · Abaixo do mínimo: {abaixoMin.length} · Lotes vencidos em estoque: {vencidosEstoque.length} · Vencendo ≤30d: {venc30.length}. Valores por quantidade (unidades) — sem custo financeiro cadastrado.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Análise clínica — roda o motor de alertas por paciente do PS
+function FarmAnaliseView() {
+  const [atends, setAtends] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [meds, setMeds] = useState([]);
+  const [aberto, setAberto] = useState({});
+  const [, setTick] = useState(0);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadPsAtendimentos().then(async ats => {
+      setAtends(ats);
+      setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id)));
+    });
+  }
+  useEffect(() => {
+    refresh();
+    const onF = () => refresh();
+    window.addEventListener("focus", onF);
+    const id = setInterval(() => setTick(t => t + 1), 60000);
+    return () => { window.removeEventListener("focus", onF); clearInterval(id); };
+  }, []);
+
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const linhas = atends.map(a => {
+    const its = itens.filter(i => i.atendimento_id === a.id);
+    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
+    return { at: a, itens: its, alertas: analisarPrescricaoClinica(its, ctx, medById) };
+  }).filter(x => x.itens.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
+  const totalAlertas = linhas.reduce((s, l) => s + l.alertas.length, 0);
+  const comAlerta = linhas.filter(l => l.alertas.length > 0);
+  const ctxResumo = a => [a.idade != null ? `${a.idade} anos` : null, a.em_sonda ? "sonda" : null, a.gestante ? "gestante" : null, a.clearance_renal != null ? `ClCr ${a.clearance_renal}` : null, a.alergias ? `alergia: ${a.alergias}` : null].filter(Boolean).join(" · ") || "contexto clínico não informado";
+
+  return (
+    <div>
+      <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 14 }}>{comAlerta.length} paciente(s) com alertas · {totalAlertas} alerta(s). Apoio à decisão — os alertas assistem o farmacêutico e não substituem o julgamento clínico; a base é sujeita a validação da equipe.</div>
+      {linhas.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma prescrição estruturada no PS no momento. Prescreva pela aba Prescrição do Pronto-Socorro.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {linhas.map(l => {
+            const cont = { alta: l.alertas.filter(x => x.gravidade === "alta").length, media: l.alertas.filter(x => x.gravidade === "media").length, baixa: l.alertas.filter(x => x.gravidade === "baixa").length };
+            const cor = cont.alta ? "#f43f5e" : cont.media ? "#d97706" : cont.baixa ? "#3b82f6" : "#34d399";
+            const exp = aberto[l.at.id];
+            return (
+              <div key={l.at.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10 }}>
+                <button onClick={() => setAberto(o => ({ ...o, [l.at.id]: !o[l.at.id] }))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: "11px 14px", cursor: "pointer", textAlign: "left", color: "var(--text)" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700 }}>{l.at.iniciais}{l.at.prontuario ? ` · reg. ${l.at.prontuario}` : ""}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{l.itens.length} item(ns) · {ctxResumo(l.at)}</div>
+                  </div>
+                  {l.alertas.length === 0 ? <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>sem alertas</span> : (
+                    <div style={{ display: "flex", gap: 5 }}>
+                      {cont.alta > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#f43f5e", border: "1px solid #f43f5e66", borderRadius: 99, padding: "1px 8px" }}>{cont.alta} alta</span>}
+                      {cont.media > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#d97706", border: "1px solid #d9770666", borderRadius: 99, padding: "1px 8px" }}>{cont.media} média</span>}
+                      {cont.baixa > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#3b82f6", border: "1px solid #3b82f666", borderRadius: 99, padding: "1px 8px" }}>{cont.baixa} baixa</span>}
+                    </div>
+                  )}
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{exp ? "▾" : "▸"}</span>
+                </button>
+                {exp && (
+                  <div style={{ padding: "0 14px 12px" }}>
+                    {l.alertas.length === 0 ? (
+                      <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum alerta para os itens prescritos com o contexto informado.</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {l.alertas.map((a, i) => (
+                          <div key={i} style={{ background: FARM_GRAV[a.gravidade].cor + "11", border: `1px solid ${FARM_GRAV[a.gravidade].cor}44`, borderRadius: 8, padding: "8px 12px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 9.5, fontWeight: 800, color: FARM_GRAV[a.gravidade].cor, border: `1px solid ${FARM_GRAV[a.gravidade].cor}66`, borderRadius: 99, padding: "0 6px", textTransform: "uppercase" }}>{FARM_GRAV[a.gravidade].label}</span>
+                              <strong style={{ fontSize: 12.5 }}>{a.titulo}</strong>
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.45 }}>{a.detalhe}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(l.at.idade == null && l.at.em_sonda == null) && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Dica: informe o contexto clínico (idade, sonda, alergias) na aba Prescrição do PS para alertas mais completos.</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
