@@ -4697,7 +4697,7 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
   const q = busca.trim().toLowerCase();
   const todas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
-    const pend = its.filter(i => { const q = Number(i.quantidade || 0); return q > 0 && dispDoItem(i.id) < q; });
+    const pend = its.filter(i => { if (!i.medicamento_id) return false; const q = Number(i.quantidade || 0); const d = dispDoItem(i.id); return q > 0 ? d < q : d <= 0; });
     const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
     const tipos = new Set(alertas.map(x => x.tipo));
@@ -4814,10 +4814,11 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
   const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
 
   function abrir(item) {
-    const ls = lotes.filter(l => l.medicamento_id === item.medicamento_id && Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999"));
-    const pend = Math.max(0, Number(item.quantidade || 0) - dispDoItem(item.id));
+    const ls = lotes.filter(l => String(l.medicamento_id) === String(item.medicamento_id) && Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999"));
+    const q = Number(item.quantidade || 0);
+    const sugestao = q > 0 ? Math.max(0, q - dispDoItem(item.id)) : (Number(item.dose_valor) || "");
     setSelItem({ ...item, _lotes: ls });
-    setF({ lote_id: ls[0]?.id || "", quantidade: pend || "" });
+    setF({ lote_id: ls[0]?.id || "", quantidade: sugestao || "" });
   }
   async function confirmar() {
     const q = Number(f.quantidade);
@@ -4841,8 +4842,11 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
             const q = Number(it.quantidade || 0);
             const disp = dispDoItem(it.id);
             const pend = Math.max(0, q - disp);
-            const st = q <= 0 ? { c: "#8d99ab", t: "sem quantidade" } : pend <= 0 ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `parcial ${farmFmtQtd(disp)}/${farmFmtQtd(q)}` } : { c: "#8d99ab", t: "pendente" };
             const semVinculo = !it.medicamento_id;
+            const podeDispensar = !semVinculo && (q > 0 ? pend > 0 : disp <= 0);
+            const st = semVinculo ? { c: "#8d99ab", t: "item livre" }
+              : q > 0 ? (pend <= 0 ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `parcial ${farmFmtQtd(disp)}/${farmFmtQtd(q)}` } : { c: "#8d99ab", t: "a dispensar" })
+              : (disp > 0 ? { c: "#34d399", t: `dispensado ${farmFmtQtd(disp)}` } : { c: "#8d99ab", t: "a dispensar" });
             const aberto = selItem?.id === it.id;
             return (
               <div key={it.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
@@ -4853,7 +4857,7 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
                     <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.dose ? `${it.dose} · ` : ""}{it.via || ""}{q ? ` · prescrito ${farmFmtQtd(q)} ${it.unidade || ""}` : ""}</div>
                   </div>
                   <span style={{ fontSize: 11, color: st.c, fontWeight: 700 }}>{st.t}</span>
-                  {q > 0 && pend > 0 && !semVinculo && <button onClick={() => aberto ? setSelItem(null) : abrir(it)} style={btnLeito("#22d3ee")}>{aberto ? "Fechar" : "Dispensar"}</button>}
+                  {podeDispensar && <button onClick={() => aberto ? setSelItem(null) : abrir(it)} style={btnLeito("#22d3ee")}>{aberto ? "Fechar" : "Dispensar"}</button>}
                   {semVinculo && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>item livre — baixa avulsa</span>}
                 </div>
                 {aberto && (
