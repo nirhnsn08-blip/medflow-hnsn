@@ -7364,6 +7364,7 @@ function LeitosPage({ currentUser, canEdit }) {
   const [saidas, setSaidas] = useState([]);     // histórico de altas/saídas
   const [turnover, setTurnover] = useState([]); // ciclos de giro (solicitado/disp/pronto/entrada)
   const [busca, setBusca] = useState("");       // busca das listas (pacientes/altas/internações)
+  const [setorSel, setSetorSel] = useState(""); // setor selecionado no mapa detalhado ("" = 1º; "__todos__" = todos)
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id); }, []);
 
@@ -7821,37 +7822,67 @@ function LeitosPage({ currentUser, canEdit }) {
           </div>
         </>)}
 
-        {/* ── MAPA DE LEITOS (detalhado) ── */}
-        {sub === "mapa" && (<>
-          <div style={{ marginBottom: 12 }}><Legenda /></div>
-          {canEdit && (
-            <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", alignItems: "center", flexWrap: "wrap" }}>
-              <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 260 }} />
-              <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
-              <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>Setores</button>
-              <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Referências de CID</button>
-            </div>
-          )}
-          {ordenados.length === 0 ? (
-            <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)" }}>
-              Nenhum leito cadastrado ainda.{canEdit ? " Cadastre o primeiro acima." : ""}
-            </div>
-          ) : nomesGrupos.map(g => {
+        {/* ── MAPA DE LEITOS (detalhado, por setor) ── */}
+        {sub === "mapa" && (() => {
+          const setorAtivo = setorSel === "__todos__" ? null : (setorSel && grupos[setorSel] ? setorSel : nomesGrupos[0]);
+          const chipStyle = active => ({ display: "inline-flex", alignItems: "center", gap: 7, background: active ? VX.turquesa : "var(--surface)", color: active ? "#062a26" : "var(--text-2)", border: `1px solid ${active ? VX.turquesa : "var(--border)"}`, borderRadius: 99, padding: "6px 13px", fontSize: 12.5, fontWeight: active ? 800 : 600, cursor: "pointer" });
+          const badge = active => ({ fontSize: 10.5, fontFamily: "JetBrains Mono, monospace", background: active ? "#0a3d34" : "var(--input-bg)", color: active ? "#7fe8d8" : "var(--text-muted)", borderRadius: 99, padding: "0 6px" });
+          const setorBlock = g => {
             const ls = grupos[g];
             const oc = ls.filter(x => x.status === "ocupado").length;
+            const op = ls.filter(x => !LEITO_FORA_OPERACAO.includes(x.status)).length;
+            const pct = op ? Math.round((oc / op) * 100) : 0;
             return (
               <div key={g} style={{ marginBottom: "1.5rem" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
                   <div style={{ ...secLbl2, marginBottom: 0 }}>{g}</div>
-                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{oc}/{ls.length} ocupados</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{oc}/{ls.length} ocupados · {pct}%</span>
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 12 }}>
                   {ls.map(renderLeitoCard)}
                 </div>
               </div>
             );
-          })}
-        </>)}
+          };
+          return (
+            <>
+              <div style={{ marginBottom: 12 }}><Legenda /></div>
+              {canEdit && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
+                  <input value={novoLeito} onChange={e => setNovoLeito(e.target.value)} onKeyDown={e => e.key === "Enter" && addLeito()} placeholder="Cadastrar leito (ex.: 101, UTI-1)" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 260 }} />
+                  <button onClick={addLeito} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Cadastrar leito</button>
+                  <button onClick={() => setShowSetores(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>Setores</button>
+                  <button onClick={() => setShowCidRef(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Referências de CID</button>
+                </div>
+              )}
+              {ordenados.length === 0 ? (
+                <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)" }}>
+                  Nenhum leito cadastrado ainda.{canEdit ? " Cadastre o primeiro acima." : ""}
+                </div>
+              ) : (<>
+                {/* Seletor de setor */}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
+                  {nomesGrupos.map(g => {
+                    const ls = grupos[g];
+                    const oc = ls.filter(x => x.status === "ocupado").length;
+                    const op = ls.filter(x => !LEITO_FORA_OPERACAO.includes(x.status)).length;
+                    const pct = op ? Math.round((oc / op) * 100) : 0;
+                    const active = setorSel !== "__todos__" && setorAtivo === g;
+                    const dotCor = pct >= 90 ? "#f43f5e" : pct >= 70 ? "#d97706" : "#2dd4bf";
+                    return (
+                      <button key={g} onClick={() => setSetorSel(g)} style={chipStyle(active)}>
+                        <span style={{ width: 8, height: 8, borderRadius: 99, background: dotCor, display: "inline-block" }} />
+                        {g}<span style={badge(active)}>{oc}/{ls.length}</span>
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => setSetorSel("__todos__")} style={chipStyle(setorSel === "__todos__")}>Todos os setores<span style={badge(setorSel === "__todos__")}>{ordenados.length}</span></button>
+                </div>
+                {setorSel === "__todos__" ? nomesGrupos.map(setorBlock) : (setorAtivo ? setorBlock(setorAtivo) : null)}
+              </>)}
+            </>
+          );
+        })()}
 
         {/* ── FILA DE INTERNAÇÃO ── */}
         {sub === "fila" && (
