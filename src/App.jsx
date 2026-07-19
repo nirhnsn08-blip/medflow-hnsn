@@ -1542,6 +1542,12 @@ const STATUS_LEITO = {
 };
 // Status que tiram o leito da conta de "operacional" (não entram no denominador da ocupação)
 const LEITO_FORA_OPERACAO = ["interditado", "manutencao", "bloqueado"];
+// Desfechos de saída do leito
+const DESFECHO_LEITO = {
+  alta:          { label: "Alta",                 cor: "#34d399" },
+  obito:         { label: "Óbito",                cor: "#f43f5e" },
+  transferencia: { label: "Transferência ext.",   cor: "#38bdf8" },
+};
 // Barra lateral interna do Giro de Leitos (padrão da Farmácia)
 const LEITOS_NAV = [
   { key: "dashboard",      label: "Dashboard",            icon: "dashboard" },
@@ -6994,8 +7000,9 @@ function LeitosPage({ currentUser, canEdit }) {
   const [showSetores, setShowSetores] = useState(false);
   const [novoLeito, setNovoLeito] = useState("");
   const [solic, setSolic] = useState([]);       // fila de solicitações de leito
-  const [saidas, setSaidas] = useState([]);     // histórico de altas
+  const [saidas, setSaidas] = useState([]);     // histórico de altas/saídas
   const [turnover, setTurnover] = useState([]); // ciclos de giro (solicitado/disp/pronto/entrada)
+  const [busca, setBusca] = useState("");       // busca das listas (pacientes/altas/internações)
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id); }, []);
 
@@ -7098,6 +7105,24 @@ function LeitosPage({ currentUser, canEdit }) {
     addAuditLog(currentUser, obito ? "óbito no leito" : "dar alta", leito.identificacao, {});
   }
   const darAlta = leito => encerrarLeito(leito, "alta");
+  async function transferirExterna(leito) {
+    const destino = prompt(`Transferência externa do leito ${leito.identificacao} — destino (Gerint / hospital):`, "");
+    if (destino === null) return;
+    if (!confirm(`Confirmar transferência externa do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`)) return;
+    const now = nowISO();
+    const dias = leito.data_internacao ? Math.max(0, Math.round((new Date(todayStr() + "T00:00:00") - new Date(leito.data_internacao + "T00:00:00")) / 86400000)) : null;
+    await registrarSaidaRemote({
+      leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
+      motivo: destino.trim() ? "Transf.: " + destino.trim() : (leito.motivo || null),
+      data_internacao: leito.data_internacao, data_alta: todayStr(),
+      disp_em: now, dias_permanencia: dias, desfecho: "transferencia",
+    }, currentUser);
+    await salvarLeito({
+      identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
+      iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null,
+    });
+    addAuditLog(currentUser, "transferência externa", `${leito.identificacao} → ${destino.trim() || "?"}`, {});
+  }
   async function marcarPronto(leito) {
     await salvarLeito({ identificacao: leito.identificacao, status: "livre", pronto_em: nowISO() });
     addAuditLog(currentUser, "leito pronto", leito.identificacao, {});
@@ -7176,6 +7201,27 @@ function LeitosPage({ currentUser, canEdit }) {
   const grupos = {}; ordenados.forEach(l => { const s = l.setor || "Sem setor"; (grupos[s] = grupos[s] || []).push(l); });
   const nomesGrupos = Object.keys(grupos).sort((a, b) => (a === "Sem setor") - (b === "Sem setor") || a.localeCompare(b, "pt-BR"));
 
+  // ── Listas da Fase 2 ──
+  const bq = normTxt(busca);
+  const casaBusca = o => !bq || normTxt(`${o.iniciais || ""} ${o.prontuario || ""} ${o.cid || ""}`).includes(bq);
+  const internados = leitos.filter(l => l.status === "ocupado")
+    .map(l => ({ ...l, sinal: sinalLeito(l.data_internacao, l.dias_previstos) }))
+    .filter(casaBusca)
+    .sort((a, b) => (a.sinal.restam ?? 9999) - (b.sinal.restam ?? 9999));
+  const filaOrd = [...solic].sort((a, b) => new Date(a.hora_pedido || 0) - new Date(b.hora_pedido || 0));
+  const saidasOrd = [...saidas].sort((a, b) => (b.data_alta || "").localeCompare(a.data_alta || "") || new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const altasList = saidasOrd.filter(s => s.desfecho !== "transferencia").filter(casaBusca);
+  const transfList = saidasOrd.filter(s => s.desfecho === "transferencia").filter(casaBusca);
+  const internacoesList = saidasOrd.filter(casaBusca);
+  const filaLivresPorSetor = nome => leitos.filter(l => (l.setor || "") === nome && l.status === "livre").length;
+
+  async function cancelarSolic(s) {
+    if (!confirm(`Remover ${s.iniciais || "paciente"} da fila de internação?`)) return;
+    await updateSolicitacaoRemote(s.id, { status: "cancelada" });
+    setSolic(prev => prev.filter(x => x.id !== s.id));
+    addAuditLog(currentUser, "cancelar solicitação de leito", s.iniciais || "", {});
+  }
+
   const Card = ({ label, valor, cor, sub: subTxt }) => (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" }}>
       <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>{label}</div>
@@ -7206,7 +7252,11 @@ function LeitosPage({ currentUser, canEdit }) {
     alertas: "Alertas automáticos do setor (alta vencida, limpeza demorada, ocupação alta).",
     assistente: "Assistente local para perguntas sobre leitos e giro.",
   };
-  const fasePendente = { fila: 2, pacientes: 2, altas: 2, transferencias: 2, internacoes: 2, indicadores: 3, alertas: 4, assistente: 4 };
+  const fasePendente = { indicadores: 3, alertas: 4, assistente: 4 };
+  const inpBusca = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 280, maxWidth: "100%" };
+  const ChipDesf = ({ d }) => { const v = DESFECHO_LEITO[d] || DESFECHO_LEITO.alta; return <span style={{ fontSize: 10, fontWeight: 800, color: v.cor, border: `1px solid ${v.cor}66`, borderRadius: 99, padding: "1px 8px", textTransform: "uppercase" }}>{v.label}</span>; };
+  const permDe = s => s.dias_permanencia != null ? s.dias_permanencia : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null);
+  const Vazio = ({ txt }) => <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>{txt}</div>;
 
   const renderLeitoCard = l => {
             const st = STATUS_LEITO[l.status] || STATUS_LEITO.livre;
@@ -7281,6 +7331,7 @@ function LeitosPage({ currentUser, canEdit }) {
                     </>}
                     {l.status === "ocupado" && <>
                       <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
+                      <button onClick={() => transferirExterna(l)} style={btnLeito("#38bdf8")}>Transferir</button>
                       <button onClick={() => encerrarLeito(l, "obito")} style={btnLeito("#f43f5e")}>Óbito</button>
                       <button onClick={() => setModal(l)} style={btnLeito("var(--text-3)")}>Editar</button>
                     </>}
@@ -7425,6 +7476,126 @@ function LeitosPage({ currentUser, canEdit }) {
               </div>
             );
           })}
+        </>)}
+
+        {/* ── FILA DE INTERNAÇÃO ── */}
+        {sub === "fila" && (
+          filaOrd.length === 0 ? <Vazio txt="Nenhuma solicitação de leito aguardando. A fila é alimentada pelo desfecho 'Internação' no Pronto-Socorro e pelo Centro de Monitoramento." /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {filaOrd.map(s => {
+                const espera = diffMin(s.hora_pedido, nowISO());
+                const livres = s.setor_destino ? filaLivresPorSetor(s.setor_destino) : 0;
+                return (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${espera > 240 ? "#f43f5e" : "#d97706"}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.iniciais || "—"}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{s.setor_origem || "—"} → <strong style={{ color: "var(--text-2)" }}>{s.setor_destino || "—"}</strong>{s.setor_destino ? ` · ${livres} leito(s) livre(s) no destino` : ""}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: espera > 240 ? "#f43f5e" : "#d97706" }}>{fmtDur(espera)}</div>
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>espera desde {horaFmt(s.hora_pedido)}</div>
+                    </div>
+                    {canEdit && <button onClick={() => cancelarSolic(s)} style={btnLeito("var(--text-muted)")}>Remover</button>}
+                  </div>
+                );
+              })}
+            </div>
+          )
+        )}
+
+        {/* ── PACIENTES (censo atual) ── */}
+        {sub === "pacientes" && (<>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais, prontuário ou CID…" style={{ ...inpBusca, marginBottom: 14 }} />
+          {internados.length === 0 ? <Vazio txt={bq ? "Nenhum paciente bate com a busca." : "Nenhum paciente internado no momento."} /> : (
+            <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 640 }}>
+                <thead><tr>{["Paciente", "Leito", "Setor", "CID / motivo", "Internação", "Previsão"].map(h => <th key={h} style={{ padding: "9px 12px", textAlign: "left", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)", background: "var(--bg-2)" }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {internados.map(l => (
+                    <tr key={l.identificacao} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "9px 12px", fontWeight: 600 }}>{l.iniciais}{l.prontuario ? <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {l.prontuario}</span> : ""}</td>
+                      <td style={{ padding: "9px 12px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{l.identificacao}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-3)" }}>{l.setor || "—"}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-3)" }}>{l.cid ? `CID ${l.cid}` : ""}{l.cid && l.motivo ? " · " : ""}{l.motivo || (!l.cid ? "—" : "")}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-3)" }}>{l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</td>
+                      <td style={{ padding: "9px 12px" }}>{l.sinal ? <span style={{ color: l.sinal.cor, fontWeight: 700, fontSize: 12 }}>{l.sinal.texto}</span> : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>)}
+
+        {/* ── ALTAS ── */}
+        {sub === "altas" && (<>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais, prontuário ou CID…" style={{ ...inpBusca, marginBottom: 14 }} />
+          {altasList.length === 0 ? <Vazio txt={bq ? "Nenhuma alta bate com a busca." : "Nenhuma alta registrada ainda."} /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {altasList.slice(0, 200).map(s => (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 13px", flexWrap: "wrap" }}>
+                  <ChipDesf d={s.desfecho} />
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{s.iniciais || "—"}</span>{s.prontuario ? <span style={{ color: "var(--text-muted)", fontSize: 12 }}> · {s.prontuario}</span> : ""}
+                    <span style={{ color: "var(--text-3)", fontSize: 12 }}>  ·  leito {s.leito || "—"}{s.cid ? ` · CID ${s.cid}` : ""}</span>
+                  </div>
+                  <div style={{ textAlign: "right", fontSize: 12, color: "var(--text-muted)" }}>
+                    <div>{s.data_alta ? new Date(s.data_alta + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</div>
+                    <div style={{ fontSize: 11 }}>{permDe(s) != null ? `${permDe(s)}d de permanência` : ""}</div>
+                  </div>
+                </div>
+              ))}
+              {altasList.length > 200 && <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 4 }}>Mostrando as 200 mais recentes de {altasList.length}.</div>}
+            </div>
+          )}
+        </>)}
+
+        {/* ── TRANSFERÊNCIAS EXTERNAS ── */}
+        {sub === "transferencias" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Para registrar uma transferência, use o botão <strong>Transferir</strong> no card de um leito ocupado (Mapa de leitos).</div>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais, prontuário ou destino…" style={{ ...inpBusca, marginBottom: 14 }} />
+          {transfList.length === 0 ? <Vazio txt={bq ? "Nenhuma transferência bate com a busca." : "Nenhuma transferência externa registrada ainda."} /> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {transfList.slice(0, 200).map(s => (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderLeft: "4px solid #38bdf8", borderRadius: 9, padding: "9px 13px", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 180 }}>
+                    <span style={{ fontWeight: 700, fontSize: 13 }}>{s.iniciais || "—"}</span>{s.prontuario ? <span style={{ color: "var(--text-muted)", fontSize: 12 }}> · {s.prontuario}</span> : ""}
+                    <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>leito {s.leito || "—"}{s.cid ? ` · CID ${s.cid}` : ""}{s.motivo ? ` · ${s.motivo}` : ""}</div>
+                  </div>
+                  <div style={{ textAlign: "right", fontSize: 12, color: "var(--text-muted)" }}>
+                    <div>{s.data_alta ? new Date(s.data_alta + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</div>
+                    <div style={{ fontSize: 11 }}>{permDe(s) != null ? `${permDe(s)}d internado` : ""}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>)}
+
+        {/* ── INTERNAÇÕES (histórico) ── */}
+        {sub === "internacoes" && (<>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais, prontuário ou CID…" style={{ ...inpBusca, marginBottom: 14 }} />
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>{internados.length} internação(ões) em curso · {internacoesList.length} concluída(s) no histórico.</div>
+          {internacoesList.length === 0 ? <Vazio txt={bq ? "Nenhuma internação bate com a busca." : "Nenhuma internação concluída no histórico ainda."} /> : (
+            <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 680 }}>
+                <thead><tr>{["Paciente", "Leito", "CID", "Internação", "Saída", "Permanência", "Desfecho"].map(h => <th key={h} style={{ padding: "9px 12px", textAlign: "left", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)", background: "var(--bg-2)" }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {internacoesList.slice(0, 200).map(s => (
+                    <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "9px 12px", fontWeight: 600 }}>{s.iniciais || "—"}{s.prontuario ? <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {s.prontuario}</span> : ""}</td>
+                      <td style={{ padding: "9px 12px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{s.leito || "—"}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-3)" }}>{s.cid || "—"}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-3)" }}>{s.data_internacao ? new Date(s.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-3)" }}>{s.data_alta ? new Date(s.data_alta + "T00:00:00").toLocaleDateString("pt-BR") : "—"}</td>
+                      <td style={{ padding: "9px 12px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{permDe(s) != null ? `${permDe(s)}d` : "—"}</td>
+                      <td style={{ padding: "9px 12px" }}><ChipDesf d={s.desfecho} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>)}
 
         {/* ── TELAS DAS PRÓXIMAS FASES ── */}
