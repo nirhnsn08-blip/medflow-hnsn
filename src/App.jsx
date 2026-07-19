@@ -1738,6 +1738,33 @@ const PS_FREQUENCIAS = [
 const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
 const freqDia = label => { const f = PS_FREQUENCIAS.find(x => x.label === label); return f ? f.dia : null; };
 
+// Normaliza texto (minúsculas, sem acento) para comparar alergias
+const normTxt = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+// Grupos de reatividade cruzada (curados — revisar com a equipe de farmácia)
+const FARM_CROSS = [
+  { grupo: "Betalactâmicos (penicilinas/cefalosporinas)", gatilhos: ["penicilina", "betalactamico", "beta-lactamico", "beta lactamico", "amoxicilina", "ampicilina", "cefalospor"], diretos: ["penicilina", "amoxicilina", "ampicilina", "oxacilina", "piperacilina", "benzilpenicilina"], cruzados: ["cefalexina", "cefazolina", "ceftriaxona", "cefepima", "meropenem", "imipenem"] },
+  { grupo: "Sulfonamidas", gatilhos: ["sulfa", "sulfonamida", "sulfametoxazol", "bactrim"], diretos: ["sulfametoxazol", "sulfadiazina"], cruzados: [] },
+  { grupo: "AINEs", gatilhos: ["aine", "antiinflamatorio", "anti-inflamatorio", "aas", "acido acetilsalicilico", "ibuprofeno", "diclofenaco", "cetoprofeno", "naproxeno"], diretos: ["ibuprofeno", "diclofenaco", "cetoprofeno", "naproxeno", "tenoxicam", "acido acetilsalicilico"], cruzados: [] },
+];
+// Divide o texto de alergias em termos normalizados (>= 3 letras)
+function parseAlergias(txt) {
+  return normTxt(txt).split(/[,;/]| e |\n|\+/).map(s => s.trim()).filter(s => s.length >= 3);
+}
+// Confronta um medicamento com as alergias do paciente → { match: "direta"|"cruzada"|null }
+function checarAlergia(med, termos) {
+  if (!med || !termos || !termos.length) return { match: null };
+  const paTxt = normTxt([med.principio_ativo, med.nome].join(" "));
+  for (const t of termos) {
+    if (paTxt.includes(t)) return { match: "direta", termo: t };
+    for (const g of FARM_CROSS) {
+      if (!g.gatilhos.some(x => t.includes(x) || x.includes(t))) continue;
+      if (g.diretos.some(d => paTxt.includes(d))) return { match: "direta", termo: t, grupo: g.grupo };
+      if (g.cruzados.some(c => paTxt.includes(c))) return { match: "cruzada", termo: t, grupo: g.grupo };
+    }
+  }
+  return { match: null };
+}
+
 // Analisa a lista de itens da prescrição contra a base clínica + contexto do paciente.
 // APOIO À DECISÃO — não substitui o julgamento do farmacêutico. Base sujeita a validação local.
 function analisarPrescricaoClinica(itens, ctx, medById) {
@@ -1745,6 +1772,7 @@ function analisarPrescricaoClinica(itens, ctx, medById) {
   const push = (tipo, gravidade, titulo, detalhe, refs) => alertas.push({ tipo, gravidade, titulo, detalhe, itens: refs || [] });
   const comMed = (itens || []).filter(i => i.medicamento_id && medById[i.medicamento_id]);
   const idade = ctx && ctx.idade !== "" && ctx.idade != null ? Number(ctx.idade) : null;
+  const termosAlergia = parseAlergias(ctx?.alergias);
 
   // 1) Duplicidade — mesmo princípio ativo OU mesmo grupo terapêutico
   const porPA = {}, porGrupo = {};
@@ -1775,6 +1803,10 @@ function analisarPrescricaoClinica(itens, ctx, medById) {
     // 6) Pediátrico
     const limPed = med.idade_pediatrica != null ? Number(med.idade_pediatrica) : 12;
     if (idade != null && med.inapropriado_pediatrico && idade < limPed) push("pediatrico", "alta", `Inapropriado para menor de ${limPed} anos`, `${nome}: ${med.motivo_pediatrico || "inapropriado nesta faixa etária."}`, [nome]);
+    // 7) Alergia declarada / reatividade cruzada
+    const al = checarAlergia(med, termosAlergia);
+    if (al.match === "direta") push("alergia", "alta", "Alergia declarada ao medicamento", `${nome}: paciente alérgico a "${al.termo}"${al.grupo ? ` (${al.grupo})` : ""}. NÃO administrar sem reavaliação médica.`, [nome]);
+    else if (al.match === "cruzada") push("alergia", "alta", "Possível reatividade cruzada com alergia", `${nome}: paciente alérgico a "${al.termo}" — reatividade cruzada com ${al.grupo}. Avaliar o risco antes de administrar.`, [nome]);
   });
 
   return alertas.sort((a, b) => FARM_GRAV[a.gravidade].ordem - FARM_GRAV[b.gravidade].ordem);
@@ -3617,6 +3649,10 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   function addItemPrescricao() {
     const med = catalogo.find(m => String(m.id) === String(presForm.medId));
     if (!med) { alert("Escolha um medicamento do catálogo."); return; }
+    // Bloqueio por alergia / reatividade cruzada (permite override consciente)
+    const al = checarAlergia(med, parseAlergias(ctx.alergias));
+    if (al.match === "direta" && !confirm(`⚠ ALERGIA DECLARADA\n\nO paciente é alérgico a "${al.termo}"${al.grupo ? ` (${al.grupo})` : ""}.\n${med.nome} é CONTRAINDICADO.\n\nPrescrever mesmo assim, sob responsabilidade do prescritor?`)) return;
+    if (al.match === "cruzada" && !confirm(`⚠ REATIVIDADE CRUZADA\n\nAlergia a "${al.termo}" pode reagir com ${med.nome} (${al.grupo}).\n\nPrescrever mesmo assim?`)) return;
     const fdia = freqDia(presForm.freqLabel);
     const doseTxt = [presForm.dose_valor && `${presForm.dose_valor} ${presForm.dose_unidade}`, presForm.freqLabel, presForm.duracao && `por ${presForm.duracao} dia(s)`].filter(Boolean).join(" · ");
     setPresItens(p => [...p, { medicamento_id: med.id, medicamento_nome: med.nome, unidade: med.unidade || null, dose: doseTxt || null, dose_valor: presForm.dose_valor ? Number(presForm.dose_valor) : null, dose_unidade: presForm.dose_unidade || null, frequencia_dia: fdia, duracao_dias: presForm.duracao ? Number(presForm.duracao) : null, via: presForm.via, quantidade: presForm.quantidade }]);
@@ -3729,6 +3765,12 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
                 </div>
               )}
             </div>
+
+            {ctx.alergias && ctx.alergias.trim() && (
+              <div style={{ background: "#f43f5e14", border: "1px solid #f43f5e66", borderLeft: "4px solid #f43f5e", borderRadius: 8, padding: "9px 13px", marginBottom: 12, fontSize: 12.5, color: "var(--text)", fontWeight: 600 }}>
+                ⚠ Paciente alérgico a <strong style={{ color: "#f43f5e" }}>{ctx.alergias}</strong> — não prescrever os compostos relacionados.
+              </div>
+            )}
 
             {/* Construtor de prescrição estruturada */}
             <div style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "12px 13px", marginBottom: 14 }}>
@@ -4933,7 +4975,10 @@ function FarmAnaliseView() {
               <div key={l.at.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10 }}>
                 <button onClick={() => setAberto(o => ({ ...o, [l.at.id]: !o[l.at.id] }))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: "11px 14px", cursor: "pointer", textAlign: "left", color: "var(--text)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700 }}>{l.at.iniciais}{l.at.prontuario ? ` · reg. ${l.at.prontuario}` : ""}</div>
+                    <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      {l.at.iniciais}{l.at.prontuario ? ` · reg. ${l.at.prontuario}` : ""}
+                      {l.at.alergias && <span style={{ fontSize: 9.5, fontWeight: 800, color: "#f43f5e", background: "#f43f5e14", border: "1px solid #f43f5e66", borderRadius: 99, padding: "1px 7px", textTransform: "uppercase" }}>⚠ Alérgico: {l.at.alergias}</span>}
+                    </div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{l.itens.length} item(ns) · {ctxResumo(l.at)}</div>
                   </div>
                   {l.alertas.length === 0 ? <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>sem alertas</span> : (
