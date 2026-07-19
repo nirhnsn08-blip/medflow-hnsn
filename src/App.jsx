@@ -1761,6 +1761,13 @@ const PS_FREQUENCIAS = [
   { label: "Se necessário (SN)", dia: null },
 ];
 const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
+// Rótulos dos tipos de alerta (para filtrar prescrições)
+const FARM_ALERTA_TIPOS = {
+  alergia: "Alergia", interacao: "Interação", incompat_y: "Incompatibilidade em Y",
+  dose_maxima: "Dose máxima", duplicidade: "Duplicidade", tempo_tratamento: "Tempo de tratamento",
+  sonda: "Sonda / não triturar", idoso: "Inapropriado idoso (Beers)", pediatrico: "Inapropriado criança",
+  ajuste_renal: "Ajuste renal", ajuste_hepatico: "Ajuste hepático",
+};
 const freqDia = label => { const f = PS_FREQUENCIAS.find(x => x.label === label); return f ? f.dia : null; };
 
 // Normaliza texto (minúsculas, sem acento) para comparar alergias
@@ -4602,6 +4609,12 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
   const [interacoes, setInteracoes] = useState([]);
   const [incompatY, setIncompatY] = useState([]);
   const [busca, setBusca] = useState("");
+  const [fSit, setFSit] = useState("");         // situação Manchester
+  const [fStatus, setFStatus] = useState("");   // "" | pendentes | dispensados
+  const [fScore, setFScore] = useState("");     // "" | 1 | 2 | 3 (mínimo)
+  const [fAlerta, setFAlerta] = useState("");   // "" | tipo de alerta
+  const [fControl, setFControl] = useState(false);
+  const [ordem, setOrdem] = useState("prioridade"); // prioridade | score | nome | chegada
   const [disp, setDisp] = useState(null);       // atendimento selecionado p/ dispensar
   const [avulsa, setAvulsa] = useState(false);
   const [, setTick] = useState(0);
@@ -4630,17 +4643,35 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
   const q = busca.trim().toLowerCase();
-  const fila = atends.map(a => {
+  const todas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
     const pend = its.filter(i => { const q = Number(i.quantidade || 0); return q > 0 && dispDoItem(i.id) < q; });
     const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
-    return { at: a, itens: its, pendentes: pend.length, alertas, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
-  }).filter(x => x.itens.length > 0)
-    .filter(x => !q || `${x.at.iniciais} ${x.at.prontuario || ""}`.toLowerCase().includes(q))
-    // priorização: mais urgente (Manchester) → pior score → mais pendências
-    .sort((a, b) => (a.pendentes ? 0 : 1) - (b.pendentes ? 0 : 1) || a.prio - b.prio || b.score - a.score || b.pendentes - a.pendentes);
-  const comPendencia = fila.filter(f => f.pendentes > 0);
+    const tipos = new Set(alertas.map(x => x.tipo));
+    const temControlado = its.some(i => medById[i.medicamento_id]?.controlado);
+    return { at: a, itens: its, pendentes: pend.length, alertas, tipos, temControlado, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
+  }).filter(x => x.itens.length > 0);
+
+  const fila = todas.filter(x => {
+    if (q && !`${x.at.iniciais} ${x.at.prontuario || ""}`.toLowerCase().includes(q)) return false;
+    if (fSit && x.at.classificacao !== fSit) return false;
+    if (fStatus === "pendentes" && x.pendentes === 0) return false;
+    if (fStatus === "dispensados" && x.pendentes > 0) return false;
+    if (fScore && x.score < Number(fScore)) return false;
+    if (fAlerta && !x.tipos.has(fAlerta)) return false;
+    if (fControl && !x.temControlado) return false;
+    return true;
+  }).sort((a, b) => {
+    if (ordem === "score") return b.score - a.score || a.prio - b.prio;
+    if (ordem === "nome") return (a.at.iniciais || "").localeCompare(b.at.iniciais || "", "pt-BR");
+    if (ordem === "chegada") return (a.at.chegada_em || "").localeCompare(b.at.chegada_em || "");
+    // prioridade (padrão): pendentes primeiro → Manchester → score → pendências
+    return (a.pendentes ? 0 : 1) - (b.pendentes ? 0 : 1) || a.prio - b.prio || b.score - a.score || b.pendentes - a.pendentes;
+  });
+  const comPendencia = todas.filter(f => f.pendentes > 0);
+  const filtroAtivo = busca || fSit || fStatus || fScore || fAlerta || fControl;
+  function limparFiltros() { setBusca(""); setFSit(""); setFStatus(""); setFScore(""); setFAlerta(""); setFControl(false); }
 
   async function registrarDispensacao(mov) {
     const r = await addFarmMovimentoRemote(mov, currentUser);
@@ -4657,9 +4688,43 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
         <div style={{ fontSize: 13, color: "var(--text-muted)" }}>{comPendencia.length} paciente(s) do PS com itens pendentes · fila priorizada por gravidade (Manchester) e score.</div>
         {canEdit && <button onClick={() => setAvulsa(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Dispensação avulsa</button>}
       </div>
-      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais ou prontuário…" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", maxWidth: 360, width: "100%", boxSizing: "border-box", marginBottom: 14 }} />
+      {(() => { const fsel = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 9px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 12.5, outline: "none" }; return (
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10 }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar iniciais/prontuário…" style={{ ...fsel, flex: "1 1 180px", minWidth: 150 }} />
+        <select value={fSit} onChange={e => setFSit(e.target.value)} style={fsel} title="Situação (Manchester)">
+          <option value="">Situação: todas</option>
+          {Object.entries(MANCHESTER).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={fsel} title="Status da dispensação">
+          <option value="">Status: todos</option>
+          <option value="pendentes">Pendentes</option>
+          <option value="dispensados">Dispensados</option>
+        </select>
+        <select value={fScore} onChange={e => setFScore(e.target.value)} style={fsel} title="Score mínimo">
+          <option value="">Score: qualquer</option>
+          <option value="1">Score ≥ 1</option>
+          <option value="2">Score ≥ 2</option>
+          <option value="3">Score 3 (crítico)</option>
+        </select>
+        <select value={fAlerta} onChange={e => setFAlerta(e.target.value)} style={fsel} title="Tipo de alerta">
+          <option value="">Alerta: qualquer</option>
+          {Object.entries(FARM_ALERTA_TIPOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select value={ordem} onChange={e => setOrdem(e.target.value)} style={fsel} title="Ordenar por">
+          <option value="prioridade">Ordenar: prioridade</option>
+          <option value="score">Ordenar: score</option>
+          <option value="nome">Ordenar: nome</option>
+          <option value="chegada">Ordenar: chegada</option>
+        </select>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={fControl} onChange={e => setFControl(e.target.checked)} style={{ accentColor: "#6366f1", width: 15, height: 15 }} /> Só controlados
+        </label>
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{fila.length} de {todas.length}</span>
+        {filtroAtivo && <button onClick={limparFiltros} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>Limpar</button>}
+      </div>
+      ); })()}
       {fila.length === 0 ? (
-        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>{atends.length && itens.length ? "Nenhum resultado para a busca." : "Nenhuma prescrição com itens no PS no momento. Prescreva pelo Pronto-Socorro (aba Prescrição) — ou use a dispensação avulsa."}</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>{todas.length ? "Nenhuma prescrição bate com os filtros." : "Nenhuma prescrição com itens no PS no momento. Prescreva pelo Pronto-Socorro (aba Prescrição) — ou use a dispensação avulsa."}</div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {fila.map(f => {
@@ -4670,9 +4735,14 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
                 <div style={{ fontWeight: 700, flex: 1, minWidth: 0 }}>{f.at.iniciais}{f.at.prontuario ? ` · reg. ${f.at.prontuario}` : ""}</div>
                 <span title={`Score da prescrição: ${f.score}/3`} style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[f.score], borderRadius: 6, padding: "1px 8px", whiteSpace: "nowrap" }}>score {f.score}</span>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 0 10px" }}>
-                {mc && <span style={{ color: mc.cor, fontWeight: 700 }}>{mc.label}</span>}{mc ? " · " : ""}{f.itens.length} item(ns) · <span style={{ color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700 }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "4px 0 8px" }}>
+                {mc && <span style={{ color: mc.cor, fontWeight: 700 }}>{mc.label}</span>}{mc ? " · " : ""}{f.itens.length} item(ns) · <span style={{ color: f.pendentes ? "#d97706" : "#34d399", fontWeight: 700 }}>{f.pendentes ? `${f.pendentes} pendente(s)` : "dispensado"}</span>{f.temControlado ? <span style={{ color: "#6366f1", fontWeight: 700 }}> · controlado</span> : ""}
               </div>
+              {[...f.tipos].length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 10 }}>
+                  {[...f.tipos].map(t => { const g = f.alertas.find(a => a.tipo === t)?.gravidade || "baixa"; const cor = FARM_GRAV[g].cor; return <span key={t} style={{ fontSize: 9.5, fontWeight: 700, color: cor, border: `1px solid ${cor}55`, borderRadius: 99, padding: "0 6px" }}>{FARM_ALERTA_TIPOS[t] || t}</span>; })}
+                </div>
+              )}
               {canEdit && <button onClick={() => setDisp(f.at)} style={{ background: f.pendentes ? "#22d3ee" : "transparent", color: f.pendentes ? "#000" : "var(--text-3)", border: f.pendentes ? "none" : "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{f.pendentes ? "Dispensar" : "Ver itens"}</button>}
             </div>
           );})}
