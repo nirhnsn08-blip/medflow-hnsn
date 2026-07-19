@@ -6988,6 +6988,189 @@ function IndicadoresScih({ currentUser, canEdit }) {
   );
 }
 
+// Relatórios & BI do Giro de Leitos (Fase 3) — indicadores mensais, tendências e relatório imprimível
+function LeitosBIView({ leitos, saidas, turnover, operacionais }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [preview, setPreview] = useState(false);
+
+  const inMesData = (dstr, m, y) => { if (!dstr) return false; const d = new Date(dstr + "T00:00:00"); return d.getMonth() === m && d.getFullYear() === y; };
+  const inMesISO = (iso, m, y) => { if (!iso) return false; const d = new Date(iso); return d.getMonth() === m && d.getFullYear() === y; };
+  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  const permDe = s => s.dias_permanencia != null ? s.dias_permanencia : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null);
+
+  const dPrev = new Date(ano, mes - 1, 1); const mesP = dPrev.getMonth(), anoP = dPrev.getFullYear();
+  const sMes = saidas.filter(s => inMesData(s.data_alta, mes, ano));
+  const sPrev = saidas.filter(s => inMesData(s.data_alta, mesP, anoP));
+  const cont = (arr, d) => arr.filter(s => (s.desfecho || "alta") === d).length;
+  const altas = cont(sMes, "alta"), obitos = cont(sMes, "obito"), transf = cont(sMes, "transferencia");
+  const saidasMes = sMes.length, saidasPrev = sPrev.length;
+  const permMedia = avg(sMes.map(permDe).filter(v => v != null));
+  const permPrev = avg(sPrev.map(permDe).filter(v => v != null));
+  const giro = operacionais > 0 ? saidasMes / operacionais : null;
+  const giroPrev = operacionais > 0 ? saidasPrev / operacionais : null;
+  const tMes = turnover.filter(t => inMesISO(t.entrada_em, mes, ano));
+  const tSolDisp = avg(tMes.map(t => diffMin(t.solic_em, t.disp_em)).filter(v => v != null && v >= 0));
+  const tDispPronto = avg(tMes.map(t => diffMin(t.disp_em, t.pronto_em)).filter(v => v != null && v >= 0));
+  const tProntoEnt = avg(tMes.map(t => diffMin(t.pronto_em, t.entrada_em)).filter(v => v != null && v >= 0));
+
+  // Série de 12 meses até o mês selecionado
+  const serie = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(ano, mes - i, 1); const m = d.getMonth(), y = d.getFullYear();
+    const ss = saidas.filter(s => inMesData(s.data_alta, m, y));
+    const pv = avg(ss.map(permDe).filter(v => v != null));
+    serie.push({ name: MONTHS[m], Saídas: ss.length, Permanência: pv != null ? Number(pv.toFixed(1)) : 0 });
+  }
+
+  // Snapshot atual por setor
+  const ocupadosAg = leitos.filter(l => l.status === "ocupado").length;
+  const ocupAtual = operacionais > 0 ? Math.round((ocupadosAg / operacionais) * 100) : 0;
+  const setoresMap = {}; leitos.forEach(l => { const s = l.setor || "Sem setor"; (setoresMap[s] = setoresMap[s] || []).push(l); });
+  const setorData = Object.entries(setoresMap).map(([nome, ls]) => {
+    const op = ls.filter(x => !LEITO_FORA_OPERACAO.includes(x.status)).length;
+    const oc = ls.filter(x => x.status === "ocupado").length;
+    return { name: nome, Ocupação: op ? Math.round((oc / op) * 100) : 0, leitos: ls.length };
+  }).sort((a, b) => b.Ocupação - a.Ocupação);
+
+  const anos = [now.getFullYear(), now.getFullYear() - 1];
+  const sel = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" };
+  const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
+  const Delta = ({ cur, prev, inverter }) => {
+    if (cur == null || prev == null || prev === 0) return null;
+    const d = ((cur - prev) / prev) * 100; if (Math.abs(d) < 0.5) return <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>≈ estável vs {MONTHS[mesP]}</span>;
+    const bom = inverter ? d < 0 : d > 0;
+    return <span style={{ fontSize: 10.5, color: bom ? "#34d399" : "#f43f5e", fontWeight: 700 }}>{d >= 0 ? "▲ +" : "▼ -"}{Math.abs(d).toFixed(0)}% vs {MONTHS[mesP]}</span>;
+  };
+  const KPI = ({ label, valor, cor, delta, sub: subTxt }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 23, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+      {delta || (subTxt && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{subTxt}</div>)}
+    </div>
+  );
+  const printStyles = `@media print { body * { visibility: hidden !important; } #leitos-print, #leitos-print * { visibility: visible !important; } #leitos-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
+  const relLinhas = [
+    ["Saídas no mês", String(saidasMes), `${altas} alta(s) · ${obitos} óbito(s) · ${transf} transf.`],
+    ["Permanência média", permMedia != null ? permMedia.toFixed(1) + " dias" : "—", ""],
+    ["Giro de leitos", giro != null ? giro.toFixed(2) : "—", "saídas ÷ leitos operacionais"],
+    ["Ocupação atual", ocupAtual + "%", `${ocupadosAg}/${operacionais} leitos`],
+    ["Solicitado → Disponibilizado", fmtDur(tSolDisp), ""],
+    ["Disponibilizado → Pronto", fmtDur(tDispPronto), "tempo de higienização"],
+    ["Pronto → Entrada", fmtDur(tProntoEnt), "leito pronto até novo paciente"],
+  ];
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <select value={mes} onChange={e => setMes(Number(e.target.value))} style={sel}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select>
+        <select value={ano} onChange={e => setAno(Number(e.target.value))} style={sel}>{anos.map(a => <option key={a} value={a}>{a}</option>)}</select>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 7, padding: "7px 15px", fontWeight: 700, fontSize: 13, cursor: "pointer", marginLeft: "auto" }}>{preview ? "✕ Fechar relatório" : "Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "7px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <KPI label={`Saídas em ${MONTHS[mes]}`} valor={saidasMes} cor="#22d3ee" delta={<Delta cur={saidasMes} prev={saidasPrev} />} />
+        <KPI label="Permanência média" valor={permMedia != null ? permMedia.toFixed(1) + "d" : "—"} cor="#3b82f6" delta={<Delta cur={permMedia} prev={permPrev} inverter />} />
+        <KPI label="Giro de leitos" valor={giro != null ? giro.toFixed(2) : "—"} cor="#2dd4bf" delta={<Delta cur={giro} prev={giroPrev} />} />
+        <KPI label="Ocupação atual" valor={ocupAtual + "%"} cor={ocupAtual >= 90 ? "#f43f5e" : "#818cf8"} sub={`${ocupadosAg}/${operacionais} operacionais`} />
+        <KPI label="Altas / Óbitos / Transf." valor={`${altas}/${obitos}/${transf}`} cor="#34d399" sub="desfechos do mês" />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginBottom: "1.5rem" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={secLbl}>Saídas por mês (12 meses)</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={serie} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+              <Tooltip content={customTooltip} />
+              <Bar dataKey="Saídas" radius={[4, 4, 0, 0]}>
+                {serie.map((_, i) => <Cell key={i} fill={i === serie.length - 1 ? "#2dd4bf" : "#0d9488"} fillOpacity={i === serie.length - 1 ? 1 : 0.6} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={secLbl}>Permanência média por mês (dias)</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={serie} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+              <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+              <Tooltip content={customTooltip} />
+              <Line type="monotone" dataKey="Permanência" stroke="#3b82f6" strokeWidth={2} dot={{ r: 2.5, fill: "#3b82f6" }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1.4fr) minmax(250px, 1fr)", gap: 14 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={secLbl}>Ocupação por setor (agora)</div>
+          {setorData.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem setores cadastrados.</div> : (
+            <ResponsiveContainer width="100%" height={Math.max(120, setorData.length * 34)}>
+              <BarChart data={setorData} layout="vertical" margin={{ top: 0, right: 30, left: 10, bottom: 0 }}>
+                <XAxis type="number" domain={[0, 100]} tick={{ fill: "var(--text-muted)", fontSize: 10 }} axisLine={false} tickLine={false} unit="%" />
+                <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-3)", fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
+                <Tooltip content={customTooltip} />
+                <ReferenceLine x={90} stroke="#f43f5e" strokeDasharray="4 2" />
+                <Bar dataKey="Ocupação" radius={[0, 4, 4, 0]} unit="%">
+                  {setorData.map((e, i) => <Cell key={i} fill={e.Ocupação >= 90 ? "#f43f5e" : e.Ocupação >= 70 ? "#d97706" : "#2dd4bf"} fillOpacity={.9} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={secLbl}>Tempos de giro — {MONTHS[mes]}</div>
+          {[["Solicitado → Disponibilizado", tSolDisp, "#60a5fa"], ["Disponibilizado → Pronto", tDispPronto, "#fbbf24"], ["Pronto → Entrada", tProntoEnt, "#818cf8"]].map(([lb, v, c]) => (
+            <div key={lb} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5 }}>
+              <span style={{ color: "var(--text-2)" }}>{lb}</span>
+              <span style={{ fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: v != null ? c : "var(--text-muted)" }}>{fmtDur(v)}</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>{tMes.length} ciclo(s) concluído(s) no mês.</div>
+        </div>
+      </div>
+
+      {preview && (
+        <div id="leitos-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12, marginTop: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>GIRO DE LEITOS — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Indicadores de gestão de leitos</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>{MONTHS_FULL[mes]}/{ano}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Gerado em {new Date().toLocaleString("pt-BR")}</div>
+            </div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 14 }}>
+            <thead><tr>{["Indicador", "Valor", "Cálculo"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {relLinhas.map(([ind, v, c]) => (
+                <tr key={ind}><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 600, color: "#0f172a" }}>{ind}</td><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155", fontWeight: 700 }}>{v}</td><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#0369a1" }}>{c}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Ocupação por setor (snapshot atual)</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>{["Setor", "Leitos", "Ocupação"].map(h => <th key={h} style={{ textAlign: "left", padding: "6px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {setorData.map(s => (
+                <tr key={s.name}><td style={{ padding: "5px 10px", borderBottom: "1px solid #eef2f7", color: "#0f172a" }}>{s.name}</td><td style={{ padding: "5px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{s.leitos}</td><td style={{ padding: "5px 10px", borderBottom: "1px solid #eef2f7", color: "#0f172a", fontWeight: 700 }}>{s.Ocupação}%</td></tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 16, fontSize: 10, color: "#94a3b8", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Relatório gerado pela Valentrax Healthcare Operations. Indicadores apurados das altas e ciclos de giro registrados. Documento de apoio à gestão hospitalar.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeitosPage({ currentUser, canEdit }) {
   const [sub, setSub] = useState("dashboard"); // tela da barra lateral interna
   const [leitos, setLeitos] = useState(() => loadLeitos());
@@ -7252,7 +7435,7 @@ function LeitosPage({ currentUser, canEdit }) {
     alertas: "Alertas automáticos do setor (alta vencida, limpeza demorada, ocupação alta).",
     assistente: "Assistente local para perguntas sobre leitos e giro.",
   };
-  const fasePendente = { indicadores: 3, alertas: 4, assistente: 4 };
+  const fasePendente = { alertas: 4, assistente: 4 };
   const inpBusca = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontSize: 13, outline: "none", width: 280, maxWidth: "100%" };
   const ChipDesf = ({ d }) => { const v = DESFECHO_LEITO[d] || DESFECHO_LEITO.alta; return <span style={{ fontSize: 10, fontWeight: 800, color: v.cor, border: `1px solid ${v.cor}66`, borderRadius: 99, padding: "1px 8px", textTransform: "uppercase" }}>{v.label}</span>; };
   const permDe = s => s.dias_permanencia != null ? s.dias_permanencia : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null);
@@ -7598,15 +7781,13 @@ function LeitosPage({ currentUser, canEdit }) {
           )}
         </>)}
 
+        {/* ── RELATÓRIOS & BI (Fase 3) ── */}
+        {sub === "indicadores" && <LeitosBIView leitos={leitos} saidas={saidas} turnover={turnover} operacionais={operacionais} />}
+
         {/* ── TELAS DAS PRÓXIMAS FASES ── */}
         {fasePendente[sub] && (
           <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
             Em desenvolvimento — chega na <strong>Fase {fasePendente[sub]}</strong> da reformulação do Giro de Leitos.
-            {sub === "indicadores" && (
-              <div style={{ marginTop: 14 }}>
-                <button onClick={() => setShowIndic(true)} style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>Abrir os indicadores atuais</button>
-              </div>
-            )}
           </div>
         )}
 
