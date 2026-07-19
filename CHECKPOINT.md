@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v23
+# 📍 Ponto de restauração — checkpoint-v24
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v23` (anteriores: `checkpoint-v22` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v24` (anteriores: `checkpoint-v23` … `checkpoint-v1`)
 - **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -138,7 +138,25 @@ dá pra voltar exatamente para este estado.
   **registrar e controlar** medicamentos **fora do catálogo** que o paciente/família
   traz — recebimento (paciente, medicamento, apresentação, quantidade, lote/validade,
   quem trouxe), **conferência** pelo farmacêutico e status **recebido → em uso →
-  devolvido/descartado**, com busca e filtro. **Módulo de Farmácia bem completo.**
+  devolvido/descartado**, com busca e filtro.
+- **💊 Intervenção farmacêutica (estilo NoHarm):** identifica o problema, propõe a
+  conduta e acompanha o **desfecho** (pendente → aceita / não aceita → resolvida).
+  Alimentada pelos alertas do motor (botão **Intervir** já preenche o registro) ou
+  manual. KPIs (pendentes, aceitas, **taxa de aceitação**).
+- **💊 Farmácia reformulada (barra lateral própria, cores Valentrax):** ao entrar na
+  Farmácia abre uma **barra lateral interna** com ícones (turquesa/azul/cinza):
+  **Dashboard** (visão geral com atalhos), **Prescrições**, **Solicitações**,
+  **Dispensações**, **Intervenção**, **Estoque**, **Interações**, **Controlados**,
+  **Não padronizados**, **Relatórios & BI**, **Assistente AI**.
+  - **Estoque** ganhou **previsão de demanda (7 dias)**: consumo médio dos últimos 30
+    dias → cobertura em dias, demanda prevista e **sugestão de compra**; painel de
+    **previsão de ruptura**.
+  - **Relatórios & BI**: **Top 5 medicamentos do mês** + **prescrições por status**
+    (aguardando/preparo/pronto/retirado), além de curva ABC, custos e PDF.
+  - **Assistente AI**: assistente **local e gratuito** (chat por palavras-chave) que
+    responde sobre o setor a partir dos dados — pendências, o que vai faltar em 7 dias,
+    mais usados, custos por paciente, controlados, validade, alertas e intervenções.
+    Nada é enviado para fora.
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -157,7 +175,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v23
+git reset --hard checkpoint-v24
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -166,7 +184,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v23
+git checkout -b recuperacao checkpoint-v24
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -182,6 +200,11 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `22af34d` 💊 Farmácia Fase 4 — assistente local (perguntas sobre o setor)
+- `8198b38` 💊 Farmácia Fase 3 — BI (top 5 do mês + prescrição por status)
+- `4e7dde2` 💊 Farmácia Fase 2 — previsão de demanda 7 dias no Estoque
+- `997ef54` 💊 Farmácia Fase 1 — barra lateral própria + Dashboard
+- `384b419` 💊 Aba Intervenção farmacêutica (estilo NoHarm)
 - `6332c94` 💊 Livro de controlados (Portaria 344) + medicamentos não padronizados
 - `fa2dde5` 💊 Custos por paciente (custo unitário por medicamento)
 - `fa6f510` 💊 fix: dispensação de itens sem Qtd + "dispensado" falso + match de lote
