@@ -1756,6 +1756,32 @@ async function loadPsPrescricoesByAtendimentos(ids) {
   const rows = await sbFetch(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.prescricao&select=id,atendimento_id,criado_em,usuario&order=criado_em.desc`);
   return Array.isArray(rows) ? rows : [];
 }
+// Movimentos de um conjunto de medicamentos (livro de controlados) — ordem cronológica
+async function loadFarmMovimentosByMeds(ids, limit = 8000) {
+  if (!ids.length) return [];
+  const rows = await sbFetch(`farm_movimentos?medicamento_id=in.(${ids.join(",")})&select=*&order=created_at.asc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Medicamentos NÃO padronizados (trazidos pela família)
+async function loadFarmNaoPadronizados() {
+  const rows = await sbFetch("farm_nao_padronizados?select=*&order=created_at.desc");
+  return Array.isArray(rows) ? rows : [];
+}
+async function addFarmNaoPadronizadoRemote(row, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("farm_nao_padronizados", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...row, usuario: user?.name || null }) });
+}
+async function updateFarmNaoPadronizadoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`farm_nao_padronizados?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+async function deleteFarmNaoPadronizadoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_nao_padronizados?id=eq.${id}`, { method: "DELETE" }); }
+const NAOPAD_STATUS = {
+  recebido:   { label: "Recebido",   cor: "#d97706" },
+  em_uso:     { label: "Em uso",     cor: "#3b82f6" },
+  devolvido:  { label: "Devolvido",  cor: "#34d399" },
+  descartado: { label: "Descartado", cor: "#8d99ab" },
+};
 // Formata uma data ISO (YYYY-MM-DD) para dd/mm/aaaa, sem escorregar de fuso
 function fmtDataBR(iso) {
   if (!iso) return "—";
@@ -4279,7 +4305,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Farmácia</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "preparo" ? "Fluxo de preparo: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada." : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{sub === "estoque" ? `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.` : sub === "preparo" ? "Fluxo de preparo: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada." : sub === "dispensacao" ? "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque." : sub === "analise" ? "Análise clínica das prescrições — alertas de duplicidade, dose máxima, tempo de tratamento, sonda e adequação idoso/criança." : sub === "controlados" ? "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação, com relatório imprimível." : sub === "naopad" ? "Medicamentos fora do catálogo trazidos pelo paciente/família — recebimento, conferência e controle." : "Consumo, curva ABC, controlados, rupturas e perdas por validade — a partir dos movimentos de estoque."}</div>
         </div>
         {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
@@ -4289,12 +4315,16 @@ function FarmaciaPage({ currentUser, canEdit }) {
         <button onClick={() => setSub("preparo")} style={subBtn(sub === "preparo")}>Preparo</button>
         <button onClick={() => setSub("dispensacao")} style={subBtn(sub === "dispensacao")}>Dispensação</button>
         <button onClick={() => setSub("analise")} style={subBtn(sub === "analise")}>Análise clínica</button>
+        <button onClick={() => setSub("controlados")} style={subBtn(sub === "controlados")}>Controlados</button>
+        <button onClick={() => setSub("naopad")} style={subBtn(sub === "naopad")}>Não padronizados</button>
         <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
       </div>
 
       {sub === "preparo" && <FarmPreparoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "analise" && <FarmAnaliseView currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "controlados" && <FarmControladosView />}
+      {sub === "naopad" && <FarmNaoPadronizadosView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "indicadores" && <FarmIndicadoresView />}
 
       {sub === "estoque" && (<>
@@ -5551,6 +5581,225 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
         </>
       ) : <span style={{ fontSize: 12.5, color: "var(--text-muted)", flex: 1 }}>Avisos sonoros de medicação pronta estão desligados neste computador.</span>}
       {!som && <button onClick={ativar} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 12px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>🔈 Ativar som</button>}
+    </div>
+  );
+}
+
+// Livro de controlados (Portaria 344): saldo, balanço e movimentação — imprimível
+function FarmControladosView() {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [meds, setMeds] = useState([]);
+  const [movs, setMovs] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [preview, setPreview] = useState(false);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(async ms => { setMeds(ms); setMovs(await loadFarmMovimentosByMeds(ms.filter(m => m.controlado).map(m => m.id))); });
+    loadFarmLotes().then(setLotes);
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
+
+  const controlados = meds.filter(m => m.controlado);
+  const inicioMes = new Date(ano, mes, 1).toISOString();
+  const fimMes = new Date(ano, mes + 1, 1).toISOString();
+  const balanco = controlados.map(m => {
+    const ms = movs.filter(x => x.medicamento_id === m.id);
+    let running = 0, saldoIni = 0, ent = 0, sai = 0; const linhas = [];
+    ms.forEach(x => {
+      running += (x.tipo === "entrada" ? 1 : -1) * Number(x.quantidade || 0);
+      if (x.created_at < inicioMes) saldoIni = running;
+      else if (x.created_at < fimMes) { if (x.tipo === "entrada") ent += Number(x.quantidade || 0); else sai += Number(x.quantidade || 0); linhas.push({ ...x, saldo: running, med: m }); }
+    });
+    return { med: m, saldoIni, ent, sai, saldoFim: saldoIni + ent - sai, saldoAtual: farmSaldoTotal(m.id, lotes), linhas };
+  });
+  const linhasLivro = balanco.flatMap(b => b.linhas).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+  const comBalanco = balanco.filter(b => b.linhas.length || b.saldoIni || b.saldoAtual);
+
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const fmt = n => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const printStyles = `@media print { body * { visibility: hidden !important; } #controlados-print, #controlados-print * { visibility: visible !important; } #controlados-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+        <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar balanço" : "Balanço do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
+      </div>
+      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>Livro de controlados (Portaria 344/98) — {controlados.length} medicamento(s) marcado(s) como controlado no catálogo. Saldo apurado do histórico de entradas e saídas.</div>
+
+      {/* BALANÇO DO MÊS */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Balanço de {MONTHS_FULL[mes]}/{ano}</div>
+      {comBalanco.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>Nenhum medicamento controlado com movimentação. Marque medicamentos como "Controlado" no catálogo e registre entradas/saídas.</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo inicial</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Entradas</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saídas</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo final</th>
+            </tr></thead>
+            <tbody>
+              {comBalanco.map(b => (
+                <tr key={b.med.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 12px", fontWeight: 600 }}>{b.med.nome}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{fmt(b.saldoIni)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", color: "#34d399" }}>+{fmt(b.ent)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", color: "#d97706" }}>−{fmt(b.sai)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(b.saldoFim)}<span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}> {b.med.unidade || ""}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* LIVRO / MOVIMENTAÇÃO DO MÊS */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Movimentação (livro) — {MONTHS_FULL[mes]}/{ano}</div>
+      {linhasLivro.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Sem movimentação de controlados no mês.</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 680 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 10.5, textTransform: "uppercase" }}>
+              <th style={{ padding: "7px 10px" }}>Data</th><th style={{ padding: "7px 10px" }}>Medicamento</th><th style={{ padding: "7px 10px" }}>Tipo</th><th style={{ padding: "7px 10px", textAlign: "right" }}>Qtd</th><th style={{ padding: "7px 10px", textAlign: "right" }}>Saldo</th><th style={{ padding: "7px 10px" }}>Paciente</th><th style={{ padding: "7px 10px" }}>Doc.</th><th style={{ padding: "7px 10px" }}>Usuário</th>
+            </tr></thead>
+            <tbody>
+              {linhasLivro.map(x => (
+                <tr key={x.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 10px", whiteSpace: "nowrap", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{x.created_at ? new Date(x.created_at).toLocaleDateString("pt-BR") : ""}</td>
+                  <td style={{ padding: "6px 10px" }}>{x.med?.nome}</td>
+                  <td style={{ padding: "6px 10px", color: x.tipo === "entrada" ? "#34d399" : "#d97706", fontWeight: 700 }}>{x.tipo === "entrada" ? "Entrada" : "Saída"}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{x.tipo === "entrada" ? "+" : "−"}{fmt(x.quantidade)}</td>
+                  <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(x.saldo)}</td>
+                  <td style={{ padding: "6px 10px" }}>{x.paciente_iniciais || "—"}{x.paciente_prontuario ? ` · ${x.paciente_prontuario}` : ""}</td>
+                  <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{x.documento || "—"}</td>
+                  <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{x.usuario || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {preview && (
+        <div id="controlados-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12, marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>BALANÇO DE CONTROLADOS — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Portaria 344/98</div>
+            </div>
+            <div style={{ textAlign: "right", fontSize: 11, color: "#64748b" }}><div style={{ fontWeight: 700, color: "#0f172a" }}>{MONTHS_FULL[mes]}/{ano}</div><div>emitido {new Date().toLocaleDateString("pt-BR")}</div></div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginBottom: 16 }}>
+            <thead><tr style={{ borderBottom: "1px solid #e5e7eb", textAlign: "left", color: "#64748b" }}><th style={{ padding: "4px 6px" }}>Medicamento</th><th style={{ padding: "4px 6px", textAlign: "right" }}>Saldo inicial</th><th style={{ padding: "4px 6px", textAlign: "right" }}>Entradas</th><th style={{ padding: "4px 6px", textAlign: "right" }}>Saídas</th><th style={{ padding: "4px 6px", textAlign: "right" }}>Saldo final</th></tr></thead>
+            <tbody>{comBalanco.map(b => (<tr key={b.med.id} style={{ borderBottom: "1px solid #f1f5f9" }}><td style={{ padding: "3px 6px" }}>{b.med.nome}</td><td style={{ padding: "3px 6px", textAlign: "right" }}>{fmt(b.saldoIni)}</td><td style={{ padding: "3px 6px", textAlign: "right" }}>+{fmt(b.ent)}</td><td style={{ padding: "3px 6px", textAlign: "right" }}>−{fmt(b.sai)}</td><td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{fmt(b.saldoFim)}</td></tr>))}</tbody>
+          </table>
+          <div style={{ fontSize: 10, color: "#64748b" }}>Documento de apoio ao controle de psicotrópicos/entorpecentes (Portaria 344/98). Conferir com a escrituração oficial do serviço.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Medicamentos NÃO padronizados (trazidos pela família) — registro e controle
+function FarmNaoPadronizadosView({ currentUser, canEdit }) {
+  const vazio = { paciente_iniciais: "", paciente_prontuario: "", setor: "", medicamento: "", apresentacao: "", quantidade: "", unidade: "", lote: "", validade: "", origem: "", observacao: "" };
+  const [lista, setLista] = useState([]);
+  const [f, setF] = useState(vazio);
+  const [busca, setBusca] = useState("");
+  const [fStatus, setFStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isMaster = currentUser?.role === "adm_master";
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+
+  function refresh() { if (USE_SUPABASE) loadFarmNaoPadronizados().then(setLista); }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
+
+  async function salvar() {
+    if (!f.paciente_iniciais.trim()) { alert("Informe as iniciais do paciente."); return; }
+    if (!f.medicamento.trim()) { alert("Informe o medicamento."); return; }
+    setBusy(true);
+    await addFarmNaoPadronizadoRemote({ paciente_iniciais: f.paciente_iniciais.trim(), paciente_prontuario: f.paciente_prontuario.trim() || null, setor: f.setor.trim() || null, medicamento: f.medicamento.trim(), apresentacao: f.apresentacao.trim() || null, quantidade: f.quantidade === "" ? null : Number(f.quantidade), unidade: f.unidade.trim() || null, lote: f.lote.trim() || null, validade: f.validade || null, origem: f.origem.trim() || null, observacao: f.observacao.trim() || null, status: "recebido", conferido: false }, currentUser);
+    addAuditLog(currentUser, "farmácia: receber medicamento não padronizado", `${f.paciente_iniciais} · ${f.medicamento}`, {});
+    setF(vazio); setBusy(false); setTimeout(refresh, 350);
+  }
+  async function mudarStatus(r, status) { await updateFarmNaoPadronizadoRemote(r.id, { status }); addAuditLog(currentUser, "farmácia: não padronizado " + status, `${r.paciente_iniciais} · ${r.medicamento}`, {}); setTimeout(refresh, 250); }
+  async function toggleConferido(r) { await updateFarmNaoPadronizadoRemote(r.id, { conferido: !r.conferido }); setTimeout(refresh, 250); }
+  async function excluir(r) { if (!confirm(`Excluir o registro de ${r.medicamento} (${r.paciente_iniciais})?`)) return; await deleteFarmNaoPadronizadoRemote(r.id); setTimeout(refresh, 250); }
+
+  const q = busca.trim().toLowerCase();
+  const filtrada = lista.filter(r => (!q || `${r.paciente_iniciais} ${r.paciente_prontuario || ""} ${r.medicamento}`.toLowerCase().includes(q)) && (!fStatus || r.status === fStatus));
+  const ativos = lista.filter(r => r.status === "recebido" || r.status === "em_uso").length;
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>Medicamentos <strong>fora do catálogo</strong> trazidos pelo paciente/família. Recebimento, conferência e controle até devolução/descarte. {ativos} em posse da farmácia.</div>
+
+      {canEdit && (
+        <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", marginBottom: "1.25rem" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>Receber medicamento não padronizado</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 10 }}>
+            <div><label style={lbl}>Iniciais *</label><input value={f.paciente_iniciais} onChange={e => set("paciente_iniciais", e.target.value)} placeholder="M.S.O." style={inp} /></div>
+            <div><label style={lbl}>Prontuário</label><input value={f.paciente_prontuario} onChange={e => set("paciente_prontuario", e.target.value)} style={inp} /></div>
+            <div><label style={lbl}>Setor / leito</label><input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Enfermaria 2" style={inp} /></div>
+            <div><label style={lbl}>Trazido por</label><input value={f.origem} onChange={e => set("origem", e.target.value)} placeholder="Familiar" style={inp} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 10 }}>
+            <div><label style={lbl}>Medicamento *</label><input value={f.medicamento} onChange={e => set("medicamento", e.target.value)} placeholder="Nome do medicamento" style={inp} /></div>
+            <div><label style={lbl}>Apresentação</label><input value={f.apresentacao} onChange={e => set("apresentacao", e.target.value)} placeholder="500 mg comprimido" style={inp} /></div>
+            <div><label style={lbl}>Quantidade</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} style={inp} /></div>
+            <div><label style={lbl}>Unidade</label><input value={f.unidade} onChange={e => set("unidade", e.target.value)} placeholder="comprimido" style={inp} /></div>
+            <div><label style={lbl}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} style={inp} /></div>
+            <div><label style={lbl}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={inp} /></div>
+          </div>
+          <div style={{ marginBottom: 10 }}><label style={lbl}>Observação</label><input value={f.observacao} onChange={e => set("observacao", e.target.value)} placeholder="Estado da embalagem, conferência, etc." style={inp} /></div>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar recebimento"}</button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar paciente ou medicamento…" style={{ ...inp, maxWidth: 300, flex: "1 1 200px" }} />
+        <select value={fStatus} onChange={e => setFStatus(e.target.value)} style={{ ...inp, maxWidth: 200 }}>
+          <option value="">Todos os status</option>
+          {Object.entries(NAOPAD_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+      </div>
+
+      {filtrada.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>{lista.length ? "Nenhum resultado." : "Nenhum medicamento não padronizado registrado."}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {filtrada.map(r => { const st = NAOPAD_STATUS[r.status] || NAOPAD_STATUS.recebido; return (
+            <div key={r.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 9, padding: "10px 13px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <strong style={{ fontSize: 13 }}>{r.medicamento}</strong>
+                {r.apresentacao && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{r.apresentacao}</span>}
+                {r.quantidade != null && <span style={{ fontSize: 11.5, color: "var(--text-2)" }}>· {farmFmtQtd(r.quantidade)} {r.unidade || ""}</span>}
+                <span style={{ fontSize: 10, fontWeight: 800, color: st.cor, border: `1px solid ${st.cor}66`, borderRadius: 99, padding: "0 7px", textTransform: "uppercase" }}>{st.label}</span>
+                {r.conferido && <span style={{ fontSize: 10, fontWeight: 700, color: "#34d399" }}>✓ conferido</span>}
+                <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>{r.paciente_iniciais}{r.paciente_prontuario ? ` · ${r.paciente_prontuario}` : ""}{r.setor ? ` · ${r.setor}` : ""}</span>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{r.origem ? `trazido por ${r.origem} · ` : ""}{r.lote ? `lote ${r.lote} · ` : ""}{r.validade ? `val ${fmtDataBR(r.validade)} · ` : ""}recebido {r.created_at ? new Date(r.created_at).toLocaleDateString("pt-BR") : ""}{r.observacao ? ` · ${r.observacao}` : ""}</div>
+              {canEdit && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  <button onClick={() => toggleConferido(r)} style={btnLeito(r.conferido ? "#8d99ab" : "#34d399")}>{r.conferido ? "Desmarcar conferido" : "Marcar conferido"}</button>
+                  {r.status === "recebido" && <button onClick={() => mudarStatus(r, "em_uso")} style={btnLeito("#3b82f6")}>Em uso</button>}
+                  {(r.status === "recebido" || r.status === "em_uso") && <><button onClick={() => mudarStatus(r, "devolvido")} style={btnLeito("#34d399")}>Devolver</button><button onClick={() => mudarStatus(r, "descartado")} style={btnLeito("#8d99ab")}>Descartar</button></>}
+                  {isMaster && <button onClick={() => excluir(r)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                </div>
+              )}
+            </div>
+          ); })}
+        </div>
+      )}
     </div>
   );
 }
