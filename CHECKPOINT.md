@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v25
+# 📍 Ponto de restauração — checkpoint-v26
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v25` (anteriores: `checkpoint-v24` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v26` (anteriores: `checkpoint-v25` … `checkpoint-v1`)
 - **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -165,6 +165,30 @@ dá pra voltar exatamente para este estado.
   da Farmácia ganhou intents: **panorama** do setor, **zerados**, **consumo por
   classe**, **dispensações do mês/hoje**, **tamanho do catálogo**, **validade
   detalhada** (lista de lotes vencendo) e saudações.
+- **🛏️ Giro de Leitos REFORMULADO (Fases 1–5 + Modo TV, sem migração de banco):**
+  módulo com **barra lateral própria** (padrão Farmácia): Dashboard, Mapa de leitos,
+  Fila de internação, Pacientes, Altas, Transferências ext., Internações,
+  Relatórios & BI, Alertas inteligentes, IA Assistente.
+  - **Dashboard:** KPIs (ocupação global, disponíveis, aguardando internação, altas
+    previstas 24h, permanência média, **giro vs mês anterior**, fator de utilização),
+    mini-mapa por setor, tempos de giro (solicitado→disp→pronto→entrada), desempenho
+    por setor e **previsão de vagas 24/48h**.
+  - **Mapa de leitos:** cards corporativos (faixa de acento, selo, badges), **chips de
+    setor** na ordem fixa (Emergência, AVC, Posto 1–3, Psiquiatria, UTI) — clicar mostra
+    só o setor; "Todos" empilha. **6 status**: livre/ocupado/higienização/**reservado/
+    manutenção/bloqueado externo**/interditado + botão **Transferir** (externa).
+  - **Listas:** fila com cronômetro + vagas previstas no destino; censo de pacientes;
+    altas; transferências (desfecho=transferencia, destino no motivo); internações.
+  - **Relatórios & BI:** KPIs com Δ vs mês anterior, gráficos (saídas 12m, permanência,
+    ocupação por setor, tempos de giro) e **relatório imprimível/PDF** Valentrax.
+  - **Alertas inteligentes** (local): ocupação crítica, alta vencida/próxima,
+    higienização demorada, setor lotado, fila parada e **leito livre com fila**.
+  - **IA Assistente** local/grátis (panorama, vagas previstas, ocupação por setor…).
+  - **Inteligência:** **reserva automática do PS** (desfecho Internação reserva o leito;
+    "✓ Chegou — internar" fecha o ciclo com tempo real) e **média real de permanência
+    por CID** (aprende do histórico) no modal de internação.
+  - **📺 Modo TV:** painel de parede tela cheia somente leitura (tiles por setor, KPIs,
+    vagas previstas, alertas, fila), atualização automática a cada 60s, sai com Esc.
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -183,7 +207,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v25
+git reset --hard checkpoint-v26
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -192,7 +216,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v25
+git checkout -b recuperacao checkpoint-v26
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -208,6 +232,14 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `a60428d` 🛏️ Modo TV (painel de parede) + refresh automático 60s
+- `cb53386` 🛏️ Fase 5 — previsão de vagas 24/48h, média real por CID, reserva automática do PS, alerta leito livre com fila
+- `68351ae` 🛏️ Mapa detalhado com seletor de setor (chips)
+- `cb3aece` 🛏️ Ordem fixa de setores + cards de leito corporativos
+- `4aaa0fe` 🛏️ Fase 4 — alertas inteligentes + IA assistente local
+- `544dc90` 🛏️ Fase 3 — Relatórios & BI (gráficos, Δ mensal, PDF)
+- `65e7fde` 🛏️ Fase 2 — fila, pacientes, altas, transferências, internações
+- `b02afea` 🛏️ Fase 1 — barra lateral + KPIs + mapa por setor + status novos
 - `dbecfaf` 💊 Refino — aviso ao prescritor no PS + assistente com mais respostas
 - `22af34d` 💊 Farmácia Fase 4 — assistente local (perguntas sobre o setor)
 - `8198b38` 💊 Farmácia Fase 3 — BI (top 5 do mês + prescrição por status)
