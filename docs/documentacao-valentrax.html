@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Valentrax — Documentação do Projeto (HNSN)</title>
+<style>
+  :root{
+    --navy:#101c30; --navy2:#14233a; --teal:#2dd4bf; --blue:#38bdf8; --royal:#1d4ed8;
+    --ink:#0f172a; --ink2:#334155; --muted:#64748b; --line:#e2e8f0; --bg:#f8fafc;
+    --green:#16a34a; --amber:#d97706; --slate:#8d99ab;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:-apple-system,"Segoe UI",Inter,Roboto,Arial,sans-serif;color:var(--ink);background:#fff;font-size:12.5px;line-height:1.55;}
+  .page{width:210mm;min-height:297mm;padding:18mm 16mm;margin:0 auto;background:#fff;position:relative;page-break-after:always;}
+  .page:last-child{page-break-after:auto;}
+  h1,h2,h3{margin:0 0 .3em;line-height:1.2;color:var(--ink);}
+  h2{font-size:19px;letter-spacing:-.01em;padding-bottom:7px;border-bottom:2px solid var(--line);margin-top:0;}
+  h2 .n{color:var(--teal);font-weight:800;margin-right:8px;}
+  h3{font-size:14px;margin-top:16px;color:var(--navy);}
+  p{margin:.4em 0;}
+  .muted{color:var(--muted);}
+  .small{font-size:11px;}
+  ul{margin:.3em 0 .6em;padding-left:18px;}
+  li{margin:2px 0;}
+  .tag{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:2px 9px;border-radius:99px;}
+  .ok{color:var(--green);background:#dcfce7;border:1px solid #bbf7d0;}
+  .plan{color:var(--amber);background:#fef3c7;border:1px solid #fde68a;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff;break-inside:avoid;}
+  .card.accent{border-top:3px solid var(--teal);}
+  .card h3{margin-top:0;}
+  table{width:100%;border-collapse:collapse;font-size:11.5px;margin:.4em 0;}
+  th,td{text-align:left;padding:6px 9px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{background:var(--bg);color:var(--ink2);font-size:10px;text-transform:uppercase;letter-spacing:.04em;}
+  .mono{font-family:"JetBrains Mono",ui-monospace,Consolas,monospace;}
+  .flow{display:flex;align-items:stretch;gap:6px;flex-wrap:wrap;margin:10px 0;}
+  .flow .step{flex:1;min-width:92px;border:1px solid var(--line);border-top:3px solid var(--blue);border-radius:8px;padding:8px 10px;background:var(--bg);}
+  .flow .step b{display:block;font-size:11.5px;color:var(--navy);}
+  .flow .step span{font-size:10px;color:var(--muted);}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0;}
+  .kpi{border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:8px;padding:9px 12px;}
+  .kpi .v{font-size:22px;font-weight:800;color:var(--navy);font-family:"JetBrains Mono",monospace;}
+  .kpi .l{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;}
+  .foot{position:absolute;bottom:9mm;left:16mm;right:16mm;display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted);border-top:1px solid var(--line);padding-top:5px;}
+  /* Capa */
+  .cover{display:flex;flex-direction:column;justify-content:center;height:261mm;}
+  .brand{font-weight:800;font-size:34px;letter-spacing:.14em;color:var(--navy);}
+  .brand .x{background:linear-gradient(135deg,var(--blue),var(--royal));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hub{width:54px;height:54px;margin-bottom:18px;}
+  .cover .sub{font-size:15px;color:var(--ink2);margin-top:6px;}
+  .cover .box{margin-top:34px;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:16px 18px;max-width:420px;}
+  .cover .box div{margin:3px 0;}
+  @media print{
+    body{font-size:11.5px;}
+    .page{width:auto;min-height:auto;margin:0;padding:14mm 14mm 16mm;box-shadow:none;}
+    @page{size:A4;margin:0;}
+  }
+  @media screen{
+    body{background:#e9edf2;padding:16px 0;}
+    .page{box-shadow:0 2px 14px rgba(0,0,0,.14);margin-bottom:18px;}
+    .toolbar{position:sticky;top:0;z-index:9;background:var(--navy);color:#fff;text-align:center;padding:9px;font-size:13px;}
+    .toolbar b{color:var(--teal);}
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">Para gerar o PDF: <b>Ctrl/Cmd + P → Destino: Salvar como PDF → Layout Retrato → Margens: Padrão</b></div>
+
+<!-- ══════════ CAPA ══════════ -->
+<section class="page">
+  <div class="cover">
+    <svg class="hub" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <g fill="none" stroke="#2dd4bf" stroke-width="3.2" stroke-linecap="round">
+        <path d="M45 35.4C51 34.6 55.5 32.6 59 29.6"/><path d="M27 35.4C21 34.6 16.5 32.6 13 29.6" transform="rotate(180 36 36)"/>
+      </g>
+      <circle cx="60.6" cy="28.2" r="2.8" fill="#2dd4bf"/><circle cx="11.4" cy="43.8" r="2.8" fill="#2dd4bf"/>
+      <circle cx="36" cy="11" r="2.6" fill="#38bdf8"/><circle cx="36" cy="61" r="2.6" fill="#38bdf8"/>
+      <circle cx="36" cy="36" r="12.5" fill="none" stroke="#2dd4bf" stroke-width="1" opacity=".3"/>
+      <circle cx="36" cy="36" r="8.2" fill="#2dd4bf"/>
+    </svg>
+    <div class="brand">VALENTRA<span class="x">X</span></div>
+    <div class="sub">Healthcare Operations — Inteligência para o fluxo hospitalar</div>
+    <div class="box">
+      <div><b>Documentação do Projeto</b></div>
+      <div class="muted small">Sistema de gestão hospitalar por processos (HIS)</div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:10px 0" />
+      <div><b>Cliente / instância:</b> Hospital Nossa Senhora de Navegantes (HNSN)</div>
+      <div><b>Ambiente:</b> <span class="mono">medflow-hnsn.vercel.app</span></div>
+      <div><b>Ponto do projeto:</b> checkpoint-v27 (Giro de Leitos completo)</div>
+      <div><b>Data do documento:</b> 20/07/2026</div>
+    </div>
+    <p class="muted small" style="margin-top:30px;max-width:460px">Documento interno de referência. Reúne a visão do produto, os módulos em funcionamento, a jornada do paciente, o modelo de dados, a segurança/LGPD, a estrutura técnica e o roadmap.</p>
+  </div>
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>HNSN · Documentação do projeto</span></div>
+</section>
+
+<!-- ══════════ 1. VISÃO GERAL ══════════ -->
+<section class="page">
+  <h2><span class="n">01</span>Visão geral do projeto</h2>
+  <p>A <b>Valentrax</b> é uma plataforma de <b>gestão hospitalar orientada a processos</b> (Hospital Information System). Em vez de telas isoladas, o sistema acompanha o paciente e os recursos do hospital ao longo de todo o fluxo — do pronto-socorro à alta, passando por leitos, farmácia, bloco cirúrgico e controle de infecção — com indicadores e apoio à decisão em cada etapa.</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">8</div><div class="l">Módulos ativos</div></div>
+    <div class="kpi"><div class="v">28</div><div class="l">Tabelas no banco</div></div>
+    <div class="kpi"><div class="v">27</div><div class="l">Pontos de restauração</div></div>
+    <div class="kpi"><div class="v">100%</div><div class="l">Publicado no HNSN</div></div>
+  </div>
+
+  <h3>Arquitetura e tecnologia</h3>
+  <table>
+    <tr><th>Camada</th><th>Tecnologia</th><th>Papel</th></tr>
+    <tr><td>Interface (front-end)</td><td class="mono">React 18 + Vite 5 + Recharts</td><td>Aplicação web única (SPA), responsiva, tema claro/escuro.</td></tr>
+    <tr><td>Back-end / dados</td><td class="mono">Supabase (PostgreSQL + Auth + REST)</td><td>Banco, autenticação e API. Segurança por linha (RLS).</td></tr>
+    <tr><td>Publicação</td><td class="mono">Vercel</td><td>Deploy automático a cada envio de código.</td></tr>
+    <tr><td>Versionamento</td><td class="mono">GitHub</td><td>Histórico do código e pontos de restauração (tags).</td></tr>
+  </table>
+
+  <h3>Multi-hospital</h3>
+  <p>O <b>mesmo código</b> atende vários hospitais, cada um com <b>seu próprio banco</b> (isolamento físico dos dados) e sua identidade (nome/sigla por variáveis de ambiente). Hoje ativo no <b>HNSN</b>; um ambiente de demonstração existe em separado (congelado).</p>
+
+  <h3>Fluxo de publicação</h3>
+  <div class="flow">
+    <div class="step"><b>Editar código</b><span>ajuste no sistema</span></div>
+    <div class="step"><b>git push</b><span>envia ao GitHub</span></div>
+    <div class="step"><b>Vercel</b><span>build automático</span></div>
+    <div class="step"><b>No ar (~1 min)</b><span>site atualizado</span></div>
+  </div>
+  <p class="small muted">Se o build falhar, o sistema anterior continua no ar — nada quebra. Mudanças que criam tabela/coluna nova rodam um script SQL no Supabase antes de publicar.</p>
+
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>01 · Visão geral</span></div>
+</section>
+
+<!-- ══════════ 2. JORNADA DO PACIENTE ══════════ -->
+<section class="page">
+  <h2><span class="n">02</span>Jornada do paciente (ponta a ponta)</h2>
+  <p>O diferencial da Valentrax é integrar as etapas numa única jornada, com o dado nascendo uma vez e fluindo entre os módulos.</p>
+
+  <div class="flow">
+    <div class="step"><b>Chegada</b><span>Pronto-Socorro</span></div>
+    <div class="step"><b>Triagem</b><span>Manchester + sinais vitais</span></div>
+    <div class="step"><b>Atendimento</b><span>evolução + prescrição</span></div>
+    <div class="step"><b>Desfecho</b><span>alta / internação</span></div>
+    <div class="step"><b>Leito</b><span>reserva → internação</span></div>
+    <div class="step"><b>Alta segura</b><span>Kanban de pendências</span></div>
+    <div class="step"><b>Saída</b><span>alta / transf. / óbito</span></div>
+    <div class="step"><b>Higienização</b><span>giro do leito</span></div>
+  </div>
+
+  <h3>Como os módulos se conectam</h3>
+  <ul>
+    <li><b>PS → Farmácia:</b> a prescrição estruturada do pronto-socorro vira análise clínica, preparo (com aviso sonoro) e dispensação por lote.</li>
+    <li><b>PS → Giro de Leitos:</b> o desfecho "Internação" reserva o leito automaticamente; a chegada confirma a internação e mede o tempo real do ciclo.</li>
+    <li><b>Giro de Leitos → SCIH:</b> isolamentos aparecem no leito; casos de vigilância acompanham o paciente.</li>
+    <li><b>Tudo → Paciente 360:</b> a linha do tempo do paciente agrega PS, internações, altas, SCIH e evoluções.</li>
+    <li><b>Tudo → Centro de Monitoramento:</b> ocupação, filas e alertas consolidados para a gestão.</li>
+  </ul>
+
+  <h3>Farmácia clínica (apoio à decisão)</h3>
+  <p>Ao prescrever, um motor local avalia a prescrição e gera <b>9 tipos de alerta</b> (dose máxima, interação, incompatibilidade em Y, alergia com reatividade cruzada, duplicidade, tempo de tratamento, ajuste renal/hepático, inadequação para idoso/criança e sonda), além de um <b>score de prescrição</b>. Estilo NoHarm, 100% local e gratuito.</p>
+
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>02 · Jornada do paciente</span></div>
+</section>
+
+<!-- ══════════ 3. MÓDULOS (parte 1) ══════════ -->
+<section class="page">
+  <h2><span class="n">03</span>Módulos em funcionamento</h2>
+
+  <div class="grid2">
+    <div class="card accent">
+      <h3>🏥 Pronto-Socorro <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Chegada → triagem (Protocolo de Manchester) → fila por prioridade com cronômetro de tempo-alvo.</li>
+        <li>Sinais vitais + <b>sugestão automática</b> de classificação; reavaliação com histórico.</li>
+        <li>Atendimento médico (evolução, prescrição, exames) e desfecho.</li>
+        <li>Indicadores do dia (porta→triagem, permanência, % no tempo-alvo).</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3>🛏️ Giro de Leitos <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Barra lateral própria: Dashboard, Mapa, Fila, Pacientes, Altas, Transferências, Internações, BI, Alertas, IA.</li>
+        <li>Mapa por setor (ordem fixa), 6 status, cards corporativos, previsão de vagas 24/48h.</li>
+        <li><b>Alta segura</b> (Kanban), reserva automática do PS, média real de permanência por CID.</li>
+        <li>Alertas inteligentes, IA assistente local e <b>Modo TV</b> (painel de parede).</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3>💊 Farmácia <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Catálogo (~164 itens) e estoque por lote/validade (FEFO), kardex imutável.</li>
+        <li>Prescrição estruturada, preparo com bipe, dispensação priorizada e intervenção farmacêutica.</li>
+        <li>Farmácia clínica (9 alertas + score), interações e ajuste renal/hepático.</li>
+        <li>Controlados (Portaria 344), custos, previsão de demanda, BI e assistente local.</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3>🔪 Bloco Cirúrgico <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Salas com reserva e detecção de conflito; agenda com materiais/OPME; mapa do dia.</li>
+        <li>Check-in e <b>checklist de Cirurgia Segura da OMS</b> (Sign In / Time Out / Sign Out).</li>
+        <li>Tempos cirúrgicos, RPA com cronômetro, cancelamento com motivo.</li>
+        <li>Indicadores: ocupação de salas, cancelamentos, produtividade, adesão ao checklist.</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3>🦠 SCIH (Controle de Infecção) <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Precauções/isolamentos por leito (aéreo/contato/gotículas, base Anvisa/CDC).</li>
+        <li>Casos de vigilância (cultura, germe, multirresistência, antibiótico/dias).</li>
+        <li>Base de germes com sugestão de isolamento; indicadores mensais + relatório à CCIH.</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3>📋 Paciente 360 <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Linha do tempo automática (PS + internações + altas + SCIH + evoluções).</li>
+        <li>Evoluções multiprofissionais <b>imutáveis</b>, com ditado por voz (pt-BR).</li>
+        <li>Resumo de passagem de plantão gerado localmente (dados não saem do navegador).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>03 · Módulos</span></div>
+</section>
+
+<!-- ══════════ 4. MÓDULOS (parte 2) + SEGURANÇA ══════════ -->
+<section class="page">
+  <div class="grid2">
+    <div class="card accent">
+      <h3>📊 Centro de Monitoramento <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Ocupação global, giro, permanência e <b>alertas por setor</b>.</li>
+        <li>Fila de solicitações de leito (origem → destino, tempo de espera).</li>
+        <li>Metas das especialidades e visão de gestão consolidada.</li>
+      </ul>
+    </div>
+    <div class="card accent">
+      <h3>🔐 Acesso, Segurança e Auditoria <span class="tag ok">Funcionando</span></h3>
+      <ul class="small">
+        <li>Login pelo <b>Supabase Auth</b>; permissões por papel (perfil).</li>
+        <li>Banco protegido por <b>RLS</b> (segurança por linha) em todas as tabelas.</li>
+        <li>Auditoria das ações; registros clínicos <b>append-only</b> (não editáveis).</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 style="margin-top:22px"><span class="n">04</span>Segurança e LGPD</h2>
+  <table>
+    <tr><th>Princípio</th><th>Como é aplicado</th></tr>
+    <tr><td>Minimização de dados</td><td>Telas de saúde usam <b>iniciais + nº de prontuário</b>, não nome completo.</td></tr>
+    <tr><td>Controle de acesso</td><td>Autenticação obrigatória + papéis (adm_master, adm_silver, visualizador…). RLS por papel no banco.</td></tr>
+    <tr><td>Rastreabilidade</td><td>Auditoria de ações sensíveis (quem fez, o quê, quando).</td></tr>
+    <tr><td>Integridade clínica</td><td>Evoluções, prescrições, kardex e intervenções são imutáveis (sem edição/exclusão).</td></tr>
+    <tr><td>Isolamento por cliente</td><td>Cada hospital tem banco próprio — dados nunca se misturam entre instâncias.</td></tr>
+    <tr><td>Processamento local</td><td>Assistentes e resumos rodam no navegador; dados não são enviados a terceiros.</td></tr>
+  </table>
+
+  <h3>Continuidade e recuperação</h3>
+  <ul>
+    <li><b>Pontos de restauração</b> (checkpoints): 27 marcos que permitem voltar o código a um estado seguro.</li>
+    <li><b>Backups de dados</b> em <span class="mono">backups/</span> (exportações do banco).</li>
+    <li>Código versionado no GitHub; publicação com rollback automático em caso de falha de build.</li>
+  </ul>
+
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>04 · Segurança e LGPD</span></div>
+</section>
+
+<!-- ══════════ 5. MODELO DE DADOS ══════════ -->
+<section class="page">
+  <h2><span class="n">05</span>Modelo de dados (28 tabelas)</h2>
+  <p class="small muted">Agrupadas por módulo. Todas com segurança por linha (RLS) ativa.</p>
+  <div class="grid2">
+    <div class="card"><h3>Acesso & base</h3><ul class="small mono">
+      <li>profiles</li><li>auditoria</li><li>atendimentos</li><li>cid_referencia</li><li>setores</li></ul></div>
+    <div class="card"><h3>Pronto-Socorro</h3><ul class="small mono">
+      <li>ps_atendimentos</li><li>ps_sinais</li><li>ps_registros</li><li>ps_prescricao_itens</li></ul></div>
+    <div class="card"><h3>Giro de Leitos</h3><ul class="small mono">
+      <li>leitos</li><li>leitos_saidas</li><li>leitos_turnover</li><li>solicitacoes</li></ul></div>
+    <div class="card"><h3>SCIH</h3><ul class="small mono">
+      <li>scih_casos</li><li>scih_germes</li><li>scih_indicadores</li></ul></div>
+    <div class="card"><h3>Bloco Cirúrgico</h3><ul class="small mono">
+      <li>cc_salas</li><li>cc_cirurgias</li></ul></div>
+    <div class="card"><h3>Paciente 360</h3><ul class="small mono">
+      <li>pacientes</li><li>pep_evolucoes</li></ul></div>
+    <div class="card" style="grid-column:1/3"><h3>Farmácia</h3><ul class="small mono" style="columns:3">
+      <li>farm_medicamentos</li><li>farm_lotes</li><li>farm_movimentos</li><li>farm_interacoes</li><li>farm_incompat_y</li><li>farm_preparo</li><li>farm_nao_padronizados</li><li>farm_intervencoes</li></ul></div>
+  </div>
+
+  <h3>Migrações (ordem para recriar um banco novo)</h3>
+  <p class="small mono">schema.sql → farmacia-faseA → seed → faseB → clinica-fase1/2/3 → preparo → custos → nao-padronizados → intervencoes → leitos-kanban-metas → leitos-saida-setor</p>
+
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>05 · Modelo de dados</span></div>
+</section>
+
+<!-- ══════════ 6. ESTRUTURA + ROADMAP ══════════ -->
+<section class="page">
+  <h2><span class="n">06</span>Estrutura do projeto</h2>
+  <table>
+    <tr><th>Local</th><th>Conteúdo</th></tr>
+    <tr><td class="mono">/ (raiz)</td><td>Configuração: package.json, vite.config.js, vercel.json, index.html, .env.example</td></tr>
+    <tr><td class="mono">/src</td><td>Aplicação: <b>App.jsx</b> (código do sistema) e main.jsx (entrada)</td></tr>
+    <tr><td class="mono">/supabase</td><td>schema.sql + 12 migrações + função de resumo (Edge Function)</td></tr>
+    <tr><td class="mono">/docs</td><td>HANDOFF.md (passagem) e esta documentação</td></tr>
+    <tr><td class="mono">/backups</td><td>Exportações de dados do banco (JSON)</td></tr>
+    <tr><td class="mono">CHECKPOINT.md</td><td>Registro dos pontos de restauração e do que cada um cobre</td></tr>
+    <tr><td class="mono">README / ONBOARDING</td><td>Guias de publicação e de novo hospital</td></tr>
+  </table>
+  <p class="small muted">Observação técnica: hoje a aplicação vive em um único arquivo grande (<span class="mono">App.jsx</span>). Funciona e publica bem; uma evolução futura de organização é dividi-lo em módulos por área (leitos, farmácia, PS…) para facilitar a manutenção — sem mudança para o usuário final.</p>
+
+  <h2 style="margin-top:22px"><span class="n">07</span>Roadmap — o que temos de projeto</h2>
+  <table>
+    <tr><th>Frente</th><th>Descrição</th><th>Situação</th></tr>
+    <tr><td>Painel do PS no Monitoramento</td><td>Trazer o pronto-socorro para a Visão Geral da gestão.</td><td><span class="tag plan">Planejado</span></td></tr>
+    <tr><td>Permanência/giro por setor (histórico)</td><td>Aprofundar a apuração e a métrica "altas antes das 10h".</td><td><span class="tag plan">Em evolução</span></td></tr>
+    <tr><td>Faturamento (AIH/SUS)</td><td>Módulo de faturamento — maior esforço, novas tabelas.</td><td><span class="tag plan">Planejado</span></td></tr>
+    <tr><td>Modo autodidático</td><td>Ajuda/onboarding contextual dentro do sistema.</td><td><span class="tag plan">Planejado</span></td></tr>
+    <tr><td>Alinhar Monitoramento aos status novos</td><td>Considerar manutenção/bloqueado na ocupação global.</td><td><span class="tag plan">Planejado</span></td></tr>
+  </table>
+
+  <div style="margin-top:26px;border-top:1px solid var(--line);padding-top:12px" class="small muted">
+    <b>Valentrax Healthcare Operations</b> — Documento gerado em 20/07/2026 · Instância HNSN · Ponto do projeto: checkpoint-v27.<br/>
+    Documento interno de referência. Reflete o estado do sistema publicado em <span class="mono">medflow-hnsn.vercel.app</span> nesta data.
+  </div>
+
+  <div class="foot"><span>Valentrax Healthcare Operations</span><span>06–07 · Estrutura e roadmap</span></div>
+</section>
+
+</body>
+</html>
