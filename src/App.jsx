@@ -7062,6 +7062,11 @@ function LeitosBIView({ leitos, saidas, turnover, operacionais, setores = [] }) 
     serie.push({ name: MONTHS[m], Saídas: ss.length, Permanência: pv != null ? Number(pv.toFixed(1)) : 0 });
   }
 
+  // Altas antes das 10h (usa a hora em que o leito vagou = disp_em)
+  const altasComHora = sMes.filter(s => (s.desfecho || "alta") === "alta" && s.disp_em);
+  const altas10 = altasComHora.filter(s => new Date(s.disp_em).getHours() < 10).length;
+  const pctAltas10 = altasComHora.length ? Math.round((altas10 / altasComHora.length) * 100) : null;
+
   // Snapshot atual por setor
   const ocupadosAg = leitos.filter(l => l.status === "ocupado").length;
   const ocupAtual = operacionais > 0 ? Math.round((ocupadosAg / operacionais) * 100) : 0;
@@ -7071,6 +7076,14 @@ function LeitosBIView({ leitos, saidas, turnover, operacionais, setores = [] }) 
     const oc = ls.filter(x => x.status === "ocupado").length;
     return { name: nome, Ocupação: op ? Math.round((oc / op) * 100) : 0, leitos: ls.length };
   }).sort((a, b) => b.Ocupação - a.Ocupação);
+  // Permanência e giro POR SETOR no mês (usa o setor gravado na saída)
+  const opDoSetor = nome => leitos.filter(l => (l.setor || "") === nome && !LEITO_FORA_OPERACAO.includes(l.status)).length;
+  const statSetor = nome => {
+    const ss = sMes.filter(s => (s.setor || "") === nome);
+    const perm = avg(ss.map(permDe).filter(v => v != null));
+    const op = opDoSetor(nome);
+    return { saidas: ss.length, perm, giro: op > 0 ? ss.length / op : null };
+  };
 
   const anos = [now.getFullYear(), now.getFullYear() - 1];
   const sel = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontSize: 13, outline: "none", cursor: "pointer" };
@@ -7115,6 +7128,7 @@ function LeitosBIView({ leitos, saidas, turnover, operacionais, setores = [] }) 
         <KPI label="Giro de leitos" valor={giro != null ? giro.toFixed(2) : "—"} cor="#2dd4bf" delta={<Delta cur={giro} prev={giroPrev} />} />
         <KPI label="Ocupação atual" valor={ocupAtual + "%"} cor={ocupAtual >= 90 ? "#f43f5e" : "#818cf8"} sub={`${ocupadosAg}/${operacionais} operacionais`} />
         <KPI label="Altas / Óbitos / Transf." valor={`${altas}/${obitos}/${transf}`} cor="#34d399" sub="desfechos do mês" />
+        <KPI label="Altas antes das 10h" valor={pctAltas10 != null ? pctAltas10 + "%" : "—"} cor="#0d9488" sub={altasComHora.length ? `${altas10}/${altasComHora.length} altas` : "sem hora registrada"} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14, marginBottom: "1.5rem" }}>
@@ -7181,28 +7195,37 @@ function LeitosBIView({ leitos, saidas, turnover, operacionais, setores = [] }) 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", marginTop: 14 }}>
             <div style={secLbl}>Metas por setor</div>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
-                <thead><tr>{["Setor", "Ocupação atual", "Meta ocup.", "Status", "Meta perm.", "Meta giro"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 640 }}>
+                <thead><tr>{["Setor", "Ocupação (atual/meta)", "Permanência (mês/meta)", "Giro (mês/meta)"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {comMeta.sort((a, b) => ordSetor(a.nome) - ordSetor(b.nome)).map(s => {
                     const oc = ocDe(s.nome);
-                    const meta = s.meta_ocupacao;
-                    const ok = oc == null || meta == null ? null : oc <= meta;
+                    const st = statSetor(s.nome);
+                    // farol: ocupação e permanência (menor é melhor) ok se <= meta; giro (maior é melhor) ok se >= meta
+                    const farol = (val, meta, inverter) => {
+                      if (val == null || meta == null) return null;
+                      return inverter ? val <= meta : val >= meta;
+                    };
+                    const Cel = ({ val, meta, unidade, ok }) => (
+                      <td style={{ padding: "7px 10px" }}>
+                        <span style={{ fontFamily: "JetBrains Mono, monospace", color: ok == null ? "var(--text-2)" : ok ? "#34d399" : "#f43f5e", fontWeight: 700 }}>{val != null ? val + unidade : "—"}</span>
+                        <span style={{ color: "var(--text-muted)", fontSize: 11 }}> / {meta != null ? meta + unidade : "—"}</span>
+                        {ok != null && <span style={{ marginLeft: 6, fontSize: 10 }}>{ok ? "🟢" : "🔴"}</span>}
+                      </td>
+                    );
                     return (
                       <tr key={s.nome} style={{ borderBottom: "1px solid var(--border)" }}>
                         <td style={{ padding: "7px 10px", fontWeight: 600 }}>{s.nome}</td>
-                        <td style={{ padding: "7px 10px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{oc != null ? oc + "%" : "—"}</td>
-                        <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{meta != null ? meta + "%" : "—"}</td>
-                        <td style={{ padding: "7px 10px" }}>{ok == null ? <span style={{ color: "var(--text-muted)" }}>—</span> : <span style={{ fontSize: 10.5, fontWeight: 800, color: ok ? "#34d399" : "#f43f5e", background: (ok ? "#34d399" : "#f43f5e") + "1a", border: `1px solid ${ok ? "#34d399" : "#f43f5e"}55`, borderRadius: 99, padding: "1px 9px" }}>{ok ? "dentro da meta" : "acima da meta"}</span>}</td>
-                        <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{s.meta_permanencia != null ? s.meta_permanencia + "d" : "—"}</td>
-                        <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{s.meta_giro != null ? s.meta_giro : "—"}</td>
+                        <Cel val={oc} meta={s.meta_ocupacao} unidade="%" ok={farol(oc, s.meta_ocupacao, true)} />
+                        <Cel val={st.perm != null ? Number(st.perm.toFixed(1)) : null} meta={s.meta_permanencia} unidade="d" ok={farol(st.perm, s.meta_permanencia, true)} />
+                        <Cel val={st.giro != null ? Number(st.giro.toFixed(2)) : null} meta={s.meta_giro} unidade="" ok={farol(st.giro, s.meta_giro, false)} />
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Farol pela ocupação atual (snapshot) × meta. Metas de permanência e giro são alvos definidos pela equipe (Mapa de leitos → Setores) — a apuração por setor entra quando o histórico registrar o setor de cada alta.</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Ocupação = snapshot atual. Permanência e giro apurados das saídas de {MONTHS[mes]} com setor registrado (🟢 dentro da meta · 🔴 fora). Saídas antigas sem setor não entram no cálculo por setor.</div>
           </div>
         );
       })()}
@@ -7556,7 +7579,7 @@ function LeitosPage({ currentUser, canEdit }) {
     await registrarSaidaRemote({
       leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
       motivo: leito.motivo, data_internacao: leito.data_internacao, data_alta: todayStr(),
-      disp_em: now, dias_permanencia: dias, desfecho,
+      disp_em: now, dias_permanencia: dias, desfecho, setor: leito.setor || null,
     }, currentUser);
     await salvarLeito({
       identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
@@ -7585,7 +7608,7 @@ function LeitosPage({ currentUser, canEdit }) {
       leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
       motivo: destino.trim() ? "Transf.: " + destino.trim() : (leito.motivo || null),
       data_internacao: leito.data_internacao, data_alta: todayStr(),
-      disp_em: now, dias_permanencia: dias, desfecho: "transferencia",
+      disp_em: now, dias_permanencia: dias, desfecho: "transferencia", setor: leito.setor || null,
     }, currentUser);
     await salvarLeito({
       identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
