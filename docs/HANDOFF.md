@@ -1,4 +1,4 @@
-# 🤝 Handoff — Valentrax (progresso até checkpoint-v27)
+# 🤝 Handoff — Valentrax (progresso até checkpoint-v28)
 
 Documento de passagem para retomar o trabalho num **novo chat**. Resumo de onde
 estamos, como continuar e o que falta. Detalhes completos em
@@ -8,7 +8,7 @@ estamos, como continuar e o que falta. Detalhes completos em
 - **Marca:** Valentrax Healthcare Operations (repo/URLs continuam `medflow-*`).
 - **App:** React + Vite, arquivo único `src/App.jsx` (JS/JSX, sem TypeScript).
 - **Back-end:** Supabase (Auth + Postgres + REST). Deploy Vercel a partir do `git push` em `main`.
-- **Ponto seguro atual:** **`checkpoint-v27`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
+- **Ponto seguro atual:** **`checkpoint-v28`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
 - **Banco DEMO congelado** desde 2026-07-16: trabalhar só no **HNSN**.
 
 ## Ciclo de trabalho (importante)
@@ -27,6 +27,14 @@ estamos, como continuar e o que falta. Detalhes completos em
   a chegada é confirmada no Mapa de leitos ("✓ Chegou — internar").
 - **Bloco Cirúrgico** (agenda, checklist OMS, indicadores).
 - **SCIH** (A/B/C), **Paciente 360**, **Centro de Monitoramento**.
+- **👤 Usuários (gestão pelo ADM Master):** na aba **Usuários**, o `adm_master` cria
+  usuário, edita o perfil (papel) inline, redefine a senha de qualquer um e
+  ativa/desativa o acesso (ban reversível). Via **Edge Function `admin-usuarios`**
+  (service_role no servidor, valida o JWT e o papel adm_master; nenhuma chave admin
+  no navegador). **Sem migração de banco.** Deploy: `supabase functions deploy
+  admin-usuarios` — ou dois cliques em `deploy-funcao.bat` (após `npx.cmd --yes
+  supabase login` uma vez). ⚠️ Se o front for ao ar antes do deploy da função, a tela
+  só mostra um aviso — nada quebra.
 - **🛏️ GIRO DE LEITOS — reformulado (v26), sem migração de banco:** barra lateral própria
   (Dashboard · Mapa de leitos · Fila de internação · Pacientes · Altas · Transferências
   ext. · Internações · Relatórios & BI · Alertas inteligentes · IA Assistente).
@@ -61,9 +69,13 @@ Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
 `migracao-farmacia-clinica-fase2.sql` → `migracao-farmacia-clinica-fase3.sql` →
 `migracao-farmacia-preparo.sql` → `migracao-farmacia-custos.sql` →
 `migracao-farmacia-nao-padronizados.sql` → `migracao-farmacia-intervencoes.sql` →
-`migracao-leitos-kanban-metas.sql` (Kanban de alta + metas por setor + motivo da espera).
+`migracao-leitos-kanban-metas.sql` (Kanban de alta + metas por setor + motivo da espera) →
+`migracao-leitos-saida-setor.sql` (setor na saída → permanência/giro por setor).
 (O `schema.sql` já contém tudo consolidado para uma instalação nova, EXCETO as colunas
-de `migracao-leitos-kanban-metas.sql` — rodar essa migração à parte por enquanto.)
+de `migracao-leitos-kanban-metas.sql` e `migracao-leitos-saida-setor.sql` — rodar essas
+duas migrações à parte por enquanto.)
+Para conferir o estado do banco a qualquer momento: rode `supabase/auditoria-banco.sql`
+(somente leitura) no SQL Editor — ele relata tabelas, colunas, RLS, funções e trigger.
 
 ## Decisões que valem manter
 - **Custo zero:** priorizar soluções locais/gratuitas; IA paga só como opcional com custo
@@ -74,9 +86,6 @@ de `migracao-leitos-kanban-metas.sql` — rodar essa migração à parte por enq
   append-only / não editáveis).
 
 ## Próximas frentes (mapa do HIS, ainda não feitas)
-- **Giro de Leitos — evoluções possíveis:** apuração de permanência/giro **por setor**
-  (hoje `leitos_saidas` não guarda o setor da alta — exige coluna nova) para dar farol
-  real às metas de permanência/giro; métrica "altas antes das 10h" (usar hora de `disp_em`).
 - **Painel do PS no Monitoramento** (Visão Geral) — menor esforço, sem tabela nova.
 - **Faturamento (AIH/SUS)** — módulo grande.
 - **Modo autodidático** (ajuda/onboarding contextual).
@@ -88,6 +97,6 @@ de `migracao-leitos-kanban-metas.sql` — rodar essa migração à parte por enq
 ## Como restaurar este ponto
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v27
+git reset --hard checkpoint-v28
 git push --force-with-lease origin main
 ```

@@ -31,3 +31,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Supabase CLI (arquivos locais/temporários)
+supabase/.temp/
+supabase/.branches/

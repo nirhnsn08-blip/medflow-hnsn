@@ -1,10 +1,10 @@
-# 📍 Ponto de restauração — checkpoint-v27
+# 📍 Ponto de restauração — checkpoint-v28
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v27` (anteriores: `checkpoint-v26` … `checkpoint-v1`)
-- **Data:** 2026-07-19
+- **Tag Git mais recente:** `checkpoint-v28` (anteriores: `checkpoint-v27` … `checkpoint-v1`)
+- **Data:** 2026-07-20
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
   O site demo recebe o código novo, mas sem as migrações de banco — salvar nas
@@ -210,13 +210,27 @@ dá pra voltar exatamente para este estado.
   RPA com cronômetro, cancelamento com motivo padronizado e indicadores (ocupação
   de salas, taxa/motivos de cancelamento, produtividade por cirurgião, adesão ao
   checklist). Testado e validado.
+- **🛏️ Giro de Leitos — permanência/giro POR SETOR + altas antes das 10h:** a saída
+  do leito passa a gravar o **setor** (`leitos_saidas.setor`); o BI de Metas por setor
+  ganhou **farol com dados reais** (ocupação atual × meta, permanência e giro do mês
+  por setor) e um KPI novo **"Altas antes das 10h"** (hora em que o leito vagou).
+  Migração `supabase/migracao-leitos-saida-setor.sql` (rodada no HNSN em 2026-07-20).
+- **👤 Gestão de usuários pelo ADM Master (na própria conta):** a aba **Usuários**
+  agora permite ao `adm_master` **criar** usuário (nome, login, perfil, senha),
+  **editar o perfil** (papel) inline, **redefinir a senha** de qualquer um e
+  **ativar/desativar** o acesso (bloqueio reversível — não apaga histórico). Feito
+  com segurança via **Edge Function `admin-usuarios`** (roda no servidor com a
+  service_role; valida o JWT e confere que o chamador é `adm_master`). Nenhuma chave
+  de administrador vai para o navegador. Usuários não-master seguem com lista
+  somente-leitura + trocar a própria senha. **Sem migração de banco.** Requer o
+  deploy da função: `supabase functions deploy admin-usuarios` (`deploy-funcao.bat`).
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v27
+git reset --hard checkpoint-v28
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -225,7 +239,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v27
+git checkout -b recuperacao checkpoint-v28
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -241,6 +255,8 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `86e7ed9` 👤 Gestão de usuários pelo ADM Master (Edge Function admin-usuarios)
+- `c9d325b` 🛏️ Giro de Leitos — permanência/giro por setor + altas antes das 10h (migração leitos-saida-setor)
 - `38982b3` 🛏️ Kanban de alta + Metas por setor + Motivo da espera (migração leitos-kanban-metas)
 - `a60428d` 🛏️ Modo TV (painel de parede) + refresh automático 60s
 - `cb53386` 🛏️ Fase 5 — previsão de vagas 24/48h, média real por CID, reserva automática do PS, alerta leito livre com fila
