@@ -1548,6 +1548,27 @@ const DESFECHO_LEITO = {
   obito:         { label: "Óbito",                cor: "#f43f5e" },
   transferencia: { label: "Transferência ext.",   cor: "#38bdf8" },
 };
+// Kanban de alta (alta segura): itens que podem travar a alta do paciente
+const ALTA_ITENS = [
+  { key: "clinica",    label: "Liberação clínica" },
+  { key: "exame",      label: "Exames/resultados" },
+  { key: "receita",    label: "Receita de alta" },
+  { key: "sumario",    label: "Sumário de alta" },
+  { key: "familia",    label: "Família avisada" },
+  { key: "transporte", label: "Transporte" },
+  { key: "social",     label: "Serviço social" },
+];
+const ALTA_PERIODOS = { manha: "Manhã", tarde: "Tarde", noite: "Noite" };
+// Motivo pelo qual o paciente aguarda leito (categoria de gargalo)
+const MOTIVO_ESPERA = {
+  sem_vaga:              { label: "Sem vaga no setor",     cor: "#f43f5e" },
+  aguardando_limpeza:    { label: "Aguardando limpeza",    cor: "#fbbf24" },
+  aguardando_exame:      { label: "Aguardando exame",      cor: "#3b82f6" },
+  aguardando_familia:    { label: "Aguardando família",    cor: "#818cf8" },
+  aguardando_transporte: { label: "Aguardando transporte", cor: "#0d9488" },
+  regulacao:             { label: "Regulação/vaga zero",   cor: "#d97706" },
+  outro:                 { label: "Outro",                 cor: "#8d99ab" },
+};
 // Ordem corporativa fixa dos setores no mapa de leitos (fora dela → alfabético; "Sem setor" por último)
 const LEITOS_SETOR_ORDEM = ["emergencia", "avc", "posto 1", "posto 2", "posto 3", "psiquiatria", "uti"];
 const ordSetor = nome => { const n = normTxt(nome); const i = LEITOS_SETOR_ORDEM.findIndex(o => n === o || n.startsWith(o)); return i === -1 ? 500 : i; };
@@ -1557,6 +1578,7 @@ const LEITOS_NAV = [
   { key: "mapa",           label: "Mapa de leitos",       icon: "bed" },
   { key: "fila",           label: "Fila de internação",   icon: "list" },
   { key: "pacientes",      label: "Pacientes",            icon: "users" },
+  { key: "kanban",         label: "Alta segura",          icon: "clipboard" },
   { key: "altas",          label: "Altas",                icon: "record" },
   { key: "transferencias", label: "Transferências ext.",  icon: "upload" },
   { key: "internacoes",    label: "Internações",          icon: "clipboard" },
@@ -2392,17 +2414,20 @@ function CidRefModal({ refs, onClose, onSave, onDelete }) {
 
 // Gerenciar setores (nome + limiares de alerta por setor)
 function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
-  const [f, setF] = useState({ nome: "", alerta_amarelo: 90, alerta_vermelho: 100 });
+  const vazio = { nome: "", alerta_amarelo: 90, alerta_vermelho: 100, meta_ocupacao: "", meta_permanencia: "", meta_giro: "" };
+  const [f, setF] = useState(vazio);
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const hl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  const numOrNull = v => v === "" || v == null ? null : Number(v);
   async function salvar() {
     if (!f.nome.trim()) { alert("Informe o nome do setor."); return; }
     setBusy(true);
-    await onSave({ nome: f.nome.trim(), alerta_amarelo: Number(f.alerta_amarelo) || 90, alerta_vermelho: Number(f.alerta_vermelho) || 100, ordem: setores.length });
+    const jah = setores.find(s => s.nome === f.nome.trim());
+    await onSave({ nome: f.nome.trim(), alerta_amarelo: Number(f.alerta_amarelo) || 90, alerta_vermelho: Number(f.alerta_vermelho) || 100, meta_ocupacao: numOrNull(f.meta_ocupacao), meta_permanencia: numOrNull(f.meta_permanencia), meta_giro: numOrNull(f.meta_giro), ordem: jah ? jah.ordem : setores.length });
     setBusy(false);
-    setF({ nome: "", alerta_amarelo: 90, alerta_vermelho: 100 });
+    setF(vazio);
   }
   const ordenados = [...setores].sort((a, b) => (a.ordem || 0) - (b.ordem || 0) || a.nome.localeCompare(b.nome));
   return (
@@ -2410,25 +2435,31 @@ function SetoresModal({ setores, leitos, onClose, onSave, onDelete }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>Setores e limiares de alerta</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: 2 }}>Amarelo = atenção; Vermelho = restringir. Ocupação = leitos ocupados ÷ operacionais. A fila de espera aparece como um selo separado no monitoramento, sem contar na ocupação.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 90px", gap: 8, alignItems: "end", marginBottom: 8 }}>
           <div><label style={hl}>Setor</label><input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: UTI" style={inp} /></div>
           <div><label style={hl}>Amarelo %</label><input type="number" value={f.alerta_amarelo} onChange={e => set("alerta_amarelo", e.target.value)} style={inp} /></div>
           <div><label style={hl}>Vermelho %</label><input type="number" value={f.alerta_vermelho} onChange={e => set("alerta_vermelho", e.target.value)} style={inp} /></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 8, alignItems: "end", marginBottom: 14 }}>
+          <div><label style={hl}>Meta ocupação %</label><input type="number" value={f.meta_ocupacao} onChange={e => set("meta_ocupacao", e.target.value)} placeholder="opcional" style={inp} /></div>
+          <div><label style={hl}>Meta permanência (d)</label><input type="number" step="0.1" value={f.meta_permanencia} onChange={e => set("meta_permanencia", e.target.value)} placeholder="opcional" style={inp} /></div>
+          <div><label style={hl}>Meta giro/mês</label><input type="number" step="0.1" value={f.meta_giro} onChange={e => set("meta_giro", e.target.value)} placeholder="opcional" style={inp} /></div>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13, height: 36 }}>{busy ? "…" : "+ Salvar"}</button>
         </div>
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr>{["Setor", "Amarelo", "Vermelho", "Leitos", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Setor", "Amar.", "Verm.", "Metas (oc/perm/giro)", "Leitos", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
             <tbody>
-              {ordenados.length === 0 && <tr><td colSpan={5} style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)" }}>Nenhum setor cadastrado.</td></tr>}
+              {ordenados.length === 0 && <tr><td colSpan={6} style={{ padding: "18px", textAlign: "center", color: "var(--text-muted)" }}>Nenhum setor cadastrado.</td></tr>}
               {ordenados.map(s => (
                 <tr key={s.nome}>
                   <td style={{ padding: "7px 12px", fontWeight: 700 }}>{s.nome}</td>
                   <td style={{ padding: "7px 12px", color: "#fbbf24" }}>{s.alerta_amarelo}%</td>
                   <td style={{ padding: "7px 12px", color: "#f43f5e" }}>{s.alerta_vermelho}%</td>
+                  <td style={{ padding: "7px 12px", color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{s.meta_ocupacao != null ? s.meta_ocupacao + "%" : "—"} · {s.meta_permanencia != null ? s.meta_permanencia + "d" : "—"} · {s.meta_giro != null ? s.meta_giro : "—"}</td>
                   <td style={{ padding: "7px 12px", color: "var(--text-3)" }}>{leitos.filter(l => (l.setor || "") === s.nome).length}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
-                    <button onClick={() => setF({ nome: s.nome, alerta_amarelo: s.alerta_amarelo, alerta_vermelho: s.alerta_vermelho })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>Editar</button>
+                    <button onClick={() => setF({ nome: s.nome, alerta_amarelo: s.alerta_amarelo, alerta_vermelho: s.alerta_vermelho, meta_ocupacao: s.meta_ocupacao ?? "", meta_permanencia: s.meta_permanencia ?? "", meta_giro: s.meta_giro ?? "" })} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 12, marginRight: 6 }}>Editar</button>
                     <button onClick={() => { if (confirm(`Remover o setor ${s.nome}? (os leitos ficam sem setor)`)) onDelete(s.nome); }} style={{ background: "transparent", border: "1px solid #3d0f18", borderRadius: 5, padding: "3px 8px", color: "#fb7185", cursor: "pointer", fontSize: 12 }}>Excluir</button>
                   </td>
                 </tr>
@@ -6996,7 +7027,7 @@ function IndicadoresScih({ currentUser, canEdit }) {
 }
 
 // Relatórios & BI do Giro de Leitos (Fase 3) — indicadores mensais, tendências e relatório imprimível
-function LeitosBIView({ leitos, saidas, turnover, operacionais }) {
+function LeitosBIView({ leitos, saidas, turnover, operacionais, setores = [] }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
@@ -7141,6 +7172,40 @@ function LeitosBIView({ leitos, saidas, turnover, operacionais }) {
           <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>{tMes.length} ciclo(s) concluído(s) no mês.</div>
         </div>
       </div>
+
+      {(() => {
+        const comMeta = setores.filter(s => s.meta_ocupacao != null || s.meta_permanencia != null || s.meta_giro != null);
+        if (!comMeta.length) return null;
+        const ocDe = nome => { const d = setorData.find(x => x.name === nome); return d ? d.Ocupação : null; };
+        return (
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", marginTop: 14 }}>
+            <div style={secLbl}>Metas por setor</div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
+                <thead><tr>{["Setor", "Ocupação atual", "Meta ocup.", "Status", "Meta perm.", "Meta giro"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {comMeta.sort((a, b) => ordSetor(a.nome) - ordSetor(b.nome)).map(s => {
+                    const oc = ocDe(s.nome);
+                    const meta = s.meta_ocupacao;
+                    const ok = oc == null || meta == null ? null : oc <= meta;
+                    return (
+                      <tr key={s.nome} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td style={{ padding: "7px 10px", fontWeight: 600 }}>{s.nome}</td>
+                        <td style={{ padding: "7px 10px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{oc != null ? oc + "%" : "—"}</td>
+                        <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{meta != null ? meta + "%" : "—"}</td>
+                        <td style={{ padding: "7px 10px" }}>{ok == null ? <span style={{ color: "var(--text-muted)" }}>—</span> : <span style={{ fontSize: 10.5, fontWeight: 800, color: ok ? "#34d399" : "#f43f5e", background: (ok ? "#34d399" : "#f43f5e") + "1a", border: `1px solid ${ok ? "#34d399" : "#f43f5e"}55`, borderRadius: 99, padding: "1px 9px" }}>{ok ? "dentro da meta" : "acima da meta"}</span>}</td>
+                        <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{s.meta_permanencia != null ? s.meta_permanencia + "d" : "—"}</td>
+                        <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{s.meta_giro != null ? s.meta_giro : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Farol pela ocupação atual (snapshot) × meta. Metas de permanência e giro são alvos definidos pela equipe (Mapa de leitos → Setores) — a apuração por setor entra quando o histórico registrar o setor de cada alta.</div>
+          </div>
+        );
+      })()}
 
       {preview && (
         <div id="leitos-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12, marginTop: 18 }}>
@@ -7476,6 +7541,7 @@ function LeitosPage({ currentUser, canEdit }) {
       data_internacao: dados.data_internacao, dias_previstos: dados.dias_previstos,
       entrada_em: editando ? (leito.entrada_em || now) : now,
       solic_em: null, disp_em: null, pronto_em: null,
+      ...(editando ? {} : { alta_pendencias: null, alta_periodo: null }),
     });
     addAuditLog(currentUser, editando ? "editar internação" : "internar", leito.identificacao, { cid: dados.cid });
     setModal(null);
@@ -7495,10 +7561,20 @@ function LeitosPage({ currentUser, canEdit }) {
     await salvarLeito({
       identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
       iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null,
+      alta_pendencias: null, alta_periodo: null,
     });
     addAuditLog(currentUser, obito ? "óbito no leito" : "dar alta", leito.identificacao, {});
   }
   const darAlta = leito => encerrarLeito(leito, "alta");
+  // Kanban de alta segura: marca/desmarca uma pendência e define o turno previsto
+  async function toggleAltaItem(leito, key) {
+    let m = {}; try { m = JSON.parse(leito.alta_pendencias || "{}"); } catch {}
+    m[key] = !m[key];
+    await salvarLeito({ identificacao: leito.identificacao, alta_pendencias: JSON.stringify(m) });
+  }
+  async function setAltaPeriodo(leito, periodo) {
+    await salvarLeito({ identificacao: leito.identificacao, alta_periodo: periodo || null });
+  }
   async function transferirExterna(leito) {
     const destino = prompt(`Transferência externa do leito ${leito.identificacao} — destino (Gerint / hospital):`, "");
     if (destino === null) return;
@@ -7514,6 +7590,7 @@ function LeitosPage({ currentUser, canEdit }) {
     await salvarLeito({
       identificacao: leito.identificacao, status: "higienizacao", disp_em: now, pronto_em: null, solic_em: null, entrada_em: null,
       iniciais: null, prontuario: null, motivo: null, cid: null, data_internacao: null, dias_previstos: null, interdicao_motivo: null,
+      alta_pendencias: null, alta_periodo: null,
     });
     addAuditLog(currentUser, "transferência externa", `${leito.identificacao} → ${destino.trim() || "?"}`, {});
   }
@@ -7619,6 +7696,12 @@ function LeitosPage({ currentUser, canEdit }) {
     setSolic(prev => prev.filter(x => x.id !== s.id));
     addAuditLog(currentUser, "cancelar solicitação de leito", s.iniciais || "", {});
   }
+  async function setMotivoEspera(s, motivo) {
+    setSolic(prev => prev.map(x => x.id === s.id ? { ...x, motivo_espera: motivo || null } : x));
+    await updateSolicitacaoRemote(s.id, { motivo_espera: motivo || null });
+  }
+  // Gargalos da fila (contagem por motivo de espera)
+  const gargalos = Object.entries(MOTIVO_ESPERA).map(([k, v]) => ({ k, v, n: solic.filter(s => s.motivo_espera === k).length })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
 
   const Card = ({ label, valor, cor, sub: subTxt }) => (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px" }}>
@@ -8062,16 +8145,31 @@ function LeitosPage({ currentUser, canEdit }) {
 
         {/* ── FILA DE INTERNAÇÃO ── */}
         {sub === "fila" && (
-          filaOrd.length === 0 ? <Vazio txt="Nenhuma solicitação de leito aguardando. A fila é alimentada pelo desfecho 'Internação' no Pronto-Socorro e pelo Centro de Monitoramento." /> : (
+          filaOrd.length === 0 ? <Vazio txt="Nenhuma solicitação de leito aguardando. A fila é alimentada pelo desfecho 'Internação' no Pronto-Socorro e pelo Centro de Monitoramento." /> : (<>
+            {gargalos.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>Gargalos:</span>
+                {gargalos.map(g => <span key={g.k} style={{ fontSize: 11.5, fontWeight: 700, color: g.v.cor, background: g.v.cor + "18", border: `1px solid ${g.v.cor}44`, borderRadius: 99, padding: "2px 9px" }}>{g.v.label}: {g.n}</span>)}
+              </div>
+            )}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {filaOrd.map(s => {
                 const espera = diffMin(s.hora_pedido, nowISO());
                 const livres = s.setor_destino ? filaLivresPorSetor(s.setor_destino) : 0;
+                const mv = s.motivo_espera ? MOTIVO_ESPERA[s.motivo_espera] : null;
                 return (
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${espera > 240 ? "#f43f5e" : "#d97706"}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.iniciais || "—"}</div>
                       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{s.setor_origem || "—"} → <strong style={{ color: "var(--text-2)" }}>{s.setor_destino || "—"}</strong>{s.setor_destino ? ` · ${livres} livre(s) agora · ${prevHojeSetor(s.setor_destino)} vaga(s) prevista(s) hoje` : ""}</div>
+                      <div style={{ marginTop: 6 }}>
+                        {canEdit ? (
+                          <select value={s.motivo_espera || ""} onChange={e => setMotivoEspera(s, e.target.value)} title="Motivo da espera (gargalo)" style={{ background: "var(--input-bg)", border: `1px solid ${mv ? mv.cor + "66" : "var(--border)"}`, borderRadius: 5, padding: "2px 7px", color: mv ? mv.cor : "var(--text-muted)", fontSize: 11, fontFamily: "Inter, sans-serif", outline: "none", cursor: "pointer", fontWeight: mv ? 700 : 400 }}>
+                            <option value="">motivo da espera…</option>
+                            {Object.entries(MOTIVO_ESPERA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          </select>
+                        ) : mv && <span style={{ fontSize: 11, fontWeight: 700, color: mv.cor, background: mv.cor + "18", border: `1px solid ${mv.cor}44`, borderRadius: 99, padding: "1px 8px" }}>{mv.label}</span>}
+                      </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: espera > 240 ? "#f43f5e" : "#d97706" }}>{fmtDur(espera)}</div>
@@ -8082,7 +8180,7 @@ function LeitosPage({ currentUser, canEdit }) {
                 );
               })}
             </div>
-          )
+          </>)
         )}
 
         {/* ── PACIENTES (censo atual) ── */}
@@ -8108,6 +8206,73 @@ function LeitosPage({ currentUser, canEdit }) {
             </div>
           )}
         </>)}
+
+        {/* ── ALTA SEGURA (Kanban de alta) ── */}
+        {sub === "kanban" && (() => {
+          const total = ALTA_ITENS.length;
+          const withState = internados.map(l => {
+            let m = {}; try { m = JSON.parse(l.alta_pendencias || "{}"); } catch {}
+            const done = ALTA_ITENS.filter(i => m[i.key]).length;
+            return { l, m, done, col: done === 0 ? 0 : done === total ? 2 : 1 };
+          });
+          const cols = [
+            { key: 0, titulo: "Internado", cor: "#8d99ab", sub: "sem preparo de alta iniciado" },
+            { key: 1, titulo: "Preparando alta", cor: "#fbbf24", sub: "com pendências" },
+            { key: 2, titulo: "Pronto para alta", cor: "#34d399", sub: "checklist concluído" },
+          ];
+          return (
+            <>
+              <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por iniciais, prontuário ou CID…" style={{ ...inpBusca, marginBottom: 14 }} />
+              {internados.length === 0 ? <Vazio txt={bq ? "Nenhum paciente bate com a busca." : "Nenhum paciente internado no momento."} /> : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(240px, 1fr))", gap: 12, alignItems: "start", overflowX: "auto" }}>
+                  {cols.map(c => {
+                    const items = withState.filter(x => x.col === c.key);
+                    return (
+                      <div key={c.key} style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderTop: `3px solid ${c.cor}`, borderRadius: 10, padding: 10, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                          <span style={{ fontSize: 12.5, fontWeight: 800, color: c.cor, textTransform: "uppercase", letterSpacing: ".05em" }}>{c.titulo}</span>
+                          <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--text-muted)" }}>{items.length}</span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 10 }}>{c.sub}</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {items.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "12px 0" }}>—</div>}
+                          {items.map(({ l, m, done }) => (
+                            <div key={l.identificacao} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 9, padding: "9px 11px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700 }}>{l.iniciais || "—"}</span>
+                                <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>Leito {l.identificacao}</span>
+                              </div>
+                              <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 1 }}>{l.setor || "sem setor"}{l.cid ? ` · CID ${l.cid}` : ""}</div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                                {l.sinal && <span style={{ fontSize: 10, fontWeight: 700, color: l.sinal.cor, background: l.sinal.cor + "1a", border: `1px solid ${l.sinal.cor}44`, borderRadius: 99, padding: "1px 8px" }}>{l.sinal.texto}</span>}
+                                {canEdit ? (
+                                  <select value={l.alta_periodo || ""} onChange={e => setAltaPeriodo(l, e.target.value)} title="Turno previsto para a alta" style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "1px 5px", color: l.alta_periodo ? "var(--text-2)" : "var(--text-muted)", fontSize: 10.5, fontFamily: "Inter, sans-serif", outline: "none", cursor: "pointer" }}>
+                                    <option value="">turno…</option>
+                                    {Object.entries(ALTA_PERIODOS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                                  </select>
+                                ) : l.alta_periodo && <span style={{ fontSize: 10.5, color: "var(--text-3)" }}>{ALTA_PERIODOS[l.alta_periodo]}</span>}
+                              </div>
+                              <div style={{ height: 1, background: "var(--border)", margin: "8px 0" }} />
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {ALTA_ITENS.map(it => { const ok = !!m[it.key]; return (
+                                  <button key={it.key} onClick={() => canEdit && toggleAltaItem(l, it.key)} disabled={!canEdit} title={ok ? "Resolvido — clique para reabrir" : "Pendente — clique para marcar resolvido"} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ok ? "#34d39918" : "transparent", color: ok ? "#34d399" : "var(--text-muted)", border: `1px solid ${ok ? "#34d39955" : "var(--border)"}`, borderRadius: 99, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, cursor: canEdit ? "pointer" : "default" }}>
+                                    {ok ? "✓" : "○"} {it.label}
+                                  </button>
+                                ); })}
+                              </div>
+                              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>{done}/{total} resolvidos</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 14, lineHeight: 1.5 }}>Marque cada pendência conforme resolve. O paciente anda para a direita sozinho; ao concluir o checklist, entra em <strong>Pronto para alta</strong> — aí dê a alta no Mapa de leitos. O turno previsto ajuda a planejar a alta pela manhã.</div>
+            </>
+          );
+        })()}
 
         {/* ── ALTAS ── */}
         {sub === "altas" && (<>
@@ -8181,7 +8346,7 @@ function LeitosPage({ currentUser, canEdit }) {
         </>)}
 
         {/* ── RELATÓRIOS & BI (Fase 3) ── */}
-        {sub === "indicadores" && <LeitosBIView leitos={leitos} saidas={saidas} turnover={turnover} operacionais={operacionais} />}
+        {sub === "indicadores" && <LeitosBIView leitos={leitos} saidas={saidas} turnover={turnover} operacionais={operacionais} setores={setores} />}
 
         {/* ── ALERTAS INTELIGENTES + IA ASSISTENTE (Fase 4) ── */}
         {sub === "alertas" && <LeitosAlertasView leitos={leitos} solic={solic} />}
