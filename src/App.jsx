@@ -292,6 +292,24 @@ async function loadProfiles() {
   return Array.isArray(rows) ? rows : [];
 }
 
+// Administração de usuários (só adm_master). Chama a Edge Function protegida
+// que roda no servidor com a service_role — o navegador nunca vê a chave admin.
+// Ações: "list" | "create" | "update" | "reset_senha" | "set_ativo".
+async function adminUsuarios(action, payload = {}) {
+  if (!USE_SUPABASE) return { error: "banco não configurado" };
+  if (!AUTH_TOKEN) return { error: "sessão expirada — entre novamente" };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-usuarios`, {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${AUTH_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ action, ...payload }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: data.error || `erro ${res.status} (a Edge Function foi publicada?)` };
+    return data;
+  } catch { return { error: "sem conexão com o servidor" }; }
+}
+
 // ═══════════════════════════════════════════════════════════
 // ALERTAS AUTOMÁTICOS
 // ═══════════════════════════════════════════════════════════
@@ -8492,6 +8510,161 @@ function IndicadoresModal({ leitos, onClose }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// ADMIN DE USUÁRIOS — só adm_master (via Edge Function admin-usuarios)
+// ═══════════════════════════════════════════════════════════
+function AdminUsuarios({ currentUser }) {
+  const [rows, setRows] = useState(null);       // null = carregando
+  const [erro, setErro] = useState("");
+  const [busy, setBusy] = useState(false);
+  // formulário de criação
+  const [nNome, setNNome] = useState("");
+  const [nUser, setNUser] = useState("");
+  const [nRole, setNRole] = useState("visualizador");
+  const [nSenha, setNSenha] = useState("");
+  const [cMsg, setCMsg] = useState("");
+
+  async function recarregar() {
+    setErro("");
+    const r = await adminUsuarios("list");
+    if (r.error) { setErro(r.error); setRows([]); return; }
+    setRows(r.usuarios || []);
+  }
+  useEffect(() => { recarregar(); }, []);
+
+  async function criar() {
+    if (busy) return;
+    const u = nUser.trim().toLowerCase();
+    if (!/^[a-z0-9._-]{3,32}$/.test(u)) { setCMsg("⚠️ Usuário: 3–32 caracteres (letras, números, . _ -)."); return; }
+    if (nSenha.length < 6) { setCMsg("⚠️ A senha precisa de ao menos 6 caracteres."); return; }
+    setBusy(true); setCMsg("");
+    const r = await adminUsuarios("create", { username: u, nome: nNome.trim(), role: nRole, senha: nSenha });
+    setBusy(false);
+    if (r.error) { setCMsg("⚠️ " + r.error); return; }
+    addAuditLog(currentUser, "criar usuário", `${u} (${nRole})`, {});
+    setCMsg("✓ Usuário criado!"); setNNome(""); setNUser(""); setNSenha(""); setNRole("visualizador");
+    recarregar(); setTimeout(() => setCMsg(""), 3500);
+  }
+
+  async function mudarPapel(user, role) {
+    if (role === user.role || busy) return;
+    setBusy(true);
+    const r = await adminUsuarios("update", { id: user.id, role });
+    setBusy(false);
+    if (r.error) { alert("⚠️ " + r.error); recarregar(); return; }
+    addAuditLog(currentUser, "mudar papel", `${user.username} → ${role}`, {});
+    recarregar();
+  }
+
+  async function redefinirSenha(user) {
+    const s = prompt(`Nova senha para "${user.username}" (mín. 6 caracteres):`);
+    if (s == null) return;
+    if (s.length < 6) { alert("⚠️ A senha precisa de ao menos 6 caracteres."); return; }
+    setBusy(true);
+    const r = await adminUsuarios("reset_senha", { id: user.id, senha: s });
+    setBusy(false);
+    if (r.error) { alert("⚠️ " + r.error); return; }
+    addAuditLog(currentUser, "redefinir senha", user.username, {});
+    alert(`✓ Senha redefinida para ${user.username}.`);
+  }
+
+  async function alternarAtivo(user) {
+    const acao = user.ativo ? "desativar" : "reativar";
+    if (!confirm(`Deseja ${acao} o acesso de "${user.username}"?`)) return;
+    setBusy(true);
+    const r = await adminUsuarios("set_ativo", { id: user.id, ativo: !user.ativo });
+    setBusy(false);
+    if (r.error) { alert("⚠️ " + r.error); return; }
+    addAuditLog(currentUser, `${acao} usuário`, user.username, {});
+    recarregar();
+  }
+
+  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
+  const th = { padding: "10px 14px", textAlign: "left", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)", background: "var(--bg-2)" };
+  const td = { padding: "10px 14px", borderBottom: "1px solid var(--border)" };
+  const miniBtn = (cor) => ({ background: "transparent", color: cor, border: `1px solid ${cor}55`, borderRadius: 6, padding: "5px 10px", fontWeight: 700, cursor: "pointer", fontSize: 11.5 });
+
+  return (
+    <>
+      {/* Criar usuário */}
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 760 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Criar usuário</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Nome completo</label><input value={nNome} onChange={e => { setNNome(e.target.value); setCMsg(""); }} placeholder="Ex.: Maria Silva" style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
+          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Usuário (login)</label><input value={nUser} onChange={e => { setNUser(e.target.value); setCMsg(""); }} placeholder="ex.: maria" autoComplete="off" style={{ ...inp, width: "100%", marginTop: 4, fontFamily: "JetBrains Mono, monospace" }} /></div>
+          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Perfil</label>
+            <select value={nRole} onChange={e => setNRole(e.target.value)} style={{ ...inp, width: "100%", marginTop: 4 }}>
+              {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
+            </select>
+          </div>
+          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Senha inicial (mín. 6)</label><input type="text" value={nSenha} onChange={e => { setNSenha(e.target.value); setCMsg(""); }} placeholder="senha temporária" autoComplete="off" style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>{ROLES[nRole]?.desc}</div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
+          <button onClick={criar} disabled={busy} style={{ background: busy ? "#334155" : "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: busy ? "default" : "pointer", fontSize: 13 }}>{busy ? "Salvando…" : "Criar usuário"}</button>
+          {cMsg && <span style={{ fontSize: 13, color: cMsg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600 }}>{cMsg}</span>}
+        </div>
+      </div>
+
+      {/* Tabela de usuários */}
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.25rem", overflow: "hidden" }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Usuários com acesso {rows ? `(${rows.length})` : ""}</span>
+          <button onClick={recarregar} disabled={busy} style={{ ...miniBtn("var(--text-muted)"), border: "1px solid var(--border)" }}>Atualizar</button>
+        </div>
+        {erro && <div style={{ padding: "12px 16px", color: "#fbbf24", fontSize: 13 }}>⚠️ {erro}</div>}
+        {rows === null ? (
+          <div style={{ padding: "16px", color: "var(--text-muted)", fontSize: 13 }}>Carregando…</div>
+        ) : rows.length === 0 && !erro ? (
+          <div style={{ padding: "16px", color: "var(--text-muted)", fontSize: 13 }}>Nenhum usuário.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead><tr>{["Nome", "Usuário", "Perfil", "Situação", "Ações"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.map(u => {
+                const isMe = u.id === currentUser.id;
+                const rc = ROLES[u.role] || ROLES.visualizador;
+                return (
+                  <tr key={u.id} style={{ background: isMe ? "var(--bg-2)" : "transparent", opacity: u.ativo ? 1 : 0.55 }}>
+                    <td style={{ ...td, color: "var(--text)", fontWeight: 600 }}>{u.nome} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
+                    <td style={{ ...td, fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)" }}>{u.username}</td>
+                    <td style={td}>
+                      <select value={u.role} disabled={busy} onChange={e => mudarPapel(u, e.target.value)}
+                        title={isMe ? "Você não pode rebaixar o seu próprio papel" : rc.desc}
+                        style={{ background: rc.color + "18", color: rc.color, border: `1px solid ${rc.color}55`, borderRadius: 6, padding: "4px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k} style={{ background: "var(--surface)", color: "var(--text)" }}>{r.label}</option>)}
+                      </select>
+                    </td>
+                    <td style={td}>
+                      {u.ativo
+                        ? <span style={{ color: "#34d399", fontWeight: 600, fontSize: 12 }}>● Ativo</span>
+                        : <span style={{ color: "#fb7185", fontWeight: 600, fontSize: 12 }}>● Inativo</span>}
+                    </td>
+                    <td style={td}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button onClick={() => redefinirSenha(u)} disabled={busy} style={miniBtn("#22d3ee")}>Redefinir senha</button>
+                        {!isMe && (u.ativo
+                          ? <button onClick={() => alternarAtivo(u)} disabled={busy} style={miniBtn("#fb7185")}>Desativar</button>
+                          : <button onClick={() => alternarAtivo(u)} disabled={busy} style={miniBtn("#34d399")}>Reativar</button>)}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", maxWidth: 760, lineHeight: 1.6 }}>
+        O login é <code style={{ background: "var(--bg-2)", padding: "1px 5px", borderRadius: 4 }}>usuário</code> + senha (o e-mail interno <code style={{ background: "var(--bg-2)", padding: "1px 5px", borderRadius: 4 }}>usuário@hnsn.local</code> é montado automaticamente). Desativar bloqueia o acesso sem apagar o histórico — dá para reativar depois. Toda ação fica na Auditoria.
+      </div>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // USUÁRIOS
 // ═══════════════════════════════════════════════════════════
 function UsersPage({ currentUser }) {
@@ -8500,7 +8673,8 @@ function UsersPage({ currentUser }) {
   const [np2, setNp2] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { loadProfiles().then(setProfiles); }, []);
+  const isMaster = currentUser?.role === "adm_master";
+  useEffect(() => { if (!isMaster) loadProfiles().then(setProfiles); }, [isMaster]);
   async function handleChangePw() {
     if (busy) return;
     if (np1.length < 6) { setMsg("⚠️ A nova senha precisa de ao menos 6 caracteres."); return; }
@@ -8529,6 +8703,7 @@ function UsersPage({ currentUser }) {
         </div>
       </div>
 
+      {isMaster ? <AdminUsuarios currentUser={currentUser} /> : (<>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.25rem", overflow: "hidden" }}>
         <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--border)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em" }}>Usuários com acesso ({profiles.length})</div>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -8550,8 +8725,9 @@ function UsersPage({ currentUser }) {
       </div>
 
       <div style={{ background: "#0e2a3d", border: "1px solid #1e4d6b", borderRadius: 10, padding: "1rem 1.25rem", fontSize: 13, color: "#9cc7dd", lineHeight: 1.6, maxWidth: 680 }}>
-        <strong style={{ color: "#22d3ee" }}>Adicionar ou remover usuários</strong> é feito no painel do Supabase → <em>Authentication → Users</em> (por segurança, a criação de contas não fica no navegador). Ao criar, use o e-mail no formato <code style={{ background: "#0a1a26", padding: "1px 5px", borderRadius: 4 }}>usuario@hnsn.local</code> e defina o perfil em <em>User Metadata</em>, por exemplo <code style={{ background: "#0a1a26", padding: "1px 5px", borderRadius: 4 }}>{`{ "role": "adm_silver" }`}</code>.
+        <strong style={{ color: "#22d3ee" }}>A gestão de usuários</strong> (criar, editar e redefinir senha) é feita pelo ADM Master, na conta dele. Se precisar de acesso, fale com o administrador do sistema.
       </div>
+      </>)}
     </div>
   );
 }
