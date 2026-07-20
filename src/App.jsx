@@ -7387,6 +7387,15 @@ function LeitosPage({ currentUser, canEdit }) {
   const [turnover, setTurnover] = useState([]); // ciclos de giro (solicitado/disp/pronto/entrada)
   const [busca, setBusca] = useState("");       // busca das listas (pacientes/altas/internações)
   const [setorSel, setSetorSel] = useState(""); // setor selecionado no mapa detalhado ("" = 1º; "__todos__" = todos)
+  const [tv, setTv] = useState(false);          // Modo TV: painel de parede somente leitura
+  useEffect(() => {
+    if (!tv) return;
+    const onKey = e => { if (e.key === "Escape") sairTv(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tv]);
+  function entrarTv() { setTv(true); try { document.documentElement.requestFullscreen?.()?.catch?.(() => {}); } catch {} }
+  function sairTv() { setTv(false); try { if (document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {}); } catch {} }
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id); }, []);
 
@@ -7404,7 +7413,8 @@ function LeitosPage({ currentUser, canEdit }) {
     sync();
     const onFocus = () => sync();
     window.addEventListener("focus", onFocus);
-    return () => { cancel = true; window.removeEventListener("focus", onFocus); };
+    const iv = setInterval(sync, 60000); // tempo real: repuxa os dados a cada 60s (Modo TV e painel)
+    return () => { cancel = true; window.removeEventListener("focus", onFocus); clearInterval(iv); };
   }, []);
 
   async function salvarCidRef(ref) {
@@ -7785,6 +7795,97 @@ function LeitosPage({ currentUser, canEdit }) {
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* ── MODO TV: painel de parede somente leitura (Esc para sair) ── */}
+      {tv && (() => {
+        const alertasTv = leitosAlertas(leitos, solic).slice(0, 6);
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--bg)", padding: "1.25rem 1.75rem", overflowY: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16, flexWrap: "wrap" }}>
+              <VxWordmark size={15} />
+              <span style={{ fontSize: 14, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em" }}>Giro de Leitos — Painel</span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 11px" }}>{HOSPITAL_NOME}</span>
+              <span style={{ marginLeft: "auto", fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+              <button onClick={sairTv} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>✕ Sair (Esc)</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 18 }}>
+              <Card label="Ocupação global" valor={ocupacao + "%"} cor={ocupacao >= 90 ? "#f43f5e" : "#22d3ee"} sub={`${ocupados}/${operacionais} operacionais`} />
+              <Card label="Livres" valor={livres} cor="#34d399" />
+              <Card label="Higienização" valor={higienizando} cor="#fbbf24" />
+              <Card label="Fila de internação" valor={solic.length} cor={solic.length ? "#d97706" : "var(--text)"} />
+              <Card label="Altas previstas 24h" valor={amarelos} cor={amarelos ? "#fbbf24" : "var(--text)"} sub={vermelhos ? `${vermelhos} vencida(s)` : ""} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2.2fr) minmax(260px, 1fr)", gap: 16, alignItems: "start" }}>
+              <div>
+                <div style={{ marginBottom: 10 }}><Legenda /></div>
+                {nomesGrupos.map(g => {
+                  const ls = grupos[g];
+                  const oc = ls.filter(x => x.status === "ocupado").length;
+                  return (
+                    <div key={g} style={{ marginBottom: 14 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 7 }}>{g} <span style={{ color: "var(--text-muted)", fontWeight: 500, fontFamily: "JetBrains Mono, monospace" }}>{oc}/{ls.length}</span></div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {ls.map(l => {
+                          const st = STATUS_LEITO[l.status] || STATUS_LEITO.livre;
+                          const sinal = l.status === "ocupado" ? sinalLeito(l.data_internacao, l.dias_previstos) : null;
+                          return (
+                            <div key={l.identificacao} style={{ width: 116, background: "var(--surface)", border: "1px solid var(--border)", borderTop: `3px solid ${sinal ? sinal.cor : st.cor}`, borderRadius: 8, padding: "7px 10px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: 14, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{l.identificacao}</span>
+                                <span style={{ width: 8, height: 8, borderRadius: 99, background: st.cor, display: "inline-block" }} />
+                              </div>
+                              <div style={{ fontSize: 10, color: st.cor, fontWeight: 800, textTransform: "uppercase", marginTop: 1 }}>{st.label}</div>
+                              {l.iniciais && <div style={{ fontSize: 11, color: "var(--text-2)", fontWeight: 600, marginTop: 2 }}>{l.iniciais}</div>}
+                              {sinal && <div style={{ fontSize: 9.5, color: sinal.cor, fontWeight: 700, marginTop: 1 }}>{sinal.texto}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${VX.turquesa}`, borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={secLbl2}>Previsão de vagas — 24/48h</div>
+                  {prevVagas.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem vagas previstas.</div> : prevVagas.map(x => (
+                    <div key={x.g} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5 }}>
+                      <span style={{ color: "var(--text-2)", fontWeight: 600 }}>{x.g}</span>
+                      <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11.5 }}>
+                        {x.hoje > 0 && <span style={{ color: "#34d399", fontWeight: 800 }}>hoje {x.hoje}</span>}
+                        {x.amanha > 0 && <span style={{ color: "#fbbf24", fontWeight: 800 }}>{x.hoje > 0 ? " · " : ""}amanhã {x.amanha}</span>}
+                        {x.hig > 0 && <span style={{ color: "#22d3ee", fontWeight: 800 }}>{(x.hoje > 0 || x.amanha > 0) ? " · " : ""}limpeza {x.hig}</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${alertasTv.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={secLbl2}>Alertas</div>
+                  {alertasTv.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhum alerta. Setor sob controle.</div> : alertasTv.map((a, i) => (
+                    <div key={i} style={{ padding: "5px 0", borderBottom: "1px solid var(--border)" }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: FARM_GRAV[a.gravidade].cor }}>{a.titulo}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.detalhe}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div style={secLbl2}>Fila de internação</div>
+                  {filaOrd.length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Fila vazia.</div> : filaOrd.slice(0, 6).map(s => (
+                    <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5 }}>
+                      <span style={{ color: "var(--text-2)", fontWeight: 600 }}>{s.iniciais || "—"} → {s.setor_destino || "—"}</span>
+                      <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: (diffMin(s.hora_pedido, nowISO()) || 0) > 240 ? "#f43f5e" : "#d97706" }}>{fmtDur(diffMin(s.hora_pedido, nowISO()))}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 14 }}>Atualiza automaticamente a cada minuto · Valentrax Healthcare Operations</div>
+          </div>
+        );
+      })()}
+
       {/* BARRA LATERAL DO GIRO DE LEITOS */}
       <nav style={{ width: 194, minWidth: 194, background: "var(--bg-2)", borderRight: "1px solid var(--border)", padding: "1rem 0", overflowY: "auto", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
@@ -7799,9 +7900,12 @@ function LeitosPage({ currentUser, canEdit }) {
 
       {/* CONTEÚDO */}
       <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{subTexto[sub] || ""}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{subTexto[sub] || ""}</div>
+          </div>
+          <button onClick={entrarTv} title="Painel somente leitura para monitor/TV (sai com Esc)" style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 12.5, whiteSpace: "nowrap" }}>Modo TV</button>
         </div>
 
         {/* ── DASHBOARD ── */}
