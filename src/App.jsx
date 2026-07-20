@@ -2266,7 +2266,7 @@ function diasDesde(dateStr) {
 }
 
 // Modal de internação / edição de paciente no leito
-function InternarModal({ leito, onClose, onSave, refs = [] }) {
+function InternarModal({ leito, onClose, onSave, refs = [], realPorCid = {} }) {
   const [f, setF] = useState({
     iniciais: leito.iniciais || "", prontuario: leito.prontuario || "", motivo: leito.motivo || "",
     cid: leito.cid || "", data_internacao: leito.data_internacao || todayStr(), dias_previstos: leito.dias_previstos || "",
@@ -2284,6 +2284,7 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
   const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
   const alta = calcAlta(f.data_internacao, f.dias_previstos);
   const sug = sugerirCid(f.cid, refs);
+  const real = f.cid.trim() ? realPorCid[f.cid.trim().toUpperCase()] : null;
   function submit() {
     if (!f.iniciais.trim() || !f.dias_previstos) { alert("Informe ao menos as iniciais e os dias previstos."); return; }
     onSave({
@@ -2303,6 +2304,7 @@ function InternarModal({ leito, onClose, onSave, refs = [] }) {
           <div style={{ gridColumn: "1 / 3" }}><label style={lbl}>Motivo da internação</label><input value={f.motivo} onChange={e => set("motivo", e.target.value)} placeholder="Ex.: Pós-operatório de colecistectomia" style={inp} /></div>
           <div><label style={lbl}>CID</label><input value={f.cid} onChange={e => onCid(e.target.value)} placeholder="Ex.: J18 (pneumonia)" style={inp} />
             {sug && <div onClick={() => set("dias_previstos", String(sug.dias))} title="Aplicar a referência" style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, cursor: "pointer" }}>Sugestão — {sug.descricao}: ref. {sug.dias}d · <span style={{ textDecoration: "underline" }}>aplicar</span></div>}
+            {real && <div onClick={() => set("dias_previstos", String(Math.max(1, Math.round(real.media))))} title="Aplicar a média real do hospital" style={{ fontSize: 11, color: "#818cf8", marginTop: 3, cursor: "pointer" }}>Média real neste hospital: {real.media.toFixed(1)}d em {real.n} alta(s) · <span style={{ textDecoration: "underline" }}>aplicar</span></div>}
           </div>
           {sug?.tratamento && (
             <div style={{ gridColumn: "1 / 3", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px" }}>
@@ -3463,14 +3465,16 @@ function PSPage({ currentUser, canEdit }) {
     await updatePsAtendimentoRemote(p.id, { desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null, observacao: observacao || null, medico: medico || null, status: "finalizado" });
     if (desfecho === "internacao") {
       if (leito) {
-        // Alocação direta: interna o paciente no leito escolhido e o encaminha
+        // Reserva automática: o leito fica RESERVADO para o paciente até ele subir.
+        // No Mapa de leitos, "✓ Chegou" completa a internação (CID/dias) e fecha o
+        // ciclo Pronto → Entrada com o tempo real. (disp_em/pronto_em preservados.)
         await upsertLeitoRemote({
-          identificacao: leito.identificacao, status: "ocupado",
+          identificacao: leito.identificacao, status: "reservado",
           iniciais: p.iniciais, prontuario: p.prontuario || null, motivo: p.queixa || null,
-          cid: null, dias_previstos: null, data_internacao: todayStr(), entrada_em: nowISO(),
-          solic_em: null, disp_em: null, pronto_em: null, interdicao_motivo: null,
+          cid: null, dias_previstos: null, data_internacao: null, entrada_em: null,
+          solic_em: nowISO(), interdicao_motivo: null,
         }, currentUser);
-        addAuditLog(currentUser, "PS: internar em leito", `${p.iniciais} → ${leito.identificacao}`, {});
+        addAuditLog(currentUser, "PS: reservar leito", `${p.iniciais} → ${leito.identificacao}`, {});
       } else if (setorDestino) {
         // Sem leito agora → fila de espera do setor
         await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
@@ -3757,7 +3761,7 @@ function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
     if (desfecho === "internacao" && !setorDestino) { alert("Escolha o setor de destino da internação."); return; }
     const leitoObj = desfecho === "internacao" && leitoSel !== "fila" ? livres.find(l => l.identificacao === leitoSel) : null;
     if (desfecho === "internacao" && leitoObj) {
-      if (!confirm(`Internar ${paciente.iniciais} diretamente no leito ${leitoObj.identificacao}${leitoObj.setor ? ` (${leitoObj.setor})` : ""}?`)) return;
+      if (!confirm(`Reservar o leito ${leitoObj.identificacao}${leitoObj.setor ? ` (${leitoObj.setor})` : ""} para ${paciente.iniciais}? O leito fica RESERVADO até o paciente chegar (confirme a chegada no Mapa de leitos).`)) return;
     }
     setBusy(true);
     await onSave(paciente, { desfecho, setorDestino, observacao: obs.trim(), medico: medico.trim(), leito: leitoObj });
@@ -7207,6 +7211,16 @@ function leitosAlertas(leitos, solic) {
     if (esp != null && esp > 240) push("alta", `Espera longa por leito — ${s.iniciais || "paciente"}`, `aguardando ${fmtDur(esp)}${s.setor_destino ? " para " + s.setor_destino : ""}.`);
     else if (esp != null && esp > 120) push("media", `Fila de internação — ${s.iniciais || "paciente"}`, `aguardando ${fmtDur(esp)}${s.setor_destino ? " para " + s.setor_destino : ""}.`);
   });
+  // Leito livre parado enquanto há paciente esperando por aquele setor
+  const filaPorSetor = {};
+  (solic || []).forEach(s => { if (s.setor_destino) (filaPorSetor[s.setor_destino] = filaPorSetor[s.setor_destino] || []).push(s); });
+  Object.entries(filaPorSetor).forEach(([nome, fs]) => {
+    const livresSetor = leitos.filter(l => (l.setor || "") === nome && l.status === "livre").length;
+    if (!livresSetor) return;
+    const maior = Math.max(...fs.map(s => diffMin(s.hora_pedido, now) || 0));
+    if (maior > 60) push("alta", `Leito livre com fila — ${nome}`, `${livresSetor} leito(s) livre(s) e ${fs.length} paciente(s) aguardando (maior espera ${fmtDur(maior)}). Priorizar a internação.`);
+    else if (maior > 30) push("media", `Leito livre com fila — ${nome}`, `${livresSetor} livre(s) · ${fs.length} aguardando (${fmtDur(maior)}).`);
+  });
   return out.sort((a, b) => FARM_GRAV[a.gravidade].ordem - FARM_GRAV[b.gravidade].ordem);
 }
 
@@ -7248,7 +7262,7 @@ function LeitosAlertasView({ leitos, solic }) {
   );
 }
 
-const LEITOS_ASSIST_HELP = 'Posso responder sobre: panorama do setor, ocupação (global e por setor), leitos livres, fila de internação, altas previstas/vencidas, giro de leitos, permanência média, tempos de higienização/giro, transferências e alertas. Ex.: "panorama", "quanto está a ocupação?", "quantos leitos livres?", "quem tem alta vencida?", "como está a UTI?".';
+const LEITOS_ASSIST_HELP = 'Posso responder sobre: panorama do setor, vagas previstas (24/48h), ocupação (global e por setor), leitos livres, fila de internação, altas previstas/vencidas, giro de leitos, permanência média, tempos de higienização/giro, transferências e alertas. Ex.: "panorama", "vagas previstas", "quanto está a ocupação?", "quem tem alta vencida?", "como está a UTI?".';
 // IA Assistente local do Giro de Leitos (Fase 4) — gratuito, dados não saem do navegador
 function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais }) {
   const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do Giro de Leitos. " + LEITOS_ASSIST_HELP }]);
@@ -7296,6 +7310,14 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
     // Setor específico
     const setorHit = setorPct.find(x => x.nome !== "Sem setor" && normTxt(x.nome).length >= 2 && s.includes(normTxt(x.nome)));
     if (setorHit) return `${setorHit.nome}: ${setorHit.pct}% ocupado (${setorHit.oc}/${setorHit.o}) · ${setorHit.livres} livre(s).`;
+    if (has("vaga prevista", "vagas previstas", "vai vagar", "quando vaga", "previsao de vaga")) {
+      const pv = Object.entries(setoresMap).map(([nome, ls]) => {
+        const sn = ls.filter(x => x.status === "ocupado").map(x => sinalLeito(x.data_internacao, x.dias_previstos));
+        return { nome, hoje: sn.filter(x => x.restam != null && x.restam <= 0).length, amanha: sn.filter(x => x.restam === 1).length, hig: ls.filter(x => x.status === "higienizacao").length };
+      }).filter(x => x.hoje || x.amanha || x.hig);
+      if (!pv.length) return `Nenhuma vaga prevista para 24/48h pela previsão de alta. Livres agora: ${livres}.`;
+      return `Previsão de vagas (24/48h):\n` + pv.map(x => `• ${x.nome} — hoje: ${x.hoje} · amanhã: ${x.amanha}${x.hig ? ` · em limpeza: ${x.hig}` : ""}`).join("\n") + `\nLivres agora: ${livres}.`;
+    }
     if (has("livre", "disponivel", "vaga", "vazio")) {
       const porSetor = setorPct.filter(x => x.livres > 0).map(x => `• ${x.nome}: ${x.livres}`).join("\n");
       return `${livres} leito(s) livre(s) no total.${porSetor ? "\n" + porSetor : ""}`;
@@ -7328,7 +7350,7 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
     return "Não entendi a pergunta. " + LEITOS_ASSIST_HELP;
   }
   function enviar(texto) { const t = (texto != null ? texto : q).trim(); if (!t) return; setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: responder(t) }]); setQ(""); }
-  const sugestoes = ["Panorama", "Ocupação", "Leitos livres", "Fila de internação", "Alta vencida", "Alertas"];
+  const sugestoes = ["Panorama", "Vagas previstas", "Ocupação", "Leitos livres", "Fila de internação", "Alta vencida", "Alertas"];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: 360, maxWidth: 760 }}>
@@ -7508,7 +7530,7 @@ function LeitosPage({ currentUser, canEdit }) {
     addAuditLog(currentUser, "reservar leito", leito.identificacao, {});
   }
   async function liberar(leito) {
-    await salvarLeito({ identificacao: leito.identificacao, status: "livre", interdicao_motivo: null, motivo: null });
+    await salvarLeito({ identificacao: leito.identificacao, status: "livre", interdicao_motivo: null, motivo: null, iniciais: null, prontuario: null, solic_em: null });
     addAuditLog(currentUser, "liberar leito", leito.identificacao, {});
   }
   async function removerLeito(leito) {
@@ -7623,6 +7645,33 @@ function LeitosPage({ currentUser, canEdit }) {
   const permDe = s => s.dias_permanencia != null ? s.dias_permanencia : (s.data_internacao && s.data_alta ? Math.max(0, Math.round((new Date(s.data_alta + "T00:00:00") - new Date(s.data_internacao + "T00:00:00")) / 86400000)) : null);
   const Vazio = ({ txt }) => <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>{txt}</div>;
 
+  // Permanência REAL por CID (só altas) — o sistema aprende com o histórico do hospital
+  const realPorCid = {};
+  {
+    const acc = {};
+    saidas.forEach(s => {
+      if (!s.cid || (s.desfecho || "alta") !== "alta") return;
+      const d = permDe(s); if (d == null) return;
+      const k = String(s.cid).trim().toUpperCase();
+      (acc[k] = acc[k] || []).push(d);
+    });
+    Object.entries(acc).forEach(([k, arr]) => { realPorCid[k] = { media: arr.reduce((a, b) => a + b, 0) / arr.length, n: arr.length }; });
+  }
+
+  // Previsão de vagas 24/48h por setor (previsão de alta + higienização em curso)
+  const prevVagas = nomesGrupos.map(g => {
+    const ls = grupos[g];
+    const sn = ls.filter(x => x.status === "ocupado").map(x => sinalLeito(x.data_internacao, x.dias_previstos));
+    return {
+      g,
+      hoje: sn.filter(x => x.restam != null && x.restam <= 0).length,
+      amanha: sn.filter(x => x.restam === 1).length,
+      hig: ls.filter(x => x.status === "higienizacao").length,
+    };
+  }).filter(x => x.hoje || x.amanha || x.hig);
+  const prevHojeSetor = nome => leitos.filter(l => (l.setor || "") === nome && l.status === "ocupado")
+    .filter(l => { const s = sinalLeito(l.data_internacao, l.dias_previstos); return s.restam != null && s.restam <= 0; }).length;
+
   const renderLeitoCard = l => {
             const st = STATUS_LEITO[l.status] || STATUS_LEITO.livre;
             const sinal = l.status === "ocupado" ? sinalLeito(l.data_internacao, l.dias_previstos) : null;
@@ -7688,7 +7737,13 @@ function LeitosPage({ currentUser, canEdit }) {
                   {l.status === "interditado" && <div style={{ fontSize: 12.5, color: "#fb7185" }}>Interditado{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
                   {l.status === "manutencao" && <div style={{ fontSize: 12.5, color: "#f97316" }}>Em manutenção{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
                   {l.status === "bloqueado" && <div style={{ fontSize: 12.5, color: "#8d99ab" }}>Bloqueado externo{l.interdicao_motivo ? `: ${l.interdicao_motivo}` : ""}</div>}
-                  {l.status === "reservado" && <div style={{ fontSize: 12.5, color: "#818cf8" }}>Reservado{l.motivo ? `: ${l.motivo}` : ""}</div>}
+                  {l.status === "reservado" && (
+                    <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
+                      {l.iniciais && <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{l.iniciais}{l.prontuario ? <span style={{ color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}> · reg. {l.prontuario}</span> : ""}</div>}
+                      <div style={{ color: "#818cf8", marginTop: l.iniciais ? 3 : 0 }}>Reservado{l.motivo ? `: ${l.motivo}` : ""}</div>
+                      {l.solic_em && <div style={{ marginTop: 5, display: "inline-block", color: "#818cf8", fontWeight: 800, fontSize: 11, background: "#818cf81a", border: "1px solid #818cf844", borderRadius: 99, padding: "1px 9px" }}>Aguardando chegada há {fmtDur(diffMin(l.solic_em, nowISO()))}</div>}
+                    </div>
+                  )}
 
                 {canEdit && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 13 }}>
@@ -7701,7 +7756,7 @@ function LeitosPage({ currentUser, canEdit }) {
                       <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>Excluir</button>
                     </>}
                     {l.status === "reservado" && <>
-                      <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>Internar</button>
+                      <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>{l.iniciais ? "✓ Chegou — internar" : "Internar"}</button>
                       <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
                     </>}
                     {l.status === "ocupado" && <>
@@ -7785,6 +7840,23 @@ function LeitosPage({ currentUser, canEdit }) {
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${VX.turquesa}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={secLbl2}>Previsão de vagas — 24/48h</div>
+                {prevVagas.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Nenhuma vaga prevista pela previsão de alta. Confira os dias previstos das internações.</div>
+                ) : prevVagas.map(x => (
+                  <div key={x.g} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5, flexWrap: "wrap" }}>
+                    <span style={{ color: "var(--text-2)", fontWeight: 600 }}>{x.g}</span>
+                    <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {x.hoje > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#34d399", background: "#34d3991a", border: "1px solid #34d39944", borderRadius: 99, padding: "1px 8px" }}>hoje: {x.hoje}</span>}
+                      {x.amanha > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fbbf24", background: "#fbbf241a", border: "1px solid #fbbf2444", borderRadius: 99, padding: "1px 8px" }}>amanhã: {x.amanha}</span>}
+                      {x.hig > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#22d3ee", background: "#22d3ee1a", border: "1px solid #22d3ee44", borderRadius: 99, padding: "1px 8px" }}>em limpeza: {x.hig}</span>}
+                    </span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 8 }}>Projeção pela previsão de alta (sinaleira) + leitos em higienização{tDispPronto != null ? ` (limpeza média ${fmtDur(tDispPronto)})` : ""}.</div>
+              </div>
+
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                 <div style={secLbl2}>Tempo de giro de leitos ({MONTHS[mesA]})</div>
                 {[["Solicitado → Disponibilizado", tSolDisp], ["Disponibilizado → Pronto", tDispPronto], ["Pronto → Entrada", tProntoEnt]].map(([lb, v]) => (
@@ -7895,7 +7967,7 @@ function LeitosPage({ currentUser, canEdit }) {
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${espera > 240 ? "#f43f5e" : "#d97706"}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
                       <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.iniciais || "—"}</div>
-                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{s.setor_origem || "—"} → <strong style={{ color: "var(--text-2)" }}>{s.setor_destino || "—"}</strong>{s.setor_destino ? ` · ${livres} leito(s) livre(s) no destino` : ""}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{s.setor_origem || "—"} → <strong style={{ color: "var(--text-2)" }}>{s.setor_destino || "—"}</strong>{s.setor_destino ? ` · ${livres} livre(s) agora · ${prevHojeSetor(s.setor_destino)} vaga(s) prevista(s) hoje` : ""}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: espera > 240 ? "#f43f5e" : "#d97706" }}>{fmtDur(espera)}</div>
@@ -8011,7 +8083,7 @@ function LeitosPage({ currentUser, canEdit }) {
         {sub === "alertas" && <LeitosAlertasView leitos={leitos} solic={solic} />}
         {sub === "assistente" && <LeitosAssistenteView leitos={leitos} solic={solic} saidas={saidas} turnover={turnover} operacionais={operacionais} />}
 
-        {modal && <InternarModal leito={modal} refs={cidRef} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
+        {modal && <InternarModal leito={modal} refs={cidRef} realPorCid={realPorCid} onClose={() => setModal(null)} onSave={dados => internar(modal, dados)} />}
         {tempos && <TemposModal leito={tempos} onClose={() => setTempos(null)} onSave={campos => salvarTempos(tempos, campos)} />}
         {showCidRef && <CidRefModal refs={cidRef} onClose={() => setShowCidRef(false)} onSave={salvarCidRef} onDelete={removerCidRef} />}
         {showSetores && <SetoresModal setores={setores} leitos={leitos} onClose={() => setShowSetores(false)} onSave={salvarSetor} onDelete={removerSetor} />}
