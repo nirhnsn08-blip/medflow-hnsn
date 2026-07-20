@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v26
+# 📍 Ponto de restauração — checkpoint-v27
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v26` (anteriores: `checkpoint-v25` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v27` (anteriores: `checkpoint-v26` … `checkpoint-v1`)
 - **Data:** 2026-07-19
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -189,6 +189,15 @@ dá pra voltar exatamente para este estado.
     por CID** (aprende do histórico) no modal de internação.
   - **📺 Modo TV:** painel de parede tela cheia somente leitura (tiles por setor, KPIs,
     vagas previstas, alertas, fila), atualização automática a cada 60s, sai com Esc.
+  - **✅ Alta segura (Kanban):** checklist de pendências por paciente (liberação clínica,
+    exames, receita, sumário, família, transporte, serviço social) + turno previsto;
+    3 colunas (internado → preparando alta → pronto para alta) que se movem sozinhas;
+    limpa na alta. Guarda em `leitos.alta_pendencias` (JSON) e `leitos.alta_periodo`.
+  - **🎯 Metas por setor:** meta de ocupação/permanência/giro cadastráveis (Setores);
+    farol verde/vermelho no BI pela ocupação atual × meta.
+  - **⏳ Motivo da espera na fila:** categoria de gargalo por solicitação (sem vaga,
+    aguardando limpeza/exame/família/transporte, regulação) + resumo de gargalos.
+  - **Migração:** `supabase/migracao-leitos-kanban-metas.sql` (rodada no HNSN em 2026-07-19).
 - **📋 Paciente 360 (embrião do prontuário eletrônico):** busca por prontuário/iniciais,
   cadastro mínimo (LGPD), linha do tempo automática agregando PS + internações +
   altas + SCIH + evoluções, alertas sentinela, evoluções multiprofissionais
@@ -207,7 +216,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v26
+git reset --hard checkpoint-v27
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -216,7 +225,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v26
+git checkout -b recuperacao checkpoint-v27
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -232,6 +241,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `38982b3` 🛏️ Kanban de alta + Metas por setor + Motivo da espera (migração leitos-kanban-metas)
 - `a60428d` 🛏️ Modo TV (painel de parede) + refresh automático 60s
 - `cb53386` 🛏️ Fase 5 — previsão de vagas 24/48h, média real por CID, reserva automática do PS, alerta leito livre com fila
 - `68351ae` 🛏️ Mapa detalhado com seletor de setor (chips)

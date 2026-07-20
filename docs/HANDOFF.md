@@ -1,4 +1,4 @@
-# 🤝 Handoff — Valentrax (progresso até checkpoint-v26)
+# 🤝 Handoff — Valentrax (progresso até checkpoint-v27)
 
 Documento de passagem para retomar o trabalho num **novo chat**. Resumo de onde
 estamos, como continuar e o que falta. Detalhes completos em
@@ -8,7 +8,7 @@ estamos, como continuar e o que falta. Detalhes completos em
 - **Marca:** Valentrax Healthcare Operations (repo/URLs continuam `medflow-*`).
 - **App:** React + Vite, arquivo único `src/App.jsx` (JS/JSX, sem TypeScript).
 - **Back-end:** Supabase (Auth + Postgres + REST). Deploy Vercel a partir do `git push` em `main`.
-- **Ponto seguro atual:** **`checkpoint-v26`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
+- **Ponto seguro atual:** **`checkpoint-v27`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
 - **Banco DEMO congelado** desde 2026-07-16: trabalhar só no **HNSN**.
 
 ## Ciclo de trabalho (importante)
@@ -36,7 +36,9 @@ estamos, como continuar e o que falta. Detalhes completos em
   externa (desfecho=transferencia, destino no motivo — sem coluna nova); BI com Δ mensal
   e PDF; alertas locais; assistente local; **previsão de vagas 24/48h**; **média real de
   permanência por CID** (aprende do histórico); **reserva automática do PS**; **Modo TV**
-  (painel de parede, refresh 60s, Esc sai).
+  (painel de parede, refresh 60s, Esc sai); **Kanban de alta segura** (checklist de
+  pendências + turno, colunas automáticas); **Metas por setor** (farol no BI);
+  **Motivo da espera na fila** (gargalos). Migração: `migracao-leitos-kanban-metas.sql`.
 - **FARMÁCIA — completa**, com barra lateral própria (cores Valentrax):
   - **Dashboard** · **Prescrições** (análise clínica + score) · **Solicitações** (fluxo de
     preparo com bipe/notificação) · **Dispensações** (fila priorizada + filtros NoHarm) ·
@@ -58,8 +60,10 @@ Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
 `migracao-farmacia-faseB.sql` → `migracao-farmacia-clinica-fase1.sql` →
 `migracao-farmacia-clinica-fase2.sql` → `migracao-farmacia-clinica-fase3.sql` →
 `migracao-farmacia-preparo.sql` → `migracao-farmacia-custos.sql` →
-`migracao-farmacia-nao-padronizados.sql` → `migracao-farmacia-intervencoes.sql`.
-(O `schema.sql` já contém tudo consolidado para uma instalação nova.)
+`migracao-farmacia-nao-padronizados.sql` → `migracao-farmacia-intervencoes.sql` →
+`migracao-leitos-kanban-metas.sql` (Kanban de alta + metas por setor + motivo da espera).
+(O `schema.sql` já contém tudo consolidado para uma instalação nova, EXCETO as colunas
+de `migracao-leitos-kanban-metas.sql` — rodar essa migração à parte por enquanto.)
 
 ## Decisões que valem manter
 - **Custo zero:** priorizar soluções locais/gratuitas; IA paga só como opcional com custo
@@ -70,10 +74,9 @@ Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
   append-only / não editáveis).
 
 ## Próximas frentes (mapa do HIS, ainda não feitas)
-- **Giro de Leitos — próximo pacote (combinado com o usuário, PRECISA de migração):**
-  **Kanban de alta** (pendências que travam a alta, "alta antes das 10h") ·
-  **Metas por setor** (giro/permanência alvo) · **Motivo da espera na fila**.
-  Plano: um único SQL com os três → usuário roda no HNSN → confirmar → push.
+- **Giro de Leitos — evoluções possíveis:** apuração de permanência/giro **por setor**
+  (hoje `leitos_saidas` não guarda o setor da alta — exige coluna nova) para dar farol
+  real às metas de permanência/giro; métrica "altas antes das 10h" (usar hora de `disp_em`).
 - **Painel do PS no Monitoramento** (Visão Geral) — menor esforço, sem tabela nova.
 - **Faturamento (AIH/SUS)** — módulo grande.
 - **Modo autodidático** (ajuda/onboarding contextual).
@@ -85,6 +88,6 @@ Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
 ## Como restaurar este ponto
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v26
+git reset --hard checkpoint-v27
 git push --force-with-lease origin main
 ```
