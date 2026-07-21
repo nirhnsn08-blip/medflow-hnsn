@@ -2413,6 +2413,15 @@ async function loadPsFinalizadosHoje() {
   const rows = await sbFetch(`ps_atendimentos?status=eq.finalizado&desfecho_em=gte.${hoje.toISOString()}&select=*&order=desfecho_em.desc`);
   return Array.isArray(rows) ? rows : [];
 }
+// Atendimentos do PS de um mês civil (para o relatório mensal). SOMENTE LEITURA.
+// As bordas são meia-noite LOCAL convertidas para instante UTC — mesmo idioma das
+// outras faixas de mês do app. Não usar toISOString() sobre string de data crua.
+async function loadPsAtendimentosPeriodo(ano, mes) {
+  const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
+  const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
+  const rows = await sbFetch(`ps_atendimentos?chegada_em=gte.${ini.toISOString()}&chegada_em=lt.${fim.toISOString()}&select=*&order=chegada_em.asc`);
+  return Array.isArray(rows) ? rows : [];
+}
 async function addPsAtendimentoRemote(at, user) {
   if (!USE_SUPABASE) return null;
   return await sbFetch("ps_atendimentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...at, usuario: user?.name || null }) });
@@ -3744,12 +3753,248 @@ function CcSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
 }
 
 // ── Página Pronto-Socorro: chegada → triagem → atendimento → desfecho ──
+// ═══════════════════════════════════════════════════════════
+// PRONTO-SOCORRO — Relatório mensal (SOMENTE LEITURA)
+// Mesmo padrão do SCIH: visão imprimível + window.print() nativo.
+// Sem biblioteca de PDF e sem envio de dado clínico para fora do navegador.
+// ═══════════════════════════════════════════════════════════
+function PsRelatorioView() {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [rows, setRows] = useState([]);
+  const [carregando, setCarregando] = useState(false);
+  const [preview, setPreview] = useState(false);
+
+  useEffect(() => {
+    if (!USE_SUPABASE) { setRows([]); return; }
+    let cancelado = false;
+    setCarregando(true);
+    loadPsAtendimentosPeriodo(ano, mes).then(r => { if (!cancelado) { setRows(r); setCarregando(false); } });
+    return () => { cancelado = true; };
+  }, [mes, ano]);
+
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 4 };
+  const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const fmt1 = v => (v == null || isNaN(v) ? "—" : Number(v).toFixed(1));
+  const pct = (n, d) => (d > 0 ? (n / d) * 100 : null);
+
+  // ── Indicadores do período ─────────────────────────────────
+  const total = rows.length;
+  const finalizados = rows.filter(p => p.status === "finalizado");
+  const triados = rows.filter(p => p.classificacao && p.triagem_em);
+
+  const portaTriagem = rows.map(p => diffMin(p.chegada_em, p.triagem_em)).filter(v => v != null && v >= 0);
+  const mediaPortaTriagem = portaTriagem.length ? portaTriagem.reduce((a, b) => a + b, 0) / portaTriagem.length : null;
+  const permanencias = finalizados.map(p => diffMin(p.chegada_em, p.desfecho_em)).filter(v => v != null && v >= 0);
+  const mediaPermanencia = permanencias.length ? permanencias.reduce((a, b) => a + b, 0) / permanencias.length : null;
+
+  // Espera triagem → atendimento, comparada ao alvo de Manchester
+  const comEspera = rows.map(p => {
+    const alvo = p.classificacao ? MANCHESTER[p.classificacao]?.alvoMin : null;
+    const espera = diffMin(p.triagem_em, p.atendimento_em);
+    return (alvo == null || espera == null || espera < 0) ? null : { classificacao: p.classificacao, espera, alvo, dentro: espera <= alvo };
+  }).filter(Boolean);
+  const dentroAlvo = comEspera.filter(x => x.dentro).length;
+  const taxaAlvo = pct(dentroAlvo, comEspera.length);
+
+  // Distribuição por classificação de risco
+  const porClasse = Object.keys(MANCHESTER).map(k => {
+    const doGrupo = triados.filter(p => p.classificacao === k);
+    const esperasGrupo = comEspera.filter(x => x.classificacao === k);
+    const mediaEspera = esperasGrupo.length ? esperasGrupo.reduce((a, b) => a + b.espera, 0) / esperasGrupo.length : null;
+    return {
+      k, label: MANCHESTER[k].label, cor: MANCHESTER[k].cor, alvo: MANCHESTER[k].alvoMin,
+      n: doGrupo.length, perc: pct(doGrupo.length, triados.length),
+      mediaEspera, foraAlvo: esperasGrupo.filter(x => !x.dentro).length,
+    };
+  });
+
+  // Desfechos do período
+  const porDesfecho = Object.keys(PS_DESFECHOS).map(k => ({
+    k, label: PS_DESFECHOS[k].label, cor: PS_DESFECHOS[k].cor,
+    n: finalizados.filter(p => p.desfecho === k).length,
+  }));
+
+  // Série diária de atendimentos (eixo do gráfico)
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const porDia = Array.from({ length: diasNoMes }, (_, i) => {
+    const dia = i + 1;
+    const n = rows.filter(p => { const d = p.chegada_em ? new Date(p.chegada_em) : null; return d && d.getDate() === dia; }).length;
+    return { dia: String(dia).padStart(2, "0"), n };
+  });
+  const picoDia = porDia.reduce((a, b) => (b.n > a.n ? b : a), { dia: "—", n: 0 });
+
+  const printStyles = `@media print { body * { visibility: hidden !important; } #ps-print, #ps-print * { visibility: visible !important; } #ps-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
+
+  const Kpi = ({ label, valor, unidade, sub, cor }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "#6366f1"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{valor}<span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>{unidade || ""}</span></div>
+      {sub && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+
+  // Linhas da tabela-resumo (reaproveitadas na tela e no relatório impresso)
+  const linhasTabela = porClasse.map(c => [
+    c.label,
+    fmt(c.n),
+    c.perc != null ? `${fmt1(c.perc)}%` : "—",
+    c.alvo === 0 ? "imediato" : `${c.alvo} min`,
+    c.mediaEspera != null ? fmtDur(c.mediaEspera) : "—",
+    c.foraAlvo ? String(c.foraAlvo) : "—",
+  ]);
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+        <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
+        {carregando && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>carregando…</span>}
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <Kpi label="Atendimentos no mês" valor={fmt(total)} sub={`pico: dia ${picoDia.dia} (${picoDia.n})`} cor="#6366f1" />
+        <Kpi label="Finalizados" valor={fmt(finalizados.length)} sub={`${fmt(total - finalizados.length)} em aberto`} cor="#0d9488" />
+        <Kpi label="Dentro do tempo-alvo" valor={taxaAlvo != null ? fmt1(taxaAlvo) : "—"} unidade="%" sub={`${dentroAlvo}/${comEspera.length} com espera medida`} cor={taxaAlvo == null ? "var(--border)" : taxaAlvo >= 80 ? "#34d399" : taxaAlvo >= 60 ? "#fbbf24" : "#f43f5e"} />
+        <Kpi label="Porta → triagem" valor={mediaPortaTriagem != null ? fmtDur(mediaPortaTriagem) : "—"} sub="tempo médio" cor="#3b82f6" />
+        <Kpi label="Permanência média" valor={mediaPermanencia != null ? fmtDur(mediaPermanencia) : "—"} sub="chegada → desfecho" cor="#d97706" />
+      </div>
+
+      {/* GRÁFICOS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Atendimentos por dia — {MONTHS_FULL[mes]}</div>
+          <ResponsiveContainer width="100%" height={190}>
+            <BarChart data={porDia} margin={{ top: 4, right: 8, left: -22, bottom: 0 }}>
+              <XAxis dataKey="dia" tick={{ fontSize: 9, fill: "var(--text-muted)" }} interval={2} />
+              <YAxis tick={{ fontSize: 10, fill: "var(--text-muted)" }} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} labelFormatter={d => `Dia ${d}`} formatter={v => [v, "atendimentos"]} />
+              <Bar dataKey="n" fill="#6366f1" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Classificação de risco (Manchester)</div>
+          <ResponsiveContainer width="100%" height={190}>
+            <BarChart data={porClasse} margin={{ top: 4, right: 8, left: -22, bottom: 0 }}>
+              <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--text-muted)" }} interval={0} />
+              <YAxis tick={{ fontSize: 10, fill: "var(--text-muted)" }} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }} formatter={v => [v, "pacientes"]} />
+              <Bar dataKey="n" radius={[3, 3, 0, 0]}>{porClasse.map(c => <Cell key={c.k} fill={c.cor} />)}</Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* TABELA-RESUMO */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Resumo por classificação</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", marginBottom: "1.5rem", overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead><tr>{["Classificação", "Atend.", "%", "Alvo", "Espera média", "Fora do alvo"].map(h => <th key={h} style={{ textAlign: "left", padding: "6px 8px", color: "var(--text-3)", borderBottom: "1px solid var(--border)", fontSize: 11 }}>{h}</th>)}</tr></thead>
+          <tbody>
+            {porClasse.map((c, i) => (
+              <tr key={c.k}>
+                <td style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: c.cor, marginRight: 7 }} />{c.label}</td>
+                {linhasTabela[i].slice(1).map((v, j) => <td key={j} style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", fontFamily: "JetBrains Mono, monospace", color: j === 4 && c.foraAlvo ? "#fb7185" : "var(--text-2)" }}>{v}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* DESFECHOS */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Desfechos do período</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        {porDesfecho.map(d => (
+          <div key={d.k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${d.cor}`, borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)" }}>{d.label}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{fmt(d.n)}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{pct(d.n, finalizados.length) != null ? `${fmt1(pct(d.n, finalizados.length))}% dos finalizados` : "—"}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* RELATÓRIO IMPRIMÍVEL */}
+      {preview && (
+        <div id="ps-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>RELATÓRIO PRONTO-SOCORRO — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Triagem de Manchester e jornada do paciente</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>{MONTHS_FULL[mes]}/{ano}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Gerado em {new Date().toLocaleString("pt-BR")}</div>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 16 }}>
+            {[
+              ["Atendimentos", fmt(total)],
+              ["Finalizados", fmt(finalizados.length)],
+              ["Dentro do alvo", taxaAlvo != null ? `${fmt1(taxaAlvo)}%` : "—"],
+              ["Porta → triagem", mediaPortaTriagem != null ? fmtDur(mediaPortaTriagem) : "—"],
+              ["Permanência média", mediaPermanencia != null ? fmtDur(mediaPermanencia) : "—"],
+            ].map(([k, v]) => (
+              <div key={k} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px", background: "#f8fafc" }}>
+                <div style={{ fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700 }}>{k}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Distribuição por classificação de risco</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
+            <thead><tr>{["Classificação", "Atend.", "%", "Alvo", "Espera média", "Fora do alvo"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {linhasTabela.map((linha, i) => (
+                <tr key={i}>
+                  {linha.map((v, j) => (
+                    <td key={j} style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: j === 0 ? 600 : 400, color: j === 0 ? "#0f172a" : j === 5 && v !== "—" ? "#be123c" : "#334155" }}>
+                      {j === 0 ? <><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: porClasse[i].cor, marginRight: 7 }} />{v}</> : v}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Desfechos</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
+            <thead><tr>{["Desfecho", "Qtd.", "% dos finalizados"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {porDesfecho.map(d => (
+                <tr key={d.k}>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 600, color: "#0f172a" }}>{d.label}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{fmt(d.n)}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#0369a1", fontWeight: 600 }}>{pct(d.n, finalizados.length) != null ? `${fmt1(pct(d.n, finalizados.length))}%` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ fontSize: 10, color: "#94a3b8", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>
+            Relatório gerado pela <strong>Valentrax Healthcare Operations</strong> · Pico de movimento no dia {picoDia.dia} ({picoDia.n} atendimentos). Tempos-alvo conforme Protocolo de Manchester. Documento de apoio à gestão — dados agregados, sem identificação de pacientes.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PSPage({ currentUser, canEdit }) {
   const [fila, setFila] = useState([]);
   const [finalizados, setFinalizados] = useState([]);
   const [setores, setSetores] = useState([]);
   const [leitos, setLeitos] = useState([]);
   const [obitosInternacao, setObitosInternacao] = useState(0);
+  const [aba, setAba] = useState("operacao");   // operacao | relatorio
   const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "" });
   const [triando, setTriando] = useState(null);
   const [reavaliando, setReavaliando] = useState(null);
@@ -3867,10 +4112,25 @@ function PSPage({ currentUser, canEdit }) {
   );
   const linhaPac = { display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 13px", flexWrap: "wrap" };
 
+  // Relatório mensal (somente leitura) — tela própria, não interfere na operação.
+  if (aba === "relatorio") return (
+    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pronto-Socorro — Relatório mensal</div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Indicadores agregados do período. Somente leitura — nada é alterado no atendimento.</div>
+      <button onClick={() => setAba("operacao")} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 14px", fontWeight: 700, fontSize: 12, cursor: "pointer", marginBottom: "1.25rem" }}>← Voltar à operação</button>
+      <PsRelatorioView />
+    </div>
+  );
+
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pronto-Socorro — Triagem e Fluxo</div>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Classificação de risco (Protocolo de Manchester) e jornada do paciente. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pronto-Socorro — Triagem e Fluxo</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Classificação de risco (Protocolo de Manchester) e jornada do paciente. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+        </div>
+        <button onClick={() => setAba("relatorio")} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Relatório mensal</button>
+      </div>
 
       <PsRetiradaBanner currentUser={currentUser} canEdit={canEdit} />
       <PsIntervencaoBanner currentUser={currentUser} canEdit={canEdit} />
