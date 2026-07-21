@@ -1,7 +1,7 @@
 -- ═══════════════════════════════════════════════════════════
--- SUPRIMENTOS — Seed do catálogo (~105 materiais comuns de hospital)
--- Só catálogo (sem estoque). Roda apenas se sup_itens estiver VAZIA —
--- é seguro rodar de novo (não duplica). Revisar/ajustar com a equipe.
+-- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
+-- Só catálogo (sem estoque). Insere apenas os que ainda NÃO existem
+-- (comparação pelo nome) — seguro rodar de novo. Revisar com a equipe.
 -- ═══════════════════════════════════════════════════════════
 insert into public.sup_itens (nome, categoria, unidade)
 select v.nome, v.categoria, v.unidade from (values
@@ -139,7 +139,10 @@ select v.nome, v.categoria, v.unidade from (values
   ('Lanceta descartável',                           'Laboratório', 'unidade'),
   ('Frasco de urina estéril',                       'Laboratório', 'unidade')
 ) as v(nome, categoria, unidade)
-where not exists (select 1 from public.sup_itens);
+where not exists (
+  select 1 from public.sup_itens s
+   where lower(s.nome) = lower(v.nome)
+);
 
 -- Verificação: total por categoria
 select categoria, count(*) as itens
