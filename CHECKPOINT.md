@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v35
+# 📍 Ponto de restauração — checkpoint-v36
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v35` (anteriores: `checkpoint-v34` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v36` (anteriores: `checkpoint-v35` … `checkpoint-v1`)
 - **Data:** 2026-07-21
 - **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
   (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
@@ -304,6 +304,11 @@ dá pra voltar exatamente para este estado.
     priorizada (rupturas, comprar, vencimentos, requisições, recebimentos,
     contagens) com atalho para cada ferramenta. Migração
     `supabase/migracao-suprimentos-ponto-de-pedido.sql` (rodada no HNSN em 2026-07-21).
+  - **📄 Importar NF-e (XML):** botão no Estoque lê o XML da nota, extrai fornecedor,
+    NF e itens, **casa com o catálogo** (código de barras ou nome), deixa revisar
+    (qtd/custo/lote/validade, criar material novo ou pular) e **lança as entradas
+    em lote** — atualiza o custo médio ponderado e **cadastra o fornecedor** se o
+    CNPJ for novo. Tudo local (o XML não sai do navegador). Sem migração.
   - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
     `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20).
 
@@ -312,7 +317,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v35
+git reset --hard checkpoint-v36
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -321,7 +326,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v35
+git checkout -b recuperacao checkpoint-v36
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -339,6 +344,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `7ac79d7` 📄 Importar NF-e (XML) no estoque (entradas em lote, casamento por código/nome, custo médio)
 - `fc3da31` ✅ Painel "Ações de hoje" (lista priorizada de tarefas do almoxarifado)
 - `47f7097` 🎯 Ponto de pedido inteligente (lead time por fornecedor + demanda instável)
 - `ea49925` 🛡️ Selo de confiança dos dados no Painel Executivo
