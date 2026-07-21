@@ -29,7 +29,7 @@ Em ~1 min a Vercel publica a nova versão em https://medflow-hnsn.vercel.app
 ## 📁 Estrutura
 ```
 medflow-hnsn/
-├── index.html              ← Página principal (contém as chaves do Supabase)
+├── index.html              ← Página principal (casca HTML + tema)
 ├── package.json            ← Dependências
 ├── vite.config.js          ← Build (Vite)
 ├── vercel.json             ← Config da Vercel
@@ -52,9 +52,16 @@ npm install
 npm run dev      # abre em http://localhost:5173
 npm run build    # gera a versão de produção em /dist
 ```
-> As chaves do Supabase já vêm embutidas no `index.html`, então o app conecta
-> ao banco tanto local quanto publicado. (Para usar chaves diferentes em
-> desenvolvimento, copie `.env.example` para `.env`.)
+> **Credenciais:** o app lê as chaves das variáveis de ambiente
+> `VITE_SUPABASE_URL` e `VITE_SUPABASE_KEY`.
+> - **Local:** copie `.env.example` para `.env` e preencha (o `.env` está no
+>   `.gitignore` — nunca vai para o GitHub).
+> - **Publicado:** as mesmas variáveis ficam na Vercel em
+>   *Project → Settings → Environment Variables*.
+>
+> Sem essas variáveis o app roda em modo `localStorage` e **o login não funciona**
+> (a autenticação depende do Supabase). Use sempre a chave **anon/publishable** —
+> a `service_role` nunca vai para o app.
 
 ---
 
