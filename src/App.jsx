@@ -101,6 +101,7 @@ const ICON_PATHS = {
   cart:      <><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 4h2.5l2.2 11.5h10.6L21 8H6.6"/></>,
   briefcase: <><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M9 7.5V5.5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></>,
   clock:     <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
+  checks:    <><path d="M4 12.5l3.5 3.5L14 9"/><path d="M11 15l1.6 1.6L20 9"/></>,
   truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
 };
 function Icon({ name, size = 15 }) {
@@ -2124,6 +2125,7 @@ const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devoluçã
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
 const SUP_NAV = [
   { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
+  { key: "acoes",        label: "Ações de hoje", icon: "checks" },
   { key: "executivo",    label: "Painel executivo", icon: "briefcase" },
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
   { key: "compras",      label: "Compras",      icon: "cart" },
@@ -8908,6 +8910,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const navAtual = SUP_NAV.find(n => n.key === sub) || SUP_NAV[0];
   const subTexto = {
     dashboard: "Visão geral do almoxarifado com atalhos.",
+    acoes: "Tudo que precisa de decisão hoje, em ordem de prioridade — rupturas, comprar, vencimentos, requisições, recebimentos e contagens.",
     executivo: "Visão financeira do estoque — capital parado, variação de gastos e perdas, rupturas previstas e capital liberável. Almoxarifado + Farmácia.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
@@ -8979,6 +8982,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
 
+      {sub === "acoes" && <SupAcoesView itens={itens} lotes={lotes} saidasHist={saidasHist} reqs={reqs} pedidos={pedidos} invs={invs} leadMap={leadMap} onNav={setSub} />}
       {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
       {sub === "inventario" && <SupInventarioView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs} onSave={salvarInventario} />}
       {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} leadMap={leadMap} />}
@@ -10039,6 +10043,94 @@ function SupVencimentosView({ itens, lotes, saidasHist }) {
           <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>"Consumo cobre?" compara a quantidade do lote com o consumo médio diário ({FARM_PREV_JANELA} dias) × dias até vencer. Valores pelo custo unitário cadastrado.</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Ações de hoje — consolida toda a inteligência do módulo numa lista priorizada
+// de tarefas do almoxarifado. Cada bloco leva direto à ferramenta certa.
+function SupAcoesView({ itens, lotes, saidasHist, reqs, pedidos, invs, leadMap = {}, onNav }) {
+  const ativos = itens.filter(i => i.ativo !== false);
+  const consumo = {}; saidasHist.forEach(s => { if (s.item_id) consumo[s.item_id] = (consumo[s.item_id] || 0) + Number(s.quantidade || 0); });
+  const media = i => (consumo[i.id] || 0) / FARM_PREV_JANELA;
+  const saldo = i => supSaldoTotal(i.id, lotes);
+  const cobertura = i => { const m = media(i); return m > 0 ? saldo(i) / m : null; };
+
+  // Rupturas com giro (zerado mas com consumo) — o mais urgente
+  const rupturas = ativos.filter(i => saldo(i) <= 0 && media(i) > 0);
+  // Comprar agora (ponto de pedido): cobertura abaixo do prazo de entrega
+  const comprar = ativos.filter(i => { const c = cobertura(i); return c != null && c < supPrazoReposicao(i.id, leadMap); });
+  // Vencimentos em risco: lote vencido ou vencendo ≤30d que não se consome a tempo
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const vencRisco = lotes.filter(l => {
+    if (!(Number(l.quantidade) > 0 && l.validade)) return false;
+    const st = farmValidadeInfo(l.validade).status;
+    if (!["vencido", "vencendo"].includes(st)) return false;
+    const it = itens.find(x => x.id === l.item_id);
+    const dias = Math.max(0, Math.round((new Date(l.validade + "T00:00:00") - hoje) / 86400000));
+    const m = it ? media(it) : 0;
+    return st === "vencido" || !(m > 0 && m * dias >= Number(l.quantidade));   // não dá pra consumir a tempo
+  }).map(l => ({ l, it: itens.find(x => x.id === l.item_id) }));
+  // Fluxos do módulo
+  const reqAg = reqs.filter(r => r.status === "aguardando");
+  const reqPr = reqs.filter(r => r.status === "pronto");
+  const pedRec = pedidos.filter(p => ["enviado", "parcial"].includes(p.status));
+  // Contagens de inventário pendentes (curva ABC)
+  const valorCons = i => (consumo[i.id] || 0) * custoUnit(i);
+  const ranked = [...ativos].map(i => ({ i, v: valorCons(i) })).sort((a, b) => b.v - a.v);
+  const totalV = ranked.reduce((s, x) => s + x.v, 0);
+  const classe = {}; let ac = 0; ranked.forEach(x => { ac += x.v; const p = totalV ? ac / totalV : 1; classe[x.i.id] = x.v <= 0 ? "C" : p <= 0.8 ? "A" : p <= 0.95 ? "B" : "C"; });
+  const ultima = {}; invs.forEach(v => { if (!ultima[v.item_id]) ultima[v.item_id] = v; });
+  const invPend = ativos.filter(i => { const u = ultima[i.id]; const d = u ? Math.floor((Date.now() - new Date(u.created_at)) / 86400000) : null; return d == null || d >= SUP_INV_INTERVALO[classe[i.id] || "C"]; });
+
+  const blocos = [
+    { key: "rup", cor: "#f43f5e", titulo: "Rupturas com consumo", n: rupturas.length, nav: "estoque", verbo: "repor com urgência",
+      itens: rupturas.slice(0, 6).map(i => i.nome), dica: "Zerados que têm saída — parou de atender. Registre entrada ou emita compra já." },
+    { key: "comp", cor: "#f43f5e", titulo: "Comprar agora (ponto de pedido)", n: comprar.length, nav: "compras", verbo: "gerar pedido",
+      itens: comprar.slice(0, 6).map(i => `${i.nome} · cobre ${cobertura(i) < 1 ? "<1" : Math.floor(cobertura(i))}d`), dica: "Cobertura abaixo do prazo de entrega — vão romper antes da próxima compra chegar." },
+    { key: "venc", cor: "#d97706", titulo: "Vencendo sem dar tempo de usar", n: vencRisco.length, nav: "vencimentos", verbo: "remanejar / priorizar",
+      itens: vencRisco.slice(0, 6).map(x => `${x.it?.nome || "?"} · lote ${x.l.lote || "?"} vence ${fmtDataBR(x.l.validade)}`), dica: "No ritmo atual não serão consumidos a tempo — remaneje, priorize o uso ou negocie troca." },
+    { key: "reqAg", cor: "#3b82f6", titulo: "Requisições aguardando", n: reqAg.length, nav: "requisicoes", verbo: "receber e separar",
+      itens: reqAg.slice(0, 6).map(r => `${r.setor} · ${(r.itens || []).length} item(ns)`), dica: "Setores esperando material." },
+    { key: "reqPr", cor: "#3b82f6", titulo: "Prontas para retirada", n: reqPr.length, nav: "requisicoes", verbo: "confirmar entrega",
+      itens: reqPr.slice(0, 6).map(r => `${r.setor}`), dica: "Já separadas — confirmar a entrega ao setor." },
+    { key: "ped", cor: "#3b82f6", titulo: "Pedidos a receber", n: pedRec.length, nav: "compras", verbo: "dar entrada",
+      itens: pedRec.slice(0, 6).map(p => `PED-${p.id} · ${p.fornecedor_nome || "sem fornecedor"}`), dica: "Compras enviadas ou parciais aguardando recebimento." },
+    { key: "inv", cor: "#8d99ab", titulo: "Contagens de inventário na fila", n: invPend.length, nav: "inventario", verbo: "contar",
+      itens: invPend.slice(0, 6).map(i => `${i.nome} · classe ${classe[i.id] || "C"}`), dica: "Contagem cíclica pela curva ABC — mantém a acuracidade." },
+  ];
+  const urgentes = blocos.filter(b => ["#f43f5e"].includes(b.cor)).reduce((s, b) => s + b.n, 0);
+  const totalAcoes = blocos.reduce((s, b) => s + b.n, 0);
+  const comItens = blocos.filter(b => b.n > 0);
+
+  return (
+    <div>
+      <div style={{ background: totalAcoes ? (urgentes ? "#f43f5e10" : "#d9770610") : "var(--surface)", border: `1px solid ${totalAcoes ? (urgentes ? "#f43f5e44" : "#d9770644") : "var(--border)"}`, borderRadius: 10, padding: "14px 18px", marginBottom: 16, fontSize: 14.5 }}>
+        {totalAcoes === 0
+          ? "✅ Nada pendente no almoxarifado agora — estoque, requisições, compras e contagens em dia."
+          : <>Você tem <strong>{totalAcoes} ação(ões)</strong> para hoje{urgentes > 0 && <>, sendo <strong style={{ color: "#f43f5e" }}>{urgentes} urgente(s)</strong> (rupturas e compras críticas)</>}. Em ordem de prioridade abaixo.</>}
+      </div>
+
+      {comItens.length === 0 ? null : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+          {comItens.map(b => (
+            <div key={b.key} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${b.cor}`, borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: b.cor, minWidth: 34 }}>{b.n}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", flex: 1 }}>{b.titulo}</span>
+                <button onClick={() => onNav && onNav(b.nav)} style={{ background: "transparent", border: `1px solid ${b.cor}66`, color: b.cor, borderRadius: 6, padding: "5px 11px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{b.verbo} →</button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 6 }}>
+                {b.itens.map((t, i) => <div key={i} style={{ fontSize: 12, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>• {t}</div>)}
+                {b.n > b.itens.length && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>+{b.n - b.itens.length} outros</div>}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.4 }}>{b.dica}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 16 }}>Atualiza sozinho. Prioridade: vermelho = urgente (ruptura/compra), âmbar = atenção (vencimento), azul = fluxo, cinza = rotina.</div>
     </div>
   );
 }
