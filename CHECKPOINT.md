@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v28
+# 📍 Ponto de restauração — checkpoint-v29
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v28` (anteriores: `checkpoint-v27` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v29` (anteriores: `checkpoint-v28` … `checkpoint-v1`)
 - **Data:** 2026-07-20
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -224,13 +224,33 @@ dá pra voltar exatamente para este estado.
   de administrador vai para o navegador. Usuários não-master seguem com lista
   somente-leitura + trocar a própria senha. **Sem migração de banco.** Requer o
   deploy da função: `supabase functions deploy admin-usuarios` (`deploy-funcao.bat`).
+- **📦 Estoque & Compras (Suprimentos) — Fases A e B:** módulo novo com barra
+  lateral própria (padrão Farmácia) para o **almoxarifado geral** — materiais
+  médico-hospitalares, EPI, higiene, escritório, impressos, rouparia, nutrição,
+  manutenção, informática e laboratório.
+  - **Fase A:** catálogo agrupado por categoria (busca + filtro), estoque **por
+    lote e validade** (entradas com NF e fornecedor; saídas com motivo e setor,
+    sem saldo negativo), **kardex imutável**, painéis de reposição/validade,
+    **previsão de demanda 7 dias com sugestão de compra** e cadastro de
+    **fornecedores** (razão social, CNPJ, contato, o que fornece).
+  - **Fase B:** **requisições de materiais pelos setores** (setores vêm do
+    cadastro do Giro de Leitos) — quadro *aguardando → em separação → pronto →
+    entregue* com cronômetro, **bipe** na chegada (padrão preparo da Farmácia),
+    **baixa FEFO automática** na separação (kardex `REQ-<nº>` com setor de
+    destino) e atendimento **parcial** quando falta saldo (selo PARCIAL,
+    atendido/pedido). Histórico à parte.
+  - **Seed:** catálogo inicial com **~120 materiais em 10 categorias** carregado
+    no HNSN (insere por nome — seguro rodar de novo). Testado e validado.
+  - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql` e
+    `-seed.sql` (rodadas no HNSN em 2026-07-20). Fases futuras: pedidos de
+    compra integrando a Farmácia (C) e BI/assistente (D).
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v28
+git reset --hard checkpoint-v29
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -239,7 +259,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v28
+git checkout -b recuperacao checkpoint-v29
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -255,6 +275,9 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `b988721` 📦 fix: seed de suprimentos insere por nome
+- `bef3892` 📦 Suprimentos Fase B — requisições dos setores (bipe, baixa FEFO, parcial) + seed ~120 materiais
+- `6c79e27` 📦 Suprimentos Fase A — catálogo de materiais + estoque por lote/validade + fornecedores
 - `86e7ed9` 👤 Gestão de usuários pelo ADM Master (Edge Function admin-usuarios)
 - `c9d325b` 🛏️ Giro de Leitos — permanência/giro por setor + altas antes das 10h (migração leitos-saida-setor)
 - `38982b3` 🛏️ Kanban de alta + Metas por setor + Motivo da espera (migração leitos-kanban-metas)
