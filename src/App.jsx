@@ -101,6 +101,7 @@ const ICON_PATHS = {
   cart:      <><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 4h2.5l2.2 11.5h10.6L21 8H6.6"/></>,
   briefcase: <><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M9 7.5V5.5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></>,
   clock:     <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
+  checks:    <><path d="M4 12.5l3.5 3.5L14 9"/><path d="M11 15l1.6 1.6L20 9"/></>,
   truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
 };
 function Icon({ name, size = 15 }) {
@@ -2124,10 +2125,13 @@ const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devoluçã
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
 const SUP_NAV = [
   { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
+  { key: "acoes",        label: "Ações de hoje", icon: "checks" },
   { key: "executivo",    label: "Painel executivo", icon: "briefcase" },
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
+  { key: "cotacoes",     label: "Cotações",     icon: "flask" },
   { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
+  { key: "inventario",   label: "Inventário",   icon: "clipboard" },
   { key: "preditivo",    label: "Estoque preditivo", icon: "activity" },
   { key: "vencimentos",  label: "Vencimentos",  icon: "clock" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
@@ -2137,6 +2141,12 @@ const SUP_NAV = [
 // Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
 // (casam por nome ou princípio ativo; edite a lista conforme o hospital)
 const SUP_FARMACOS_MONITORADOS = ["morfina", "fentanil", "alteplase", "tenecteplase", "contraste", "albumina"];
+// Ponto de pedido: prazo de entrega padrão (fornecedor sem prazo) e margem de segurança
+const SUP_LEAD_PADRAO = 15;   // dias
+const SUP_MARGEM_SEG  = 3;    // dias de folga sobre o prazo de entrega
+// Prazo de reposição de um item = (prazo do último fornecedor OU padrão) + margem.
+// leadMap: { item_id → dias } montado por supLeadTimeMap.
+const supPrazoReposicao = (itemId, leadMap = {}) => (Number(leadMap[itemId]) || SUP_LEAD_PADRAO) + SUP_MARGEM_SEG;
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
 // Pedido de compra — estados e cores
 const SUP_PED_STATUS = {
@@ -2239,6 +2249,85 @@ async function deleteSupFornecedorRemote(id) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
 }
+// Inventário cíclico — contagens cegas (append-only)
+// Entradas recentes com fornecedor, para saber o prazo de entrega de cada item
+async function loadSupEntradasComForn(fromISO) {
+  const rows = await sbFetch(`sup_movimentos?tipo=eq.entrada&fornecedor_id=not.is.null&created_at=gte.${fromISO}&select=item_id,fornecedor_id,created_at&order=created_at.desc&limit=8000`);
+  return Array.isArray(rows) ? rows : [];
+}
+// item_id → prazo de entrega (dias) do fornecedor da ENTRADA mais recente que o tem cadastrado
+function supLeadTimeMap(entradas, forns) {
+  const fById = {}; forns.forEach(f => fById[f.id] = f);
+  const seen = {}, map = {};
+  entradas.forEach(e => {                       // já vem do mais recente para o mais antigo
+    if (seen[e.item_id]) return;
+    const lt = fById[e.fornecedor_id]?.lead_time_dias;
+    if (lt != null && lt !== "") { map[e.item_id] = Number(lt); seen[e.item_id] = true; }
+  });
+  return map;
+}
+async function loadSupInventarios(limit = 400) {
+  const rows = await sbFetch(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSupInventarioRemote(inv, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("sup_inventarios", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...inv, usuario: user?.name || null }),
+  });
+}
+// Custo médio ponderado móvel: mistura o saldo atual (ao custo vigente) com a
+// entrada nova (ao custo da nota). Retorna o novo custo unitário, ou null se a
+// entrada não trouxe custo (mantém o custo anterior).
+function custoMedioPonderado(custoAtual, saldoAntes, qtdEntrada, custoEntrada) {
+  const ce = Number(custoEntrada);
+  if (!ce || ce <= 0) return null;
+  const ca = Number(custoAtual || 0), sa = Math.max(0, Number(saldoAntes || 0)), qe = Number(qtdEntrada || 0);
+  if (qe <= 0) return null;
+  if (ca <= 0 || sa <= 0) return ce;                 // sem base anterior → adota o custo da entrada
+  return (sa * ca + qe * ce) / (sa + qe);
+}
+// Lê o XML de uma NF-e e extrai fornecedor + itens (código, EAN, nome, qtd,
+// unidade, custo unitário, lote/validade quando há rastreabilidade). Local, sem lib.
+function parseNFe(xmlText) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(xmlText, "application/xml"); }
+  catch { return { erro: "Não consegui ler o arquivo." }; }
+  if (!doc || doc.getElementsByTagName("parsererror").length) return { erro: "XML inválido ou corrompido." };
+  const txt = (el, tag) => el ? (el.getElementsByTagName(tag)[0]?.textContent || "").trim() : "";
+  const emit = doc.getElementsByTagName("emit")[0];
+  const ide  = doc.getElementsByTagName("ide")[0];
+  if (!emit && !doc.getElementsByTagName("det").length) return { erro: "Este arquivo não parece uma NF-e." };
+  const fornecedor = { cnpj: txt(emit, "CNPJ"), nome: txt(emit, "xNome") };
+  const nf = txt(ide, "nNF");
+  const itens = Array.from(doc.getElementsByTagName("det")).map(det => {
+    const prod = det.getElementsByTagName("prod")[0];
+    const rastro = det.getElementsByTagName("rastro")[0];
+    const ean = txt(prod, "cEAN");
+    return {
+      codigo: txt(prod, "cProd"),
+      ean: /^[0-9]{8,14}$/.test(ean) ? ean : "",         // "SEM GTIN" e afins → ignora
+      nome: txt(prod, "xProd"),
+      unidade: txt(prod, "uCom").toLowerCase(),
+      qtd: Number(txt(prod, "qCom")) || 0,
+      custo_unit: Number(txt(prod, "vUnCom")) || 0,
+      lote: rastro ? txt(rastro, "nLote") : "",
+      validade: rastro ? txt(rastro, "dVal") : "",        // rastro/dVal já vem YYYY-MM-DD
+    };
+  }).filter(x => x.nome && x.qtd > 0);
+  if (!itens.length) return { erro: "Nenhum item encontrado no XML." };
+  return { fornecedor, nf, itens };
+}
+async function setSupItemCustoRemote(itemId, custo) {
+  if (!USE_SUPABASE || custo == null) return;
+  await sbFetch(`sup_itens?id=eq.${itemId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
+}
+async function setFarmMedCustoRemote(medId, custo) {
+  if (!USE_SUPABASE || custo == null) return;
+  await sbFetch(`farm_medicamentos?id=eq.${medId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
+}
 // Requisições de materiais (Fase B)
 async function loadSupRequisicoes(limit = 200) {
   const rows = await sbFetch(`sup_requisicoes?select=*&order=created_at.desc&limit=${limit}`);
@@ -2272,6 +2361,23 @@ async function addSupPedidoRemote(ped, user) {
 async function atualizarSupPedidoRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_pedidos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Cotações de compra (comparar preços entre fornecedores)
+async function loadSupCotacoes(limit = 100) {
+  const rows = await sbFetch(`sup_cotacoes?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSupCotacaoRemote(cot, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("sup_cotacoes", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...cot, usuario: user?.name || null }),
+  });
+}
+async function atualizarSupCotacaoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_cotacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
 // Valor total do pedido (qtd × custo unitário dos itens)
 function supPedidoTotal(ped) {
@@ -8719,6 +8825,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [movItem, setMovItem]   = useState(null);   // { item, tipo }
   const [kardex, setKardex]     = useState(null);   // item para histórico
   const [showForn, setShowForn] = useState(null);   // fornecedor (novo/editar) ou null
+  const [showNfe, setShowNfe] = useState(false);    // modal de importar NF-e
   const [sub, setSub] = useState("dashboard");      // ver SUP_NAV
   const [saidasHist, setSaidasHist] = useState([]);
   const [, setTick] = useState(0);
@@ -8726,6 +8833,9 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
   const [reqs, setReqs] = useState([]);
   const [pedidos, setPedidos] = useState([]);
+  const [invs, setInvs] = useState([]);
+  const [entradasForn, setEntradasForn] = useState([]);
+  const [cotacoes, setCotacoes] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
@@ -8733,8 +8843,12 @@ function SuprimentosPage({ currentUser, canEdit }) {
     loadSupFornecedores().then(setForns);
     loadSupRequisicoes().then(setReqs);
     loadSupPedidos().then(setPedidos);
+    loadSupCotacoes().then(setCotacoes);
+    loadSupInventarios().then(setInvs);
+    loadSupEntradasComForn(new Date(Date.now() - 180 * 86400000).toISOString()).then(setEntradasForn);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
   }
+  const leadMap = supLeadTimeMap(entradasForn, forns);   // item_id → prazo de entrega (dias)
   useEffect(() => {
     refresh();
     const onFocus = () => refresh();
@@ -8746,7 +8860,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const itensOrd = [...itens].filter(i => {
     const q = busca.trim().toLowerCase();
     if (!q) return true;
-    return [i.nome, i.categoria, i.observacao].some(x => (x || "").toLowerCase().includes(q));
+    return [i.nome, i.categoria, i.observacao, i.codigo_barras].some(x => (x || "").toLowerCase().includes(q));
   }).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
 
   const ordCat = (a, b) => { const ia = SUP_CATEGORIAS.indexOf(a), ib = SUP_CATEGORIAS.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, "pt-BR"); };
@@ -8803,13 +8917,71 @@ function SuprimentosPage({ currentUser, canEdit }) {
     setTimeout(refresh, 300);
   }
   async function registrarMov(mov) {
+    const item = itens.find(x => x.id === mov.item_id);
+    const saldoAntes = supSaldoTotal(mov.item_id, lotes);
     const r = await addSupMovimentoRemote(mov, currentUser);
     if (!r.ok) { alert("Não foi possível registrar o movimento.\n" + (r.erro || "")); return false; }
-    const item = itens.find(x => x.id === mov.item_id);
+    // Entrada com custo → atualiza o custo médio ponderado do material
+    if (mov.tipo === "entrada" && mov.custo_unit) {
+      const novo = custoMedioPonderado(item?.custo_unitario, saldoAntes, mov.quantidade, mov.custo_unit);
+      if (novo != null) await setSupItemCustoRemote(mov.item_id, novo);
+    }
     addAuditLog(currentUser, mov.tipo === "entrada" ? "entrada de material" : "saída de material", `${item?.nome || mov.item_id} · ${farmFmtQtd(mov.quantidade)}`, {});
     setMovItem(null);
     setTimeout(refresh, 350);
     return true;
+  }
+  // Importa uma NF-e: cria entradas em lote (e materiais/fornecedor novos, se preciso)
+  async function importarNfe({ fornecedor, nf, linhas }) {
+    // fornecedor: casa por CNPJ; se não existir e vier CNPJ, cria
+    let fornId = null;
+    if (fornecedor?.cnpj) {
+      const achado = forns.find(f => (f.cnpj || "").replace(/\D/g, "") === fornecedor.cnpj.replace(/\D/g, ""));
+      if (achado) fornId = achado.id;
+      else {
+        const criado = await upsertSupFornecedorRemote({ nome: fornecedor.nome || fornecedor.cnpj, cnpj: fornecedor.cnpj, ativo: true }, currentUser);
+        fornId = Array.isArray(criado) ? criado[0]?.id : null;
+      }
+    }
+    let ok = 0; const erros = [];
+    for (const ln of linhas) {
+      if (ln.alvo === "skip") continue;
+      let itemId = ln.alvo === "novo" ? null : Number(ln.alvo);
+      if (ln.alvo === "novo") {
+        const novo = await upsertSupItemRemote({ nome: ln.nome, unidade: ln.unidade || "unidade", codigo_barras: ln.ean || null, custo_unitario: ln.custo_unit || null, ativo: true }, currentUser);
+        itemId = Array.isArray(novo) ? novo[0]?.id : null;
+        if (!itemId) { erros.push(`${ln.nome}: falha ao criar o material`); continue; }
+      }
+      const saldoAntes = supSaldoTotal(itemId, lotes);
+      const r = await addSupMovimentoRemote({
+        item_id: itemId, tipo: "entrada", quantidade: Number(ln.qtd),
+        lote: ln.lote?.trim() || null, validade: ln.validade || null,
+        motivo: "Compra / nota fiscal", documento: nf ? `NF ${nf}` : "NF-e",
+        fornecedor_id: fornId, custo_unit: ln.custo_unit || null,
+      }, currentUser);
+      if (r.ok) {
+        ok++;
+        if (ln.custo_unit) { const c = custoMedioPonderado((itens.find(x => x.id === itemId) || {}).custo_unitario, saldoAntes, ln.qtd, ln.custo_unit); if (c != null) await setSupItemCustoRemote(itemId, c); }
+      } else erros.push(`${ln.nome}: ${r.erro || "falha"}`);
+    }
+    addAuditLog(currentUser, "importar NF-e", `${nf ? "NF " + nf : "NF-e"} · ${ok} entrada(s)`, {});
+    setShowNfe(false);
+    setTimeout(refresh, 400);
+    alert(`Importação concluída: ${ok} entrada(s) lançada(s).` + (erros.length ? `\n\nPendências:\n${erros.join("\n")}` : ""));
+  }
+  async function salvarInventario(inv) {
+    await addSupInventarioRemote(inv, currentUser);
+    // Se houver diferença, lança o ajuste no kardex (entrada/saída) para casar o saldo
+    if (inv.ajustado && Number(inv.diferenca) !== 0) {
+      const dif = Number(inv.diferenca);
+      await addSupMovimentoRemote({
+        item_id: inv.item_id, tipo: dif > 0 ? "entrada" : "saida", quantidade: Math.abs(dif),
+        motivo: "Ajuste de inventário", documento: "INVENTARIO",
+      }, currentUser);
+    }
+    const it = itens.find(x => x.id === inv.item_id);
+    addAuditLog(currentUser, "contagem de inventário", `${it?.nome || inv.item_id} · sistema ${farmFmtQtd(inv.saldo_sistema)} → contado ${farmFmtQtd(inv.contado)}`, {});
+    setTimeout(refresh, 350);
   }
   async function salvarForn(f) {
     await upsertSupFornecedorRemote(f, currentUser);
@@ -8828,9 +9000,12 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const navAtual = SUP_NAV.find(n => n.key === sub) || SUP_NAV[0];
   const subTexto = {
     dashboard: "Visão geral do almoxarifado com atalhos.",
+    acoes: "Tudo que precisa de decisão hoje, em ordem de prioridade — rupturas, comprar, vencimentos, requisições, recebimentos e contagens.",
     executivo: "Visão financeira do estoque — capital parado, variação de gastos e perdas, rupturas previstas e capital liberável. Almoxarifado + Farmácia.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
+    cotacoes: "Compare preços de vários fornecedores antes de comprar — o vencedor de cada item vira um pedido com um clique.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
+    inventario: "Inventário cíclico — contagem cega rotativa (curva ABC), ajuste no kardex e acuracidade do estoque.",
     preditivo: "Previsão item a item: no ritmo atual de consumo, quando acaba cada material e medicamento.",
     vencimentos: "Vencimentos inteligentes — o que vence, quanto vale e o que NÃO será consumido a tempo no ritmo atual.",
     indicadores: "Relatórios & BI — consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
@@ -8860,7 +9035,10 @@ function SuprimentosPage({ currentUser, canEdit }) {
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{subTexto[sub] || ""}</div>
         </div>
-        {sub === "estoque" && canEdit && <button onClick={() => setShowItem({ nome: "", categoria: "", unidade: "unidade", estoque_minimo: "", custo_unitario: "", ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo material</button>}
+        {sub === "estoque" && canEdit && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setShowNfe(true)} style={{ background: "transparent", color: VX.azul, border: `1px solid ${VX.azul}66`, borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Importar NF-e (XML)</button>
+          <button onClick={() => setShowItem({ nome: "", categoria: "", unidade: "unidade", estoque_minimo: "", custo_unitario: "", ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo material</button>
+        </div>}
         {sub === "fornecedores" && canEdit && <button onClick={() => setShowForn({ nome: "", cnpj: "", contato: "", telefone: "", email: "", categorias: "", observacao: "", ativo: true })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo fornecedor</button>}
       </div>
 
@@ -8896,10 +9074,13 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
 
-      {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
+      {sub === "cotacoes" && <SupCotacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} forns={forns.filter(f => f.ativo !== false)} cotacoes={cotacoes} onChanged={refresh} />}
+      {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
 
-      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} />}
-      {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
+      {sub === "acoes" && <SupAcoesView itens={itens} lotes={lotes} saidasHist={saidasHist} reqs={reqs} pedidos={pedidos} invs={invs} leadMap={leadMap} onNav={setSub} />}
+      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
+      {sub === "inventario" && <SupInventarioView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs} onSave={salvarInventario} />}
+      {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} leadMap={leadMap} />}
       {sub === "vencimentos" && <SupVencimentosView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
 
       {sub === "indicadores" && <SupIndicadoresView itens={itens} lotes={lotes} forns={forns} pedidos={pedidos} reqs={reqs} />}
@@ -8953,7 +9134,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       </>)}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome ou categoria…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, categoria ou bipar código de barras…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
         <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} style={{ ...farmInp, maxWidth: 280 }}>
           <option value="">Todas as categorias</option>
           {catsPresentes.map(c => <option key={c} value={c}>{c}</option>)}
@@ -9034,6 +9215,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
                   <th style={{ padding: "9px 12px" }}>CNPJ</th>
                   <th style={{ padding: "9px 12px" }}>Contato</th>
                   <th style={{ padding: "9px 12px" }}>Fornece</th>
+                  <th style={{ padding: "9px 12px", textAlign: "right" }}>Prazo entrega</th>
                   <th style={{ padding: "9px 12px", textAlign: "right" }}>Ações</th>
                 </tr>
               </thead>
@@ -9052,6 +9234,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
                         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{[f.telefone, f.email].filter(Boolean).join(" · ")}</div>
                       </td>
                       <td style={{ padding: "9px 12px", color: "var(--text-2)", fontSize: 12 }}>{f.categorias || "—"}</td>
+                      <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: f.lead_time_dias != null && f.lead_time_dias !== "" ? "var(--text-2)" : "var(--text-muted)" }}>{f.lead_time_dias != null && f.lead_time_dias !== "" ? `${f.lead_time_dias} d` : `${SUP_LEAD_PADRAO} d (padrão)`}</td>
                       <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
                         {canEdit && <button onClick={() => setShowForn(f)} style={btnLeito("#3b82f6")}>Editar</button>}
                         {isMaster && <> <button onClick={() => excluirForn(f)} style={btnLeito("#f43f5e")}>Excluir</button></>}
@@ -9069,6 +9252,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} onClose={() => setMovItem(null)} onSave={registrarMov} />}
       {kardex && <SupKardexModal item={kardex} fornecedores={forns} onClose={() => setKardex(null)} />}
       {showForn && <SupFornecedorModal forn={showForn} onClose={() => setShowForn(null)} onSave={salvarForn} />}
+      {showNfe && <SupNfeModal itens={itens} forns={forns} onClose={() => setShowNfe(false)} onConfirm={importarNfe} />}
       </div>
     </div>
   );
@@ -9362,9 +9546,275 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
   );
 }
 
+// Cotações — compara preços de fornecedores por item e gera o pedido do vencedor.
+function SupCotacoesView({ currentUser, canEdit, isMaster, materiais, forns, cotacoes, onChanged }) {
+  const [meds, setMeds] = useState([]);
+  const [showNova, setShowNova] = useState(false);
+  const [abrir, setAbrir] = useState(null);      // cotação em comparação
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => { if (USE_SUPABASE) loadFarmMedicamentos().then(setMeds); }, []);
+  const fornById = {}; forns.forEach(f => fornById[f.id] = f);
+
+  // menor preço de cada item e total por fornecedor
+  function analise(cot) {
+    const itens = Array.isArray(cot.itens) ? cot.itens : [];
+    const fids = (cot.fornecedores || []).map(String);
+    const totalForn = {}; fids.forEach(id => totalForn[id] = { soma: 0, itensCotados: 0 });
+    const vencedorItem = itens.map(it => {
+      let melhor = null;
+      fids.forEach(id => {
+        const p = Number(it.precos?.[id]);
+        if (p > 0) { totalForn[id].soma += p * Number(it.qtd || 0); totalForn[id].itensCotados++; if (melhor == null || p < melhor.preco) melhor = { fid: id, preco: p }; }
+      });
+      return melhor;   // { fid, preco } ou null
+    });
+    return { itens, fids, totalForn, vencedorItem };
+  }
+
+  async function criar(cot) {
+    await addSupCotacaoRemote(cot, currentUser);
+    addAuditLog(currentUser, "criar cotação", `${cot.descricao || "cotação"} · ${cot.itens.length} itens`, {});
+    setShowNova(false);
+    onChanged && onChanged();
+  }
+  async function salvarPrecos(cot, itens) {
+    setBusyId(cot.id);
+    await atualizarSupCotacaoRemote(cot.id, { itens });
+    setBusyId(null);
+    setAbrir(a => a ? { ...a, itens } : a);
+    onChanged && onChanged();
+  }
+  async function cancelar(cot) {
+    if (!confirm(`Cancelar a cotação "${cot.descricao || cot.id}"?`)) return;
+    await atualizarSupCotacaoRemote(cot.id, { status: "cancelada" });
+    addAuditLog(currentUser, "cancelar cotação", `cotação ${cot.id}`, {});
+    onChanged && onChanged();
+  }
+  // Gera pedido(s): "porItem" = melhor preço de cada item (divide por fornecedor);
+  // fornId = pedido único com um fornecedor.
+  async function gerarPedido(cot, modo, fornIdUnico) {
+    const { itens, fids, vencedorItem } = analise(cot);
+    const grupos = {};   // fornecedor_id → itens do pedido
+    itens.forEach((it, i) => {
+      let fid = null, preco = null;
+      if (modo === "porItem") { const v = vencedorItem[i]; if (v) { fid = v.fid; preco = v.preco; } }
+      else { fid = String(fornIdUnico); preco = Number(it.precos?.[fid]) || null; }
+      if (!fid || !preco) return;
+      (grupos[fid] = grupos[fid] || []).push({ tipo: it.tipo, item_id: it.item_id, nome: it.nome, unidade: it.unidade, qtd: Number(it.qtd), custo_unit: preco, qtd_recebida: 0 });
+    });
+    const ids = Object.keys(grupos);
+    if (!ids.length) { alert("Nenhum item com preço para gerar pedido."); return; }
+    setBusyId(cot.id);
+    for (const fid of ids) {
+      const forn = fornById[fid];
+      await addSupPedidoRemote({ fornecedor_id: Number(fid), fornecedor_nome: forn?.nome || null, itens: grupos[fid], observacao: `Da cotação #${cot.id}`, status: "aberto" }, currentUser);
+    }
+    await atualizarSupCotacaoRemote(cot.id, { status: "fechada" });
+    addAuditLog(currentUser, "gerar pedido da cotação", `cotação ${cot.id} · ${ids.length} pedido(s)`, {});
+    setBusyId(null);
+    setAbrir(null);
+    alert(`${ids.length} pedido(s) de compra gerado(s) na aba Compras.`);
+    onChanged && onChanged();
+  }
+
+  const abertas = cotacoes.filter(c => c.status === "aberta");
+  const historico = cotacoes.filter(c => c.status !== "aberta");
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {canEdit && <button onClick={() => setShowNova(true)} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Nova cotação</button>}
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Registre os preços que cada fornecedor passou e o sistema aponta o mais barato de cada item.</span>
+      </div>
+
+      {cotacoes.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma cotação ainda. Crie uma em “+ Nova cotação”, escolha os fornecedores e os itens, e registre os preços.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
+          {[...abertas, ...historico].map(c => {
+            const { fids, totalForn, vencedorItem } = analise(c);
+            const cotados = vencedorItem.filter(Boolean).length;
+            const melhorTotal = fids.map(id => totalForn[id].soma).filter(v => v > 0).sort((a, b) => a - b)[0];
+            const stCor = c.status === "aberta" ? VX.azul : c.status === "fechada" ? "#34d399" : "#f43f5e";
+            return (
+              <div key={c.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${stCor}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, flex: 1, minWidth: 0 }}>{c.descricao || `Cotação #${c.id}`}</span>
+                  <span style={{ fontSize: 9.5, color: stCor, border: `1px solid ${stCor}55`, borderRadius: 99, padding: "0 7px", fontWeight: 800 }}>{c.status.toUpperCase()}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "6px 0" }}>{(c.itens || []).length} item(ns) · {fids.length} fornecedor(es) · {cotados}/{(c.itens || []).length} cotados{melhorTotal ? ` · melhor total ${fmtReais(melhorTotal)}` : ""}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button onClick={() => setAbrir(c)} style={btnLeito(VX.azul)}>{c.status === "aberta" ? "Cotar / comparar" : "Ver"}</button>
+                  {canEdit && c.status === "aberta" && <button onClick={() => cancelar(c)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showNova && <SupNovaCotacaoModal materiais={materiais} meds={meds.filter(m => m.ativo !== false)} forns={forns} onClose={() => setShowNova(false)} onSave={criar} />}
+      {abrir && <SupCotacaoModal cot={abrir} forns={forns} canEdit={canEdit} busy={busyId === abrir.id} analiseFn={analise} onClose={() => setAbrir(null)} onSalvar={salvarPrecos} onGerar={gerarPedido} />}
+    </div>
+  );
+}
+
+// Nova cotação: descrição + fornecedores a comparar + itens (material/medicamento)
+function SupNovaCotacaoModal({ materiais, meds, forns, onClose, onSave }) {
+  const [descricao, setDescricao] = useState("");
+  const [fids, setFids] = useState([]);
+  const [lista, setLista] = useState([]);   // [{tipo, item_id, nome, unidade, qtd}]
+  const [tipoSel, setTipoSel] = useState("material");
+  const [itemSel, setItemSel] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const base = tipoSel === "material" ? materiais : meds;
+  const disp = base.filter(i => !lista.some(x => x.tipo === tipoSel && x.item_id === i.id)).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const sel = base.find(i => String(i.id) === String(itemSel));
+  const toggleForn = id => setFids(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id]);
+
+  function add() {
+    const q = Number(qtd);
+    if (!sel) { alert("Escolha o item."); return; }
+    if (!q || q <= 0) { alert("Informe a quantidade."); return; }
+    setLista(l => [...l, { tipo: tipoSel, item_id: sel.id, nome: sel.nome, unidade: sel.unidade || "", qtd: q }]);
+    setItemSel(""); setQtd("");
+  }
+  async function salvar() {
+    if (fids.length < 1) { alert("Escolha ao menos um fornecedor para cotar."); return; }
+    if (!lista.length) { alert("Adicione ao menos um item."); return; }
+    setBusy(true);
+    await onSave({ descricao: descricao.trim() || null, fornecedores: fids, itens: lista.map(x => ({ ...x, precos: {} })), status: "aberta" });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Nova cotação</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={farmLbl}>Descrição (opcional)</label>
+          <input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex.: Compra mensal de EPI" style={farmInp} autoFocus />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={farmLbl}>Fornecedores a comparar *</label>
+          {forns.length === 0 ? <div style={{ fontSize: 12, color: "#d97706" }}>Cadastre fornecedores primeiro (aba Fornecedores).</div> : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {forns.map(f => <button key={f.id} onClick={() => toggleForn(f.id)} style={{ background: fids.includes(f.id) ? VX.turquesa : "transparent", color: fids.includes(f.id) ? "#062a26" : "var(--text-3)", border: `1px solid ${fids.includes(f.id) ? VX.turquesa : "var(--border)"}`, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{f.nome}</button>)}
+            </div>
+          )}
+        </div>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            {["material", "medicamento"].map(t => <button key={t} onClick={() => { setTipoSel(t); setItemSel(""); }} style={{ flex: 1, background: tipoSel === t ? VX.turquesa : "transparent", color: tipoSel === t ? "#062a26" : "var(--text-3)", border: `1px solid ${tipoSel === t ? VX.turquesa : "var(--border)"}`, borderRadius: 7, padding: "6px 0", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{t === "material" ? "Material" : "Medicamento"}</button>)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "end" }}>
+            <div><label style={farmLbl}>Item</label><select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}><option value="">— escolha —</option>{disp.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select></div>
+            <div><label style={farmLbl}>Qtd</label><input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} /></div>
+            <button onClick={add} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
+          </div>
+        </div>
+        {lista.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+            {lista.map((x, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
+                <span style={{ fontSize: 9.5, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", fontWeight: 700 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
+                <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 40, textAlign: "right" }}>{farmFmtQtd(x.qtd)}</span>
+                <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)", minWidth: 0 }}>{x.nome}</span>
+                <button onClick={() => setLista(l => l.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Criar cotação"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Comparação da cotação: matriz preço × fornecedor, destaca o mais barato, gera pedido
+function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalvar, onGerar }) {
+  const fById = {}; forns.forEach(f => fById[f.id] = f);
+  const [itens, setItens] = useState(() => (Array.isArray(cot.itens) ? cot.itens : []).map(x => ({ ...x, precos: { ...(x.precos || {}) } })));
+  const fids = (cot.fornecedores || []).map(String);
+  const readonly = cot.status !== "aberta" || !canEdit;
+  const setPreco = (i, fid, v) => setItens(l => l.map((x, j) => j === i ? { ...x, precos: { ...x.precos, [fid]: v } } : x));
+
+  const vencedor = itens.map(it => {
+    let melhor = null;
+    fids.forEach(fid => { const p = Number(it.precos?.[fid]); if (p > 0 && (melhor == null || p < melhor.preco)) melhor = { fid, preco: p }; });
+    return melhor;
+  });
+  const totalForn = {}; fids.forEach(fid => totalForn[fid] = itens.reduce((s, it) => s + (Number(it.precos?.[fid]) || 0) * Number(it.qtd || 0), 0));
+  // "Melhor fornecedor único" só entre os que cotaram TODOS os itens — senão um
+  // fornecedor com itens em branco pareceria mais barato (total menor) e enganaria.
+  const precificouTudo = fid => itens.length > 0 && itens.every(it => Number(it.precos?.[fid]) > 0);
+  const melhorFornGeral = fids.filter(precificouTudo).sort((a, b) => totalForn[a] - totalForn[b])[0];
+  const totalPorItem = itens.reduce((s, it, i) => s + (vencedor[i] ? vencedor[i].preco * Number(it.qtd || 0) : 0), 0);
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 820, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>{cot.descricao || `Cotação #${cot.id}`}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{readonly ? "Somente leitura." : "Digite o preço unitário que cada fornecedor passou. O mais barato de cada item fica destacado."}</div>
+
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: 14 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 560 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 10.5, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 10px" }}>Item</th>
+              <th style={{ padding: "8px 10px", textAlign: "right" }}>Qtd</th>
+              {fids.map(fid => <th key={fid} style={{ padding: "8px 10px", textAlign: "right" }}>{fById[fid]?.nome || `#${fid}`}{fById[fid]?.lead_time_dias != null ? <span style={{ fontWeight: 400, textTransform: "none" }}> · {fById[fid].lead_time_dias}d</span> : ""}</th>)}
+              <th style={{ padding: "8px 10px", textAlign: "right" }}>Melhor</th>
+            </tr></thead>
+            <tbody>
+              {itens.map((it, i) => (
+                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 10px", fontWeight: 600 }}><span style={{ fontSize: 9, color: it.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${it.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 5px", marginRight: 6 }}>{it.tipo === "medicamento" ? "MED" : "MAT"}</span>{it.nome}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(it.qtd)}</td>
+                  {fids.map(fid => { const venc = vencedor[i]?.fid === fid; return (
+                    <td key={fid} style={{ padding: "7px 10px", textAlign: "right", background: venc ? "#34d39918" : "transparent" }}>
+                      {readonly
+                        ? <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: venc ? 800 : 400, color: venc ? "#0d9488" : "var(--text-2)" }}>{Number(it.precos?.[fid]) > 0 ? fmtReais(it.precos[fid]) : "—"}</span>
+                        : <input type="number" min="0" step="any" value={it.precos?.[fid] ?? ""} onChange={e => setPreco(i, fid, e.target.value)} placeholder="—" style={{ ...farmInp, width: 82, padding: "5px 7px", fontSize: 12, textAlign: "right", borderColor: venc ? "#34d399" : "var(--border)" }} />}
+                    </td>
+                  ); })}
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#0d9488" }}>{vencedor[i] ? fmtReais(vencedor[i].preco) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr style={{ borderTop: "2px solid var(--border)", background: "var(--surface-2)" }}>
+              <td style={{ padding: "8px 10px", fontWeight: 700 }} colSpan={2}>Total por fornecedor</td>
+              {fids.map(fid => <td key={fid} style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: fid === melhorFornGeral ? "#0d9488" : "var(--text-2)" }}>{totalForn[fid] > 0 ? fmtReais(totalForn[fid]) : "—"}{fid === melhorFornGeral && totalForn[fid] > 0 ? " ✓" : ""}{totalForn[fid] > 0 && !precificouTudo(fid) ? <span title="Cotou só parte dos itens" style={{ color: "#d97706", fontWeight: 700 }}> ⚠</span> : ""}</td>)}
+              <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: "#0d9488" }}>{fmtReais(totalPorItem)}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 14 }}>
+          <strong>Melhor preço por item:</strong> {fmtReais(totalPorItem)} (divide entre fornecedores) · <strong>Melhor fornecedor único:</strong> {melhorFornGeral ? `${fById[melhorFornGeral]?.nome} — ${fmtReais(totalForn[melhorFornGeral])}` : "nenhum cotou todos os itens ainda"}. O ⚠ marca quem cotou só parte. O prazo de entrega (dias) aparece no cabeçalho para pesar preço × prazo.
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+          {!readonly && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => onSalvar(cot, itens)} disabled={busy} style={{ background: "transparent", color: VX.azul, border: `1px solid ${VX.azul}66`, borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar preços"}</button>
+              <button onClick={() => { onSalvar(cot, itens); onGerar({ ...cot, itens }, "porItem"); }} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Gerar pedido (melhor por item)</button>
+              {melhorFornGeral && <button onClick={() => { onSalvar(cot, itens); onGerar({ ...cot, itens }, "unico", melhorFornGeral); }} disabled={busy} style={{ background: "transparent", color: "#0d9488", border: "1px solid #0d948866", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Pedido único ({fById[melhorFornGeral]?.nome})</button>}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Compras — pedidos por fornecedor com itens de material E medicamento.
 // Recebimento (total ou parcial) dá entrada automática no estoque certo.
-function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, saidasHist, forns, pedidos, onChanged }) {
+function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, saidasHist, forns, pedidos, leadMap = {}, onChanged }) {
   const [meds, setMeds] = useState([]);
   const [medLotes, setMedLotes] = useState([]);
   const [medSaidas, setMedSaidas] = useState([]);
@@ -9380,7 +9830,9 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
     loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
   }, []);
 
-  // Sugestões de compra (previsão de demanda): materiais + medicamentos
+  // Sugestões de compra por PONTO DE PEDIDO: dispara quando a cobertura cai abaixo
+  // do prazo de entrega do item (+ margem) — e a quantidade cobre esse prazo + mínimo.
+  // Medicamentos não têm fornecedor vinculado no movimento → usam o prazo padrão.
   function sugestoes(itensBase, lotesBase, saidas, campoId, tipo) {
     const consumo = {};
     saidas.forEach(s => { const id = s[campoId]; if (id) consumo[id] = (consumo[id] || 0) + Number(s.quantidade || 0); });
@@ -9389,9 +9841,10 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
       const saldo = lotesBase.filter(l => l[campoId === "item_id" ? "item_id" : "medicamento_id"] === i.id)
         .reduce((s, l) => s + Number(l.quantidade || 0), 0);
       const cobertura = media > 0 ? saldo / media : null;
-      const qtd = Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(i.estoque_minimo || 0) - saldo));
-      return { tipo, item_id: i.id, nome: i.nome, unidade: i.unidade || "", qtd, custo_unit: Number(i.custo_unitario || 0) || "", cobertura, media };
-    }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE && x.qtd > 0)
+      const prazo = tipo === "material" ? supPrazoReposicao(i.id, leadMap) : (SUP_LEAD_PADRAO + SUP_MARGEM_SEG);
+      const qtd = Math.max(0, Math.ceil(media * prazo + Number(i.estoque_minimo || 0) - saldo));
+      return { tipo, item_id: i.id, nome: i.nome, unidade: i.unidade || "", qtd, custo_unit: Number(i.custo_unitario || 0) || "", cobertura, media, prazo };
+    }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < x.prazo && x.qtd > 0)
       .sort((a, b) => a.cobertura - b.cobertura);
   }
   const sugMat = sugestoes(materiais, lotes, saidasHist, "item_id", "material");
@@ -9422,25 +9875,40 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
   async function confirmarRecebimento(p, linhas, nf) {
     setBusyId(p.id);
     const erros = [];
+    const matById = {}; materiais.forEach(i => matById[i.id] = i);
+    const medById = {}; meds.forEach(m => medById[m.id] = m);
     const itensNovos = (Array.isArray(p.itens) ? p.itens : []).map(x => ({ ...x }));
     for (const ln of linhas) {
       const q = Number(ln.qtd || 0);
       if (q <= 0) continue;
       const alvo = itensNovos[ln.idx];
+      const custoNota = Number(alvo.custo_unit) || 0;   // custo do pedido → alimenta o custo médio
       let r;
       if (alvo.tipo === "medicamento") {
+        const saldoAntes = farmSaldoTotal(alvo.item_id, medLotes);
         r = await addFarmMovimentoRemote({
           medicamento_id: alvo.item_id, tipo: "entrada", quantidade: q,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
+          custo_unit: custoNota || null,
         }, currentUser);
+        if (r.ok && custoNota) {
+          const novo = custoMedioPonderado(medById[alvo.item_id]?.custo_unitario, saldoAntes, q, custoNota);
+          if (novo != null) await setFarmMedCustoRemote(alvo.item_id, novo);
+        }
       } else {
+        const saldoAntes = supSaldoTotal(alvo.item_id, lotes);
         r = await addSupMovimentoRemote({
           item_id: alvo.item_id, tipo: "entrada", quantidade: q,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
           fornecedor_id: p.fornecedor_id || null,
+          custo_unit: custoNota || null,
         }, currentUser);
+        if (r.ok && custoNota) {
+          const novo = custoMedioPonderado(matById[alvo.item_id]?.custo_unitario, saldoAntes, q, custoNota);
+          if (novo != null) await setSupItemCustoRemote(alvo.item_id, novo);
+        }
       }
       if (r.ok) alvo.qtd_recebida = Number(alvo.qtd_recebida || 0) + q;
       else erros.push(`${alvo.nome}: ${r.erro || "falha na entrada"}`);
@@ -9709,10 +10177,12 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
 }
 
 // Estoque preditivo — quando acaba cada item no ritmo atual (materiais + medicamentos)
-function SupPreditivoView({ itens, lotes, saidasHist }) {
+function SupPreditivoView({ itens, lotes, saidasHist, leadMap = {} }) {
   const [meds, setMeds] = useState([]);
   const [medLotes, setMedLotes] = useState([]);
   const [medSaidas, setMedSaidas] = useState([]);
+  const [saidas7, setSaidas7] = useState([]);       // materiais, últimos 7d (demanda instável)
+  const [medSaidas7, setMedSaidas7] = useState([]); // medicamentos, últimos 7d
   const [busca, setBusca] = useState("");
   const [tipoF, setTipoF] = useState("");        // "" | material | medicamento
   const [soComGiro, setSoComGiro] = useState(true);
@@ -9722,22 +10192,30 @@ function SupPreditivoView({ itens, lotes, saidasHist }) {
     loadFarmMedicamentos().then(setMeds);
     loadFarmLotes().then(setMedLotes);
     loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+    loadSupSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setSaidas7);
+    loadFarmSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setMedSaidas7);
   }, []);
 
-  function linhas(base, lotesBase, saidas, idKey, tipo, saldoFn) {
+  function linhas(base, lotesBase, saidas, saidas7d, idKey, tipo, saldoFn) {
     const cons = {}; saidas.forEach(s => { const id = s[idKey]; if (id) cons[id] = (cons[id] || 0) + Number(s.quantidade || 0); });
+    const cons7 = {}; saidas7d.forEach(s => { const id = s[idKey]; if (id) cons7[id] = (cons7[id] || 0) + Number(s.quantidade || 0); });
     return base.filter(x => x.ativo !== false).map(x => {
       const media = (cons[x.id] || 0) / FARM_PREV_JANELA;
+      const media7 = (cons7[x.id] || 0) / 7;
       const saldo = saldoFn(x.id);
       const cobertura = media > 0 ? saldo / media : null;
       const dataFim = cobertura != null ? new Date(Date.now() + cobertura * 86400000) : null;
-      const sugestao = media > 0 ? Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(x.estoque_minimo || 0) - saldo)) : 0;
-      return { tipo, nome: x.nome, unidade: x.unidade || "", saldo, media, cobertura, dataFim, sugestao };
+      const prazo = tipo === "material" ? supPrazoReposicao(x.id, leadMap) : (SUP_LEAD_PADRAO + SUP_MARGEM_SEG);
+      const sugestao = media > 0 ? Math.max(0, Math.ceil(media * prazo + Number(x.estoque_minimo || 0) - saldo)) : 0;
+      const comprarAgora = cobertura != null && cobertura < prazo;
+      // demanda instável: consumo recente (7d) destoa muito da média de 30d
+      const instavel = media > 0 && (media7 > media * 1.75 || media7 < media * 0.4);
+      return { tipo, nome: x.nome, unidade: x.unidade || "", saldo, media, cobertura, dataFim, sugestao, prazo, comprarAgora, instavel, subindo: media7 > media };
     });
   }
   const todas = [
-    ...linhas(itens, lotes, saidasHist, "item_id", "material", id => supSaldoTotal(id, lotes)),
-    ...linhas(meds, medLotes, medSaidas, "medicamento_id", "medicamento", id => farmSaldoTotal(id, medLotes)),
+    ...linhas(itens, lotes, saidasHist, saidas7, "item_id", "material", id => supSaldoTotal(id, lotes)),
+    ...linhas(meds, medLotes, medSaidas, medSaidas7, "medicamento_id", "medicamento", id => farmSaldoTotal(id, medLotes)),
   ];
   const q = normTxt(busca);
   const view = todas
@@ -9745,23 +10223,25 @@ function SupPreditivoView({ itens, lotes, saidasHist }) {
     .filter(x => !q || normTxt(x.nome).includes(q))
     .filter(x => !soComGiro || x.media > 0)
     .sort((a, b) => (a.cobertura ?? 1e9) - (b.cobertura ?? 1e9));
-  const criticos = todas.filter(x => x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).length;
-  const atencao = todas.filter(x => x.cobertura != null && x.cobertura >= FARM_PREV_HORIZONTE && x.cobertura < 15).length;
-  const statusDe = c => c == null ? { cor: "var(--text-muted)", label: "sem giro" }
-    : c < FARM_PREV_HORIZONTE ? { cor: "#f43f5e", label: "crítico" }
-    : c < 15 ? { cor: "#d97706", label: "atenção" }
+  const comprarAgoraN = todas.filter(x => x.comprarAgora).length;
+  const instaveisN = todas.filter(x => x.instavel).length;
+  // Situação pelo ponto de pedido do próprio item (não mais um "7" fixo)
+  const statusDe = x => x.cobertura == null ? { cor: "var(--text-muted)", label: "sem giro" }
+    : x.comprarAgora ? { cor: "#f43f5e", label: "comprar agora" }
+    : x.cobertura < x.prazo * 1.5 ? { cor: "#d97706", label: "atenção" }
     : { cor: "#34d399", label: "ok" };
   const fmtDias = c => c == null ? "—" : c < 1 ? "menos de 1 dia" : `~${Math.floor(c)} dia(s)`;
 
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 14 }}>
-        {[["Acabam em menos de 7 dias", criticos, criticos ? "#f43f5e" : "#34d399"],
-          ["Acabam em 7 a 15 dias", atencao, atencao ? "#d97706" : "#34d399"],
-          ["Itens com consumo (30d)", todas.filter(x => x.media > 0).length, VX.azul]].map(([l, v, cor]) => (
+        {[["Comprar agora (ponto de pedido)", comprarAgoraN, comprarAgoraN ? "#f43f5e" : "#34d399", "cobertura abaixo do prazo de entrega"],
+          ["Demanda instável", instaveisN, instaveisN ? "#d97706" : "#34d399", "consumo recente destoa da média"],
+          ["Itens com consumo (30d)", todas.filter(x => x.media > 0).length, VX.azul, "base da previsão"]].map(([l, v, cor, sub]) => (
           <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "12px 14px" }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{l}</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{v}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>
           </div>
         ))}
       </div>
@@ -9789,27 +10269,30 @@ function SupPreditivoView({ itens, lotes, saidasHist }) {
               <th style={{ padding: "9px 12px", textAlign: "right" }}>Consumo/dia</th>
               <th style={{ padding: "9px 12px" }}>Acaba em</th>
               <th style={{ padding: "9px 12px" }}>Data prevista</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Prazo entrega</th>
               <th style={{ padding: "9px 12px" }}>Situação</th>
-              <th style={{ padding: "9px 12px", textAlign: "right" }}>Comprar (7d)</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Comprar</th>
             </tr></thead>
             <tbody>
-              {view.slice(0, 120).map((x, i) => { const st = statusDe(x.cobertura); return (
+              {view.slice(0, 120).map((x, i) => { const st = statusDe(x); return (
                 <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={{ padding: "8px 12px" }}>
                     <span style={{ fontSize: 9.5, fontWeight: 800, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", marginRight: 7 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
                     <span style={{ fontWeight: 600 }}>{x.nome}</span>
+                    {x.instavel && <span title={x.subindo ? "Consumo recente bem acima da média — pode ser pico/surto" : "Consumo recente bem abaixo da média"} style={{ fontSize: 9.5, fontWeight: 800, color: "#d97706", border: "1px solid #d9770655", borderRadius: 99, padding: "0 6px", marginLeft: 6 }}>{x.subindo ? "↑ instável" : "↓ instável"}</span>}
                   </td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{farmFmtQtd(x.saldo)} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "Inter, sans-serif", fontWeight: 400 }}>{x.unidade}</span></td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{x.media > 0 ? farmFmtQtd(Math.round(x.media * 10) / 10) : "—"}</td>
                   <td style={{ padding: "8px 12px", fontWeight: 700, color: st.cor }}>{fmtDias(x.cobertura)}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-2)" }}>{x.dataFim ? x.dataFim.toLocaleDateString("pt-BR") : "—"}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-muted)" }}>{x.tipo === "material" ? `${x.prazo}d` : `${x.prazo}d*`}</td>
                   <td style={{ padding: "8px 12px" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: st.cor, marginRight: 6 }} /><span style={{ fontSize: 12, color: st.cor, fontWeight: st.label === "ok" ? 400 : 700 }}>{st.label}</span></td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: x.sugestao > 0 ? VX.azul : "var(--text-muted)" }}>{x.sugestao > 0 ? farmFmtQtd(x.sugestao) : "—"}</td>
                 </tr>
               ); })}
             </tbody>
           </table>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Previsão pela média de consumo dos últimos {FARM_PREV_JANELA} dias — assume demanda estável. "Comprar" cobre 7 dias + estoque mínimo.</div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Previsão pela média de consumo dos últimos {FARM_PREV_JANELA} dias. "Comprar agora" = a cobertura já é menor que o prazo de entrega + margem ({SUP_MARGEM_SEG}d). "Comprar" cobre o prazo de reposição + estoque mínimo. <strong>*</strong> medicamentos usam o prazo padrão ({SUP_LEAD_PADRAO}d), pois o fornecedor não é vinculado na baixa.</div>
         </div>
       )}
     </div>
@@ -9926,11 +10409,99 @@ function SupVencimentosView({ itens, lotes, saidasHist }) {
   );
 }
 
+// Ações de hoje — consolida toda a inteligência do módulo numa lista priorizada
+// de tarefas do almoxarifado. Cada bloco leva direto à ferramenta certa.
+function SupAcoesView({ itens, lotes, saidasHist, reqs, pedidos, invs, leadMap = {}, onNav }) {
+  const ativos = itens.filter(i => i.ativo !== false);
+  const consumo = {}; saidasHist.forEach(s => { if (s.item_id) consumo[s.item_id] = (consumo[s.item_id] || 0) + Number(s.quantidade || 0); });
+  const media = i => (consumo[i.id] || 0) / FARM_PREV_JANELA;
+  const saldo = i => supSaldoTotal(i.id, lotes);
+  const cobertura = i => { const m = media(i); return m > 0 ? saldo(i) / m : null; };
+
+  // Rupturas com giro (zerado mas com consumo) — o mais urgente
+  const rupturas = ativos.filter(i => saldo(i) <= 0 && media(i) > 0);
+  // Comprar agora (ponto de pedido): cobertura abaixo do prazo de entrega
+  const comprar = ativos.filter(i => { const c = cobertura(i); return c != null && c < supPrazoReposicao(i.id, leadMap); });
+  // Vencimentos em risco: lote vencido ou vencendo ≤30d que não se consome a tempo
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const vencRisco = lotes.filter(l => {
+    if (!(Number(l.quantidade) > 0 && l.validade)) return false;
+    const st = farmValidadeInfo(l.validade).status;
+    if (!["vencido", "vencendo"].includes(st)) return false;
+    const it = itens.find(x => x.id === l.item_id);
+    const dias = Math.max(0, Math.round((new Date(l.validade + "T00:00:00") - hoje) / 86400000));
+    const m = it ? media(it) : 0;
+    return st === "vencido" || !(m > 0 && m * dias >= Number(l.quantidade));   // não dá pra consumir a tempo
+  }).map(l => ({ l, it: itens.find(x => x.id === l.item_id) }));
+  // Fluxos do módulo
+  const reqAg = reqs.filter(r => r.status === "aguardando");
+  const reqPr = reqs.filter(r => r.status === "pronto");
+  const pedRec = pedidos.filter(p => ["enviado", "parcial"].includes(p.status));
+  // Contagens de inventário pendentes (curva ABC)
+  const valorCons = i => (consumo[i.id] || 0) * custoUnit(i);
+  const ranked = [...ativos].map(i => ({ i, v: valorCons(i) })).sort((a, b) => b.v - a.v);
+  const totalV = ranked.reduce((s, x) => s + x.v, 0);
+  const classe = {}; let ac = 0; ranked.forEach(x => { ac += x.v; const p = totalV ? ac / totalV : 1; classe[x.i.id] = x.v <= 0 ? "C" : p <= 0.8 ? "A" : p <= 0.95 ? "B" : "C"; });
+  const ultima = {}; invs.forEach(v => { if (!ultima[v.item_id]) ultima[v.item_id] = v; });
+  const invPend = ativos.filter(i => { const u = ultima[i.id]; const d = u ? Math.floor((Date.now() - new Date(u.created_at)) / 86400000) : null; return d == null || d >= SUP_INV_INTERVALO[classe[i.id] || "C"]; });
+
+  const blocos = [
+    { key: "rup", cor: "#f43f5e", titulo: "Rupturas com consumo", n: rupturas.length, nav: "estoque", verbo: "repor com urgência",
+      itens: rupturas.slice(0, 6).map(i => i.nome), dica: "Zerados que têm saída — parou de atender. Registre entrada ou emita compra já." },
+    { key: "comp", cor: "#f43f5e", titulo: "Comprar agora (ponto de pedido)", n: comprar.length, nav: "compras", verbo: "gerar pedido",
+      itens: comprar.slice(0, 6).map(i => `${i.nome} · cobre ${cobertura(i) < 1 ? "<1" : Math.floor(cobertura(i))}d`), dica: "Cobertura abaixo do prazo de entrega — vão romper antes da próxima compra chegar." },
+    { key: "venc", cor: "#d97706", titulo: "Vencendo sem dar tempo de usar", n: vencRisco.length, nav: "vencimentos", verbo: "remanejar / priorizar",
+      itens: vencRisco.slice(0, 6).map(x => `${x.it?.nome || "?"} · lote ${x.l.lote || "?"} vence ${fmtDataBR(x.l.validade)}`), dica: "No ritmo atual não serão consumidos a tempo — remaneje, priorize o uso ou negocie troca." },
+    { key: "reqAg", cor: "#3b82f6", titulo: "Requisições aguardando", n: reqAg.length, nav: "requisicoes", verbo: "receber e separar",
+      itens: reqAg.slice(0, 6).map(r => `${r.setor} · ${(r.itens || []).length} item(ns)`), dica: "Setores esperando material." },
+    { key: "reqPr", cor: "#3b82f6", titulo: "Prontas para retirada", n: reqPr.length, nav: "requisicoes", verbo: "confirmar entrega",
+      itens: reqPr.slice(0, 6).map(r => `${r.setor}`), dica: "Já separadas — confirmar a entrega ao setor." },
+    { key: "ped", cor: "#3b82f6", titulo: "Pedidos a receber", n: pedRec.length, nav: "compras", verbo: "dar entrada",
+      itens: pedRec.slice(0, 6).map(p => `PED-${p.id} · ${p.fornecedor_nome || "sem fornecedor"}`), dica: "Compras enviadas ou parciais aguardando recebimento." },
+    { key: "inv", cor: "#8d99ab", titulo: "Contagens de inventário na fila", n: invPend.length, nav: "inventario", verbo: "contar",
+      itens: invPend.slice(0, 6).map(i => `${i.nome} · classe ${classe[i.id] || "C"}`), dica: "Contagem cíclica pela curva ABC — mantém a acuracidade." },
+  ];
+  const urgentes = blocos.filter(b => ["#f43f5e"].includes(b.cor)).reduce((s, b) => s + b.n, 0);
+  const totalAcoes = blocos.reduce((s, b) => s + b.n, 0);
+  const comItens = blocos.filter(b => b.n > 0);
+
+  return (
+    <div>
+      <div style={{ background: totalAcoes ? (urgentes ? "#f43f5e10" : "#d9770610") : "var(--surface)", border: `1px solid ${totalAcoes ? (urgentes ? "#f43f5e44" : "#d9770644") : "var(--border)"}`, borderRadius: 10, padding: "14px 18px", marginBottom: 16, fontSize: 14.5 }}>
+        {totalAcoes === 0
+          ? "✅ Nada pendente no almoxarifado agora — estoque, requisições, compras e contagens em dia."
+          : <>Você tem <strong>{totalAcoes} ação(ões)</strong> para hoje{urgentes > 0 && <>, sendo <strong style={{ color: "#f43f5e" }}>{urgentes} urgente(s)</strong> (rupturas e compras críticas)</>}. Em ordem de prioridade abaixo.</>}
+      </div>
+
+      {comItens.length === 0 ? null : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+          {comItens.map(b => (
+            <div key={b.key} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${b.cor}`, borderRadius: 10, padding: "12px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: b.cor, minWidth: 34 }}>{b.n}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", flex: 1 }}>{b.titulo}</span>
+                <button onClick={() => onNav && onNav(b.nav)} style={{ background: "transparent", border: `1px solid ${b.cor}66`, color: b.cor, borderRadius: 6, padding: "5px 11px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{b.verbo} →</button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 6 }}>
+                {b.itens.map((t, i) => <div key={i} style={{ fontSize: 12, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>• {t}</div>)}
+                {b.n > b.itens.length && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>+{b.n - b.itens.length} outros</div>}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.4 }}>{b.dica}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 16 }}>Atualiza sozinho. Prioridade: vermelho = urgente (ruptura/compra), âmbar = atenção (vencimento), azul = fluxo, cinza = rotina.</div>
+    </div>
+  );
+}
+
 // Painel executivo — visão financeira do estoque (almoxarifado + Farmácia).
 // Critérios transparentes: valores pelo custo unitário cadastrado; "economia" =
 // variação vs mês anterior; "capital liberável" = excesso acima de 30d + mínimo.
 const SUP_EXEC_COBERTURA_ALVO = 30; // dias de cobertura considerados necessários
-function SupExecutivoView({ itens, lotes, reqs = [] }) {
+function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
   const [simGrupo, setSimGrupo] = useState("");
   const [simPct, setSimPct] = useState(30);
   const [meds, setMeds] = useState([]);
@@ -9976,6 +10547,18 @@ function SupExecutivoView({ itens, lotes, reqs = [] }) {
   const capTotal = capMat + capMed;
   const semPreco = ativosMat.filter(i => supSaldoTotal(i.id, lotes) > 0 && !custoUnit(i)).length
                  + ativosMed.filter(m => farmSaldoTotal(m.id, medLotes) > 0 && !custoUnit(m)).length;
+
+  // ── Acuracidade do estoque (contagens de inventário dos últimos 90 dias) ──
+  const ultimaInv = {}; invs.forEach(v => { if (!ultimaInv[v.item_id]) ultimaInv[v.item_id] = v; });
+  const invRecentes = Object.values(ultimaInv).filter(u => (Date.now() - new Date(u.created_at)) / 86400000 <= 90);
+  const acuracidade = invRecentes.length ? (invRecentes.filter(u => Number(u.diferenca) === 0).length / invRecentes.length) * 100 : null;
+
+  // ── Confiança dos dados: o quanto dá para acreditar nos R$ e nas previsões ──
+  // (custo cadastrado, itens inventariados nos últimos 90d, código de barras)
+  const baseCusto = [...ativosMat, ...ativosMed];
+  const pctCusto = baseCusto.length ? (baseCusto.filter(x => custoUnit(x) > 0).length / baseCusto.length) * 100 : null;
+  const pctInventariado = ativosMat.length ? (Object.values(ultimaInv).filter(u => (Date.now() - new Date(u.created_at)) / 86400000 <= 90).length / ativosMat.length) * 100 : null;
+  const pctBarras = ativosMat.length ? (ativosMat.filter(i => (i.codigo_barras || "").trim()).length / ativosMat.length) * 100 : null;
 
   // ── 2. Gasto do mês vs mês anterior (entradas = compras) ──
   const custoSup = mv => Number(mv.quantidade || 0) * custoUnit(itemById[mv.item_id]);
@@ -10063,8 +10646,30 @@ function SupExecutivoView({ itens, lotes, reqs = [] }) {
 
   if (carregando) return <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "2rem", textAlign: "center" }}>Calculando o painel executivo…</div>;
 
+  // Selo de confiança: cor pela média das três coberturas de dados
+  const confMedia = [pctCusto, pctInventariado, pctBarras].filter(x => x != null).reduce((s, x, _, a) => s + x / a.length, 0);
+  const confCor = p => p == null ? "var(--text-muted)" : p >= 80 ? "#34d399" : p >= 50 ? "#d97706" : "#f43f5e";
+  const Pastilha = ({ label, pct, dica }) => (
+    <div title={dica} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 99, padding: "5px 12px" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 99, background: confCor(pct), flexShrink: 0 }} />
+      <span style={{ fontSize: 11.5, color: "var(--text-2)" }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: confCor(pct) }}>{pct == null ? "—" : pct.toFixed(0) + "%"}</span>
+    </div>
+  );
+
   return (
     <div>
+      {/* SELO DE CONFIANÇA DOS DADOS */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${confCor(confMedia)}`, borderRadius: 10 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>Confiança dos dados</span>
+        <Pastilha label="com custo" pct={pctCusto} dica="% de materiais e medicamentos ativos com custo unitário cadastrado. Os R$ do painel só contam esses itens." />
+        <Pastilha label="inventariado 90d" pct={pctInventariado} dica="% de materiais contados no inventário nos últimos 90 dias (cobertura da acuracidade)." />
+        <Pastilha label="com cód. barras" pct={pctBarras} dica="% de materiais com código de barras cadastrado." />
+        <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", maxWidth: 300 }}>
+          {confMedia >= 80 ? "Dados sólidos — os números abaixo são confiáveis." : confMedia >= 50 ? "Dados parciais — complete custo/contagens para os R$ ficarem fiéis." : "Poucos dados — trate os valores em R$ como estimativa grosseira por enquanto."}
+        </span>
+      </div>
+
       {/* LINHA 1 — CAPITAL */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 12 }}>
         <KPI destaque label="Capital parado no estoque" valor={fmtReais(capTotal)} cor={VX.turquesa}
@@ -10075,6 +10680,8 @@ function SupExecutivoView({ itens, lotes, reqs = [] }) {
           sub={`compras: ${fmtReais(gastoAtual)} neste mês · ${fmtReais(gastoAnt)} no anterior`} />
         <KPI destaque label="Perdas por vencimento" valor={fmtReais(perdasAtual)} cor={perdasAtual > 0 ? "#f43f5e" : "#34d399"}
           sub={reducaoPerdas == null ? `mês anterior: ${fmtReais(perdasAnt)}` : reducaoPerdas >= 0 ? `redução de ${reducaoPerdas.toFixed(0)}% vs mês anterior (${fmtReais(perdasAnt)})` : `aumento de ${Math.abs(reducaoPerdas).toFixed(0)}% vs mês anterior (${fmtReais(perdasAnt)})`} />
+        <KPI destaque label="Acuracidade do estoque" valor={acuracidade == null ? "—" : acuracidade.toFixed(0) + "%"} cor={acuracidade == null ? "var(--text-muted)" : acuracidade >= 95 ? "#34d399" : acuracidade >= 85 ? "#d97706" : "#f43f5e"}
+          sub={acuracidade == null ? "faça contagens no Inventário para medir" : `${invRecentes.length} item(ns) contado(s) em 90d — confiança dos números`} />
       </div>
 
       {/* LINHA 2 — PAINÉIS */}
@@ -10579,6 +11186,273 @@ function SupAssistenteView() {
   );
 }
 
+// Inventário cíclico — contagem cega rotativa (curva ABC) + acuracidade
+const SUP_INV_INTERVALO = { A: 7, B: 30, C: 90 };   // dias entre contagens por classe
+function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, invs, onSave }) {
+  const [contar, setContar] = useState(null);   // item em contagem
+  const [busca, setBusca] = useState("");
+  const [soPendentes, setSoPendentes] = useState(true);
+
+  // Classe ABC por valor de consumo (30d) — A conta mais vezes
+  const consumo = {}; saidasHist.forEach(s => { if (s.item_id) consumo[s.item_id] = (consumo[s.item_id] || 0) + Number(s.quantidade || 0); });
+  const valorConsumo = i => (consumo[i.id] || 0) * custoUnit(i);
+  const ranked = [...itens].map(i => ({ i, v: valorConsumo(i) })).sort((a, b) => b.v - a.v);
+  const totalV = ranked.reduce((s, x) => s + x.v, 0);
+  const classeDe = {}; let acum = 0;
+  ranked.forEach(x => { acum += x.v; const pct = totalV ? acum / totalV : 1; classeDe[x.i.id] = x.v <= 0 ? "C" : pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C"; });
+
+  // Última contagem por item
+  const ultima = {}; invs.forEach(v => { if (!ultima[v.item_id]) ultima[v.item_id] = v; });   // invs vem desc
+  const diasDesde = iso => iso ? Math.floor((Date.now() - new Date(iso)) / 86400000) : null;
+  const pendenteDe = i => { const u = ultima[i.id]; const d = u ? diasDesde(u.created_at) : null; const alvo = SUP_INV_INTERVALO[classeDe[i.id] || "C"]; return d == null || d >= alvo; };
+
+  // Acuracidade — últimas contagens (uma por item) nos últimos 90 dias
+  const recentes = Object.values(ultima).filter(u => diasDesde(u.created_at) <= 90);
+  const exatas = recentes.filter(u => Number(u.diferenca) === 0).length;
+  const acuracidade = recentes.length ? (exatas / recentes.length) * 100 : null;
+  const divergencias = recentes.filter(u => Number(u.diferenca) !== 0);
+  const valorDiverg = divergencias.reduce((s, u) => { const it = itens.find(x => x.id === u.item_id); return s + Math.abs(Number(u.diferenca)) * custoUnit(it); }, 0);
+
+  const q = normTxt(busca);
+  const fila = ranked.map(x => x.i)
+    .filter(i => !q || normTxt(i.nome).includes(q) || (i.codigo_barras || "").includes(busca.trim()))
+    .filter(i => !soPendentes || pendenteDe(i));
+  const pendentesTotal = itens.filter(pendenteDe).length;
+  const classeCor = c => c === "A" ? "#e11d48" : c === "B" ? "#d97706" : "#0d9488";
+
+  const KPI = ({ label, valor, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "13px 15px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 25, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  const acuCor = acuracidade == null ? "var(--text-muted)" : acuracidade >= 95 ? "#34d399" : acuracidade >= 85 ? "#d97706" : "#f43f5e";
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <KPI label="Acuracidade do estoque" valor={acuracidade == null ? "—" : acuracidade.toFixed(0) + "%"} cor={acuCor} sub={acuracidade == null ? "faça contagens para medir" : `${exatas}/${recentes.length} itens sem divergência (90d)`} />
+        <KPI label="Itens a contar hoje" valor={pendentesTotal} cor={pendentesTotal ? "#d97706" : "#34d399"} sub="pela curva ABC (A=7d · B=30d · C=90d)" />
+        <KPI label="Divergências (90d)" valor={divergencias.length} cor={divergencias.length ? "#f43f5e" : "#34d399"} sub="contagens que não bateram" />
+        <KPI label="Impacto das divergências" valor={valorDiverg > 0 ? fmtReais(valorDiverg) : "—"} cor="#0d9488" sub="valor absoluto ajustado" />
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14, border: "1px dashed var(--border)", borderRadius: 8, padding: "9px 13px" }}>
+        <strong>Contagem cega:</strong> você conta na prateleira e digita <em>sem ver o saldo do sistema</em>. Só depois de "Conferir" o sistema mostra a diferença — evita o viés de "confirmar" o número da tela. Itens de <strong style={{ color: "#e11d48" }}>classe A</strong> (maior giro em R$) entram na fila a cada 7 dias; B a cada 30; C a cada 90.
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item ou bipar código…" style={{ ...farmInp, maxWidth: 300, flex: "1 1 200px" }} />
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={soPendentes} onChange={e => setSoPendentes(e.target.checked)} style={{ accentColor: VX.turquesa, width: 14, height: 14 }} /> só os que estão na fila de hoje
+        </label>
+      </div>
+
+      {fila.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>{soPendentes ? "Nenhum item pendente de contagem hoje. 👍" : "Nenhum item encontrado."}</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 640 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+              <th style={{ padding: "9px 12px" }}>Classe</th>
+              <th style={{ padding: "9px 12px" }}>Material</th>
+              <th style={{ padding: "9px 12px" }}>Última contagem</th>
+              <th style={{ padding: "9px 12px" }}>Situação</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Ação</th>
+            </tr></thead>
+            <tbody>
+              {fila.slice(0, 100).map(i => {
+                const u = ultima[i.id]; const d = u ? diasDesde(u.created_at) : null; const pend = pendenteDe(i); const c = classeDe[i.id] || "C";
+                return (
+                  <tr key={i.id} style={{ borderTop: "1px solid var(--border)" }}>
+                    <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 11, fontWeight: 800, color: classeCor(c), border: `1px solid ${classeCor(c)}55`, borderRadius: 99, padding: "1px 8px" }}>{c}</span></td>
+                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{i.nome}</td>
+                    <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-2)" }}>{u ? `${new Date(u.created_at).toLocaleDateString("pt-BR")} · há ${d}d${Number(u.diferenca) !== 0 ? ` (dif ${u.diferenca > 0 ? "+" : ""}${farmFmtQtd(u.diferenca)})` : " ✓"}` : "nunca contado"}</td>
+                    <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 12, color: pend ? "#d97706" : "#34d399", fontWeight: pend ? 700 : 400 }}>{pend ? "na fila" : "em dia"}</span></td>
+                    <td style={{ padding: "8px 12px", textAlign: "right" }}>{canEdit && <button onClick={() => setContar(i)} style={btnLeito(VX.turquesa)}>Contar</button>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {contar && <SupContagemModal item={contar} saldoSistema={supSaldoTotal(contar.id, lotes)} onClose={() => setContar(null)} onSave={async inv => { await onSave(inv); setContar(null); }} />}
+    </div>
+  );
+}
+
+// Contagem cega de um item — só revela o saldo do sistema após "Conferir"
+function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
+  const [contado, setContado] = useState("");
+  const [revelado, setRevelado] = useState(false);
+  const [ajustar, setAjustar] = useState(true);
+  const [obs, setObs] = useState("");
+  const [busy, setBusy] = useState(false);
+  const dif = revelado ? Number(contado) - Number(saldoSistema) : null;
+
+  function conferir() {
+    if (contado === "" || Number(contado) < 0) { alert("Digite a quantidade contada na prateleira."); return; }
+    setRevelado(true);
+  }
+  async function salvar() {
+    setBusy(true);
+    await onSave({
+      item_id: item.id,
+      saldo_sistema: Number(saldoSistema),
+      contado: Number(contado),
+      diferenca: Number(contado) - Number(saldoSistema),
+      ajustado: !!ajustar && (Number(contado) - Number(saldoSistema)) !== 0,
+      observacao: obs.trim() || null,
+    });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "94vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Contagem — {item.nome}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Conte na prateleira e digite a quantidade{item.unidade ? ` em ${item.unidade}` : ""}. O saldo do sistema fica oculto até você conferir.</div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={farmLbl}>Quantidade contada *</label>
+          <input type="number" min="0" step="any" value={contado} onChange={e => setContado(e.target.value)} disabled={revelado} placeholder="0" style={{ ...farmInp, fontSize: 18, fontWeight: 700, textAlign: "center" }} autoFocus />
+        </div>
+
+        {!revelado ? (
+          <button onClick={conferir} style={{ width: "100%", background: VX.azul, color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, cursor: "pointer", fontSize: 14, marginBottom: 6 }}>Conferir com o sistema</button>
+        ) : (<>
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
+              <div><div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Sistema</div><div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(saldoSistema)}</div></div>
+              <div><div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Contado</div><div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(contado)}</div></div>
+              <div><div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Diferença</div><div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: dif === 0 ? "#34d399" : "#f43f5e" }}>{dif > 0 ? "+" : ""}{farmFmtQtd(dif)}</div></div>
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: dif === 0 ? "#34d399" : "#f43f5e" }}>{dif === 0 ? "✓ Estoque bate — nada a ajustar" : "Divergência encontrada"}</div>
+          </div>
+          {dif !== 0 && (
+            <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
+              <input type="checkbox" checked={ajustar} onChange={e => setAjustar(e.target.checked)} style={{ accentColor: VX.turquesa, width: 15, height: 15 }} /> Lançar o ajuste no kardex (corrige o saldo para {farmFmtQtd(contado)})
+            </label>
+          )}
+          <div style={{ marginBottom: 14 }}>
+            <label style={farmLbl}>Observação {dif !== 0 ? "(motivo provável da divergência)" : ""}</label>
+            <input value={obs} onChange={e => setObs(e.target.value)} placeholder={dif !== 0 ? "Ex.: quebra, saída não lançada, empréstimo a outro setor" : "opcional"} style={farmInp} />
+          </div>
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          {revelado && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar contagem"}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Importar NF-e (XML): lê a nota, casa itens com o catálogo (por código de barras
+// ou nome), deixa revisar e lança as entradas de uma vez — com custo médio.
+function SupNfeModal({ itens, forns, onClose, onConfirm }) {
+  const [parsed, setParsed] = useState(null);   // { fornecedor, nf, itens } ou { erro }
+  const [linhas, setLinhas] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const ativos = itens.filter(i => i.ativo !== false);
+
+  function matchItem(x) {
+    if (x.ean) { const porEan = ativos.find(i => (i.codigo_barras || "").trim() === x.ean); if (porEan) return String(porEan.id); }
+    const nx = normTxt(x.nome);
+    const porNome = ativos.find(i => normTxt(i.nome) === nx) || ativos.find(i => nx.length >= 5 && (normTxt(i.nome).includes(nx) || nx.includes(normTxt(i.nome))));
+    return porNome ? String(porNome.id) : "novo";
+  }
+  function carregarArquivo(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const res = parseNFe(String(e.target.result || ""));
+      setParsed(res);
+      if (!res.erro) setLinhas(res.itens.map(x => ({ ...x, alvo: matchItem(x) })));
+    };
+    reader.readAsText(file, "ISO-8859-1");   // NF-e costuma vir em latin1
+  }
+  const set = (i, k, v) => setLinhas(l => l.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const aImportar = linhas.filter(l => l.alvo !== "skip").length;
+  const fornExiste = parsed?.fornecedor?.cnpj && forns.some(f => (f.cnpj || "").replace(/\D/g, "") === parsed.fornecedor.cnpj.replace(/\D/g, ""));
+
+  async function confirmar() {
+    if (!aImportar) { alert("Nenhum item selecionado para importar."); return; }
+    setBusy(true);
+    await onConfirm({ fornecedor: parsed.fornecedor, nf: parsed.nf, linhas });
+    setBusy(false);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 780, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Importar NF-e (XML)</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Selecione o arquivo XML da nota. O sistema lê os itens e casa com o catálogo (por código de barras ou nome); você revisa e confirma. Cada item vira uma <strong>entrada</strong> no estoque, com lote, validade e custo da nota.</div>
+
+        {!parsed && (
+          <div style={{ border: "2px dashed var(--border)", borderRadius: 10, padding: "2rem", textAlign: "center" }}>
+            <input type="file" accept=".xml,text/xml,application/xml" onChange={e => carregarArquivo(e.target.files[0])} style={{ fontSize: 13 }} />
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10 }}>O arquivo é lido localmente no seu navegador — nada é enviado para fora.</div>
+          </div>
+        )}
+
+        {parsed?.erro && (
+          <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "12px 14px" }}>{parsed.erro} <button onClick={() => setParsed(null)} style={{ marginLeft: 8, background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", color: "var(--text-2)", cursor: "pointer", fontSize: 12 }}>Tentar outro arquivo</button></div>
+        )}
+
+        {parsed && !parsed.erro && (<>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5, marginBottom: 12, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8 }}>
+            <div><span style={{ color: "var(--text-muted)" }}>Fornecedor:</span> <strong>{parsed.fornecedor.nome || "—"}</strong> {parsed.fornecedor.cnpj ? `· ${parsed.fornecedor.cnpj}` : ""} {parsed.fornecedor.cnpj && !fornExiste && <span style={{ fontSize: 10.5, color: "#d97706", border: "1px solid #d9770655", borderRadius: 99, padding: "0 6px", marginLeft: 4 }}>será cadastrado</span>}</div>
+            <div><span style={{ color: "var(--text-muted)" }}>NF:</span> <strong>{parsed.nf || "—"}</strong></div>
+            <div style={{ marginLeft: "auto" }}><span style={{ color: "var(--text-muted)" }}>Itens:</span> <strong>{aImportar}</strong> de {linhas.length} selecionado(s)</div>
+          </div>
+
+          <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 720 }}>
+              <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 10.5, textTransform: "uppercase" }}>
+                <th style={{ padding: "7px 10px" }}>Item da nota → material no catálogo</th>
+                <th style={{ padding: "7px 10px", textAlign: "right" }}>Qtd</th>
+                <th style={{ padding: "7px 10px", textAlign: "right" }}>Custo un.</th>
+                <th style={{ padding: "7px 10px" }}>Lote</th>
+                <th style={{ padding: "7px 10px" }}>Validade</th>
+              </tr></thead>
+              <tbody>
+                {linhas.map((x, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid var(--border)", opacity: x.alvo === "skip" ? 0.5 : 1 }}>
+                    <td style={{ padding: "7px 10px" }}>
+                      <div style={{ fontWeight: 600, marginBottom: 3 }}>{x.nome} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 400 }}>{x.ean ? `· EAN ${x.ean}` : ""}</span></div>
+                      <select value={x.alvo} onChange={e => set(i, "alvo", e.target.value)} style={{ ...farmInp, padding: "5px 8px", fontSize: 12 }}>
+                        <option value="novo">➕ Criar novo material</option>
+                        <option value="skip">✕ Não importar</option>
+                        <optgroup label="Casar com material existente">
+                          {ativos.slice().sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR")).map(it => <option key={it.id} value={String(it.id)}>{it.nome}</option>)}
+                        </optgroup>
+                      </select>
+                    </td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.qtd} onChange={e => set(i, "qtd", e.target.value)} style={{ ...farmInp, width: 70, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.custo_unit} onChange={e => set(i, "custo_unit", e.target.value)} style={{ ...farmInp, width: 80, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px" }}><input value={x.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="—" style={{ ...farmInp, width: 90, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px" }}><input type="date" value={x.validade} onChange={e => set(i, "validade", e.target.value)} style={{ ...farmInp, width: 130, padding: "5px 7px", fontSize: 12 }} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 14 }}>Itens já com código de barras cadastrado casam sozinhos. Confira as quantidades e validades antes de confirmar — vira estoque de verdade.</div>
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          {parsed && !parsed.erro && <button onClick={confirmar} disabled={busy || !aImportar} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || !aImportar) ? 0.5 : 1 }}>{busy ? "Importando…" : `Importar ${aImportar} item(ns)`}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Cadastro / edição de material
 function SupItemModal({ item, onClose, onSave }) {
   const [f, setF] = useState({ ...item });
@@ -10594,6 +11468,7 @@ function SupItemModal({ item, onClose, onSave }) {
       unidade: f.unidade || "unidade",
       estoque_minimo: f.estoque_minimo === "" || f.estoque_minimo == null ? 0 : Number(f.estoque_minimo),
       custo_unitario: f.custo_unitario === "" || f.custo_unitario == null ? null : Number(f.custo_unitario),
+      codigo_barras: f.codigo_barras?.trim() || null,
       ativo: f.ativo !== false,
       observacao: f.observacao?.trim() || null,
     });
@@ -10632,6 +11507,11 @@ function SupItemModal({ item, onClose, onSave }) {
             <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={farmInp} />
           </div>
         </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Código de barras</label>
+          <input value={f.codigo_barras || ""} onChange={e => set("codigo_barras", e.target.value)} placeholder="Clique aqui e bipe com o leitor (ou digite o EAN)" style={farmInp} />
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>Um leitor USB funciona como teclado: clique no campo e passe o produto. Depois dá para buscar o item bipando na barra de busca do Estoque.</div>
+        </div>
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
           <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
         </label>
@@ -10654,6 +11534,7 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
   const lotesComSaldo = [...lotes].filter(l => Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")); // vence primeiro sai primeiro
   const [f, setF] = useState({
     lote: "", validade: "", quantidade: "", documento: "", fornecedor_id: "", setor: "",
+    custo_unit: item.custo_unitario ?? "",
     lote_id: lotesComSaldo[0]?.id || "", motivo: "Consumo do setor",
   });
   const [busy, setBusy] = useState(false);
@@ -10665,7 +11546,7 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
     if (!q || q <= 0) { alert("Informe uma quantidade maior que zero."); return; }
     let mov;
     if (tipo === "entrada") {
-      mov = { item_id: item.id, tipo: "entrada", quantidade: q, lote: f.lote.trim() || null, validade: f.validade || null, motivo: "Compra / nota fiscal", documento: f.documento.trim() || null, fornecedor_id: f.fornecedor_id || null };
+      mov = { item_id: item.id, tipo: "entrada", quantidade: q, lote: f.lote.trim() || null, validade: f.validade || null, motivo: "Compra / nota fiscal", documento: f.documento.trim() || null, fornecedor_id: f.fornecedor_id || null, custo_unit: f.custo_unit === "" || f.custo_unit == null ? null : Number(f.custo_unit) };
     } else {
       if (!loteSel) { alert("Selecione o lote de onde sairá o material."); return; }
       if (q > Number(loteSel.quantidade)) { alert(`Saída maior que o saldo do lote (disponível: ${farmFmtQtd(loteSel.quantidade)}).`); return; }
@@ -10696,16 +11577,19 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
+            <div><label style={farmLbl}>Custo unit. da nota (R$)</label><input type="number" min="0" step="any" value={f.custo_unit} onChange={e => set("custo_unit", e.target.value)} placeholder="0,00" style={farmInp} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div><label style={farmLbl}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={farmInp} /></div>
+            <div>
+              <label style={farmLbl}>Fornecedor</label>
+              <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={farmInp}>
+                <option value="">—</option>
+                {fornecedores.map(fo => <option key={fo.id} value={fo.id}>{fo.nome}</option>)}
+              </select>
+            </div>
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={farmLbl}>Fornecedor</label>
-            <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={farmInp}>
-              <option value="">—</option>
-              {fornecedores.map(fo => <option key={fo.id} value={fo.id}>{fo.nome}</option>)}
-            </select>
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>Sem lote/validade? Deixe em branco — entra num lote genérico. Lançar por lote permite rastrear vencimento e recall.</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>O custo da nota atualiza o <strong>custo médio ponderado</strong> do material automaticamente. Sem lote/validade? Deixe em branco — entra num lote genérico.</div>
         </>) : (<>
           {lotesComSaldo.length === 0 ? (
             <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
@@ -10791,6 +11675,7 @@ function SupFornecedorModal({ forn, onClose, onSave }) {
       telefone: f.telefone?.trim() || null,
       email: f.email?.trim() || null,
       categorias: f.categorias?.trim() || null,
+      lead_time_dias: f.lead_time_dias === "" || f.lead_time_dias == null ? null : Number(f.lead_time_dias),
       observacao: f.observacao?.trim() || null,
       ativo: f.ativo !== false,
     });
@@ -10812,10 +11697,17 @@ function SupFornecedorModal({ forn, onClose, onSave }) {
           <div><label style={farmLbl}>Telefone</label><input value={f.telefone || ""} onChange={e => set("telefone", e.target.value)} placeholder="(00) 00000-0000" style={farmInp} /></div>
           <div><label style={farmLbl}>E-mail</label><input value={f.email || ""} onChange={e => set("email", e.target.value)} placeholder="contato@fornecedor.com" style={farmInp} /></div>
         </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>O que fornece</label>
-          <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={farmInp} />
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>O que fornece</label>
+            <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={farmInp} />
+          </div>
+          <div>
+            <label style={farmLbl}>Prazo de entrega (dias)</label>
+            <input type="number" min="0" value={f.lead_time_dias ?? ""} onChange={e => set("lead_time_dias", e.target.value)} placeholder={String(SUP_LEAD_PADRAO)} style={farmInp} />
+          </div>
         </div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", margintop: 0, marginBottom: 10 }}>O prazo de entrega alimenta o <strong>ponto de pedido</strong>: o sistema sugere comprar antes que o estoque acabe dentro desse prazo + margem. Sem valor, usa {SUP_LEAD_PADRAO} dias.</div>
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
           <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
         </label>

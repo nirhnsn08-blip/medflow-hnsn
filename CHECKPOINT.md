@@ -1,10 +1,12 @@
-# 📍 Ponto de restauração — checkpoint-v33
+# 📍 Ponto de restauração — checkpoint-v37
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v33` (anteriores: `checkpoint-v32` … `checkpoint-v1`)
-- **Data:** 2026-07-20
+- **Tag Git mais recente:** `checkpoint-v37` (anteriores: `checkpoint-v36` … `checkpoint-v1`)
+- **Data:** 2026-07-21
+- **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
+  (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
   O site demo recebe o código novo, mas sem as migrações de banco — salvar nas
@@ -282,6 +284,38 @@ dá pra voltar exatamente para este estado.
     monitorados** (constante SUP_FARMACOS_MONITORADOS: morfina, fentanil,
     alteplase, tenecteplase, contraste, albumina — saídas, custo, % de uso,
     pacientes, saldo, selo P.344). Tudo sem migração.
+  - **🔢 Inventário cíclico + 💰 custo médio ponderado + 📷 código de barras:**
+    aba **Inventário** com fila de contagem rotativa por curva ABC (A=7d, B=30d,
+    C=90d), **contagem cega** (revela a diferença só após conferir), ajuste
+    automático no kardex e KPI de **acuracidade do estoque (%)** — que aparece
+    em destaque no Painel Executivo. O custo passa a entrar **na entrada e no
+    recebimento de compra** e o sistema recalcula o **custo médio ponderado
+    móvel** (materiais e medicamentos). **Código de barras** no cadastro (leitor
+    USB) com busca por código no Estoque e no Inventário. Migração
+    `supabase/migracao-suprimentos-inventario.sql` (rodada no HNSN em 2026-07-21).
+  - **🛡️ Confiança dos dados + 🎯 ponto de pedido + ✅ Ações de hoje (3 melhorias):**
+    (1) **selo de confiança** no Painel Executivo (% com custo, inventariado 90d,
+    código de barras — diz o quanto confiar nos R$); (2) **ponto de pedido
+    inteligente** — campo **prazo de entrega por fornecedor** (`lead_time_dias`),
+    "comprar agora" dispara quando a cobertura cai abaixo do prazo + margem (3d),
+    cada material herda o prazo do último fornecedor (padrão 15d), sugestão de
+    compra cobre o prazo de reposição, e **alerta de demanda instável** (↑/↓)
+    quando o consumo recente destoa da média; (3) aba **Ações de hoje** — lista
+    priorizada (rupturas, comprar, vencimentos, requisições, recebimentos,
+    contagens) com atalho para cada ferramenta. Migração
+    `supabase/migracao-suprimentos-ponto-de-pedido.sql` (rodada no HNSN em 2026-07-21).
+  - **📄 Importar NF-e (XML):** botão no Estoque lê o XML da nota, extrai fornecedor,
+    NF e itens, **casa com o catálogo** (código de barras ou nome), deixa revisar
+    (qtd/custo/lote/validade, criar material novo ou pular) e **lança as entradas
+    em lote** — atualiza o custo médio ponderado e **cadastra o fornecedor** se o
+    CNPJ for novo. Tudo local (o XML não sai do navegador). Sem migração.
+  - **💱 Cotação de compra:** aba **Cotações** — cria cotação (fornecedores a
+    comparar + itens), **matriz preço × fornecedor** que destaca o mais barato de
+    cada item (verde) e o total por fornecedor (✓ no melhor que cotou tudo; ⚠ nos
+    parciais); **gera pedido** pelo *melhor preço por item* (divide entre
+    fornecedores) ou *fornecedor único*, alimentando a aba Compras. Pesa preço ×
+    prazo de entrega (lead time no cabeçalho). Migração
+    `supabase/migracao-suprimentos-cotacao.sql` (rodada no HNSN em 2026-07-21).
   - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
     `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20).
 
@@ -290,7 +324,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v33
+git reset --hard checkpoint-v37
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -299,7 +333,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v33
+git checkout -b recuperacao checkpoint-v37
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -311,10 +345,19 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
 - Equipe médica revisar os 8 textos de tratamento por CID (editáveis no 📚).
 - **DEMO congelado**: banco sem as migrações da Fase 3 pt2 e do tratamento por CID.
   Se um dia voltarmos a usar o demo, rodar as migrações acumuladas antes.
-- 2 registros falsos do AQUARIO no histórico do HNSN (leitos_saidas/leitos_turnover),
-  se o SQL de limpeza ainda não foi rodado.
+- ✅ **Resolvido (2026-07-21):** registros de teste do AQUARIO removidos do HNSN
+  (3 em `leitos_saidas`, 2 em `leitos_turnover` e o leito ocupado fake em `leitos`).
+  Investigação do bug de fuso do Adauam confirmou **nenhum dado real corrompido**
+  (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `9d6fe93` 💱 Cotação de compra (matriz preço × fornecedor, gera pedido do vencedor)
+- `7ac79d7` 📄 Importar NF-e (XML) no estoque (entradas em lote, casamento por código/nome, custo médio)
+- `fc3da31` ✅ Painel "Ações de hoje" (lista priorizada de tarefas do almoxarifado)
+- `47f7097` 🎯 Ponto de pedido inteligente (lead time por fornecedor + demanda instável)
+- `ea49925` 🛡️ Selo de confiança dos dados no Painel Executivo
+- `9d259f3` 🔢💰📷 Inventário cíclico (contagem cega ABC + acuracidade) + custo médio ponderado + código de barras
+- (PRs do Adauam) 🐛 fix de fuso horário em datas + regra única de estoque; 📄 docs de fluxo de equipe
 - `426e90d` ⏰📈 Vencimentos inteligentes + Estoque preditivo + Executivo ampliado (mapa por setor, simulador, fármacos monitorados)
 - `1360d0f` 💼 Painel Executivo — capital parado/liberável, economia, perdas, rupturas, custo por paciente, setores c/ Δ
 - `cd0fe03` 📦 Suprimentos Fase D — Relatórios & BI + assistente local (módulo completo)
