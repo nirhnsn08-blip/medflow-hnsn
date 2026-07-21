@@ -31,8 +31,12 @@ GitHub valida o build · Edge Function opcional de resumo clínico com Claude.
 - **Todo o front num único `src/App.jsx` (~12.300 linhas).**
 - Acesso ao Supabase via `fetch` REST direto (apikey anon + JWT do usuário logado).
 - Fallback para `localStorage` quando offline — mas **o login exige Supabase**.
-- ~30 tabelas com RLS por papel (`adm_master`, `adm_silver`, `analista`,
-  `visualizador`) via função `my_role()`.
+- 36 tabelas, **todas com RLS ativo e com política** — nenhuma acessível sem
+  login (auditado em 2026-07-21). Mas o controle por papel (`adm_master`,
+  `adm_silver`, `analista`, `visualizador`, via `my_role()`) vale **só para a
+  escrita**: as políticas de `SELECT` são `using (true)`, então **qualquer
+  usuário autenticado lê qualquer tabela**, inclusive um `visualizador`.
+  Ver "Decisões em aberto".
 - Registros clínicos **append-only** (evoluções, prescrições, kardex, auditoria).
   A imutabilidade foi validada em teste: nem um `adm_master` apaga pela API.
 - 21 arquivos SQL em `supabase/` (schema base + migrações incrementais).
@@ -97,6 +101,18 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
 5. Migração dos registros gravados com data +1 antes da correção de fuso.
 6. Vulnerabilidade Vite/esbuild (apenas ambiente de dev) — upgrade controlado, sem
    `npm audit fix --force`.
+
+## Decisões em aberto
+
+0. **Quem pode ver o quê?** Hoje qualquer usuário autenticado lê todas as tabelas
+   (política de `SELECT` = `using (true)`). Nada está aberto sem login, então não
+   é vazamento externo — mas um `visualizador` enxerga o mesmo que um
+   `adm_master`. Apertar isso é decisão **clínica**, não técnica: precisa da
+   enfermeira definindo o que cada papel legitimamente precisa ver, antes de
+   qualquer mudança. Mexer no `SELECT` sem esse acordo tira acesso de quem tem
+   direito, no meio do plantão.
+   Caso pontual junto: `auditoria` aceita `INSERT` de qualquer autenticado
+   (`with check (true)`) — enfraquece o valor probatório da trilha.
 
 ## Perguntas em aberto
 
