@@ -2128,6 +2128,7 @@ const SUP_NAV = [
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
   { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
+  { key: "inventario",   label: "Inventário",   icon: "clipboard" },
   { key: "preditivo",    label: "Estoque preditivo", icon: "activity" },
   { key: "vencimentos",  label: "Vencimentos",  icon: "clock" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
@@ -2238,6 +2239,38 @@ async function upsertSupFornecedorRemote(f, user) {
 async function deleteSupFornecedorRemote(id) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
+}
+// Inventário cíclico — contagens cegas (append-only)
+async function loadSupInventarios(limit = 400) {
+  const rows = await sbFetch(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSupInventarioRemote(inv, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("sup_inventarios", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...inv, usuario: user?.name || null }),
+  });
+}
+// Custo médio ponderado móvel: mistura o saldo atual (ao custo vigente) com a
+// entrada nova (ao custo da nota). Retorna o novo custo unitário, ou null se a
+// entrada não trouxe custo (mantém o custo anterior).
+function custoMedioPonderado(custoAtual, saldoAntes, qtdEntrada, custoEntrada) {
+  const ce = Number(custoEntrada);
+  if (!ce || ce <= 0) return null;
+  const ca = Number(custoAtual || 0), sa = Math.max(0, Number(saldoAntes || 0)), qe = Number(qtdEntrada || 0);
+  if (qe <= 0) return null;
+  if (ca <= 0 || sa <= 0) return ce;                 // sem base anterior → adota o custo da entrada
+  return (sa * ca + qe * ce) / (sa + qe);
+}
+async function setSupItemCustoRemote(itemId, custo) {
+  if (!USE_SUPABASE || custo == null) return;
+  await sbFetch(`sup_itens?id=eq.${itemId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
+}
+async function setFarmMedCustoRemote(medId, custo) {
+  if (!USE_SUPABASE || custo == null) return;
+  await sbFetch(`farm_medicamentos?id=eq.${medId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
 }
 // Requisições de materiais (Fase B)
 async function loadSupRequisicoes(limit = 200) {
@@ -8726,6 +8759,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
   const [reqs, setReqs] = useState([]);
   const [pedidos, setPedidos] = useState([]);
+  const [invs, setInvs] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
@@ -8733,6 +8767,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     loadSupFornecedores().then(setForns);
     loadSupRequisicoes().then(setReqs);
     loadSupPedidos().then(setPedidos);
+    loadSupInventarios().then(setInvs);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
   }
   useEffect(() => {
@@ -8746,7 +8781,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const itensOrd = [...itens].filter(i => {
     const q = busca.trim().toLowerCase();
     if (!q) return true;
-    return [i.nome, i.categoria, i.observacao].some(x => (x || "").toLowerCase().includes(q));
+    return [i.nome, i.categoria, i.observacao, i.codigo_barras].some(x => (x || "").toLowerCase().includes(q));
   }).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
 
   const ordCat = (a, b) => { const ia = SUP_CATEGORIAS.indexOf(a), ib = SUP_CATEGORIAS.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, "pt-BR"); };
@@ -8803,13 +8838,33 @@ function SuprimentosPage({ currentUser, canEdit }) {
     setTimeout(refresh, 300);
   }
   async function registrarMov(mov) {
+    const item = itens.find(x => x.id === mov.item_id);
+    const saldoAntes = supSaldoTotal(mov.item_id, lotes);
     const r = await addSupMovimentoRemote(mov, currentUser);
     if (!r.ok) { alert("Não foi possível registrar o movimento.\n" + (r.erro || "")); return false; }
-    const item = itens.find(x => x.id === mov.item_id);
+    // Entrada com custo → atualiza o custo médio ponderado do material
+    if (mov.tipo === "entrada" && mov.custo_unit) {
+      const novo = custoMedioPonderado(item?.custo_unitario, saldoAntes, mov.quantidade, mov.custo_unit);
+      if (novo != null) await setSupItemCustoRemote(mov.item_id, novo);
+    }
     addAuditLog(currentUser, mov.tipo === "entrada" ? "entrada de material" : "saída de material", `${item?.nome || mov.item_id} · ${farmFmtQtd(mov.quantidade)}`, {});
     setMovItem(null);
     setTimeout(refresh, 350);
     return true;
+  }
+  async function salvarInventario(inv) {
+    await addSupInventarioRemote(inv, currentUser);
+    // Se houver diferença, lança o ajuste no kardex (entrada/saída) para casar o saldo
+    if (inv.ajustado && Number(inv.diferenca) !== 0) {
+      const dif = Number(inv.diferenca);
+      await addSupMovimentoRemote({
+        item_id: inv.item_id, tipo: dif > 0 ? "entrada" : "saida", quantidade: Math.abs(dif),
+        motivo: "Ajuste de inventário", documento: "INVENTARIO",
+      }, currentUser);
+    }
+    const it = itens.find(x => x.id === inv.item_id);
+    addAuditLog(currentUser, "contagem de inventário", `${it?.nome || inv.item_id} · sistema ${farmFmtQtd(inv.saldo_sistema)} → contado ${farmFmtQtd(inv.contado)}`, {});
+    setTimeout(refresh, 350);
   }
   async function salvarForn(f) {
     await upsertSupFornecedorRemote(f, currentUser);
@@ -8831,6 +8886,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     executivo: "Visão financeira do estoque — capital parado, variação de gastos e perdas, rupturas previstas e capital liberável. Almoxarifado + Farmácia.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
+    inventario: "Inventário cíclico — contagem cega rotativa (curva ABC), ajuste no kardex e acuracidade do estoque.",
     preditivo: "Previsão item a item: no ritmo atual de consumo, quando acaba cada material e medicamento.",
     vencimentos: "Vencimentos inteligentes — o que vence, quanto vale e o que NÃO será consumido a tempo no ritmo atual.",
     indicadores: "Relatórios & BI — consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
@@ -8898,7 +8954,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
 
-      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} />}
+      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
+      {sub === "inventario" && <SupInventarioView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs} onSave={salvarInventario} />}
       {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
       {sub === "vencimentos" && <SupVencimentosView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
 
@@ -8953,7 +9010,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       </>)}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome ou categoria…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, categoria ou bipar código de barras…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
         <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} style={{ ...farmInp, maxWidth: 280 }}>
           <option value="">Todas as categorias</option>
           {catsPresentes.map(c => <option key={c} value={c}>{c}</option>)}
@@ -9422,25 +9479,40 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
   async function confirmarRecebimento(p, linhas, nf) {
     setBusyId(p.id);
     const erros = [];
+    const matById = {}; materiais.forEach(i => matById[i.id] = i);
+    const medById = {}; meds.forEach(m => medById[m.id] = m);
     const itensNovos = (Array.isArray(p.itens) ? p.itens : []).map(x => ({ ...x }));
     for (const ln of linhas) {
       const q = Number(ln.qtd || 0);
       if (q <= 0) continue;
       const alvo = itensNovos[ln.idx];
+      const custoNota = Number(alvo.custo_unit) || 0;   // custo do pedido → alimenta o custo médio
       let r;
       if (alvo.tipo === "medicamento") {
+        const saldoAntes = farmSaldoTotal(alvo.item_id, medLotes);
         r = await addFarmMovimentoRemote({
           medicamento_id: alvo.item_id, tipo: "entrada", quantidade: q,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
+          custo_unit: custoNota || null,
         }, currentUser);
+        if (r.ok && custoNota) {
+          const novo = custoMedioPonderado(medById[alvo.item_id]?.custo_unitario, saldoAntes, q, custoNota);
+          if (novo != null) await setFarmMedCustoRemote(alvo.item_id, novo);
+        }
       } else {
+        const saldoAntes = supSaldoTotal(alvo.item_id, lotes);
         r = await addSupMovimentoRemote({
           item_id: alvo.item_id, tipo: "entrada", quantidade: q,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
           fornecedor_id: p.fornecedor_id || null,
+          custo_unit: custoNota || null,
         }, currentUser);
+        if (r.ok && custoNota) {
+          const novo = custoMedioPonderado(matById[alvo.item_id]?.custo_unitario, saldoAntes, q, custoNota);
+          if (novo != null) await setSupItemCustoRemote(alvo.item_id, novo);
+        }
       }
       if (r.ok) alvo.qtd_recebida = Number(alvo.qtd_recebida || 0) + q;
       else erros.push(`${alvo.nome}: ${r.erro || "falha na entrada"}`);
@@ -9930,7 +10002,7 @@ function SupVencimentosView({ itens, lotes, saidasHist }) {
 // Critérios transparentes: valores pelo custo unitário cadastrado; "economia" =
 // variação vs mês anterior; "capital liberável" = excesso acima de 30d + mínimo.
 const SUP_EXEC_COBERTURA_ALVO = 30; // dias de cobertura considerados necessários
-function SupExecutivoView({ itens, lotes, reqs = [] }) {
+function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
   const [simGrupo, setSimGrupo] = useState("");
   const [simPct, setSimPct] = useState(30);
   const [meds, setMeds] = useState([]);
@@ -9976,6 +10048,11 @@ function SupExecutivoView({ itens, lotes, reqs = [] }) {
   const capTotal = capMat + capMed;
   const semPreco = ativosMat.filter(i => supSaldoTotal(i.id, lotes) > 0 && !custoUnit(i)).length
                  + ativosMed.filter(m => farmSaldoTotal(m.id, medLotes) > 0 && !custoUnit(m)).length;
+
+  // ── Acuracidade do estoque (contagens de inventário dos últimos 90 dias) ──
+  const ultimaInv = {}; invs.forEach(v => { if (!ultimaInv[v.item_id]) ultimaInv[v.item_id] = v; });
+  const invRecentes = Object.values(ultimaInv).filter(u => (Date.now() - new Date(u.created_at)) / 86400000 <= 90);
+  const acuracidade = invRecentes.length ? (invRecentes.filter(u => Number(u.diferenca) === 0).length / invRecentes.length) * 100 : null;
 
   // ── 2. Gasto do mês vs mês anterior (entradas = compras) ──
   const custoSup = mv => Number(mv.quantidade || 0) * custoUnit(itemById[mv.item_id]);
@@ -10075,6 +10152,8 @@ function SupExecutivoView({ itens, lotes, reqs = [] }) {
           sub={`compras: ${fmtReais(gastoAtual)} neste mês · ${fmtReais(gastoAnt)} no anterior`} />
         <KPI destaque label="Perdas por vencimento" valor={fmtReais(perdasAtual)} cor={perdasAtual > 0 ? "#f43f5e" : "#34d399"}
           sub={reducaoPerdas == null ? `mês anterior: ${fmtReais(perdasAnt)}` : reducaoPerdas >= 0 ? `redução de ${reducaoPerdas.toFixed(0)}% vs mês anterior (${fmtReais(perdasAnt)})` : `aumento de ${Math.abs(reducaoPerdas).toFixed(0)}% vs mês anterior (${fmtReais(perdasAnt)})`} />
+        <KPI destaque label="Acuracidade do estoque" valor={acuracidade == null ? "—" : acuracidade.toFixed(0) + "%"} cor={acuracidade == null ? "var(--text-muted)" : acuracidade >= 95 ? "#34d399" : acuracidade >= 85 ? "#d97706" : "#f43f5e"}
+          sub={acuracidade == null ? "faça contagens no Inventário para medir" : `${invRecentes.length} item(ns) contado(s) em 90d — confiança dos números`} />
       </div>
 
       {/* LINHA 2 — PAINÉIS */}
@@ -10579,6 +10658,171 @@ function SupAssistenteView() {
   );
 }
 
+// Inventário cíclico — contagem cega rotativa (curva ABC) + acuracidade
+const SUP_INV_INTERVALO = { A: 7, B: 30, C: 90 };   // dias entre contagens por classe
+function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, invs, onSave }) {
+  const [contar, setContar] = useState(null);   // item em contagem
+  const [busca, setBusca] = useState("");
+  const [soPendentes, setSoPendentes] = useState(true);
+
+  // Classe ABC por valor de consumo (30d) — A conta mais vezes
+  const consumo = {}; saidasHist.forEach(s => { if (s.item_id) consumo[s.item_id] = (consumo[s.item_id] || 0) + Number(s.quantidade || 0); });
+  const valorConsumo = i => (consumo[i.id] || 0) * custoUnit(i);
+  const ranked = [...itens].map(i => ({ i, v: valorConsumo(i) })).sort((a, b) => b.v - a.v);
+  const totalV = ranked.reduce((s, x) => s + x.v, 0);
+  const classeDe = {}; let acum = 0;
+  ranked.forEach(x => { acum += x.v; const pct = totalV ? acum / totalV : 1; classeDe[x.i.id] = x.v <= 0 ? "C" : pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C"; });
+
+  // Última contagem por item
+  const ultima = {}; invs.forEach(v => { if (!ultima[v.item_id]) ultima[v.item_id] = v; });   // invs vem desc
+  const diasDesde = iso => iso ? Math.floor((Date.now() - new Date(iso)) / 86400000) : null;
+  const pendenteDe = i => { const u = ultima[i.id]; const d = u ? diasDesde(u.created_at) : null; const alvo = SUP_INV_INTERVALO[classeDe[i.id] || "C"]; return d == null || d >= alvo; };
+
+  // Acuracidade — últimas contagens (uma por item) nos últimos 90 dias
+  const recentes = Object.values(ultima).filter(u => diasDesde(u.created_at) <= 90);
+  const exatas = recentes.filter(u => Number(u.diferenca) === 0).length;
+  const acuracidade = recentes.length ? (exatas / recentes.length) * 100 : null;
+  const divergencias = recentes.filter(u => Number(u.diferenca) !== 0);
+  const valorDiverg = divergencias.reduce((s, u) => { const it = itens.find(x => x.id === u.item_id); return s + Math.abs(Number(u.diferenca)) * custoUnit(it); }, 0);
+
+  const q = normTxt(busca);
+  const fila = ranked.map(x => x.i)
+    .filter(i => !q || normTxt(i.nome).includes(q) || (i.codigo_barras || "").includes(busca.trim()))
+    .filter(i => !soPendentes || pendenteDe(i));
+  const pendentesTotal = itens.filter(pendenteDe).length;
+  const classeCor = c => c === "A" ? "#e11d48" : c === "B" ? "#d97706" : "#0d9488";
+
+  const KPI = ({ label, valor, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "13px 15px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 25, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  const acuCor = acuracidade == null ? "var(--text-muted)" : acuracidade >= 95 ? "#34d399" : acuracidade >= 85 ? "#d97706" : "#f43f5e";
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 14 }}>
+        <KPI label="Acuracidade do estoque" valor={acuracidade == null ? "—" : acuracidade.toFixed(0) + "%"} cor={acuCor} sub={acuracidade == null ? "faça contagens para medir" : `${exatas}/${recentes.length} itens sem divergência (90d)`} />
+        <KPI label="Itens a contar hoje" valor={pendentesTotal} cor={pendentesTotal ? "#d97706" : "#34d399"} sub="pela curva ABC (A=7d · B=30d · C=90d)" />
+        <KPI label="Divergências (90d)" valor={divergencias.length} cor={divergencias.length ? "#f43f5e" : "#34d399"} sub="contagens que não bateram" />
+        <KPI label="Impacto das divergências" valor={valorDiverg > 0 ? fmtReais(valorDiverg) : "—"} cor="#0d9488" sub="valor absoluto ajustado" />
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14, border: "1px dashed var(--border)", borderRadius: 8, padding: "9px 13px" }}>
+        <strong>Contagem cega:</strong> você conta na prateleira e digita <em>sem ver o saldo do sistema</em>. Só depois de "Conferir" o sistema mostra a diferença — evita o viés de "confirmar" o número da tela. Itens de <strong style={{ color: "#e11d48" }}>classe A</strong> (maior giro em R$) entram na fila a cada 7 dias; B a cada 30; C a cada 90.
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item ou bipar código…" style={{ ...farmInp, maxWidth: 300, flex: "1 1 200px" }} />
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={soPendentes} onChange={e => setSoPendentes(e.target.checked)} style={{ accentColor: VX.turquesa, width: 14, height: 14 }} /> só os que estão na fila de hoje
+        </label>
+      </div>
+
+      {fila.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>{soPendentes ? "Nenhum item pendente de contagem hoje. 👍" : "Nenhum item encontrado."}</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 640 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+              <th style={{ padding: "9px 12px" }}>Classe</th>
+              <th style={{ padding: "9px 12px" }}>Material</th>
+              <th style={{ padding: "9px 12px" }}>Última contagem</th>
+              <th style={{ padding: "9px 12px" }}>Situação</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Ação</th>
+            </tr></thead>
+            <tbody>
+              {fila.slice(0, 100).map(i => {
+                const u = ultima[i.id]; const d = u ? diasDesde(u.created_at) : null; const pend = pendenteDe(i); const c = classeDe[i.id] || "C";
+                return (
+                  <tr key={i.id} style={{ borderTop: "1px solid var(--border)" }}>
+                    <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 11, fontWeight: 800, color: classeCor(c), border: `1px solid ${classeCor(c)}55`, borderRadius: 99, padding: "1px 8px" }}>{c}</span></td>
+                    <td style={{ padding: "8px 12px", fontWeight: 600 }}>{i.nome}</td>
+                    <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-2)" }}>{u ? `${new Date(u.created_at).toLocaleDateString("pt-BR")} · há ${d}d${Number(u.diferenca) !== 0 ? ` (dif ${u.diferenca > 0 ? "+" : ""}${farmFmtQtd(u.diferenca)})` : " ✓"}` : "nunca contado"}</td>
+                    <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 12, color: pend ? "#d97706" : "#34d399", fontWeight: pend ? 700 : 400 }}>{pend ? "na fila" : "em dia"}</span></td>
+                    <td style={{ padding: "8px 12px", textAlign: "right" }}>{canEdit && <button onClick={() => setContar(i)} style={btnLeito(VX.turquesa)}>Contar</button>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {contar && <SupContagemModal item={contar} saldoSistema={supSaldoTotal(contar.id, lotes)} onClose={() => setContar(null)} onSave={async inv => { await onSave(inv); setContar(null); }} />}
+    </div>
+  );
+}
+
+// Contagem cega de um item — só revela o saldo do sistema após "Conferir"
+function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
+  const [contado, setContado] = useState("");
+  const [revelado, setRevelado] = useState(false);
+  const [ajustar, setAjustar] = useState(true);
+  const [obs, setObs] = useState("");
+  const [busy, setBusy] = useState(false);
+  const dif = revelado ? Number(contado) - Number(saldoSistema) : null;
+
+  function conferir() {
+    if (contado === "" || Number(contado) < 0) { alert("Digite a quantidade contada na prateleira."); return; }
+    setRevelado(true);
+  }
+  async function salvar() {
+    setBusy(true);
+    await onSave({
+      item_id: item.id,
+      saldo_sistema: Number(saldoSistema),
+      contado: Number(contado),
+      diferenca: Number(contado) - Number(saldoSistema),
+      ajustado: !!ajustar && (Number(contado) - Number(saldoSistema)) !== 0,
+      observacao: obs.trim() || null,
+    });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 440, maxWidth: "94vw" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Contagem — {item.nome}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Conte na prateleira e digite a quantidade{item.unidade ? ` em ${item.unidade}` : ""}. O saldo do sistema fica oculto até você conferir.</div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={farmLbl}>Quantidade contada *</label>
+          <input type="number" min="0" step="any" value={contado} onChange={e => setContado(e.target.value)} disabled={revelado} placeholder="0" style={{ ...farmInp, fontSize: 18, fontWeight: 700, textAlign: "center" }} autoFocus />
+        </div>
+
+        {!revelado ? (
+          <button onClick={conferir} style={{ width: "100%", background: VX.azul, color: "#fff", border: "none", borderRadius: 8, padding: "11px", fontWeight: 700, cursor: "pointer", fontSize: 14, marginBottom: 6 }}>Conferir com o sistema</button>
+        ) : (<>
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", marginBottom: 14, textAlign: "center" }}>
+            <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
+              <div><div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Sistema</div><div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(saldoSistema)}</div></div>
+              <div><div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Contado</div><div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(contado)}</div></div>
+              <div><div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase" }}>Diferença</div><div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: dif === 0 ? "#34d399" : "#f43f5e" }}>{dif > 0 ? "+" : ""}{farmFmtQtd(dif)}</div></div>
+            </div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: dif === 0 ? "#34d399" : "#f43f5e" }}>{dif === 0 ? "✓ Estoque bate — nada a ajustar" : "Divergência encontrada"}</div>
+          </div>
+          {dif !== 0 && (
+            <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
+              <input type="checkbox" checked={ajustar} onChange={e => setAjustar(e.target.checked)} style={{ accentColor: VX.turquesa, width: 15, height: 15 }} /> Lançar o ajuste no kardex (corrige o saldo para {farmFmtQtd(contado)})
+            </label>
+          )}
+          <div style={{ marginBottom: 14 }}>
+            <label style={farmLbl}>Observação {dif !== 0 ? "(motivo provável da divergência)" : ""}</label>
+            <input value={obs} onChange={e => setObs(e.target.value)} placeholder={dif !== 0 ? "Ex.: quebra, saída não lançada, empréstimo a outro setor" : "opcional"} style={farmInp} />
+          </div>
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          {revelado && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar contagem"}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Cadastro / edição de material
 function SupItemModal({ item, onClose, onSave }) {
   const [f, setF] = useState({ ...item });
@@ -10594,6 +10838,7 @@ function SupItemModal({ item, onClose, onSave }) {
       unidade: f.unidade || "unidade",
       estoque_minimo: f.estoque_minimo === "" || f.estoque_minimo == null ? 0 : Number(f.estoque_minimo),
       custo_unitario: f.custo_unitario === "" || f.custo_unitario == null ? null : Number(f.custo_unitario),
+      codigo_barras: f.codigo_barras?.trim() || null,
       ativo: f.ativo !== false,
       observacao: f.observacao?.trim() || null,
     });
@@ -10632,6 +10877,11 @@ function SupItemModal({ item, onClose, onSave }) {
             <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={farmInp} />
           </div>
         </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Código de barras</label>
+          <input value={f.codigo_barras || ""} onChange={e => set("codigo_barras", e.target.value)} placeholder="Clique aqui e bipe com o leitor (ou digite o EAN)" style={farmInp} />
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>Um leitor USB funciona como teclado: clique no campo e passe o produto. Depois dá para buscar o item bipando na barra de busca do Estoque.</div>
+        </div>
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
           <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
         </label>
@@ -10654,6 +10904,7 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
   const lotesComSaldo = [...lotes].filter(l => Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")); // vence primeiro sai primeiro
   const [f, setF] = useState({
     lote: "", validade: "", quantidade: "", documento: "", fornecedor_id: "", setor: "",
+    custo_unit: item.custo_unitario ?? "",
     lote_id: lotesComSaldo[0]?.id || "", motivo: "Consumo do setor",
   });
   const [busy, setBusy] = useState(false);
@@ -10665,7 +10916,7 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
     if (!q || q <= 0) { alert("Informe uma quantidade maior que zero."); return; }
     let mov;
     if (tipo === "entrada") {
-      mov = { item_id: item.id, tipo: "entrada", quantidade: q, lote: f.lote.trim() || null, validade: f.validade || null, motivo: "Compra / nota fiscal", documento: f.documento.trim() || null, fornecedor_id: f.fornecedor_id || null };
+      mov = { item_id: item.id, tipo: "entrada", quantidade: q, lote: f.lote.trim() || null, validade: f.validade || null, motivo: "Compra / nota fiscal", documento: f.documento.trim() || null, fornecedor_id: f.fornecedor_id || null, custo_unit: f.custo_unit === "" || f.custo_unit == null ? null : Number(f.custo_unit) };
     } else {
       if (!loteSel) { alert("Selecione o lote de onde sairá o material."); return; }
       if (q > Number(loteSel.quantidade)) { alert(`Saída maior que o saldo do lote (disponível: ${farmFmtQtd(loteSel.quantidade)}).`); return; }
@@ -10696,16 +10947,19 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
+            <div><label style={farmLbl}>Custo unit. da nota (R$)</label><input type="number" min="0" step="any" value={f.custo_unit} onChange={e => set("custo_unit", e.target.value)} placeholder="0,00" style={farmInp} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <div><label style={farmLbl}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={farmInp} /></div>
+            <div>
+              <label style={farmLbl}>Fornecedor</label>
+              <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={farmInp}>
+                <option value="">—</option>
+                {fornecedores.map(fo => <option key={fo.id} value={fo.id}>{fo.nome}</option>)}
+              </select>
+            </div>
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={farmLbl}>Fornecedor</label>
-            <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={farmInp}>
-              <option value="">—</option>
-              {fornecedores.map(fo => <option key={fo.id} value={fo.id}>{fo.nome}</option>)}
-            </select>
-          </div>
-          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>Sem lote/validade? Deixe em branco — entra num lote genérico. Lançar por lote permite rastrear vencimento e recall.</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>O custo da nota atualiza o <strong>custo médio ponderado</strong> do material automaticamente. Sem lote/validade? Deixe em branco — entra num lote genérico.</div>
         </>) : (<>
           {lotesComSaldo.length === 0 ? (
             <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
