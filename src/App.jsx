@@ -2107,9 +2107,18 @@ const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devoluçã
 const SUP_NAV = [
   { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
+  { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
 ];
+// Pedido de compra — estados e cores
+const SUP_PED_STATUS = {
+  aberto:    { label: "Em elaboração",       cor: "#8d99ab" },
+  enviado:   { label: "Enviado ao fornecedor", cor: "#3b82f6" },
+  parcial:   { label: "Recebido parcial",    cor: "#d97706" },
+  recebido:  { label: "Recebido",            cor: "#34d399" },
+  cancelado: { label: "Cancelado",           cor: "#f43f5e" },
+};
 // Fluxo da requisição — estados e cores (mesma régua do preparo da Farmácia)
 const SUP_REQ_STATUS = {
   aguardando: { label: "Aguardando almoxarifado", cor: "#8d99ab" },
@@ -2216,6 +2225,29 @@ async function atualizarSupReqRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_requisicoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
+// Pedidos de compra (Fase C)
+async function loadSupPedidos(limit = 200) {
+  const rows = await sbFetch(`sup_pedidos?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSupPedidoRemote(ped, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("sup_pedidos", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...ped, usuario: user?.name || null }),
+  });
+}
+async function atualizarSupPedidoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_pedidos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Valor total do pedido (qtd × custo unitário dos itens)
+function supPedidoTotal(ped) {
+  const its = Array.isArray(ped.itens) ? ped.itens : [];
+  return its.reduce((s, x) => s + Number(x.qtd || 0) * Number(x.custo_unit || 0), 0);
+}
+const fmtBRL = v => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // ═══════════════════════════════════════════════════════════
 // PRONTO-SOCORRO — triagem Manchester + jornada do paciente
@@ -8663,12 +8695,14 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const isMaster = currentUser?.role === "adm_master";
 
   const [reqs, setReqs] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
     loadSupLotes().then(setLotes);
     loadSupFornecedores().then(setForns);
     loadSupRequisicoes().then(setReqs);
+    loadSupPedidos().then(setPedidos);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
   }
   useEffect(() => {
@@ -8765,6 +8799,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const subTexto = {
     dashboard: "Visão geral do almoxarifado com atalhos.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
+    compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
     estoque: `Catálogo de materiais, entradas e saídas por lote e validade. ${totalAtivos} ativos · ${itens.length} cadastrados.`,
     fornecedores: `Cadastro de fornecedores usados nas entradas e nas compras. ${forns.filter(f => f.ativo !== false).length} ativos.`,
   };
@@ -8811,6 +8846,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
               <Card label="Requisições aguardando" valor={reqs.filter(r => r.status === "aguardando").length} cor={VX.azul} sub="setores esperando" nav="requisicoes" />
               <Card label="Em separação / prontas" valor={reqs.filter(r => ["separacao", "pronto"].includes(r.status)).length} cor="#d97706" sub="no balcão do almoxarifado" nav="requisicoes" />
+              <Card label="Pedidos de compra abertos" valor={pedidos.filter(p => ["aberto", "enviado", "parcial"].includes(p.status)).length} cor={VX.turquesa} sub="aguardando envio / entrega" nav="compras" />
               <Card label="Materiais ativos" valor={ativos.length} cor={VX.azul} sub={`${itens.length} cadastrados`} nav="estoque" />
               <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
               <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
@@ -8824,6 +8860,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
       })()}
 
       {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
+
+      {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
 
       {sub === "estoque" && (<>
       {/* PAINÉIS DE ALERTA */}
@@ -9276,6 +9314,352 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Enviar requisição"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Compras — pedidos por fornecedor com itens de material E medicamento.
+// Recebimento (total ou parcial) dá entrada automática no estoque certo.
+function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, saidasHist, forns, pedidos, onChanged }) {
+  const [meds, setMeds] = useState([]);
+  const [medLotes, setMedLotes] = useState([]);
+  const [medSaidas, setMedSaidas] = useState([]);
+  const [showNovo, setShowNovo] = useState(false);
+  const [receb, setReceb] = useState(null);        // pedido em recebimento
+  const [verHistorico, setVerHistorico] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setMedLotes);
+    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+  }, []);
+
+  // Sugestões de compra (previsão de demanda): materiais + medicamentos
+  function sugestoes(itensBase, lotesBase, saidas, campoId, tipo) {
+    const consumo = {};
+    saidas.forEach(s => { const id = s[campoId]; if (id) consumo[id] = (consumo[id] || 0) + Number(s.quantidade || 0); });
+    return itensBase.filter(i => i.ativo !== false).map(i => {
+      const media = (consumo[i.id] || 0) / FARM_PREV_JANELA;
+      const saldo = lotesBase.filter(l => l[campoId === "item_id" ? "item_id" : "medicamento_id"] === i.id)
+        .reduce((s, l) => s + Number(l.quantidade || 0), 0);
+      const cobertura = media > 0 ? saldo / media : null;
+      const qtd = Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(i.estoque_minimo || 0) - saldo));
+      return { tipo, item_id: i.id, nome: i.nome, unidade: i.unidade || "", qtd, custo_unit: Number(i.custo_unitario || 0) || "", cobertura, media };
+    }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE && x.qtd > 0)
+      .sort((a, b) => a.cobertura - b.cobertura);
+  }
+  const sugMat = sugestoes(materiais, lotes, saidasHist, "item_id", "material");
+  const sugMed = sugestoes(meds, medLotes, medSaidas, "medicamento_id", "medicamento");
+
+  async function criarPedido(ped) {
+    await addSupPedidoRemote(ped, currentUser);
+    addAuditLog(currentUser, "criar pedido de compra", `${ped.fornecedor_nome || "sem fornecedor"} · ${ped.itens.length} itens`, {});
+    setShowNovo(false);
+    onChanged && onChanged();
+  }
+  async function enviar(p) {
+    setBusyId(p.id);
+    await atualizarSupPedidoRemote(p.id, { status: "enviado", enviado_em: nowISO(), enviado_por: currentUser?.name || null });
+    addAuditLog(currentUser, "enviar pedido de compra", `PED-${p.id}`, {});
+    setBusyId(null);
+    onChanged && onChanged();
+  }
+  async function cancelar(p) {
+    if (!confirm(`Cancelar o pedido PED-${p.id}${p.fornecedor_nome ? ` (${p.fornecedor_nome})` : ""}?`)) return;
+    setBusyId(p.id);
+    await atualizarSupPedidoRemote(p.id, { status: "cancelado" });
+    addAuditLog(currentUser, "cancelar pedido de compra", `PED-${p.id}`, {});
+    setBusyId(null);
+    onChanged && onChanged();
+  }
+  // Confirma um recebimento: entradas nos estoques + atualiza o pedido
+  async function confirmarRecebimento(p, linhas, nf) {
+    setBusyId(p.id);
+    const erros = [];
+    const itensNovos = (Array.isArray(p.itens) ? p.itens : []).map(x => ({ ...x }));
+    for (const ln of linhas) {
+      const q = Number(ln.qtd || 0);
+      if (q <= 0) continue;
+      const alvo = itensNovos[ln.idx];
+      let r;
+      if (alvo.tipo === "medicamento") {
+        r = await addFarmMovimentoRemote({
+          medicamento_id: alvo.item_id, tipo: "entrada", quantidade: q,
+          lote: ln.lote.trim() || null, validade: ln.validade || null,
+          motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
+        }, currentUser);
+      } else {
+        r = await addSupMovimentoRemote({
+          item_id: alvo.item_id, tipo: "entrada", quantidade: q,
+          lote: ln.lote.trim() || null, validade: ln.validade || null,
+          motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
+          fornecedor_id: p.fornecedor_id || null,
+        }, currentUser);
+      }
+      if (r.ok) alvo.qtd_recebida = Number(alvo.qtd_recebida || 0) + q;
+      else erros.push(`${alvo.nome}: ${r.erro || "falha na entrada"}`);
+    }
+    const completo = itensNovos.every(x => Number(x.qtd_recebida || 0) >= Number(x.qtd || 0));
+    await atualizarSupPedidoRemote(p.id, {
+      itens: itensNovos,
+      status: completo ? "recebido" : "parcial",
+      recebido_em: nowISO(), recebido_por: currentUser?.name || null,
+    });
+    addAuditLog(currentUser, "receber pedido de compra", `PED-${p.id}${completo ? "" : " (parcial)"}`, {});
+    setBusyId(null);
+    setReceb(null);
+    if (erros.length) alert("Recebimento registrado com FALHAS:\n\n" + erros.join("\n"));
+    onChanged && onChanged();
+  }
+
+  const ativos = pedidos.filter(p => ["aberto", "enviado", "parcial"].includes(p.status));
+  const historico = pedidos.filter(p => ["recebido", "cancelado"].includes(p.status));
+  const lista = verHistorico ? historico : ativos;
+
+  const PedCard = ({ p }) => {
+    const st = SUP_PED_STATUS[p.status] || SUP_PED_STATUS.aberto;
+    const its = Array.isArray(p.itens) ? p.itens : [];
+    const total = supPedidoTotal(p);
+    const busy = busyId === p.id;
+    const temMed = its.some(x => x.tipo === "medicamento");
+    return (
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 10, padding: "10px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, fontSize: 13 }}>{p.fornecedor_nome || "Sem fornecedor"}</span>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>PED-{p.id}</span>
+          <span style={{ fontSize: 9.5, color: st.cor, border: `1px solid ${st.cor}55`, borderRadius: 99, padding: "0 7px", fontWeight: 800 }}>{st.label.toUpperCase()}</span>
+          {temMed && <span style={{ fontSize: 9.5, color: "#6366f1", border: "1px solid #6366f155", borderRadius: 99, padding: "0 6px", fontWeight: 700 }}>c/ medicamentos</span>}
+        </div>
+        <div style={{ margin: "7px 0", display: "flex", flexDirection: "column", gap: 2 }}>
+          {its.slice(0, 6).map((x, i) => {
+            const rec = Number(x.qtd_recebida || 0);
+            return (
+              <div key={i} style={{ fontSize: 12, color: "var(--text-2)", display: "flex", gap: 6 }}>
+                <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 56, textAlign: "right", color: rec > 0 && rec < Number(x.qtd) ? "#d97706" : "var(--text-2)" }}>{rec > 0 ? `${farmFmtQtd(rec)}/` : ""}{farmFmtQtd(x.qtd)}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>{x.nome}{x.unidade ? ` (${x.unidade})` : ""}</span>
+                {Number(x.custo_unit) > 0 && <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtBRL(Number(x.qtd) * Number(x.custo_unit))}</span>}
+              </div>
+            );
+          })}
+          {its.length > 6 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{its.length - 6} itens</span>}
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 7 }}>
+          {total > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: VX.turquesa, fontFamily: "JetBrains Mono, monospace" }}>{fmtBRL(total)}</span>}
+          {p.previsao_entrega && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>entrega prevista {fmtDataBR(p.previsao_entrega)}</span>}
+          <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: "auto" }}>{p.created_at ? new Date(p.created_at).toLocaleDateString("pt-BR") : ""}{p.usuario ? ` · ${p.usuario}` : ""}</span>
+        </div>
+        {p.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{p.observacao}</div>}
+        {canEdit && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {p.status === "aberto" && <button disabled={busy} onClick={() => enviar(p)} style={btnLeito("#3b82f6")}>Marcar como enviado</button>}
+            {["enviado", "parcial"].includes(p.status) && <button disabled={busy} onClick={() => setReceb(p)} style={btnLeito("#34d399")}>{busy ? "…" : "Receber (entrada)"}</button>}
+            {!["recebido", "cancelado"].includes(p.status) && <button disabled={busy} onClick={() => cancelar(p)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {canEdit && <button onClick={() => setShowNovo(true)} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Novo pedido</button>}
+        {(sugMat.length > 0 || sugMed.length > 0) && (
+          <span style={{ fontSize: 12, color: "#d97706", fontWeight: 600 }}>
+            Previsão de ruptura: {sugMat.length} materiais · {sugMed.length} medicamentos — importe no novo pedido.
+          </span>
+        )}
+        <button onClick={() => setVerHistorico(h => !h)} style={{ marginLeft: "auto", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", color: "var(--text-3)", cursor: "pointer", fontSize: 12.5 }}>{verHistorico ? "Ver ativos" : `Histórico (${historico.length})`}</button>
+      </div>
+
+      {lista.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>
+          {verHistorico ? "Nenhum pedido concluído ainda." : "Nenhum pedido em andamento. Crie um em “+ Novo pedido” — dá para importar a sugestão de compra da previsão de demanda."}
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start" }}>
+          {lista.slice(0, 60).map(p => <PedCard key={p.id} p={p} />)}
+        </div>
+      )}
+
+      {showNovo && <SupNovoPedidoModal forns={forns} materiais={materiais} meds={meds.filter(m => m.ativo !== false)} sugMat={sugMat} sugMed={sugMed} onClose={() => setShowNovo(false)} onSave={criarPedido} />}
+      {receb && <SupRecebModal pedido={receb} busy={busyId === receb.id} onClose={() => setReceb(null)} onConfirm={confirmarRecebimento} />}
+    </div>
+  );
+}
+
+// Montagem do pedido de compra: fornecedor + itens (material/medicamento)
+function SupNovoPedidoModal({ forns, materiais, meds, sugMat, sugMed, onClose, onSave }) {
+  const [fornId, setFornId] = useState(forns[0]?.id || "");
+  const [prev, setPrev] = useState("");
+  const [obs, setObs] = useState("");
+  const [lista, setLista] = useState([]);   // [{tipo, item_id, nome, unidade, qtd, custo_unit}]
+  const [tipoSel, setTipoSel] = useState("material");
+  const [itemSel, setItemSel] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const base = tipoSel === "material" ? materiais : meds;
+  const disponiveis = base.filter(i => !lista.some(x => x.tipo === tipoSel && x.item_id === i.id))
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const sel = base.find(i => String(i.id) === String(itemSel));
+  const total = lista.reduce((s, x) => s + Number(x.qtd || 0) * Number(x.custo_unit || 0), 0);
+
+  function adicionar() {
+    const q = Number(qtd);
+    if (!sel) { alert("Escolha o item."); return; }
+    if (!q || q <= 0) { alert("Informe uma quantidade maior que zero."); return; }
+    setLista(l => [...l, { tipo: tipoSel, item_id: sel.id, nome: sel.nome, unidade: sel.unidade || "", qtd: q, custo_unit: Number(sel.custo_unitario || 0) || "" }]);
+    setItemSel(""); setQtd("");
+  }
+  function importarSugestoes() {
+    const novos = [...sugMat, ...sugMed].filter(s => !lista.some(x => x.tipo === s.tipo && x.item_id === s.item_id))
+      .map(s => ({ tipo: s.tipo, item_id: s.item_id, nome: s.nome, unidade: s.unidade, qtd: s.qtd, custo_unit: s.custo_unit }));
+    if (!novos.length) { alert("Nenhuma sugestão nova para importar."); return; }
+    setLista(l => [...l, ...novos]);
+  }
+  function mudarLinha(i, k, v) {
+    setLista(l => l.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  }
+  async function salvar() {
+    if (!lista.length) { alert("Adicione pelo menos um item."); return; }
+    if (lista.some(x => !Number(x.qtd) || Number(x.qtd) <= 0)) { alert("Todas as quantidades devem ser maiores que zero."); return; }
+    const forn = forns.find(f => String(f.id) === String(fornId));
+    setBusy(true);
+    await onSave({
+      fornecedor_id: forn?.id || null,
+      fornecedor_nome: forn?.nome || null,
+      itens: lista.map(x => ({ ...x, qtd: Number(x.qtd), custo_unit: Number(x.custo_unit || 0) || null, qtd_recebida: 0 })),
+      previsao_entrega: prev || null,
+      observacao: obs.trim() || null,
+      status: "aberto",
+    });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Novo pedido de compra</div>
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Fornecedor</label>
+            <select value={fornId} onChange={e => setFornId(e.target.value)} style={farmInp}>
+              <option value="">— definir depois —</option>
+              {forns.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={farmLbl}>Entrega prevista</label>
+            <input type="date" value={prev} onChange={e => setPrev(e.target.value)} style={farmInp} />
+          </div>
+        </div>
+
+        {(sugMat.length > 0 || sugMed.length > 0) && (
+          <button onClick={importarSugestoes} style={{ width: "100%", background: "#d9770614", border: "1px solid #d9770655", color: "#d97706", borderRadius: 8, padding: "9px 12px", fontWeight: 700, cursor: "pointer", fontSize: 12.5, marginBottom: 12, textAlign: "left" }}>
+            ⇩ Importar sugestão de compra da previsão de demanda ({sugMat.length} materiais · {sugMed.length} medicamentos)
+          </button>
+        )}
+
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Adicionar item</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            {["material", "medicamento"].map(t => (
+              <button key={t} onClick={() => { setTipoSel(t); setItemSel(""); }} style={{ flex: 1, background: tipoSel === t ? VX.turquesa : "transparent", color: tipoSel === t ? "#062a26" : "var(--text-3)", border: `1px solid ${tipoSel === t ? VX.turquesa : "var(--border)"}`, borderRadius: 7, padding: "7px 0", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{t === "material" ? "Material" : "Medicamento"}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "end" }}>
+            <div>
+              <label style={farmLbl}>{tipoSel === "material" ? "Material" : "Medicamento"}</label>
+              <select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}>
+                <option value="">— escolha —</option>
+                {disponiveis.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={farmLbl}>Qtd *</label>
+              <input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} />
+            </div>
+            <button onClick={adicionar} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
+          </div>
+        </div>
+
+        {lista.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 8 }}>
+            {lista.map((x, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
+                <span style={{ fontSize: 9.5, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", fontWeight: 700, flexShrink: 0 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
+                <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)", minWidth: 0 }}>{x.nome}{x.unidade ? ` (${x.unidade})` : ""}</span>
+                <input type="number" min="0" step="any" value={x.qtd} onChange={e => mudarLinha(i, "qtd", e.target.value)} title="Quantidade" style={{ ...farmInp, width: 70, padding: "5px 7px", fontSize: 12 }} />
+                <input type="number" min="0" step="any" value={x.custo_unit} onChange={e => mudarLinha(i, "custo_unit", e.target.value)} placeholder="R$ unit." title="Custo unitário (R$)" style={{ ...farmInp, width: 82, padding: "5px 7px", fontSize: 12 }} />
+                <button onClick={() => setLista(l => l.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {total > 0 && <div style={{ textAlign: "right", fontSize: 13, fontWeight: 800, color: VX.turquesa, fontFamily: "JetBrains Mono, monospace", marginBottom: 10 }}>Total estimado: {fmtBRL(total)}</div>}
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={farmLbl}>Observação</label>
+          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Condições, cotação, urgência…" style={farmInp} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Criar pedido"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Recebimento do pedido: informa qtd/lote/validade por item → entrada no estoque
+function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
+  const its = Array.isArray(pedido.itens) ? pedido.itens : [];
+  const [nf, setNf] = useState("");
+  const [linhas, setLinhas] = useState(its.map((x, idx) => ({
+    idx, qtd: Math.max(0, Number(x.qtd || 0) - Number(x.qtd_recebida || 0)), lote: "", validade: "",
+  })));
+  const set = (i, k, v) => setLinhas(l => l.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const algum = linhas.some(l => Number(l.qtd) > 0);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 640, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Receber pedido PED-{pedido.id}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+          {pedido.fornecedor_nome || "Sem fornecedor"} · informe o que chegou — cada linha vira uma <strong>entrada</strong> no estoque (materiais no almoxarifado, medicamentos na Farmácia). Recebimento parcial é permitido.
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={farmLbl}>Nota fiscal / documento</label>
+          <input value={nf} onChange={e => setNf(e.target.value)} placeholder={`Nº NF (se vazio, usa PED-${pedido.id})`} style={{ ...farmInp, maxWidth: 260 }} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {its.map((x, i) => {
+            const restante = Math.max(0, Number(x.qtd || 0) - Number(x.qtd_recebida || 0));
+            const ln = linhas[i];
+            return (
+              <div key={i} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 9.5, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", fontWeight: 700 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", flex: 1, minWidth: 0 }}>{x.nome}</span>
+                  <span style={{ fontSize: 11, color: restante > 0 ? "var(--text-muted)" : "#34d399", fontFamily: "JetBrains Mono, monospace" }}>{restante > 0 ? `falta ${farmFmtQtd(restante)}` : "completo"}</span>
+                </div>
+                {restante > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 1fr", gap: 8 }}>
+                    <div><label style={farmLbl}>Qtd recebida</label><input type="number" min="0" step="any" value={ln.qtd} onChange={e => set(i, "qtd", e.target.value)} style={farmInp} /></div>
+                    <div><label style={farmLbl}>Lote</label><input value={ln.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="opcional" style={farmInp} /></div>
+                    <div><label style={farmLbl}>Validade</label><input type="date" value={ln.validade} onChange={e => set(i, "validade", e.target.value)} style={farmInp} /></div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={() => onConfirm(pedido, linhas, nf.trim())} disabled={busy || !algum} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || !algum) ? 0.5 : 1 }}>{busy ? "…" : "Confirmar recebimento"}</button>
         </div>
       </div>
     </div>
