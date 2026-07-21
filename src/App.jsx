@@ -2138,6 +2138,12 @@ const SUP_NAV = [
 // Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
 // (casam por nome ou princípio ativo; edite a lista conforme o hospital)
 const SUP_FARMACOS_MONITORADOS = ["morfina", "fentanil", "alteplase", "tenecteplase", "contraste", "albumina"];
+// Ponto de pedido: prazo de entrega padrão (fornecedor sem prazo) e margem de segurança
+const SUP_LEAD_PADRAO = 15;   // dias
+const SUP_MARGEM_SEG  = 3;    // dias de folga sobre o prazo de entrega
+// Prazo de reposição de um item = (prazo do último fornecedor OU padrão) + margem.
+// leadMap: { item_id → dias } montado por supLeadTimeMap.
+const supPrazoReposicao = (itemId, leadMap = {}) => (Number(leadMap[itemId]) || SUP_LEAD_PADRAO) + SUP_MARGEM_SEG;
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
 // Pedido de compra — estados e cores
 const SUP_PED_STATUS = {
@@ -2241,6 +2247,22 @@ async function deleteSupFornecedorRemote(id) {
   await sbFetch(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
 }
 // Inventário cíclico — contagens cegas (append-only)
+// Entradas recentes com fornecedor, para saber o prazo de entrega de cada item
+async function loadSupEntradasComForn(fromISO) {
+  const rows = await sbFetch(`sup_movimentos?tipo=eq.entrada&fornecedor_id=not.is.null&created_at=gte.${fromISO}&select=item_id,fornecedor_id,created_at&order=created_at.desc&limit=8000`);
+  return Array.isArray(rows) ? rows : [];
+}
+// item_id → prazo de entrega (dias) do fornecedor da ENTRADA mais recente que o tem cadastrado
+function supLeadTimeMap(entradas, forns) {
+  const fById = {}; forns.forEach(f => fById[f.id] = f);
+  const seen = {}, map = {};
+  entradas.forEach(e => {                       // já vem do mais recente para o mais antigo
+    if (seen[e.item_id]) return;
+    const lt = fById[e.fornecedor_id]?.lead_time_dias;
+    if (lt != null && lt !== "") { map[e.item_id] = Number(lt); seen[e.item_id] = true; }
+  });
+  return map;
+}
 async function loadSupInventarios(limit = 400) {
   const rows = await sbFetch(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
   return Array.isArray(rows) ? rows : [];
@@ -8760,6 +8782,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [reqs, setReqs] = useState([]);
   const [pedidos, setPedidos] = useState([]);
   const [invs, setInvs] = useState([]);
+  const [entradasForn, setEntradasForn] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
@@ -8768,8 +8791,10 @@ function SuprimentosPage({ currentUser, canEdit }) {
     loadSupRequisicoes().then(setReqs);
     loadSupPedidos().then(setPedidos);
     loadSupInventarios().then(setInvs);
+    loadSupEntradasComForn(new Date(Date.now() - 180 * 86400000).toISOString()).then(setEntradasForn);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
   }
+  const leadMap = supLeadTimeMap(entradasForn, forns);   // item_id → prazo de entrega (dias)
   useEffect(() => {
     refresh();
     const onFocus = () => refresh();
@@ -8952,11 +8977,11 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
 
-      {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
+      {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
 
       {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
       {sub === "inventario" && <SupInventarioView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs} onSave={salvarInventario} />}
-      {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
+      {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} leadMap={leadMap} />}
       {sub === "vencimentos" && <SupVencimentosView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
 
       {sub === "indicadores" && <SupIndicadoresView itens={itens} lotes={lotes} forns={forns} pedidos={pedidos} reqs={reqs} />}
@@ -9091,6 +9116,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
                   <th style={{ padding: "9px 12px" }}>CNPJ</th>
                   <th style={{ padding: "9px 12px" }}>Contato</th>
                   <th style={{ padding: "9px 12px" }}>Fornece</th>
+                  <th style={{ padding: "9px 12px", textAlign: "right" }}>Prazo entrega</th>
                   <th style={{ padding: "9px 12px", textAlign: "right" }}>Ações</th>
                 </tr>
               </thead>
@@ -9109,6 +9135,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
                         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{[f.telefone, f.email].filter(Boolean).join(" · ")}</div>
                       </td>
                       <td style={{ padding: "9px 12px", color: "var(--text-2)", fontSize: 12 }}>{f.categorias || "—"}</td>
+                      <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: f.lead_time_dias != null && f.lead_time_dias !== "" ? "var(--text-2)" : "var(--text-muted)" }}>{f.lead_time_dias != null && f.lead_time_dias !== "" ? `${f.lead_time_dias} d` : `${SUP_LEAD_PADRAO} d (padrão)`}</td>
                       <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
                         {canEdit && <button onClick={() => setShowForn(f)} style={btnLeito("#3b82f6")}>Editar</button>}
                         {isMaster && <> <button onClick={() => excluirForn(f)} style={btnLeito("#f43f5e")}>Excluir</button></>}
@@ -9421,7 +9448,7 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
 
 // Compras — pedidos por fornecedor com itens de material E medicamento.
 // Recebimento (total ou parcial) dá entrada automática no estoque certo.
-function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, saidasHist, forns, pedidos, onChanged }) {
+function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, saidasHist, forns, pedidos, leadMap = {}, onChanged }) {
   const [meds, setMeds] = useState([]);
   const [medLotes, setMedLotes] = useState([]);
   const [medSaidas, setMedSaidas] = useState([]);
@@ -9437,7 +9464,9 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
     loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
   }, []);
 
-  // Sugestões de compra (previsão de demanda): materiais + medicamentos
+  // Sugestões de compra por PONTO DE PEDIDO: dispara quando a cobertura cai abaixo
+  // do prazo de entrega do item (+ margem) — e a quantidade cobre esse prazo + mínimo.
+  // Medicamentos não têm fornecedor vinculado no movimento → usam o prazo padrão.
   function sugestoes(itensBase, lotesBase, saidas, campoId, tipo) {
     const consumo = {};
     saidas.forEach(s => { const id = s[campoId]; if (id) consumo[id] = (consumo[id] || 0) + Number(s.quantidade || 0); });
@@ -9446,9 +9475,10 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
       const saldo = lotesBase.filter(l => l[campoId === "item_id" ? "item_id" : "medicamento_id"] === i.id)
         .reduce((s, l) => s + Number(l.quantidade || 0), 0);
       const cobertura = media > 0 ? saldo / media : null;
-      const qtd = Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(i.estoque_minimo || 0) - saldo));
-      return { tipo, item_id: i.id, nome: i.nome, unidade: i.unidade || "", qtd, custo_unit: Number(i.custo_unitario || 0) || "", cobertura, media };
-    }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE && x.qtd > 0)
+      const prazo = tipo === "material" ? supPrazoReposicao(i.id, leadMap) : (SUP_LEAD_PADRAO + SUP_MARGEM_SEG);
+      const qtd = Math.max(0, Math.ceil(media * prazo + Number(i.estoque_minimo || 0) - saldo));
+      return { tipo, item_id: i.id, nome: i.nome, unidade: i.unidade || "", qtd, custo_unit: Number(i.custo_unitario || 0) || "", cobertura, media, prazo };
+    }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < x.prazo && x.qtd > 0)
       .sort((a, b) => a.cobertura - b.cobertura);
   }
   const sugMat = sugestoes(materiais, lotes, saidasHist, "item_id", "material");
@@ -9781,10 +9811,12 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
 }
 
 // Estoque preditivo — quando acaba cada item no ritmo atual (materiais + medicamentos)
-function SupPreditivoView({ itens, lotes, saidasHist }) {
+function SupPreditivoView({ itens, lotes, saidasHist, leadMap = {} }) {
   const [meds, setMeds] = useState([]);
   const [medLotes, setMedLotes] = useState([]);
   const [medSaidas, setMedSaidas] = useState([]);
+  const [saidas7, setSaidas7] = useState([]);       // materiais, últimos 7d (demanda instável)
+  const [medSaidas7, setMedSaidas7] = useState([]); // medicamentos, últimos 7d
   const [busca, setBusca] = useState("");
   const [tipoF, setTipoF] = useState("");        // "" | material | medicamento
   const [soComGiro, setSoComGiro] = useState(true);
@@ -9794,22 +9826,30 @@ function SupPreditivoView({ itens, lotes, saidasHist }) {
     loadFarmMedicamentos().then(setMeds);
     loadFarmLotes().then(setMedLotes);
     loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+    loadSupSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setSaidas7);
+    loadFarmSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setMedSaidas7);
   }, []);
 
-  function linhas(base, lotesBase, saidas, idKey, tipo, saldoFn) {
+  function linhas(base, lotesBase, saidas, saidas7d, idKey, tipo, saldoFn) {
     const cons = {}; saidas.forEach(s => { const id = s[idKey]; if (id) cons[id] = (cons[id] || 0) + Number(s.quantidade || 0); });
+    const cons7 = {}; saidas7d.forEach(s => { const id = s[idKey]; if (id) cons7[id] = (cons7[id] || 0) + Number(s.quantidade || 0); });
     return base.filter(x => x.ativo !== false).map(x => {
       const media = (cons[x.id] || 0) / FARM_PREV_JANELA;
+      const media7 = (cons7[x.id] || 0) / 7;
       const saldo = saldoFn(x.id);
       const cobertura = media > 0 ? saldo / media : null;
       const dataFim = cobertura != null ? new Date(Date.now() + cobertura * 86400000) : null;
-      const sugestao = media > 0 ? Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(x.estoque_minimo || 0) - saldo)) : 0;
-      return { tipo, nome: x.nome, unidade: x.unidade || "", saldo, media, cobertura, dataFim, sugestao };
+      const prazo = tipo === "material" ? supPrazoReposicao(x.id, leadMap) : (SUP_LEAD_PADRAO + SUP_MARGEM_SEG);
+      const sugestao = media > 0 ? Math.max(0, Math.ceil(media * prazo + Number(x.estoque_minimo || 0) - saldo)) : 0;
+      const comprarAgora = cobertura != null && cobertura < prazo;
+      // demanda instável: consumo recente (7d) destoa muito da média de 30d
+      const instavel = media > 0 && (media7 > media * 1.75 || media7 < media * 0.4);
+      return { tipo, nome: x.nome, unidade: x.unidade || "", saldo, media, cobertura, dataFim, sugestao, prazo, comprarAgora, instavel, subindo: media7 > media };
     });
   }
   const todas = [
-    ...linhas(itens, lotes, saidasHist, "item_id", "material", id => supSaldoTotal(id, lotes)),
-    ...linhas(meds, medLotes, medSaidas, "medicamento_id", "medicamento", id => farmSaldoTotal(id, medLotes)),
+    ...linhas(itens, lotes, saidasHist, saidas7, "item_id", "material", id => supSaldoTotal(id, lotes)),
+    ...linhas(meds, medLotes, medSaidas, medSaidas7, "medicamento_id", "medicamento", id => farmSaldoTotal(id, medLotes)),
   ];
   const q = normTxt(busca);
   const view = todas
@@ -9817,23 +9857,25 @@ function SupPreditivoView({ itens, lotes, saidasHist }) {
     .filter(x => !q || normTxt(x.nome).includes(q))
     .filter(x => !soComGiro || x.media > 0)
     .sort((a, b) => (a.cobertura ?? 1e9) - (b.cobertura ?? 1e9));
-  const criticos = todas.filter(x => x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).length;
-  const atencao = todas.filter(x => x.cobertura != null && x.cobertura >= FARM_PREV_HORIZONTE && x.cobertura < 15).length;
-  const statusDe = c => c == null ? { cor: "var(--text-muted)", label: "sem giro" }
-    : c < FARM_PREV_HORIZONTE ? { cor: "#f43f5e", label: "crítico" }
-    : c < 15 ? { cor: "#d97706", label: "atenção" }
+  const comprarAgoraN = todas.filter(x => x.comprarAgora).length;
+  const instaveisN = todas.filter(x => x.instavel).length;
+  // Situação pelo ponto de pedido do próprio item (não mais um "7" fixo)
+  const statusDe = x => x.cobertura == null ? { cor: "var(--text-muted)", label: "sem giro" }
+    : x.comprarAgora ? { cor: "#f43f5e", label: "comprar agora" }
+    : x.cobertura < x.prazo * 1.5 ? { cor: "#d97706", label: "atenção" }
     : { cor: "#34d399", label: "ok" };
   const fmtDias = c => c == null ? "—" : c < 1 ? "menos de 1 dia" : `~${Math.floor(c)} dia(s)`;
 
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 14 }}>
-        {[["Acabam em menos de 7 dias", criticos, criticos ? "#f43f5e" : "#34d399"],
-          ["Acabam em 7 a 15 dias", atencao, atencao ? "#d97706" : "#34d399"],
-          ["Itens com consumo (30d)", todas.filter(x => x.media > 0).length, VX.azul]].map(([l, v, cor]) => (
+        {[["Comprar agora (ponto de pedido)", comprarAgoraN, comprarAgoraN ? "#f43f5e" : "#34d399", "cobertura abaixo do prazo de entrega"],
+          ["Demanda instável", instaveisN, instaveisN ? "#d97706" : "#34d399", "consumo recente destoa da média"],
+          ["Itens com consumo (30d)", todas.filter(x => x.media > 0).length, VX.azul, "base da previsão"]].map(([l, v, cor, sub]) => (
           <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "12px 14px" }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{l}</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{v}</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>
           </div>
         ))}
       </div>
@@ -9861,27 +9903,30 @@ function SupPreditivoView({ itens, lotes, saidasHist }) {
               <th style={{ padding: "9px 12px", textAlign: "right" }}>Consumo/dia</th>
               <th style={{ padding: "9px 12px" }}>Acaba em</th>
               <th style={{ padding: "9px 12px" }}>Data prevista</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Prazo entrega</th>
               <th style={{ padding: "9px 12px" }}>Situação</th>
-              <th style={{ padding: "9px 12px", textAlign: "right" }}>Comprar (7d)</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Comprar</th>
             </tr></thead>
             <tbody>
-              {view.slice(0, 120).map((x, i) => { const st = statusDe(x.cobertura); return (
+              {view.slice(0, 120).map((x, i) => { const st = statusDe(x); return (
                 <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={{ padding: "8px 12px" }}>
                     <span style={{ fontSize: 9.5, fontWeight: 800, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", marginRight: 7 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
                     <span style={{ fontWeight: 600 }}>{x.nome}</span>
+                    {x.instavel && <span title={x.subindo ? "Consumo recente bem acima da média — pode ser pico/surto" : "Consumo recente bem abaixo da média"} style={{ fontSize: 9.5, fontWeight: 800, color: "#d97706", border: "1px solid #d9770655", borderRadius: 99, padding: "0 6px", marginLeft: 6 }}>{x.subindo ? "↑ instável" : "↓ instável"}</span>}
                   </td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{farmFmtQtd(x.saldo)} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "Inter, sans-serif", fontWeight: 400 }}>{x.unidade}</span></td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{x.media > 0 ? farmFmtQtd(Math.round(x.media * 10) / 10) : "—"}</td>
                   <td style={{ padding: "8px 12px", fontWeight: 700, color: st.cor }}>{fmtDias(x.cobertura)}</td>
                   <td style={{ padding: "8px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-2)" }}>{x.dataFim ? x.dataFim.toLocaleDateString("pt-BR") : "—"}</td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-muted)" }}>{x.tipo === "material" ? `${x.prazo}d` : `${x.prazo}d*`}</td>
                   <td style={{ padding: "8px 12px" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: st.cor, marginRight: 6 }} /><span style={{ fontSize: 12, color: st.cor, fontWeight: st.label === "ok" ? 400 : 700 }}>{st.label}</span></td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: x.sugestao > 0 ? VX.azul : "var(--text-muted)" }}>{x.sugestao > 0 ? farmFmtQtd(x.sugestao) : "—"}</td>
                 </tr>
               ); })}
             </tbody>
           </table>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Previsão pela média de consumo dos últimos {FARM_PREV_JANELA} dias — assume demanda estável. "Comprar" cobre 7 dias + estoque mínimo.</div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Previsão pela média de consumo dos últimos {FARM_PREV_JANELA} dias. "Comprar agora" = a cobertura já é menor que o prazo de entrega + margem ({SUP_MARGEM_SEG}d). "Comprar" cobre o prazo de reposição + estoque mínimo. <strong>*</strong> medicamentos usam o prazo padrão ({SUP_LEAD_PADRAO}d), pois o fornecedor não é vinculado na baixa.</div>
         </div>
       )}
     </div>
@@ -11074,6 +11119,7 @@ function SupFornecedorModal({ forn, onClose, onSave }) {
       telefone: f.telefone?.trim() || null,
       email: f.email?.trim() || null,
       categorias: f.categorias?.trim() || null,
+      lead_time_dias: f.lead_time_dias === "" || f.lead_time_dias == null ? null : Number(f.lead_time_dias),
       observacao: f.observacao?.trim() || null,
       ativo: f.ativo !== false,
     });
@@ -11095,10 +11141,17 @@ function SupFornecedorModal({ forn, onClose, onSave }) {
           <div><label style={farmLbl}>Telefone</label><input value={f.telefone || ""} onChange={e => set("telefone", e.target.value)} placeholder="(00) 00000-0000" style={farmInp} /></div>
           <div><label style={farmLbl}>E-mail</label><input value={f.email || ""} onChange={e => set("email", e.target.value)} placeholder="contato@fornecedor.com" style={farmInp} /></div>
         </div>
-        <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>O que fornece</label>
-          <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={farmInp} />
+        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>O que fornece</label>
+            <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={farmInp} />
+          </div>
+          <div>
+            <label style={farmLbl}>Prazo de entrega (dias)</label>
+            <input type="number" min="0" value={f.lead_time_dias ?? ""} onChange={e => set("lead_time_dias", e.target.value)} placeholder={String(SUP_LEAD_PADRAO)} style={farmInp} />
+          </div>
         </div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", margintop: 0, marginBottom: 10 }}>O prazo de entrega alimenta o <strong>ponto de pedido</strong>: o sistema sugere comprar antes que o estoque acabe dentro desse prazo + margem. Sem valor, usa {SUP_LEAD_PADRAO} dias.</div>
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
           <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
         </label>

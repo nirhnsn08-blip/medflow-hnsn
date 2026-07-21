@@ -916,3 +916,7 @@ alter table public.sup_itens
 create index if not exists sup_itens_barras_idx
   on public.sup_itens (codigo_barras);
 
+
+-- ── Suprimentos: ponto de pedido (prazo de entrega por fornecedor) ──
+alter table public.sup_fornecedores
+  add column if not exists lead_time_dias int;
