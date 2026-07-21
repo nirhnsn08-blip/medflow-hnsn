@@ -2128,6 +2128,7 @@ const SUP_NAV = [
   { key: "acoes",        label: "Ações de hoje", icon: "checks" },
   { key: "executivo",    label: "Painel executivo", icon: "briefcase" },
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
+  { key: "cotacoes",     label: "Cotações",     icon: "flask" },
   { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
   { key: "inventario",   label: "Inventário",   icon: "clipboard" },
@@ -2360,6 +2361,23 @@ async function addSupPedidoRemote(ped, user) {
 async function atualizarSupPedidoRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_pedidos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Cotações de compra (comparar preços entre fornecedores)
+async function loadSupCotacoes(limit = 100) {
+  const rows = await sbFetch(`sup_cotacoes?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSupCotacaoRemote(cot, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("sup_cotacoes", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...cot, usuario: user?.name || null }),
+  });
+}
+async function atualizarSupCotacaoRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_cotacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
 // Valor total do pedido (qtd × custo unitário dos itens)
 function supPedidoTotal(ped) {
@@ -8817,6 +8835,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [pedidos, setPedidos] = useState([]);
   const [invs, setInvs] = useState([]);
   const [entradasForn, setEntradasForn] = useState([]);
+  const [cotacoes, setCotacoes] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
@@ -8824,6 +8843,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     loadSupFornecedores().then(setForns);
     loadSupRequisicoes().then(setReqs);
     loadSupPedidos().then(setPedidos);
+    loadSupCotacoes().then(setCotacoes);
     loadSupInventarios().then(setInvs);
     loadSupEntradasComForn(new Date(Date.now() - 180 * 86400000).toISOString()).then(setEntradasForn);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
@@ -8983,6 +9003,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     acoes: "Tudo que precisa de decisão hoje, em ordem de prioridade — rupturas, comprar, vencimentos, requisições, recebimentos e contagens.",
     executivo: "Visão financeira do estoque — capital parado, variação de gastos e perdas, rupturas previstas e capital liberável. Almoxarifado + Farmácia.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
+    cotacoes: "Compare preços de vários fornecedores antes de comprar — o vencedor de cada item vira um pedido com um clique.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
     inventario: "Inventário cíclico — contagem cega rotativa (curva ABC), ajuste no kardex e acuracidade do estoque.",
     preditivo: "Previsão item a item: no ritmo atual de consumo, quando acaba cada material e medicamento.",
@@ -9053,6 +9074,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
 
+      {sub === "cotacoes" && <SupCotacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} forns={forns.filter(f => f.ativo !== false)} cotacoes={cotacoes} onChanged={refresh} />}
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
 
       {sub === "acoes" && <SupAcoesView itens={itens} lotes={lotes} saidasHist={saidasHist} reqs={reqs} pedidos={pedidos} invs={invs} leadMap={leadMap} onNav={setSub} />}
@@ -9518,6 +9540,272 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Enviar requisição"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cotações — compara preços de fornecedores por item e gera o pedido do vencedor.
+function SupCotacoesView({ currentUser, canEdit, isMaster, materiais, forns, cotacoes, onChanged }) {
+  const [meds, setMeds] = useState([]);
+  const [showNova, setShowNova] = useState(false);
+  const [abrir, setAbrir] = useState(null);      // cotação em comparação
+  const [busyId, setBusyId] = useState(null);
+
+  useEffect(() => { if (USE_SUPABASE) loadFarmMedicamentos().then(setMeds); }, []);
+  const fornById = {}; forns.forEach(f => fornById[f.id] = f);
+
+  // menor preço de cada item e total por fornecedor
+  function analise(cot) {
+    const itens = Array.isArray(cot.itens) ? cot.itens : [];
+    const fids = (cot.fornecedores || []).map(String);
+    const totalForn = {}; fids.forEach(id => totalForn[id] = { soma: 0, itensCotados: 0 });
+    const vencedorItem = itens.map(it => {
+      let melhor = null;
+      fids.forEach(id => {
+        const p = Number(it.precos?.[id]);
+        if (p > 0) { totalForn[id].soma += p * Number(it.qtd || 0); totalForn[id].itensCotados++; if (melhor == null || p < melhor.preco) melhor = { fid: id, preco: p }; }
+      });
+      return melhor;   // { fid, preco } ou null
+    });
+    return { itens, fids, totalForn, vencedorItem };
+  }
+
+  async function criar(cot) {
+    await addSupCotacaoRemote(cot, currentUser);
+    addAuditLog(currentUser, "criar cotação", `${cot.descricao || "cotação"} · ${cot.itens.length} itens`, {});
+    setShowNova(false);
+    onChanged && onChanged();
+  }
+  async function salvarPrecos(cot, itens) {
+    setBusyId(cot.id);
+    await atualizarSupCotacaoRemote(cot.id, { itens });
+    setBusyId(null);
+    setAbrir(a => a ? { ...a, itens } : a);
+    onChanged && onChanged();
+  }
+  async function cancelar(cot) {
+    if (!confirm(`Cancelar a cotação "${cot.descricao || cot.id}"?`)) return;
+    await atualizarSupCotacaoRemote(cot.id, { status: "cancelada" });
+    addAuditLog(currentUser, "cancelar cotação", `cotação ${cot.id}`, {});
+    onChanged && onChanged();
+  }
+  // Gera pedido(s): "porItem" = melhor preço de cada item (divide por fornecedor);
+  // fornId = pedido único com um fornecedor.
+  async function gerarPedido(cot, modo, fornIdUnico) {
+    const { itens, fids, vencedorItem } = analise(cot);
+    const grupos = {};   // fornecedor_id → itens do pedido
+    itens.forEach((it, i) => {
+      let fid = null, preco = null;
+      if (modo === "porItem") { const v = vencedorItem[i]; if (v) { fid = v.fid; preco = v.preco; } }
+      else { fid = String(fornIdUnico); preco = Number(it.precos?.[fid]) || null; }
+      if (!fid || !preco) return;
+      (grupos[fid] = grupos[fid] || []).push({ tipo: it.tipo, item_id: it.item_id, nome: it.nome, unidade: it.unidade, qtd: Number(it.qtd), custo_unit: preco, qtd_recebida: 0 });
+    });
+    const ids = Object.keys(grupos);
+    if (!ids.length) { alert("Nenhum item com preço para gerar pedido."); return; }
+    setBusyId(cot.id);
+    for (const fid of ids) {
+      const forn = fornById[fid];
+      await addSupPedidoRemote({ fornecedor_id: Number(fid), fornecedor_nome: forn?.nome || null, itens: grupos[fid], observacao: `Da cotação #${cot.id}`, status: "aberto" }, currentUser);
+    }
+    await atualizarSupCotacaoRemote(cot.id, { status: "fechada" });
+    addAuditLog(currentUser, "gerar pedido da cotação", `cotação ${cot.id} · ${ids.length} pedido(s)`, {});
+    setBusyId(null);
+    setAbrir(null);
+    alert(`${ids.length} pedido(s) de compra gerado(s) na aba Compras.`);
+    onChanged && onChanged();
+  }
+
+  const abertas = cotacoes.filter(c => c.status === "aberta");
+  const historico = cotacoes.filter(c => c.status !== "aberta");
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {canEdit && <button onClick={() => setShowNova(true)} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Nova cotação</button>}
+        <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Registre os preços que cada fornecedor passou e o sistema aponta o mais barato de cada item.</span>
+      </div>
+
+      {cotacoes.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma cotação ainda. Crie uma em “+ Nova cotação”, escolha os fornecedores e os itens, e registre os preços.</div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
+          {[...abertas, ...historico].map(c => {
+            const { fids, totalForn, vencedorItem } = analise(c);
+            const cotados = vencedorItem.filter(Boolean).length;
+            const melhorTotal = fids.map(id => totalForn[id].soma).filter(v => v > 0).sort((a, b) => a - b)[0];
+            const stCor = c.status === "aberta" ? VX.azul : c.status === "fechada" ? "#34d399" : "#f43f5e";
+            return (
+              <div key={c.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${stCor}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, flex: 1, minWidth: 0 }}>{c.descricao || `Cotação #${c.id}`}</span>
+                  <span style={{ fontSize: 9.5, color: stCor, border: `1px solid ${stCor}55`, borderRadius: 99, padding: "0 7px", fontWeight: 800 }}>{c.status.toUpperCase()}</span>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "6px 0" }}>{(c.itens || []).length} item(ns) · {fids.length} fornecedor(es) · {cotados}/{(c.itens || []).length} cotados{melhorTotal ? ` · melhor total ${fmtReais(melhorTotal)}` : ""}</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <button onClick={() => setAbrir(c)} style={btnLeito(VX.azul)}>{c.status === "aberta" ? "Cotar / comparar" : "Ver"}</button>
+                  {canEdit && c.status === "aberta" && <button onClick={() => cancelar(c)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showNova && <SupNovaCotacaoModal materiais={materiais} meds={meds.filter(m => m.ativo !== false)} forns={forns} onClose={() => setShowNova(false)} onSave={criar} />}
+      {abrir && <SupCotacaoModal cot={abrir} forns={forns} canEdit={canEdit} busy={busyId === abrir.id} analiseFn={analise} onClose={() => setAbrir(null)} onSalvar={salvarPrecos} onGerar={gerarPedido} />}
+    </div>
+  );
+}
+
+// Nova cotação: descrição + fornecedores a comparar + itens (material/medicamento)
+function SupNovaCotacaoModal({ materiais, meds, forns, onClose, onSave }) {
+  const [descricao, setDescricao] = useState("");
+  const [fids, setFids] = useState([]);
+  const [lista, setLista] = useState([]);   // [{tipo, item_id, nome, unidade, qtd}]
+  const [tipoSel, setTipoSel] = useState("material");
+  const [itemSel, setItemSel] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const base = tipoSel === "material" ? materiais : meds;
+  const disp = base.filter(i => !lista.some(x => x.tipo === tipoSel && x.item_id === i.id)).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const sel = base.find(i => String(i.id) === String(itemSel));
+  const toggleForn = id => setFids(f => f.includes(id) ? f.filter(x => x !== id) : [...f, id]);
+
+  function add() {
+    const q = Number(qtd);
+    if (!sel) { alert("Escolha o item."); return; }
+    if (!q || q <= 0) { alert("Informe a quantidade."); return; }
+    setLista(l => [...l, { tipo: tipoSel, item_id: sel.id, nome: sel.nome, unidade: sel.unidade || "", qtd: q }]);
+    setItemSel(""); setQtd("");
+  }
+  async function salvar() {
+    if (fids.length < 1) { alert("Escolha ao menos um fornecedor para cotar."); return; }
+    if (!lista.length) { alert("Adicione ao menos um item."); return; }
+    setBusy(true);
+    await onSave({ descricao: descricao.trim() || null, fornecedores: fids, itens: lista.map(x => ({ ...x, precos: {} })), status: "aberta" });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Nova cotação</div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={farmLbl}>Descrição (opcional)</label>
+          <input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex.: Compra mensal de EPI" style={farmInp} autoFocus />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={farmLbl}>Fornecedores a comparar *</label>
+          {forns.length === 0 ? <div style={{ fontSize: 12, color: "#d97706" }}>Cadastre fornecedores primeiro (aba Fornecedores).</div> : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {forns.map(f => <button key={f.id} onClick={() => toggleForn(f.id)} style={{ background: fids.includes(f.id) ? VX.turquesa : "transparent", color: fids.includes(f.id) ? "#062a26" : "var(--text-3)", border: `1px solid ${fids.includes(f.id) ? VX.turquesa : "var(--border)"}`, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{f.nome}</button>)}
+            </div>
+          )}
+        </div>
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            {["material", "medicamento"].map(t => <button key={t} onClick={() => { setTipoSel(t); setItemSel(""); }} style={{ flex: 1, background: tipoSel === t ? VX.turquesa : "transparent", color: tipoSel === t ? "#062a26" : "var(--text-3)", border: `1px solid ${tipoSel === t ? VX.turquesa : "var(--border)"}`, borderRadius: 7, padding: "6px 0", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{t === "material" ? "Material" : "Medicamento"}</button>)}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "end" }}>
+            <div><label style={farmLbl}>Item</label><select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}><option value="">— escolha —</option>{disp.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select></div>
+            <div><label style={farmLbl}>Qtd</label><input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} /></div>
+            <button onClick={add} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
+          </div>
+        </div>
+        {lista.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
+            {lista.map((x, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
+                <span style={{ fontSize: 9.5, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", fontWeight: 700 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
+                <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 40, textAlign: "right" }}>{farmFmtQtd(x.qtd)}</span>
+                <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)", minWidth: 0 }}>{x.nome}</span>
+                <button onClick={() => setLista(l => l.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Criar cotação"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Comparação da cotação: matriz preço × fornecedor, destaca o mais barato, gera pedido
+function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalvar, onGerar }) {
+  const fById = {}; forns.forEach(f => fById[f.id] = f);
+  const [itens, setItens] = useState(() => (Array.isArray(cot.itens) ? cot.itens : []).map(x => ({ ...x, precos: { ...(x.precos || {}) } })));
+  const fids = (cot.fornecedores || []).map(String);
+  const readonly = cot.status !== "aberta" || !canEdit;
+  const setPreco = (i, fid, v) => setItens(l => l.map((x, j) => j === i ? { ...x, precos: { ...x.precos, [fid]: v } } : x));
+
+  const vencedor = itens.map(it => {
+    let melhor = null;
+    fids.forEach(fid => { const p = Number(it.precos?.[fid]); if (p > 0 && (melhor == null || p < melhor.preco)) melhor = { fid, preco: p }; });
+    return melhor;
+  });
+  const totalForn = {}; fids.forEach(fid => totalForn[fid] = itens.reduce((s, it) => s + (Number(it.precos?.[fid]) || 0) * Number(it.qtd || 0), 0));
+  // "Melhor fornecedor único" só entre os que cotaram TODOS os itens — senão um
+  // fornecedor com itens em branco pareceria mais barato (total menor) e enganaria.
+  const precificouTudo = fid => itens.length > 0 && itens.every(it => Number(it.precos?.[fid]) > 0);
+  const melhorFornGeral = fids.filter(precificouTudo).sort((a, b) => totalForn[a] - totalForn[b])[0];
+  const totalPorItem = itens.reduce((s, it, i) => s + (vencedor[i] ? vencedor[i].preco * Number(it.qtd || 0) : 0), 0);
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 820, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>{cot.descricao || `Cotação #${cot.id}`}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{readonly ? "Somente leitura." : "Digite o preço unitário que cada fornecedor passou. O mais barato de cada item fica destacado."}</div>
+
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: 14 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 560 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 10.5, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 10px" }}>Item</th>
+              <th style={{ padding: "8px 10px", textAlign: "right" }}>Qtd</th>
+              {fids.map(fid => <th key={fid} style={{ padding: "8px 10px", textAlign: "right" }}>{fById[fid]?.nome || `#${fid}`}{fById[fid]?.lead_time_dias != null ? <span style={{ fontWeight: 400, textTransform: "none" }}> · {fById[fid].lead_time_dias}d</span> : ""}</th>)}
+              <th style={{ padding: "8px 10px", textAlign: "right" }}>Melhor</th>
+            </tr></thead>
+            <tbody>
+              {itens.map((it, i) => (
+                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 10px", fontWeight: 600 }}><span style={{ fontSize: 9, color: it.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${it.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 5px", marginRight: 6 }}>{it.tipo === "medicamento" ? "MED" : "MAT"}</span>{it.nome}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(it.qtd)}</td>
+                  {fids.map(fid => { const venc = vencedor[i]?.fid === fid; return (
+                    <td key={fid} style={{ padding: "7px 10px", textAlign: "right", background: venc ? "#34d39918" : "transparent" }}>
+                      {readonly
+                        ? <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: venc ? 800 : 400, color: venc ? "#0d9488" : "var(--text-2)" }}>{Number(it.precos?.[fid]) > 0 ? fmtReais(it.precos[fid]) : "—"}</span>
+                        : <input type="number" min="0" step="any" value={it.precos?.[fid] ?? ""} onChange={e => setPreco(i, fid, e.target.value)} placeholder="—" style={{ ...farmInp, width: 82, padding: "5px 7px", fontSize: 12, textAlign: "right", borderColor: venc ? "#34d399" : "var(--border)" }} />}
+                    </td>
+                  ); })}
+                  <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#0d9488" }}>{vencedor[i] ? fmtReais(vencedor[i].preco) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot><tr style={{ borderTop: "2px solid var(--border)", background: "var(--surface-2)" }}>
+              <td style={{ padding: "8px 10px", fontWeight: 700 }} colSpan={2}>Total por fornecedor</td>
+              {fids.map(fid => <td key={fid} style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: fid === melhorFornGeral ? "#0d9488" : "var(--text-2)" }}>{totalForn[fid] > 0 ? fmtReais(totalForn[fid]) : "—"}{fid === melhorFornGeral && totalForn[fid] > 0 ? " ✓" : ""}{totalForn[fid] > 0 && !precificouTudo(fid) ? <span title="Cotou só parte dos itens" style={{ color: "#d97706", fontWeight: 700 }}> ⚠</span> : ""}</td>)}
+              <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: "#0d9488" }}>{fmtReais(totalPorItem)}</td>
+            </tr></tfoot>
+          </table>
+        </div>
+
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 14 }}>
+          <strong>Melhor preço por item:</strong> {fmtReais(totalPorItem)} (divide entre fornecedores) · <strong>Melhor fornecedor único:</strong> {melhorFornGeral ? `${fById[melhorFornGeral]?.nome} — ${fmtReais(totalForn[melhorFornGeral])}` : "nenhum cotou todos os itens ainda"}. O ⚠ marca quem cotou só parte. O prazo de entrega (dias) aparece no cabeçalho para pesar preço × prazo.
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+          {!readonly && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button onClick={() => onSalvar(cot, itens)} disabled={busy} style={{ background: "transparent", color: VX.azul, border: `1px solid ${VX.azul}66`, borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar preços"}</button>
+              <button onClick={() => { onSalvar(cot, itens); onGerar({ ...cot, itens }, "porItem"); }} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Gerar pedido (melhor por item)</button>
+              {melhorFornGeral && <button onClick={() => { onSalvar(cot, itens); onGerar({ ...cot, itens }, "unico", melhorFornGeral); }} disabled={busy} style={{ background: "transparent", color: "#0d9488", border: "1px solid #0d948866", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Pedido único ({fById[melhorFornGeral]?.nome})</button>}
+            </div>
+          )}
         </div>
       </div>
     </div>
