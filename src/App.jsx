@@ -2110,7 +2110,10 @@ const SUP_NAV = [
   { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
+  { key: "indicadores",  label: "Relatórios & BI", icon: "chart" },
+  { key: "assistente",   label: "Assistente AI",   icon: "chat" },
 ];
+const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
 // Pedido de compra — estados e cores
 const SUP_PED_STATUS = {
   aberto:    { label: "Em elaboração",       cor: "#8d99ab" },
@@ -2141,6 +2144,10 @@ async function loadSupMovimentos(itemId, limit = 60) {
     ? `sup_movimentos?item_id=eq.${itemId}&select=*&order=created_at.desc&limit=${limit}`
     : `sup_movimentos?select=*&order=created_at.desc&limit=${limit}`;
   const rows = await sbFetch(q);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadSupMovimentosPeriodo(fromISO, toISO) {
+  const rows = await sbFetch(`sup_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
   return Array.isArray(rows) ? rows : [];
 }
 // Saídas desde uma data (para previsão de demanda)
@@ -8800,6 +8807,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
     dashboard: "Visão geral do almoxarifado com atalhos.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
+    indicadores: "Relatórios & BI — consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
+    assistente: "Assistente local para perguntas sobre o almoxarifado (nada é enviado para fora).",
     estoque: `Catálogo de materiais, entradas e saídas por lote e validade. ${totalAtivos} ativos · ${itens.length} cadastrados.`,
     fornecedores: `Cadastro de fornecedores usados nas entradas e nas compras. ${forns.filter(f => f.ativo !== false).length} ativos.`,
   };
@@ -8862,6 +8871,9 @@ function SuprimentosPage({ currentUser, canEdit }) {
       {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
 
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
+
+      {sub === "indicadores" && <SupIndicadoresView itens={itens} lotes={lotes} forns={forns} pedidos={pedidos} reqs={reqs} />}
+      {sub === "assistente" && <SupAssistenteView />}
 
       {sub === "estoque" && (<>
       {/* PAINÉIS DE ALERTA */}
@@ -9662,6 +9674,331 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
           <button onClick={() => onConfirm(pedido, linhas, nf.trim())} disabled={busy || !algum} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || !algum) ? 0.5 : 1 }}>{busy ? "…" : "Confirmar recebimento"}</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Relatórios & BI do almoxarifado — consumo, gasto, curva ABC e relatório mensal
+function SupIndicadoresView({ itens, lotes, forns, pedidos, reqs }) {
+  const hoje = new Date();
+  const [mes, setMes] = useState(hoje.getMonth());
+  const [ano, setAno] = useState(hoje.getFullYear());
+  const [movsMes, setMovsMes] = useState([]);
+  const [carregando, setCarregando] = useState(false);
+  const [preview, setPreview] = useState(false);
+
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    const ini = new Date(ano, mes, 1), fim = new Date(ano, mes + 1, 1);
+    setCarregando(true);
+    loadSupMovimentosPeriodo(ini.toISOString(), fim.toISOString()).then(rows => { setMovsMes(rows); setCarregando(false); });
+  }, [mes, ano]);
+
+  const itemById = {}; itens.forEach(i => itemById[i.id] = i);
+  const fornById = {}; forns.forEach(f => fornById[f.id] = f);
+  const custoDe = mv => Number(mv.quantidade || 0) * custoUnit(itemById[mv.item_id]);
+
+  const entradas = movsMes.filter(m => m.tipo === "entrada");
+  const saidas = movsMes.filter(m => m.tipo === "saida");
+  const perdas = saidas.filter(m => (m.motivo || "") === "Perda / vencimento");
+  const qtdEntradas = entradas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdSaidas = saidas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const gastoEntradas = entradas.reduce((s, m) => s + custoDe(m), 0);
+  const custoConsumo = saidas.reduce((s, m) => s + custoDe(m), 0);
+  const semPreco = new Set(movsMes.filter(m => !custoUnit(itemById[m.item_id])).map(m => m.item_id)).size;
+  const ativos = itens.filter(i => i.ativo !== false);
+  const rupturas = ativos.filter(i => supSaldoTotal(i.id, lotes) <= 0);
+  const noMes = iso => iso && new Date(iso).getMonth() === mes && new Date(iso).getFullYear() === ano;
+  const reqsMes = reqs.filter(r => r.status === "entregue" && noMes(r.entregue_em || r.updated_at));
+  const pedMes = pedidos.filter(p => ["recebido", "parcial"].includes(p.status) && noMes(p.recebido_em));
+
+  // Consumo por material (top + curva ABC por custo)
+  const consMap = {};
+  saidas.forEach(m => { if (m.item_id) { const e = consMap[m.item_id] = consMap[m.item_id] || { qtd: 0, custo: 0 }; e.qtd += Number(m.quantidade || 0); e.custo += custoDe(m); } });
+  const consumo = Object.entries(consMap).map(([id, v]) => ({ id: Number(id), item: itemById[Number(id)], ...v })).sort((a, b) => b.qtd - a.qtd);
+  const porCusto = [...consumo].filter(x => x.custo > 0).sort((a, b) => b.custo - a.custo);
+  const custoTotalABC = porCusto.reduce((s, x) => s + x.custo, 0);
+  let acum = 0;
+  const abc = porCusto.map(x => { acum += x.custo; const pct = custoTotalABC ? acum / custoTotalABC : 0; return { ...x, classe: pct <= 0.8 ? "A" : pct <= 0.95 ? "B" : "C" }; });
+  const abcCor = c => c === "A" ? "#e11d48" : c === "B" ? "#d97706" : "#0d9488";
+
+  // Consumo por setor e por categoria; gasto por fornecedor
+  const porSetor = {}; saidas.forEach(m => { const k = m.setor || "—"; porSetor[k] = (porSetor[k] || 0) + Number(m.quantidade || 0); });
+  const setorTop = Object.entries(porSetor).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+  const porCat = {}; saidas.forEach(m => { const k = itemById[m.item_id]?.categoria || "Outros"; porCat[k] = (porCat[k] || 0) + Number(m.quantidade || 0); });
+  const catTop = Object.entries(porCat).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+  const porForn = {}; entradas.forEach(m => { const k = m.fornecedor_id ? (fornById[m.fornecedor_id]?.nome || `#${m.fornecedor_id}`) : "Sem fornecedor"; porForn[k] = (porForn[k] || 0) + custoDe(m); });
+  const fornTop = Object.entries(porForn).map(([k, v]) => ({ k, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+
+  const fmt = n => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const KPI = ({ label, valor, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  const Barras = ({ titulo, dados, fmtV, cor }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>{titulo}</div>
+      {dados.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem dados no mês.</div> : dados.slice(0, 8).map((d, i) => { const max = dados[0].v || 1; return (
+        <div key={d.k} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 16 }}>{i + 1}</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.k}</div>
+            <div style={{ height: 8, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden", marginTop: 2 }}><div style={{ width: Math.max(3, (d.v / max) * 100) + "%", height: "100%", background: cor, borderRadius: 99 }} /></div>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "JetBrains Mono, monospace", minWidth: 60, textAlign: "right" }}>{fmtV(d.v)}</span>
+        </div>
+      ); })}
+    </div>
+  );
+  const printStyles = `@media print { body * { visibility: hidden !important; } #sup-print, #sup-print * { visibility: visible !important; } #sup-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; overflow: visible !important; } @page { size: A4 portrait; margin: 12mm; } }`;
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+        <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <KPI label="Consumo (saídas)" valor={fmt(qtdSaidas)} sub={`${saidas.length} baixas no mês`} cor="#3b82f6" />
+        <KPI label="Custo do consumo" valor={fmtReais(custoConsumo)} sub={semPreco ? `${semPreco} item(ns) sem preço` : "no mês"} cor="#0d9488" />
+        <KPI label="Entradas" valor={fmt(qtdEntradas)} sub={`${entradas.length} recebimentos`} cor="#34d399" />
+        <KPI label="Gasto em compras" valor={fmtReais(gastoEntradas)} sub={`${pedMes.length} pedido(s) recebidos`} cor={VX.turquesa} />
+        <KPI label="Perdas / vencimento" valor={fmt(perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0))} sub="baixas por perda" cor={perdas.length ? "#f43f5e" : "var(--border)"} />
+        <KPI label="Requisições entregues" valor={fmt(reqsMes.length)} sub="setores atendidos no mês" cor={VX.azul} />
+        <KPI label="Rupturas agora" valor={fmt(rupturas.length)} sub="itens sem estoque" cor={rupturas.length ? "#f43f5e" : "#34d399"} />
+        <KPI label="Validade em risco" valor={fmt(lotesAlerta.length)} sub={`lotes vencidos / ≤${FARM_VENC_DIAS}d`} cor={lotesAlerta.length ? "#d97706" : "#34d399"} />
+      </div>
+
+      {carregando && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Carregando movimentos…</div>}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 14, marginBottom: "1.5rem" }}>
+        <Barras titulo="Top materiais consumidos" dados={consumo.map(c => ({ k: c.item?.nome || `#${c.id}`, v: c.qtd }))} fmtV={fmt} cor={VX.azul} />
+        <Barras titulo="Consumo por setor" dados={setorTop} fmtV={fmt} cor={VX.turquesa} />
+        <Barras titulo="Consumo por categoria" dados={catTop} fmtV={fmt} cor="#6366f1" />
+        <Barras titulo="Gasto por fornecedor (entradas)" dados={fornTop} fmtV={fmtReais} cor="#0d9488" />
+      </div>
+
+      {/* CURVA ABC POR CUSTO DE CONSUMO */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Curva ABC — custo do consumo no mês</div>
+      {abc.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1.25rem", textAlign: "center", marginBottom: "1.5rem" }}>Sem consumo com custo cadastrado no mês. Cadastre o custo unitário dos materiais (Estoque → Editar).</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 12px" }}>Classe</th><th style={{ padding: "8px 12px" }}>Material</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Qtd</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Custo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>% do total</th>
+            </tr></thead>
+            <tbody>
+              {abc.slice(0, 20).map(x => (
+                <tr key={x.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 12px" }}><span style={{ fontSize: 11, fontWeight: 800, color: abcCor(x.classe), border: `1px solid ${abcCor(x.classe)}55`, borderRadius: 99, padding: "1px 8px" }}>{x.classe}</span></td>
+                  <td style={{ padding: "7px 12px", fontWeight: 600 }}>{x.item?.nome || `#${x.id}`}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{fmt(x.qtd)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmtReais(x.custo)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", color: "var(--text-muted)" }}>{custoTotalABC ? (x.custo / custoTotalABC * 100).toFixed(1) : "0"}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>A = 80% do custo · B = 15% · C = 5%. Considera o custo unitário cadastrado em cada material.</div>
+        </div>
+      )}
+
+      {/* RELATÓRIO IMPRIMÍVEL */}
+      {preview && (
+        <div id="sup-print" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "18px 22px", maxWidth: 820 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", borderBottom: "2px solid #111", paddingBottom: 8, marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 800 }}>Relatório mensal — Estoque & Compras</div>
+              <div style={{ fontSize: 12 }}>{HOSPITAL_NOME} · {MONTHS_FULL[mes]} de {ano}</div>
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700 }}>VALENTRAX</div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginBottom: 14 }}>
+            <tbody>
+              {[["Consumo (saídas)", `${fmt(qtdSaidas)} un · ${fmtReais(custoConsumo)}`],
+                ["Entradas", `${fmt(qtdEntradas)} un · ${fmtReais(gastoEntradas)}`],
+                ["Perdas / vencimento", fmt(perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0)) + " un"],
+                ["Requisições entregues", fmt(reqsMes.length)],
+                ["Pedidos de compra recebidos", fmt(pedMes.length)],
+                ["Rupturas na data do relatório", fmt(rupturas.length)],
+                ["Lotes vencidos / vencendo ≤30d", fmt(lotesAlerta.length)],
+              ].map(([k, v]) => (
+                <tr key={k} style={{ borderBottom: "1px solid #ccc" }}>
+                  <td style={{ padding: "5px 4px", fontWeight: 600 }}>{k}</td>
+                  <td style={{ padding: "5px 4px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {setorTop.length > 0 && (<>
+            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Consumo por setor</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 14 }}><tbody>
+              {setorTop.slice(0, 10).map(d => <tr key={d.k} style={{ borderBottom: "1px solid #ddd" }}><td style={{ padding: "4px" }}>{d.k}</td><td style={{ padding: "4px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{fmt(d.v)}</td></tr>)}
+            </tbody></table>
+          </>)}
+          {abc.length > 0 && (<>
+            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Maiores custos de consumo (curva ABC)</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 14 }}><tbody>
+              {abc.slice(0, 10).map(x => <tr key={x.id} style={{ borderBottom: "1px solid #ddd" }}><td style={{ padding: "4px", width: 24, fontWeight: 800 }}>{x.classe}</td><td style={{ padding: "4px" }}>{x.item?.nome || x.id}</td><td style={{ padding: "4px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{fmtReais(x.custo)}</td></tr>)}
+            </tbody></table>
+          </>)}
+          <div style={{ fontSize: 10, marginTop: 10 }}>Gerado pelo Valentrax · {new Date().toLocaleString("pt-BR")} · valores por custo unitário cadastrado</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Assistente local do almoxarifado — responde a partir dos dados; nada sai do navegador
+function SupAssistenteView() {
+  const [itens, setItens] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [forns, setForns] = useState([]);
+  const [reqs, setReqs] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
+  const [saidas30, setSaidas30] = useState([]);
+  const [movsMes, setMovsMes] = useState([]);
+  const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do almoxarifado. " + SUP_ASSIST_HELP }]);
+  const [q, setQ] = useState("");
+  const fimRef = useRef(null);
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadSupItens().then(setItens);
+    loadSupLotes().then(setLotes);
+    loadSupFornecedores().then(setForns);
+    loadSupRequisicoes().then(setReqs);
+    loadSupPedidos().then(setPedidos);
+    loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidas30);
+    const ini = new Date(); ini.setDate(1); ini.setHours(0, 0, 0, 0);
+    const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
+    loadSupMovimentosPeriodo(ini.toISOString(), fim.toISOString()).then(setMovsMes);
+  }
+  useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  const itemById = {}; itens.forEach(i => itemById[i.id] = i);
+  const fornById = {}; forns.forEach(f => fornById[f.id] = f);
+  const ativos = itens.filter(i => i.ativo !== false);
+  const saldo = i => supSaldoTotal(i.id, lotes);
+  const rupturas = ativos.filter(i => saldo(i) <= 0);
+  const abaixoMin = ativos.filter(i => { const s = saldo(i); return s > 0 && Number(i.estoque_minimo || 0) > 0 && s <= Number(i.estoque_minimo); });
+  const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
+  const vencidos = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencido");
+  const vencendo = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencendo");
+  const vencendoDet = vencendo.map(l => ({ ...l, nome: itemById[l.item_id]?.nome || l.item_id })).sort((a, b) => (a.validade || "").localeCompare(b.validade || ""));
+  const cons30 = {}; saidas30.forEach(s => { if (s.item_id) cons30[s.item_id] = (cons30[s.item_id] || 0) + Number(s.quantidade || 0); });
+  const emRisco = ativos.map(i => { const media = (cons30[i.id] || 0) / FARM_PREV_JANELA; const s = saldo(i); return { i, media, cobertura: media > 0 ? s / media : null, sugestao: Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(i.estoque_minimo || 0) - s)) }; }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).sort((a, b) => a.cobertura - b.cobertura);
+  const saidasMes = movsMes.filter(m => m.tipo === "saida");
+  const entradasMes = movsMes.filter(m => m.tipo === "entrada");
+  const custoDe = mv => Number(mv.quantidade || 0) * custoUnit(itemById[mv.item_id]);
+  const custoConsumoMes = saidasMes.reduce((s, m) => s + custoDe(m), 0);
+  const gastoComprasMes = entradasMes.reduce((s, m) => s + custoDe(m), 0);
+  const consMesMap = {}; saidasMes.forEach(m => { if (m.item_id) consMesMap[m.item_id] = (consMesMap[m.item_id] || 0) + Number(m.quantidade || 0); });
+  const topMes = Object.entries(consMesMap).map(([id, qtd]) => ({ id: Number(id), qtd, item: itemById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  const porSetorMes = {}; saidasMes.forEach(m => { const k = m.setor || "—"; porSetorMes[k] = (porSetorMes[k] || 0) + Number(m.quantidade || 0); });
+  const setorTopMes = Object.entries(porSetorMes).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+  const porCatMes = {}; saidasMes.forEach(m => { const k = itemById[m.item_id]?.categoria || "Outros"; porCatMes[k] = (porCatMes[k] || 0) + Number(m.quantidade || 0); });
+  const catTopMes = Object.entries(porCatMes).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
+  const porFornMes = {}; entradasMes.forEach(m => { const k = m.fornecedor_id ? (fornById[m.fornecedor_id]?.nome || `#${m.fornecedor_id}`) : "Sem fornecedor"; porFornMes[k] = (porFornMes[k] || 0) + custoDe(m); });
+  const fornTopMes = Object.entries(porFornMes).map(([k, v]) => ({ k, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const reqsAtivas = reqs.filter(r => !["entregue", "cancelado"].includes(r.status));
+  const pedAtivos = pedidos.filter(p => ["aberto", "enviado", "parcial"].includes(p.status));
+  const numCats = new Set(ativos.map(i => i.categoria || "Outros")).size;
+
+  function responder(pergunta) {
+    const s = normTxt(pergunta);
+    const has = (...ks) => ks.some(k => s.includes(k));
+    if (!s) return SUP_ASSIST_HELP;
+    if (has("ajuda", "o que voce", "o que posso", "pode responder", "comando") || s === "?") return SUP_ASSIST_HELP;
+    if (has("bom dia", "boa tarde", "boa noite", "tudo bem", "obrigad", "valeu", "de nada") || s === "oi" || s === "ola") return "Olá! " + SUP_ASSIST_HELP;
+    if (has("panorama", "resumo", "visao geral", "situacao", "como esta", "como anda", "status")) {
+      return `Panorama do almoxarifado agora:\n• Requisições: ${reqsAtivas.filter(r => r.status === "aguardando").length} aguardando · ${reqsAtivas.filter(r => r.status === "separacao").length} em separação · ${reqsAtivas.filter(r => r.status === "pronto").length} pronta(s)\n• Compras: ${pedAtivos.length} pedido(s) em aberto\n• Estoque: ${rupturas.length} zerado(s) · ${abaixoMin.length} abaixo do mínimo · ${emRisco.length} em risco de ruptura (${FARM_PREV_HORIZONTE}d)\n• Validade: ${vencidos.length} lote(s) vencido(s) · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS}d\n• Mês: consumo ${fmtReais(custoConsumoMes)} · compras ${fmtReais(gastoComprasMes)}`;
+    }
+    if (has("faltar", "vai acabar", "ruptura prevista", "previsao", "acabando", "risco")) {
+      if (!emRisco.length) return `Nenhum material deve acabar nos próximos ${FARM_PREV_HORIZONTE} dias (pelo consumo dos últimos ${FARM_PREV_JANELA}).`;
+      return `Devem acabar em até ${FARM_PREV_HORIZONTE} dias:\n` + emRisco.slice(0, 10).map(x => `• ${x.i.nome} — cobre ${x.cobertura < 1 ? "<1" : Math.floor(x.cobertura)} dia(s) · comprar ${farmFmtQtd(x.sugestao)}`).join("\n") + `\n(Use "⇩ importar sugestão" no pedido de compra.)`;
+    }
+    if (has("zerado", "sem estoque", "ruptura")) {
+      return rupturas.length ? `${rupturas.length} material(is) sem estoque:\n` + rupturas.slice(0, 12).map(i => `• ${i.nome}`).join("\n") : "Nenhum material zerado. 👍";
+    }
+    if (has("minimo", "repor", "reposicao")) {
+      return abaixoMin.length ? `${abaixoMin.length} abaixo do mínimo:\n` + abaixoMin.slice(0, 10).map(i => `• ${i.nome} — saldo ${farmFmtQtd(saldo(i))} (mín. ${farmFmtQtd(i.estoque_minimo)})`).join("\n") : "Nenhum item abaixo do estoque mínimo.";
+    }
+    if (has("validade", "vencer", "vencendo", "vencido", "vence")) {
+      const base = `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS} dias.`;
+      if (vencendoDet.length) return base + "\nVencendo em breve:\n" + vencendoDet.slice(0, 10).map(l => `• ${l.nome} — lote ${l.lote || "?"} vence ${fmtDataBR(l.validade)} (${farmFmtQtd(l.quantidade)})`).join("\n");
+      return base;
+    }
+    if (has("setor")) {
+      return setorTopMes.length ? "Consumo por setor no mês:\n" + setorTopMes.slice(0, 10).map(d => `• ${d.k}: ${farmFmtQtd(d.v)}`).join("\n") : "Sem consumo registrado neste mês.";
+    }
+    if (has("categoria", "grupo")) {
+      return catTopMes.length ? "Consumo por categoria no mês:\n" + catTopMes.slice(0, 10).map(d => `• ${d.k}: ${farmFmtQtd(d.v)}`).join("\n") : "Sem consumo registrado neste mês.";
+    }
+    if (has("fornecedor")) {
+      if (has("gasto", "custo", "quanto")) return fornTopMes.length ? "Gasto por fornecedor no mês (entradas):\n" + fornTopMes.slice(0, 8).map(d => `• ${d.k}: ${fmtReais(d.v)}`).join("\n") : "Sem entradas com custo neste mês.";
+      const fa = forns.filter(f => f.ativo !== false);
+      return `${fa.length} fornecedor(es) ativo(s):\n` + fa.slice(0, 12).map(f => `• ${f.nome}${f.categorias ? ` — ${f.categorias}` : ""}`).join("\n");
+    }
+    if (has("gasto", "custo", "quanto gastamos", "quanto gastou")) {
+      return `Neste mês: consumo ${fmtReais(custoConsumoMes)} · compras recebidas ${fmtReais(gastoComprasMes)} (por custo unitário cadastrado).`;
+    }
+    if (has("top", "mais usado", "mais consumido", "mais saiu")) {
+      return topMes.length ? "Mais consumidos no mês:\n" + topMes.slice(0, 10).map((t, i) => `${i + 1}. ${t.item?.nome || t.id} — ${farmFmtQtd(t.qtd)}`).join("\n") : "Sem consumo registrado neste mês.";
+    }
+    if (has("requisicao", "requisicoes", "pendencia", "pendente", "aguardando")) {
+      return reqsAtivas.length ? `${reqsAtivas.length} requisição(ões) em andamento:\n` + reqsAtivas.slice(0, 10).map(r => `• REQ-${r.id} · ${r.setor} — ${SUP_REQ_STATUS[r.status]?.label || r.status}`).join("\n") : "Nenhuma requisição em andamento.";
+    }
+    if (has("pedido", "compra")) {
+      return pedAtivos.length ? `${pedAtivos.length} pedido(s) de compra em aberto:\n` + pedAtivos.slice(0, 10).map(p => `• PED-${p.id} · ${p.fornecedor_nome || "sem fornecedor"} — ${SUP_PED_STATUS[p.status]?.label || p.status}${supPedidoTotal(p) > 0 ? ` · ${fmtReais(supPedidoTotal(p))}` : ""}`).join("\n") : "Nenhum pedido de compra em aberto.";
+    }
+    if (has("catalogo", "quantos materiais", "quantos itens", "tamanho")) {
+      return `Catálogo: ${ativos.length} material(is) ativo(s) em ${numCats} categoria(s) (${itens.length} cadastrados no total).`;
+    }
+    if (has("saldo", "estoque de", "quanto tem")) {
+      const achados = ativos.filter(i => normTxt(i.nome).includes(s.replace(/saldo( de)?|estoque( de)?|quanto tem( de)?/g, "").trim())).slice(0, 6);
+      if (achados.length) return achados.map(i => `• ${i.nome}: ${farmFmtQtd(saldo(i))} ${i.unidade || ""}`).join("\n");
+      const termo = s.split(" ").slice(-1)[0];
+      const porTermo = ativos.filter(i => normTxt(i.nome).includes(termo)).slice(0, 6);
+      if (porTermo.length) return porTermo.map(i => `• ${i.nome}: ${farmFmtQtd(saldo(i))} ${i.unidade || ""}`).join("\n");
+      return "Não achei esse material no catálogo. Tente parte do nome (ex.: \"saldo de luva\").";
+    }
+    // busca direta por nome de material
+    const achado = ativos.filter(i => { const n = normTxt(i.nome); return s.length >= 4 && (n.includes(s) || s.includes(n)); }).slice(0, 6);
+    if (achado.length) return achado.map(i => `• ${i.nome}: saldo ${farmFmtQtd(saldo(i))} ${i.unidade || ""}${Number(i.estoque_minimo) > 0 ? ` (mín. ${farmFmtQtd(i.estoque_minimo)})` : ""}`).join("\n");
+    return "Não entendi a pergunta. " + SUP_ASSIST_HELP;
+  }
+  function enviar(texto) { const t = (texto != null ? texto : q).trim(); if (!t) return; setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: responder(t) }]); setQ(""); }
+  const sugestoes = ["Panorama", "O que vai faltar?", "Consumo por setor", "Gasto do mês", "Quais vencendo?", "Zerados", "Pedidos abertos"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: 360, maxWidth: 760 }}>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: "4px 2px 12px" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "u" ? "flex-end" : "flex-start", maxWidth: "85%", background: m.role === "u" ? VX.royal : "var(--surface)", color: m.role === "u" ? "#fff" : "var(--text)", border: m.role === "u" ? "none" : "1px solid var(--border)", borderRadius: 12, padding: "9px 13px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
+        ))}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {sugestoes.map(sg => <button key={sg} onClick={() => enviar(sg)} style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 99, padding: "4px 11px", fontSize: 11.5, cursor: "pointer" }}>{sg}</button>)}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && enviar()} placeholder="Pergunte sobre o almoxarifado…" style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
+        <button onClick={() => enviar()} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Enviar</button>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>Assistente local — responde a partir dos dados do sistema; nada é enviado para fora.</div>
     </div>
   );
 }
