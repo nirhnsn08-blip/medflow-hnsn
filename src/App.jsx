@@ -9749,7 +9749,10 @@ function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalv
     return melhor;
   });
   const totalForn = {}; fids.forEach(fid => totalForn[fid] = itens.reduce((s, it) => s + (Number(it.precos?.[fid]) || 0) * Number(it.qtd || 0), 0));
-  const melhorFornGeral = fids.filter(fid => totalForn[fid] > 0).sort((a, b) => totalForn[a] - totalForn[b])[0];
+  // "Melhor fornecedor único" só entre os que cotaram TODOS os itens — senão um
+  // fornecedor com itens em branco pareceria mais barato (total menor) e enganaria.
+  const precificouTudo = fid => itens.length > 0 && itens.every(it => Number(it.precos?.[fid]) > 0);
+  const melhorFornGeral = fids.filter(precificouTudo).sort((a, b) => totalForn[a] - totalForn[b])[0];
   const totalPorItem = itens.reduce((s, it, i) => s + (vencedor[i] ? vencedor[i].preco * Number(it.qtd || 0) : 0), 0);
 
   return (
@@ -9784,14 +9787,14 @@ function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalv
             </tbody>
             <tfoot><tr style={{ borderTop: "2px solid var(--border)", background: "var(--surface-2)" }}>
               <td style={{ padding: "8px 10px", fontWeight: 700 }} colSpan={2}>Total por fornecedor</td>
-              {fids.map(fid => <td key={fid} style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: fid === melhorFornGeral ? "#0d9488" : "var(--text-2)" }}>{totalForn[fid] > 0 ? fmtReais(totalForn[fid]) : "—"}{fid === melhorFornGeral && totalForn[fid] > 0 ? " ✓" : ""}</td>)}
+              {fids.map(fid => <td key={fid} style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: fid === melhorFornGeral ? "#0d9488" : "var(--text-2)" }}>{totalForn[fid] > 0 ? fmtReais(totalForn[fid]) : "—"}{fid === melhorFornGeral && totalForn[fid] > 0 ? " ✓" : ""}{totalForn[fid] > 0 && !precificouTudo(fid) ? <span title="Cotou só parte dos itens" style={{ color: "#d97706", fontWeight: 700 }}> ⚠</span> : ""}</td>)}
               <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: "#0d9488" }}>{fmtReais(totalPorItem)}</td>
             </tr></tfoot>
           </table>
         </div>
 
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 14 }}>
-          <strong>Melhor preço por item:</strong> {fmtReais(totalPorItem)} (divide entre fornecedores) · <strong>Melhor fornecedor único:</strong> {melhorFornGeral ? `${fById[melhorFornGeral]?.nome} — ${fmtReais(totalForn[melhorFornGeral])}` : "—"}. O prazo de entrega (dias) aparece no cabeçalho para pesar preço × prazo.
+          <strong>Melhor preço por item:</strong> {fmtReais(totalPorItem)} (divide entre fornecedores) · <strong>Melhor fornecedor único:</strong> {melhorFornGeral ? `${fById[melhorFornGeral]?.nome} — ${fmtReais(totalForn[melhorFornGeral])}` : "nenhum cotou todos os itens ainda"}. O ⚠ marca quem cotou só parte. O prazo de entrega (dias) aparece no cabeçalho para pesar preço × prazo.
         </div>
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
