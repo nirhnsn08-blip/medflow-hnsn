@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v31
+# 📍 Ponto de restauração — checkpoint-v32
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v31` (anteriores: `checkpoint-v30` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v32` (anteriores: `checkpoint-v31` … `checkpoint-v1`)
 - **Data:** 2026-07-20
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -258,6 +258,15 @@ dá pra voltar exatamente para este estado.
     faltar, zerados, validade, consumo/gasto do mês, requisições, pedidos,
     fornecedores, saldo por nome — nada sai do navegador). Sem migração.
     **Módulo Estoque & Compras completo (A+B+C+D).**
+  - **💼 Painel Executivo:** visão financeira do estoque **almoxarifado +
+    Farmácia** — capital parado (saldo × custo), **capital liberável** (excesso
+    acima de 30 dias de cobertura + mínimo, com a lista de onde está),
+    **economia vs mês anterior** (compras), **perdas por vencimento** com % de
+    redução, **rupturas previstas em 7 dias** (MAT+MED), **medicamentos que
+    mais custam por paciente** e **consumo por setor em R$ com Δ%** (vermelho
+    >10% = investigar desperdício). Critérios transparentes no rodapé; local e
+    sem migração. Indicadores comparativos ganham significado a partir do 2º
+    mês de uso.
   - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
     `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20).
 
@@ -266,7 +275,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v31
+git reset --hard checkpoint-v32
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -275,7 +284,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v31
+git checkout -b recuperacao checkpoint-v32
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -291,6 +300,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `1360d0f` 💼 Painel Executivo — capital parado/liberável, economia, perdas, rupturas, custo por paciente, setores c/ Δ
 - `cd0fe03` 📦 Suprimentos Fase D — Relatórios & BI + assistente local (módulo completo)
 - `e2d54be` 📦 Suprimentos Fase C — pedidos de compra (mat+med, sugestão da previsão, recebimento parcial c/ entrada automática)
 - `b988721` 📦 fix: seed de suprimentos insere por nome
