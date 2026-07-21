@@ -322,8 +322,10 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
 - Equipe médica revisar os 8 textos de tratamento por CID (editáveis no 📚).
 - **DEMO congelado**: banco sem as migrações da Fase 3 pt2 e do tratamento por CID.
   Se um dia voltarmos a usar o demo, rodar as migrações acumuladas antes.
-- 2 registros falsos do AQUARIO no histórico do HNSN (leitos_saidas/leitos_turnover),
-  se o SQL de limpeza ainda não foi rodado.
+- ✅ **Resolvido (2026-07-21):** registros de teste do AQUARIO removidos do HNSN
+  (3 em `leitos_saidas`, 2 em `leitos_turnover` e o leito ocupado fake em `leitos`).
+  Investigação do bug de fuso do Adauam confirmou **nenhum dado real corrompido**
+  (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
 - `9d259f3` 🔢💰📷 Inventário cíclico (contagem cega ABC + acuracidade) + custo médio ponderado + código de barras
