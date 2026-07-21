@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v29
+# 📍 Ponto de restauração — checkpoint-v30
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v29` (anteriores: `checkpoint-v28` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v30` (anteriores: `checkpoint-v29` … `checkpoint-v1`)
 - **Data:** 2026-07-20
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -241,16 +241,24 @@ dá pra voltar exatamente para este estado.
     atendido/pedido). Histórico à parte.
   - **Seed:** catálogo inicial com **~120 materiais em 10 categorias** carregado
     no HNSN (insere por nome — seguro rodar de novo). Testado e validado.
-  - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql` e
-    `-seed.sql` (rodadas no HNSN em 2026-07-20). Fases futuras: pedidos de
-    compra integrando a Farmácia (C) e BI/assistente (D).
+  - **Fase C — Compras:** pedidos por fornecedor com itens de **material E
+    medicamento** no mesmo pedido (custo unitário e total em R$, entrega
+    prevista), botão **⇩ importar sugestão de compra** (traz o que a previsão
+    de demanda diz que acaba em 7 dias, do almoxarifado E da Farmácia), ciclo
+    *em elaboração → enviado → parcial → recebido* e **recebimento com entrada
+    automática** no estoque certo (material no kardex do almoxarifado com
+    fornecedor; medicamento no kardex da Farmácia), com NF/lote/validade por
+    item e recebimento em várias vezes. Testado e validado.
+  - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
+    `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20). Fase futura:
+    BI/assistente (D).
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v29
+git reset --hard checkpoint-v30
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -259,7 +267,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v29
+git checkout -b recuperacao checkpoint-v30
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -275,6 +283,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `e2d54be` 📦 Suprimentos Fase C — pedidos de compra (mat+med, sugestão da previsão, recebimento parcial c/ entrada automática)
 - `b988721` 📦 fix: seed de suprimentos insere por nome
 - `bef3892` 📦 Suprimentos Fase B — requisições dos setores (bipe, baixa FEFO, parcial) + seed ~120 materiais
 - `6c79e27` 📦 Suprimentos Fase A — catálogo de materiais + estoque por lote/validade + fornecedores
