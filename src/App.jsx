@@ -98,6 +98,8 @@ const ICON_PATHS = {
   lock:      <><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></>,
   chart:     <><path d="M4 4v16h16"/><rect x="7.5" y="12" width="2.6" height="5"/><rect x="12" y="8" width="2.6" height="9"/><rect x="16.5" y="5" width="2.6" height="12"/></>,
   chat:      <><path d="M4 5h16v11H9l-4 4v-4H4z"/><path d="M8 9h8M8 12.5h5"/></>,
+  cart:      <><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 4h2.5l2.2 11.5h10.6L21 8H6.6"/></>,
+  truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -2080,6 +2082,113 @@ function scorePrescricao(itens, alertas) {
   const comMed = (itens || []).filter(i => i.medicamento_id);
   if (!comMed.length) return 0;
   return Math.max(0, ...comMed.map(i => scoreItemClinico(i, alertas)));
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUPRIMENTOS (Estoque & Compras) — Fase A: catálogo de materiais + estoque
+// por lote/validade (kardex imutável) + fornecedores. Mesmo modelo da Farmácia.
+// ═══════════════════════════════════════════════════════════
+const SUP_CATEGORIAS = [
+  "Material médico-hospitalar",
+  "Higiene e limpeza",
+  "EPI",
+  "Escritório e expediente",
+  "Impressos e formulários",
+  "Rouparia e enxoval",
+  "Nutrição e copa",
+  "Manutenção predial",
+  "Informática",
+  "Laboratório",
+  "Outros",
+];
+const SUP_UNIDADES = ["unidade", "caixa", "pacote", "par", "rolo", "frasco", "galão", "litro", "kg", "resma"];
+const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
+// Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
+const SUP_NAV = [
+  { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
+  { key: "estoque",      label: "Estoque",      icon: "box" },
+  { key: "fornecedores", label: "Fornecedores", icon: "truck" },
+];
+
+async function loadSupItens() {
+  const rows = await sbFetch("sup_itens?select=*&order=nome");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadSupLotes() {
+  const rows = await sbFetch("sup_lotes?select=*&order=validade.asc.nullslast");
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadSupMovimentos(itemId, limit = 60) {
+  const q = itemId
+    ? `sup_movimentos?item_id=eq.${itemId}&select=*&order=created_at.desc&limit=${limit}`
+    : `sup_movimentos?select=*&order=created_at.desc&limit=${limit}`;
+  const rows = await sbFetch(q);
+  return Array.isArray(rows) ? rows : [];
+}
+// Saídas desde uma data (para previsão de demanda)
+async function loadSupSaidasDesde(fromISO) {
+  const rows = await sbFetch(`sup_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=item_id,quantidade&limit=12000`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertSupItemRemote(item, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...item, usuario: user?.name || null, updated_at: nowISO() };
+  if (item.id) {
+    await sbFetch(`sup_itens?id=eq.${item.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    return null;
+  }
+  delete body.id;
+  return await sbFetch("sup_itens", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deleteSupItemRemote(id) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_itens?id=eq.${id}`, { method: "DELETE" });
+}
+// Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
+// e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
+async function addSupMovimentoRemote(mov, user) {
+  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/sup_movimentos`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify({ ...mov, usuario: user?.name || null }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, erro: body?.message || `Erro ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: String(e?.message || e) };
+  }
+}
+// Saldo total de um item = soma dos lotes
+function supSaldoTotal(itemId, lotes) {
+  return lotes.filter(l => l.item_id === itemId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
+}
+async function loadSupFornecedores() {
+  const rows = await sbFetch("sup_fornecedores?select=*&order=nome");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertSupFornecedorRemote(f, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...f, usuario: user?.name || null, updated_at: nowISO() };
+  if (f.id) {
+    await sbFetch(`sup_fornecedores?id=eq.${f.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    return null;
+  }
+  delete body.id;
+  return await sbFetch("sup_fornecedores", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deleteSupFornecedorRemote(id) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8510,6 +8619,602 @@ function IndicadoresModal({ leitos, onClose }) {
 }
 
 // ═══════════════════════════════════════════════════════════
+// SUPRIMENTOS (Estoque & Compras) — página com barra lateral própria (padrão Farmácia)
+// ═══════════════════════════════════════════════════════════
+function SuprimentosPage({ currentUser, canEdit }) {
+  const [itens, setItens] = useState([]);
+  const [lotes, setLotes] = useState([]);
+  const [forns, setForns] = useState([]);
+  const [busca, setBusca] = useState("");
+  const [catFiltro, setCatFiltro] = useState("");
+  const [showItem, setShowItem] = useState(null);   // objeto (novo/editar) ou null
+  const [movItem, setMovItem]   = useState(null);   // { item, tipo }
+  const [kardex, setKardex]     = useState(null);   // item para histórico
+  const [showForn, setShowForn] = useState(null);   // fornecedor (novo/editar) ou null
+  const [sub, setSub] = useState("dashboard");      // ver SUP_NAV
+  const [saidasHist, setSaidasHist] = useState([]);
+  const [, setTick] = useState(0);
+  const isMaster = currentUser?.role === "adm_master";
+
+  function refresh() {
+    if (!USE_SUPABASE) return;
+    loadSupItens().then(setItens);
+    loadSupLotes().then(setLotes);
+    loadSupFornecedores().then(setForns);
+    loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
+  }
+  useEffect(() => {
+    refresh();
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    const id = setInterval(() => setTick(t => t + 1), 60000);
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+  }, []);
+
+  const itensOrd = [...itens].filter(i => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return true;
+    return [i.nome, i.categoria, i.observacao].some(x => (x || "").toLowerCase().includes(q));
+  }).sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+
+  const ordCat = (a, b) => { const ia = SUP_CATEGORIAS.indexOf(a), ib = SUP_CATEGORIAS.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b, "pt-BR"); };
+  const catsPresentes = [...new Set(itens.map(i => i.categoria || "Outros"))].sort(ordCat);
+  const itensView = itensOrd.filter(i => !catFiltro || (i.categoria || "Outros") === catFiltro);
+  const grupos = {};
+  itensView.forEach(i => { const c = i.categoria || "Outros"; (grupos[c] = grupos[c] || []).push(i); });
+  const gruposOrd = Object.keys(grupos).sort(ordCat);
+
+  // Situação de estoque de cada item
+  function statusItem(i) {
+    const saldo = supSaldoTotal(i.id, lotes);
+    const min = Number(i.estoque_minimo || 0);
+    if (saldo <= 0) return { key: "zerado", cor: "#f43f5e", label: "Sem estoque", saldo };
+    if (min > 0 && saldo <= min) return { key: "baixo", cor: "#d97706", label: "Abaixo do mínimo", saldo };
+    return { key: "ok", cor: "#34d399", label: "OK", saldo };
+  }
+  // Lote de validade mais próxima (com saldo) de um item
+  function loteCritico(i) {
+    const ls = lotes.filter(l => l.item_id === i.id && Number(l.quantidade) > 0 && l.validade);
+    if (!ls.length) return null;
+    return ls.sort((a, b) => a.validade.localeCompare(b.validade))[0];
+  }
+
+  // Painéis de alerta
+  const alertasBaixo = itensOrd.filter(i => i.ativo !== false && ["baixo", "zerado"].includes(statusItem(i).key));
+  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+
+  // Previsão de demanda (consumo dos últimos FARM_PREV_JANELA dias)
+  const consumoMap = {};
+  saidasHist.forEach(s => { if (s.item_id) consumoMap[s.item_id] = (consumoMap[s.item_id] || 0) + Number(s.quantidade || 0); });
+  const previsao = i => {
+    const media = (consumoMap[i.id] || 0) / FARM_PREV_JANELA;
+    const saldo = supSaldoTotal(i.id, lotes);
+    const cobertura = media > 0 ? saldo / media : null;      // dias de estoque
+    const demanda7 = media * FARM_PREV_HORIZONTE;
+    const sugestao = Math.max(0, Math.ceil(demanda7 + Number(i.estoque_minimo || 0) - saldo));
+    return { media, saldo, cobertura, demanda7, sugestao };
+  };
+  const emRisco = itens.filter(i => i.ativo !== false).map(i => ({ i, ...previsao(i) }))
+    .filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE)
+    .sort((a, b) => a.cobertura - b.cobertura);
+
+  async function salvarItem(item) {
+    await upsertSupItemRemote(item, currentUser);
+    addAuditLog(currentUser, item.id ? "editar material" : "cadastrar material", item.nome, {});
+    setShowItem(null);
+    setTimeout(refresh, 350);
+  }
+  async function excluirItem(i) {
+    if (!confirm(`Excluir "${i.nome}" e todo o seu histórico de estoque? Essa ação não pode ser desfeita.`)) return;
+    await deleteSupItemRemote(i.id);
+    addAuditLog(currentUser, "excluir material", i.nome, {});
+    setTimeout(refresh, 300);
+  }
+  async function registrarMov(mov) {
+    const r = await addSupMovimentoRemote(mov, currentUser);
+    if (!r.ok) { alert("Não foi possível registrar o movimento.\n" + (r.erro || "")); return false; }
+    const item = itens.find(x => x.id === mov.item_id);
+    addAuditLog(currentUser, mov.tipo === "entrada" ? "entrada de material" : "saída de material", `${item?.nome || mov.item_id} · ${farmFmtQtd(mov.quantidade)}`, {});
+    setMovItem(null);
+    setTimeout(refresh, 350);
+    return true;
+  }
+  async function salvarForn(f) {
+    await upsertSupFornecedorRemote(f, currentUser);
+    addAuditLog(currentUser, f.id ? "editar fornecedor" : "cadastrar fornecedor", f.nome, {});
+    setShowForn(null);
+    setTimeout(refresh, 350);
+  }
+  async function excluirForn(f) {
+    if (!confirm(`Excluir o fornecedor "${f.nome}"? As entradas antigas continuam no kardex.`)) return;
+    await deleteSupFornecedorRemote(f.id);
+    addAuditLog(currentUser, "excluir fornecedor", f.nome, {});
+    setTimeout(refresh, 300);
+  }
+
+  const totalAtivos = itens.filter(i => i.ativo !== false).length;
+  const navAtual = SUP_NAV.find(n => n.key === sub) || SUP_NAV[0];
+  const subTexto = {
+    dashboard: "Visão geral do almoxarifado com atalhos.",
+    estoque: `Catálogo de materiais, entradas e saídas por lote e validade. ${totalAtivos} ativos · ${itens.length} cadastrados.`,
+    fornecedores: `Cadastro de fornecedores usados nas entradas e nas compras. ${forns.filter(f => f.ativo !== false).length} ativos.`,
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* BARRA LATERAL DE SUPRIMENTOS */}
+      <nav style={{ width: 194, minWidth: 194, background: "var(--bg-2)", borderRight: "1px solid var(--border)", padding: "1rem 0", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
+          <Icon name="cart" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>SUPRIMENTOS</span>
+        </div>
+        {SUP_NAV.map(it => { const active = sub === it.key; return (
+          <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
+            <Icon name={it.icon} size={16} />{it.label}
+          </button>
+        ); })}
+      </nav>
+
+      {/* CONTEÚDO */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{subTexto[sub] || ""}</div>
+        </div>
+        {sub === "estoque" && canEdit && <button onClick={() => setShowItem({ nome: "", categoria: "", unidade: "unidade", estoque_minimo: "", custo_unitario: "", ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo material</button>}
+        {sub === "fornecedores" && canEdit && <button onClick={() => setShowForn({ nome: "", cnpj: "", contato: "", telefone: "", email: "", categorias: "", observacao: "", ativo: true })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo fornecedor</button>}
+      </div>
+
+      {sub === "dashboard" && (() => {
+        const ativos = itens.filter(i => i.ativo !== false);
+        const rupturas = ativos.filter(i => supSaldoTotal(i.id, lotes) <= 0).length;
+        const abaixoMin = ativos.filter(i => { const s = supSaldoTotal(i.id, lotes); return s > 0 && Number(i.estoque_minimo || 0) > 0 && s <= Number(i.estoque_minimo); }).length;
+        const venc = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status)).length;
+        const Card = ({ label, valor, cor, sub: s, nav }) => (
+          <button onClick={() => nav && setSub(nav)} style={{ textAlign: "left", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "14px 16px", cursor: nav ? "pointer" : "default" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: valor ? cor : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+            {s && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{s}</div>}
+          </button>
+        );
+        return (
+          <div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+              <Card label="Materiais ativos" valor={ativos.length} cor={VX.azul} sub={`${itens.length} cadastrados`} nav="estoque" />
+              <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
+              <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
+              <Card label="Validade em risco" valor={venc} cor={venc ? "#d97706" : "#34d399"} sub={`vencidos / ≤${FARM_VENC_DIAS} dias`} nav="estoque" />
+              <Card label="Previsão de ruptura" valor={emRisco.length} cor={emRisco.length ? "#f43f5e" : "#34d399"} sub={`acabam em ${FARM_PREV_HORIZONTE} dias no ritmo atual`} nav="estoque" />
+              <Card label="Fornecedores ativos" valor={forns.filter(f => f.ativo !== false).length} cor={VX.turquesa} sub={`${forns.length} cadastrados`} nav="fornecedores" />
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 16 }}>Clique nos cartões para ir direto à ferramenta. Requisições dos setores e pedidos de compra chegam nas próximas fases.</div>
+          </div>
+        );
+      })()}
+
+      {sub === "estoque" && (<>
+      {/* PAINÉIS DE ALERTA */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: "1.25rem" }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${alertasBaixo.length ? "#d97706" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Reposição</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: alertasBaixo.length ? "#d97706" : "var(--text)" }}>{alertasBaixo.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{alertasBaixo.length ? "materiais abaixo do mínimo / zerados" : "nenhum item abaixo do mínimo"}</div>
+          {alertasBaixo.length > 0 && <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 5 }}>{alertasBaixo.slice(0, 6).map(i => <span key={i.id} style={{ fontSize: 10.5, color: statusItem(i).cor, border: `1px solid ${statusItem(i).cor}55`, borderRadius: 99, padding: "1px 7px" }}>{i.nome}</span>)}{alertasBaixo.length > 6 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{alertasBaixo.length - 6}</span>}</div>}
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${lotesAlerta.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Validade</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: lotesAlerta.length ? "#f43f5e" : "var(--text)" }}>{lotesAlerta.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${FARM_VENC_DIAS} dias` : "nenhum lote vencendo"}</div>
+          {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const i = itens.find(x => x.id === l.item_id); const vi = farmValidadeInfo(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {i?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
+        </div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${emRisco.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Previsão de ruptura ({FARM_PREV_HORIZONTE}d)</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: emRisco.length ? "#f43f5e" : "var(--text)" }}>{emRisco.length}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{emRisco.length ? `devem acabar em até ${FARM_PREV_HORIZONTE} dias (consumo dos últimos ${FARM_PREV_JANELA}d)` : "cobertura ≥ 7 dias em todos com consumo"}</div>
+          {emRisco.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{emRisco.slice(0, 4).map(x => <div key={x.i.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: x.cobertura <= 3 ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{x.cobertura < 1 ? "<1d" : `${Math.floor(x.cobertura)}d`}</span> · {x.i.nome}</div>)}{emRisco.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{emRisco.length - 4}</span>}</div>}
+        </div>
+      </div>
+
+      {emRisco.length > 0 && (<>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Previsão de demanda — próximos {FARM_PREV_HORIZONTE} dias</div>
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.25rem" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
+              <th style={{ padding: "8px 12px" }}>Material</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Consumo/dia</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Cobertura</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Demanda 7d</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Comprar</th>
+            </tr></thead>
+            <tbody>
+              {emRisco.map(x => (
+                <tr key={x.i.id} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "7px 12px", fontWeight: 600 }}>{x.i.nome}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(Math.round(x.media * 10) / 10)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(x.saldo)}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: x.cobertura <= 3 ? "#f43f5e" : "#d97706" }}>{x.cobertura < 1 ? "< 1 dia" : `${Math.floor(x.cobertura)} dias`}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(Math.ceil(x.demanda7))}</td>
+                  <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: VX.azul }}>{farmFmtQtd(x.sugestao)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Estimativa por média de consumo — assume demanda estável. "Comprar" cobre 7 dias + estoque mínimo.</div>
+        </div>
+      </>)}
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome ou categoria…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
+        <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} style={{ ...farmInp, maxWidth: 280 }}>
+          <option value="">Todas as categorias</option>
+          {catsPresentes.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {/* TABELA DE ESTOQUE (agrupada por categoria) */}
+      {itensView.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>
+          {itens.length === 0 ? "Nenhum material cadastrado ainda. Clique em “+ Novo material”." : "Nenhum resultado para a busca."}
+        </div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 720 }}>
+            <thead>
+              <tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                <th style={{ padding: "9px 12px" }}>Material</th>
+                <th style={{ padding: "9px 12px", textAlign: "right" }}>Saldo</th>
+                <th style={{ padding: "9px 12px", textAlign: "right" }}>Mínimo</th>
+                <th style={{ padding: "9px 12px" }}>Situação</th>
+                <th style={{ padding: "9px 12px" }}>Validade</th>
+                <th style={{ padding: "9px 12px", textAlign: "right" }}>Ações</th>
+              </tr>
+            </thead>
+            {gruposOrd.map(cat => (
+              <tbody key={cat}>
+                {!catFiltro && (
+                  <tr><td colSpan={6} style={{ padding: "10px 12px 5px", background: "var(--surface-2)", borderTop: "1px solid var(--border)", fontSize: 11, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{cat} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>· {grupos[cat].length}</span></td></tr>
+                )}
+                {grupos[cat].map(i => {
+                const st = statusItem(i);
+                const lc = loteCritico(i);
+                const vi = lc ? farmValidadeInfo(lc.validade) : null;
+                const inativo = i.ativo === false;
+                return (
+                  <tr key={i.id} style={{ borderTop: "1px solid var(--border)", opacity: inativo ? 0.55 : 1 }}>
+                    <td style={{ padding: "9px 12px" }}>
+                      <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        {i.nome}
+                        {inativo && <span style={{ fontSize: 9.5, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 6px" }}>inativo</span>}
+                      </div>
+                      {i.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{i.observacao}</div>}
+                    </td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{farmFmtQtd(st.saldo)} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "Inter, sans-serif", fontWeight: 400 }}>{i.unidade || ""}</span></td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{Number(i.estoque_minimo) > 0 ? farmFmtQtd(i.estoque_minimo) : "—"}</td>
+                    <td style={{ padding: "9px 12px" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: st.cor, marginRight: 6 }} /><span style={{ fontSize: 12, color: st.cor === "#34d399" ? "var(--text-2)" : st.cor, fontWeight: st.key === "ok" ? 400 : 700 }}>{st.label}</span></td>
+                    <td style={{ padding: "9px 12px", fontSize: 12 }}>{lc ? <span style={{ color: vi.status === "vencido" ? "#f43f5e" : vi.status === "vencendo" ? "#d97706" : "var(--text-2)", fontWeight: vi.status === "ok" ? 400 : 700 }}>{fmtDataBR(lc.validade)}{vi.status === "vencido" ? " (vencido)" : vi.status === "vencendo" ? ` (${vi.dias}d)` : ""}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
+                      {canEdit && <>
+                        <button onClick={() => setMovItem({ item: i, tipo: "entrada" })} style={btnLeito("#34d399")}>Entrada</button>{" "}
+                        <button onClick={() => setMovItem({ item: i, tipo: "saida" })} style={btnLeito("#d97706")}>Saída</button>{" "}
+                      </>}
+                      <button onClick={() => setKardex(i)} style={btnLeito("#8d99ab")}>Kardex</button>{" "}
+                      {canEdit && <button onClick={() => setShowItem(i)} style={btnLeito("#3b82f6")}>Editar</button>}
+                      {isMaster && <> <button onClick={() => excluirItem(i)} style={btnLeito("#f43f5e")}>Excluir</button></>}
+                    </td>
+                  </tr>
+                );
+                })}
+              </tbody>
+            ))}
+          </table>
+        </div>
+      )}
+      </>)}
+
+      {sub === "fornecedores" && (
+        forns.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>
+            Nenhum fornecedor cadastrado ainda. Clique em “+ Novo fornecedor”.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 680 }}>
+              <thead>
+                <tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+                  <th style={{ padding: "9px 12px" }}>Fornecedor</th>
+                  <th style={{ padding: "9px 12px" }}>CNPJ</th>
+                  <th style={{ padding: "9px 12px" }}>Contato</th>
+                  <th style={{ padding: "9px 12px" }}>Fornece</th>
+                  <th style={{ padding: "9px 12px", textAlign: "right" }}>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forns.map(f => {
+                  const inativo = f.ativo === false;
+                  return (
+                    <tr key={f.id} style={{ borderTop: "1px solid var(--border)", opacity: inativo ? 0.55 : 1 }}>
+                      <td style={{ padding: "9px 12px" }}>
+                        <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>{f.nome}{inativo && <span style={{ fontSize: 9.5, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 6px" }}>inativo</span>}</div>
+                        {f.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{f.observacao}</div>}
+                      </td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-2)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>{f.cnpj || "—"}</td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-2)", fontSize: 12 }}>
+                        {f.contato || "—"}
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{[f.telefone, f.email].filter(Boolean).join(" · ")}</div>
+                      </td>
+                      <td style={{ padding: "9px 12px", color: "var(--text-2)", fontSize: 12 }}>{f.categorias || "—"}</td>
+                      <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
+                        {canEdit && <button onClick={() => setShowForn(f)} style={btnLeito("#3b82f6")}>Editar</button>}
+                        {isMaster && <> <button onClick={() => excluirForn(f)} style={btnLeito("#f43f5e")}>Excluir</button></>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {showItem && <SupItemModal item={showItem} onClose={() => setShowItem(null)} onSave={salvarItem} />}
+      {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} onClose={() => setMovItem(null)} onSave={registrarMov} />}
+      {kardex && <SupKardexModal item={kardex} fornecedores={forns} onClose={() => setKardex(null)} />}
+      {showForn && <SupFornecedorModal forn={showForn} onClose={() => setShowForn(null)} onSave={salvarForn} />}
+      </div>
+    </div>
+  );
+}
+
+// Cadastro / edição de material
+function SupItemModal({ item, onClose, onSave }) {
+  const [f, setF] = useState({ ...item });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  async function salvar() {
+    if (!f.nome.trim()) { alert("Informe o nome / descrição do material."); return; }
+    setBusy(true);
+    await onSave({
+      ...(item.id ? { id: item.id } : {}),
+      nome: f.nome.trim(),
+      categoria: f.categoria || null,
+      unidade: f.unidade || "unidade",
+      estoque_minimo: f.estoque_minimo === "" || f.estoque_minimo == null ? 0 : Number(f.estoque_minimo),
+      custo_unitario: f.custo_unitario === "" || f.custo_unitario == null ? null : Number(f.custo_unitario),
+      ativo: f.ativo !== false,
+      observacao: f.observacao?.trim() || null,
+    });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{item.id ? "Editar material" : "Novo material"}</div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Nome / descrição *</label>
+          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Luva de procedimento M — caixa 100" style={farmInp} autoFocus />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Categoria</label>
+            <select value={f.categoria || ""} onChange={e => set("categoria", e.target.value)} style={farmInp}>
+              <option value="">—</option>
+              {SUP_CATEGORIAS.map(x => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={farmLbl}>Unidade de controle</label>
+            <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={farmInp}>
+              {SUP_UNIDADES.map(x => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Estoque mínimo</label>
+            <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={farmInp} />
+          </div>
+          <div>
+            <label style={farmLbl}>Custo unit. (R$)</label>
+            <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={farmInp} />
+          </div>
+        </div>
+        <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
+          <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
+        </label>
+        <div style={{ marginBottom: 16 }}>
+          <label style={farmLbl}>Observação</label>
+          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Marca, especificação, armazenamento…" style={{ ...farmInp, resize: "vertical" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Entrada / saída de estoque de material
+function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }) {
+  const [tipo, setTipo] = useState(tipoInicial || "entrada");
+  const lotesComSaldo = [...lotes].filter(l => Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")); // vence primeiro sai primeiro
+  const [f, setF] = useState({
+    lote: "", validade: "", quantidade: "", documento: "", fornecedor_id: "", setor: "",
+    lote_id: lotesComSaldo[0]?.id || "", motivo: "Consumo do setor",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const loteSel = lotesComSaldo.find(l => String(l.id) === String(f.lote_id));
+
+  async function salvar() {
+    const q = Number(f.quantidade);
+    if (!q || q <= 0) { alert("Informe uma quantidade maior que zero."); return; }
+    let mov;
+    if (tipo === "entrada") {
+      mov = { item_id: item.id, tipo: "entrada", quantidade: q, lote: f.lote.trim() || null, validade: f.validade || null, motivo: "Compra / nota fiscal", documento: f.documento.trim() || null, fornecedor_id: f.fornecedor_id || null };
+    } else {
+      if (!loteSel) { alert("Selecione o lote de onde sairá o material."); return; }
+      if (q > Number(loteSel.quantidade)) { alert(`Saída maior que o saldo do lote (disponível: ${farmFmtQtd(loteSel.quantidade)}).`); return; }
+      mov = { item_id: item.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null, setor: f.setor.trim() || null };
+    }
+    setBusy(true);
+    const ok = await onSave(mov);
+    setBusy(false);
+    if (!ok) return;
+  }
+  const cor = tipo === "entrada" ? "#34d399" : "#d97706";
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Movimentar estoque</div>
+        <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14 }}>{item.nome}{item.unidade ? ` · em ${item.unidade}` : ""}</div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {["entrada", "saida"].map(t => (
+            <button key={t} onClick={() => setTipo(t)} style={{ flex: 1, background: tipo === t ? (t === "entrada" ? "#34d399" : "#d97706") : "transparent", color: tipo === t ? "#000" : "var(--text-3)", border: `1px solid ${tipo === t ? (t === "entrada" ? "#34d399" : "#d97706") : "var(--border)"}`, borderRadius: 7, padding: "8px 0", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{t === "entrada" ? "Entrada" : "Saída / baixa"}</button>
+          ))}
+        </div>
+
+        {tipo === "entrada" ? (<>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div><label style={farmLbl}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} placeholder="Ex.: AB1234" style={farmInp} /></div>
+            <div><label style={farmLbl}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={farmInp} /></div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
+            <div><label style={farmLbl}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={farmInp} /></div>
+          </div>
+          <div style={{ marginBottom: 14 }}>
+            <label style={farmLbl}>Fornecedor</label>
+            <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={farmInp}>
+              <option value="">—</option>
+              {fornecedores.map(fo => <option key={fo.id} value={fo.id}>{fo.nome}</option>)}
+            </select>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>Sem lote/validade? Deixe em branco — entra num lote genérico. Lançar por lote permite rastrear vencimento e recall.</div>
+        </>) : (<>
+          {lotesComSaldo.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
+          ) : (<>
+            <div style={{ marginBottom: 10 }}>
+              <label style={farmLbl}>Lote (vence primeiro no topo)</label>
+              <select value={f.lote_id} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+                {lotesComSaldo.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+              </select>
+            </div>
+            {loteSel && farmValidadeInfo(loteSel.validade).status === "vencido" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10, fontWeight: 600 }}>⚠ Lote vencido — a baixa deve ser por perda/descarte, não consumo.</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
+              <div><label style={farmLbl}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={farmInp}>{SUP_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <label style={farmLbl}>Setor de destino</label>
+              <input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Ex.: Posto 2, Centro Cirúrgico" style={farmInp} />
+            </div>
+            {loteSel && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16 }}>Saldo do lote: <strong style={{ color: "var(--text-2)" }}>{farmFmtQtd(loteSel.quantidade)} {item.unidade || ""}</strong></div>}
+          </>)}
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy || (tipo === "saida" && lotesComSaldo.length === 0)} style={{ background: cor, color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || (tipo === "saida" && lotesComSaldo.length === 0)) ? 0.5 : 1 }}>{busy ? "…" : tipo === "entrada" ? "Registrar entrada" : "Registrar saída"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Kardex — histórico de movimentos do material
+function SupKardexModal({ item, fornecedores, onClose }) {
+  const [movs, setMovs] = useState(null);
+  useEffect(() => { loadSupMovimentos(item.id).then(setMovs); }, [item.id]);
+  const fornNome = id => fornecedores.find(f => f.id === id)?.nome;
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Kardex — {item.nome}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Histórico de entradas e saídas (imutável). Últimos movimentos.</div>
+        {movs == null ? <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem" }}>Carregando…</div>
+          : movs.length === 0 ? <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem" }}>Nenhum movimento registrado ainda.</div>
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {movs.map(mv => {
+                const ent = mv.tipo === "entrada";
+                const cor = ent ? "#34d399" : "#d97706";
+                return (
+                  <div key={mv.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
+                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: cor, fontSize: 14, minWidth: 62, textAlign: "right" }}>{ent ? "+" : "−"}{farmFmtQtd(mv.quantidade)}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.setor ? ` · ${mv.setor}` : ""}{ent && fornNome(mv.fornecedor_id) ? ` · ${fornNome(mv.fornecedor_id)}` : ""}</div>
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{mv.created_at ? new Date(mv.created_at).toLocaleString("pt-BR") : ""}{mv.documento ? ` · doc ${mv.documento}` : ""}{mv.usuario ? ` · ${mv.usuario}` : ""}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cadastro / edição de fornecedor
+function SupFornecedorModal({ forn, onClose, onSave }) {
+  const [f, setF] = useState({ ...forn });
+  const [busy, setBusy] = useState(false);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  async function salvar() {
+    if (!f.nome.trim()) { alert("Informe o nome do fornecedor."); return; }
+    setBusy(true);
+    await onSave({
+      ...(forn.id ? { id: forn.id } : {}),
+      nome: f.nome.trim(),
+      cnpj: f.cnpj?.trim() || null,
+      contato: f.contato?.trim() || null,
+      telefone: f.telefone?.trim() || null,
+      email: f.email?.trim() || null,
+      categorias: f.categorias?.trim() || null,
+      observacao: f.observacao?.trim() || null,
+      ativo: f.ativo !== false,
+    });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{forn.id ? "Editar fornecedor" : "Novo fornecedor"}</div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>Nome / razão social *</label>
+          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Distribuidora Hospitalar Ltda" style={farmInp} autoFocus />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={farmLbl}>CNPJ</label><input value={f.cnpj || ""} onChange={e => set("cnpj", e.target.value)} placeholder="00.000.000/0000-00" style={farmInp} /></div>
+          <div><label style={farmLbl}>Pessoa de contato</label><input value={f.contato || ""} onChange={e => set("contato", e.target.value)} placeholder="Nome" style={farmInp} /></div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div><label style={farmLbl}>Telefone</label><input value={f.telefone || ""} onChange={e => set("telefone", e.target.value)} placeholder="(00) 00000-0000" style={farmInp} /></div>
+          <div><label style={farmLbl}>E-mail</label><input value={f.email || ""} onChange={e => set("email", e.target.value)} placeholder="contato@fornecedor.com" style={farmInp} /></div>
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <label style={farmLbl}>O que fornece</label>
+          <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={farmInp} />
+        </div>
+        <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
+          <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
+        </label>
+        <div style={{ marginBottom: 16 }}>
+          <label style={farmLbl}>Observação</label>
+          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Prazo de entrega, condições…" style={{ ...farmInp, resize: "vertical" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
 // ADMIN DE USUÁRIOS — só adm_master (via Edge Function admin-usuarios)
 // ═══════════════════════════════════════════════════════════
 function AdminUsuarios({ currentUser }) {
@@ -8949,6 +9654,7 @@ export default function App() {
     { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
     { id: "scih",     icon: "shield", label: "SCIH" },
     { id: "farmacia", icon: "pill", label: "Farmácia" },
+    { id: "suprimentos", icon: "cart", label: "Estoque & Compras" },
     { id: "paciente", icon: "record", label: "Paciente 360" },
     ...(canPrint    ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
     ...(canAudit    ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
@@ -9039,6 +9745,7 @@ export default function App() {
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "suprimentos" && <SuprimentosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
           {active === "auditoria" && canAudit    && <AuditoriaPage />}
