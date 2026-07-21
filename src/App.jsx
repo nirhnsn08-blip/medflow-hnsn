@@ -100,6 +100,7 @@ const ICON_PATHS = {
   chat:      <><path d="M4 5h16v11H9l-4 4v-4H4z"/><path d="M8 9h8M8 12.5h5"/></>,
   cart:      <><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 4h2.5l2.2 11.5h10.6L21 8H6.6"/></>,
   briefcase: <><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M9 7.5V5.5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></>,
+  clock:     <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
   truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
 };
 function Icon({ name, size = 15 }) {
@@ -2111,10 +2112,15 @@ const SUP_NAV = [
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
   { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
+  { key: "preditivo",    label: "Estoque preditivo", icon: "activity" },
+  { key: "vencimentos",  label: "Vencimentos",  icon: "clock" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
   { key: "indicadores",  label: "Relatórios & BI", icon: "chart" },
   { key: "assistente",   label: "Assistente AI",   icon: "chat" },
 ];
+// Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
+// (casam por nome ou princípio ativo; edite a lista conforme o hospital)
+const SUP_FARMACOS_MONITORADOS = ["morfina", "fentanil", "alteplase", "tenecteplase", "contraste", "albumina"];
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
 // Pedido de compra — estados e cores
 const SUP_PED_STATUS = {
@@ -8810,6 +8816,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
     executivo: "Visão financeira do estoque — capital parado, variação de gastos e perdas, rupturas previstas e capital liberável. Almoxarifado + Farmácia.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
+    preditivo: "Previsão item a item: no ritmo atual de consumo, quando acaba cada material e medicamento.",
+    vencimentos: "Vencimentos inteligentes — o que vence, quanto vale e o que NÃO será consumido a tempo no ritmo atual.",
     indicadores: "Relatórios & BI — consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
     assistente: "Assistente local para perguntas sobre o almoxarifado (nada é enviado para fora).",
     estoque: `Catálogo de materiais, entradas e saídas por lote e validade. ${totalAtivos} ativos · ${itens.length} cadastrados.`,
@@ -8875,7 +8883,9 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
 
-      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} />}
+      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} />}
+      {sub === "preditivo" && <SupPreditivoView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
+      {sub === "vencimentos" && <SupVencimentosView itens={itens} lotes={lotes} saidasHist={saidasHist} />}
 
       {sub === "indicadores" && <SupIndicadoresView itens={itens} lotes={lotes} forns={forns} pedidos={pedidos} reqs={reqs} />}
       {sub === "assistente" && <SupAssistenteView />}
@@ -9683,11 +9693,231 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
   );
 }
 
+// Estoque preditivo — quando acaba cada item no ritmo atual (materiais + medicamentos)
+function SupPreditivoView({ itens, lotes, saidasHist }) {
+  const [meds, setMeds] = useState([]);
+  const [medLotes, setMedLotes] = useState([]);
+  const [medSaidas, setMedSaidas] = useState([]);
+  const [busca, setBusca] = useState("");
+  const [tipoF, setTipoF] = useState("");        // "" | material | medicamento
+  const [soComGiro, setSoComGiro] = useState(true);
+
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setMedLotes);
+    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+  }, []);
+
+  function linhas(base, lotesBase, saidas, idKey, tipo, saldoFn) {
+    const cons = {}; saidas.forEach(s => { const id = s[idKey]; if (id) cons[id] = (cons[id] || 0) + Number(s.quantidade || 0); });
+    return base.filter(x => x.ativo !== false).map(x => {
+      const media = (cons[x.id] || 0) / FARM_PREV_JANELA;
+      const saldo = saldoFn(x.id);
+      const cobertura = media > 0 ? saldo / media : null;
+      const dataFim = cobertura != null ? new Date(Date.now() + cobertura * 86400000) : null;
+      const sugestao = media > 0 ? Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(x.estoque_minimo || 0) - saldo)) : 0;
+      return { tipo, nome: x.nome, unidade: x.unidade || "", saldo, media, cobertura, dataFim, sugestao };
+    });
+  }
+  const todas = [
+    ...linhas(itens, lotes, saidasHist, "item_id", "material", id => supSaldoTotal(id, lotes)),
+    ...linhas(meds, medLotes, medSaidas, "medicamento_id", "medicamento", id => farmSaldoTotal(id, medLotes)),
+  ];
+  const q = normTxt(busca);
+  const view = todas
+    .filter(x => !tipoF || x.tipo === tipoF)
+    .filter(x => !q || normTxt(x.nome).includes(q))
+    .filter(x => !soComGiro || x.media > 0)
+    .sort((a, b) => (a.cobertura ?? 1e9) - (b.cobertura ?? 1e9));
+  const criticos = todas.filter(x => x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).length;
+  const atencao = todas.filter(x => x.cobertura != null && x.cobertura >= FARM_PREV_HORIZONTE && x.cobertura < 15).length;
+  const statusDe = c => c == null ? { cor: "var(--text-muted)", label: "sem giro" }
+    : c < FARM_PREV_HORIZONTE ? { cor: "#f43f5e", label: "crítico" }
+    : c < 15 ? { cor: "#d97706", label: "atenção" }
+    : { cor: "#34d399", label: "ok" };
+  const fmtDias = c => c == null ? "—" : c < 1 ? "menos de 1 dia" : `~${Math.floor(c)} dia(s)`;
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 14 }}>
+        {[["Acabam em menos de 7 dias", criticos, criticos ? "#f43f5e" : "#34d399"],
+          ["Acabam em 7 a 15 dias", atencao, atencao ? "#d97706" : "#34d399"],
+          ["Itens com consumo (30d)", todas.filter(x => x.media > 0).length, VX.azul]].map(([l, v, cor]) => (
+          <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{l}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item…" style={{ ...farmInp, maxWidth: 300, flex: "1 1 200px" }} />
+        <select value={tipoF} onChange={e => setTipoF(e.target.value)} style={{ ...farmInp, maxWidth: 180 }}>
+          <option value="">Materiais + medicamentos</option>
+          <option value="material">Só materiais</option>
+          <option value="medicamento">Só medicamentos</option>
+        </select>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}>
+          <input type="checkbox" checked={soComGiro} onChange={e => setSoComGiro(e.target.checked)} style={{ accentColor: VX.turquesa, width: 14, height: 14 }} /> só itens com consumo
+        </label>
+      </div>
+
+      {view.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum item com esse filtro. A previsão usa o consumo dos últimos {FARM_PREV_JANELA} dias.</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 760 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+              <th style={{ padding: "9px 12px" }}>Item</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Saldo</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Consumo/dia</th>
+              <th style={{ padding: "9px 12px" }}>Acaba em</th>
+              <th style={{ padding: "9px 12px" }}>Data prevista</th>
+              <th style={{ padding: "9px 12px" }}>Situação</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Comprar (7d)</th>
+            </tr></thead>
+            <tbody>
+              {view.slice(0, 120).map((x, i) => { const st = statusDe(x.cobertura); return (
+                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "8px 12px" }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", marginRight: 7 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
+                    <span style={{ fontWeight: 600 }}>{x.nome}</span>
+                  </td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{farmFmtQtd(x.saldo)} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "Inter, sans-serif", fontWeight: 400 }}>{x.unidade}</span></td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{x.media > 0 ? farmFmtQtd(Math.round(x.media * 10) / 10) : "—"}</td>
+                  <td style={{ padding: "8px 12px", fontWeight: 700, color: st.cor }}>{fmtDias(x.cobertura)}</td>
+                  <td style={{ padding: "8px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "var(--text-2)" }}>{x.dataFim ? x.dataFim.toLocaleDateString("pt-BR") : "—"}</td>
+                  <td style={{ padding: "8px 12px" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: st.cor, marginRight: 6 }} /><span style={{ fontSize: 12, color: st.cor, fontWeight: st.label === "ok" ? 400 : 700 }}>{st.label}</span></td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700, color: x.sugestao > 0 ? VX.azul : "var(--text-muted)" }}>{x.sugestao > 0 ? farmFmtQtd(x.sugestao) : "—"}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>Previsão pela média de consumo dos últimos {FARM_PREV_JANELA} dias — assume demanda estável. "Comprar" cobre 7 dias + estoque mínimo.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Vencimentos inteligentes — o que vence, quanto vale e o que não será consumido a tempo
+function SupVencimentosView({ itens, lotes, saidasHist }) {
+  const [meds, setMeds] = useState([]);
+  const [medLotes, setMedLotes] = useState([]);
+  const [medSaidas, setMedSaidas] = useState([]);
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    loadFarmMedicamentos().then(setMeds);
+    loadFarmLotes().then(setMedLotes);
+    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+  }, []);
+
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  function linhas(base, lotesBase, saidas, idKey, tipo) {
+    const byId = {}; base.forEach(x => byId[x.id] = x);
+    const cons = {}; saidas.forEach(s => { const id = s[idKey]; if (id) cons[id] = (cons[id] || 0) + Number(s.quantidade || 0); });
+    const fkey = idKey === "item_id" ? "item_id" : "medicamento_id";
+    return lotesBase.filter(l => Number(l.quantidade) > 0 && l.validade).map(l => {
+      const item = byId[l[fkey]];
+      if (!item || item.ativo === false) return null;
+      const dias = Math.round((new Date(l.validade + "T00:00:00") - hoje) / 86400000);
+      if (dias > 90) return null;
+      const media = (cons[item.id] || 0) / FARM_PREV_JANELA;
+      // consegue consumir este lote antes de vencer? (aproximação: consumo médio × dias restantes)
+      const consumivel = dias > 0 && media > 0 && media * dias >= Number(l.quantidade);
+      return {
+        tipo, nome: item.nome, unidade: item.unidade || "", lote: l.lote || "—",
+        validade: l.validade, dias, qtd: Number(l.quantidade),
+        valor: Number(l.quantidade) * custoUnit(item), media, consumivel,
+      };
+    }).filter(Boolean);
+  }
+  const todas = [
+    ...linhas(itens, lotes, saidasHist, "item_id", "material"),
+    ...linhas(meds, medLotes, medSaidas, "medicamento_id", "medicamento"),
+  ].sort((a, b) => a.dias - b.dias);
+
+  const vencidos = todas.filter(x => x.dias < 0);
+  const ate30 = todas.filter(x => x.dias >= 0 && x.dias <= 30);
+  const ate90 = todas.filter(x => x.dias > 30 && x.dias <= 90);
+  const emRiscoReal = todas.filter(x => x.dias >= 0 && x.dias <= 90 && !x.consumivel);
+  const somaQtd = arr => arr.reduce((s, x) => s + x.qtd, 0);
+  const somaVal = arr => arr.reduce((s, x) => s + x.valor, 0);
+
+  const Faixa = ({ titulo, cor, dados }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 }}>{titulo}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: dados.length ? cor : "var(--text)", fontFamily: "JetBrains Mono, monospace" }}>{farmFmtQtd(somaQtd(dados))} <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>un · {dados.length} lote(s)</span></div>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{somaVal(dados) > 0 ? fmtReais(somaVal(dados)) : "sem custo cadastrado"}</div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* MANCHETE */}
+      <div style={{ background: ate30.length ? "#d9770612" : "var(--surface)", border: `1px solid ${ate30.length ? "#d9770655" : "var(--border)"}`, borderRadius: 10, padding: "14px 18px", marginBottom: 14, fontSize: 14.5, color: "var(--text)" }}>
+        {ate30.length === 0 && vencidos.length === 0
+          ? "✅ Nenhum lote vencido nem vencendo nos próximos 30 dias."
+          : <>Existem <strong style={{ color: "#d97706" }}>{farmFmtQtd(somaQtd(ate30))} unidades</strong> em <strong>{ate30.length} lote(s)</strong> vencendo nos próximos 30 dias{somaVal(ate30) > 0 && <> — <strong style={{ color: "#d97706" }}>{fmtReais(somaVal(ate30))}</strong> em risco</>}{vencidos.length > 0 && <>, além de <strong style={{ color: "#f43f5e" }}>{farmFmtQtd(somaQtd(vencidos))} unidades já vencidas</strong> ({fmtReais(somaVal(vencidos))})</>}.</>}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <Faixa titulo="Já vencidos (em estoque)" cor="#f43f5e" dados={vencidos} />
+        <Faixa titulo="Vencem em até 30 dias" cor="#d97706" dados={ate30} />
+        <Faixa titulo="Vencem em 31–90 dias" cor="#3b82f6" dados={ate90} />
+        <Faixa titulo="Não serão consumidos a tempo" cor="#e11d48" dados={emRiscoReal} />
+      </div>
+
+      {todas.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum lote com validade nos próximos 90 dias. Lance as entradas com lote/validade para alimentar este painel.</div>
+      ) : (
+        <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
+            <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
+              <th style={{ padding: "9px 12px" }}>Item · lote</th>
+              <th style={{ padding: "9px 12px" }}>Validade</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Qtd</th>
+              <th style={{ padding: "9px 12px", textAlign: "right" }}>Valor</th>
+              <th style={{ padding: "9px 12px" }}>Consumo cobre?</th>
+              <th style={{ padding: "9px 12px" }}>Ação sugerida</th>
+            </tr></thead>
+            <tbody>
+              {todas.slice(0, 100).map((x, i) => (
+                <tr key={i} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "8px 12px" }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", marginRight: 7 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
+                    <span style={{ fontWeight: 600 }}>{x.nome}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}> · lote {x.lote}</span>
+                  </td>
+                  <td style={{ padding: "8px 12px", fontWeight: 700, color: x.dias < 0 ? "#f43f5e" : x.dias <= 30 ? "#d97706" : "var(--text-2)" }}>{fmtDataBR(x.validade)} <span style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>({x.dias < 0 ? `vencido há ${-x.dias}d` : `${x.dias}d`})</span></td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{farmFmtQtd(x.qtd)} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "Inter, sans-serif", fontWeight: 400 }}>{x.unidade}</span></td>
+                  <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{x.valor > 0 ? fmtReais(x.valor) : "—"}</td>
+                  <td style={{ padding: "8px 12px", fontSize: 12, fontWeight: 700, color: x.dias < 0 ? "#f43f5e" : x.consumivel ? "#34d399" : "#e11d48" }}>{x.dias < 0 ? "vencido" : x.consumivel ? "sim" : x.media > 0 ? "não, no ritmo atual" : "sem consumo"}</td>
+                  <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-2)" }}>
+                    {x.dias < 0 ? "Baixa por perda/descarte e segregar"
+                      : x.consumivel ? "Consumir normalmente (FEFO já prioriza)"
+                      : x.media > 0 ? "Priorizar uso, remanejar entre setores ou negociar troca com o fornecedor"
+                      : "Sem giro — avaliar remanejamento/devolução antes de vencer"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", padding: "6px 12px" }}>"Consumo cobre?" compara a quantidade do lote com o consumo médio diário ({FARM_PREV_JANELA} dias) × dias até vencer. Valores pelo custo unitário cadastrado.</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Painel executivo — visão financeira do estoque (almoxarifado + Farmácia).
 // Critérios transparentes: valores pelo custo unitário cadastrado; "economia" =
 // variação vs mês anterior; "capital liberável" = excesso acima de 30d + mínimo.
 const SUP_EXEC_COBERTURA_ALVO = 30; // dias de cobertura considerados necessários
-function SupExecutivoView({ itens, lotes }) {
+function SupExecutivoView({ itens, lotes, reqs = [] }) {
+  const [simGrupo, setSimGrupo] = useState("");
+  const [simPct, setSimPct] = useState(30);
   const [meds, setMeds] = useState([]);
   const [medLotes, setMedLotes] = useState([]);
   const [supMesAtual, setSupMesAtual] = useState([]);
@@ -9893,6 +10123,108 @@ function SupExecutivoView({ itens, lotes }) {
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Sugestão: adiar a recompra destes itens e consumir o excedente — sem risco assistencial, pois a cobertura continua acima do alvo.</div>
             </div>
           )}
+        </Painel>
+      </div>
+
+      {/* MAPA HOSPITALAR — um card por unidade/setor */}
+      {(() => {
+        const noMesAtual = iso => { const d = iso ? new Date(iso) : null; const h = new Date(); return d && d.getMonth() === h.getMonth() && d.getFullYear() === h.getFullYear(); };
+        const reqsSetorMes = {}; reqs.filter(r => r.status === "entregue" && noMesAtual(r.entregue_em || r.updated_at)).forEach(r => { reqsSetorMes[r.setor] = (reqsSetorMes[r.setor] || 0) + 1; });
+        const topItemSetor = {};
+        supMesAtual.filter(m => m.tipo === "saida" && m.setor).forEach(m => { const s = topItemSetor[m.setor] = topItemSetor[m.setor] || {}; const n = itemById[m.item_id]?.nome; if (n) s[n] = (s[n] || 0) + Number(m.quantidade || 0); });
+        farmMesAtual.filter(m => m.tipo === "saida" && m.setor).forEach(m => { const s = topItemSetor[m.setor] = topItemSetor[m.setor] || {}; const n = medById[m.medicamento_id]?.nome; if (n) s[n] = (s[n] || 0) + Number(m.quantidade || 0); });
+        const topDe = k => { const m = topItemSetor[k]; if (!m) return null; const e = Object.entries(m).sort((a, b) => b[1] - a[1])[0]; return e ? `${e[0]} (${farmFmtQtd(e[1])})` : null; };
+        if (!setoresRank.length) return null;
+        return (<>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", margin: "4px 0 10px" }}>Mapa hospitalar — consumo por unidade (mês)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12, marginBottom: 14 }}>
+            {setoresRank.slice(0, 12).map(x => (
+              <div key={x.k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: `3px solid ${x.delta != null && x.delta > 10 ? "#f43f5e" : x.delta != null && x.delta < -10 ? "#34d399" : VX.azul}`, borderRadius: 10, padding: "12px 14px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 800, fontSize: 13, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.k}</span>
+                  {deltaTag(x.delta)}
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: VX.turquesa, margin: "4px 0 2px" }}>{fmtReais(x.atual)}</div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  mês anterior {fmtReais(x.ant)}<br />
+                  {reqsSetorMes[x.k] ? `${reqsSetorMes[x.k]} requisição(ões) atendida(s)` : "sem requisições no mês"}<br />
+                  {topDe(x.k) ? `mais consumido: ${topDe(x.k)}` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>);
+      })()}
+
+      {/* FÁRMACOS MONITORADOS + SIMULADOR */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, marginBottom: 14 }}>
+        <Painel titulo="Fármacos monitorados — alto custo / alta vigilância (mês)">
+          {(() => {
+            const monitorados = ativosMed.filter(m => SUP_FARMACOS_MONITORADOS.some(k => normTxt(m.nome).includes(k) || normTxt(m.principio_ativo).includes(k)));
+            const custoSaidasFarmMes = farmMesAtual.filter(m => m.tipo === "saida").reduce((s, m) => s + custoFarm(m), 0);
+            const linhas = monitorados.map(med => {
+              const saidas = farmMesAtual.filter(m => m.tipo === "saida" && m.medicamento_id === med.id);
+              const qtd = saidas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+              const custo = saidas.reduce((s, m) => s + custoFarm(m), 0);
+              const pacientes = new Set(saidas.map(m => m.paciente_prontuario || m.paciente_iniciais).filter(Boolean)).size;
+              return { med, qtd, custo, pacientes, pct: custoSaidasFarmMes > 0 ? (custo / custoSaidasFarmMes) * 100 : 0, saldo: farmSaldoTotal(med.id, medLotes) };
+            }).sort((a, b) => b.custo - a.custo || b.qtd - a.qtd);
+            if (!linhas.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum fármaco monitorado encontrado no catálogo (procuro por: {SUP_FARMACOS_MONITORADOS.join(", ")}).</div>;
+            return (<>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {linhas.map((x, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 10px" }}>
+                    <span style={{ flex: 1, minWidth: 0, color: "var(--text-2)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.med.nome}{x.med.controlado ? <span style={{ fontSize: 9, color: "#6366f1", border: "1px solid #6366f155", borderRadius: 99, padding: "0 5px", marginLeft: 6, fontWeight: 800 }}>P.344</span> : null}</span>
+                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 46, textAlign: "right" }}>{farmFmtQtd(x.qtd)}</span>
+                    <span style={{ fontSize: 10.5, color: "var(--text-muted)", minWidth: 96, textAlign: "right" }}>{x.custo > 0 ? `${fmtReais(x.custo)} · ${x.pct.toFixed(1)}%` : "sem custo"}</span>
+                    <span style={{ fontSize: 10.5, color: "var(--text-muted)", minWidth: 78, textAlign: "right" }}>{x.pacientes} pac. · saldo {farmFmtQtd(x.saldo)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>Saídas do mês na Farmácia. % = participação no custo total dispensado no mês. Controlados também aparecem no Livro (Portaria 344).</div>
+            </>);
+          })()}
+        </Painel>
+
+        <Painel titulo="Simulador financeiro — e se aumentarmos o estoque?">
+          {(() => {
+            const classesMed = [...new Set(ativosMed.map(m => m.classe || "Outros"))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+            const catsMat = [...new Set(ativosMat.map(i => i.categoria || "Outros"))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+            const grupoSel = simGrupo || (classesMed.includes("Antibióticos") ? "med:Antibióticos" : (classesMed[0] ? "med:" + classesMed[0] : (catsMat[0] ? "mat:" + catsMat[0] : "")));
+            const [tipoG, nomeG] = grupoSel ? grupoSel.split(":") : ["", ""];
+            const base = tipoG === "med" ? ativosMed.filter(m => (m.classe || "Outros") === nomeG) : ativosMat.filter(i => (i.categoria || "Outros") === nomeG);
+            const capitalGrupo = base.reduce((s, x) => s + (tipoG === "med" ? farmSaldoTotal(x.id, medLotes) : supSaldoTotal(x.id, lotes)) * custoUnit(x), 0);
+            const consumoMesGrupo = tipoG === "med"
+              ? farmMesAtual.filter(m => m.tipo === "saida" && base.some(b => b.id === m.medicamento_id)).reduce((s, m) => s + custoFarm(m), 0)
+              : supMesAtual.filter(m => m.tipo === "saida" && base.some(b => b.id === m.item_id)).reduce((s, m) => s + custoSup(m), 0);
+            const pct = Number(simPct) || 0;
+            const capitalExtra = capitalGrupo * (pct / 100);
+            const cobAtual = consumoMesGrupo > 0 ? capitalGrupo / (consumoMesGrupo / 30) : null;
+            const cobNova = consumoMesGrupo > 0 ? (capitalGrupo + capitalExtra) / (consumoMesGrupo / 30) : null;
+            return (<>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: 8, marginBottom: 10 }}>
+                <div>
+                  <label style={farmLbl}>Grupo</label>
+                  <select value={grupoSel} onChange={e => setSimGrupo(e.target.value)} style={farmInp}>
+                    <optgroup label="Medicamentos (classe)">{classesMed.map(c => <option key={"med:" + c} value={"med:" + c}>{c}</option>)}</optgroup>
+                    <optgroup label="Materiais (categoria)">{catsMat.map(c => <option key={"mat:" + c} value={"mat:" + c}>{c}</option>)}</optgroup>
+                  </select>
+                </div>
+                <div>
+                  <label style={farmLbl}>Aumento %</label>
+                  <input type="number" value={simPct} onChange={e => setSimPct(e.target.value)} style={farmInp} />
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>
+                <div>Estoque atual do grupo: <strong style={{ fontFamily: "JetBrains Mono, monospace" }}>{fmtReais(capitalGrupo)}</strong> ({base.length} itens)</div>
+                <div>Aumentar <strong>{pct}%</strong> imobiliza <strong style={{ color: "#d97706", fontFamily: "JetBrains Mono, monospace" }}>+{fmtReais(capitalExtra)}</strong> → novo capital <strong style={{ fontFamily: "JetBrains Mono, monospace" }}>{fmtReais(capitalGrupo + capitalExtra)}</strong></div>
+                {cobAtual != null
+                  ? <div>Cobertura estimada: <strong>{Math.round(cobAtual)}d</strong> → <strong style={{ color: cobNova > 90 ? "#d97706" : "#34d399" }}>{Math.round(cobNova)}d</strong> (consumo do grupo: {fmtReais(consumoMesGrupo)}/mês){cobNova > 90 ? " — acima de 90d cresce o risco de vencimento" : ""}</div>
+                  : <div style={{ color: "var(--text-muted)" }}>Sem consumo com custo neste mês para estimar a cobertura do grupo.</div>}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8 }}>Simulação simples: capital ∝ estoque; cobertura = capital ÷ (consumo mensal do grupo ÷ 30). Não considera sazonalidade nem validade dos lotes.</div>
+            </>);
+          })()}
         </Painel>
       </div>
 
