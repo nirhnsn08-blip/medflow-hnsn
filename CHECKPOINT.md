@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v32
+# 📍 Ponto de restauração — checkpoint-v33
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v32` (anteriores: `checkpoint-v31` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v33` (anteriores: `checkpoint-v32` … `checkpoint-v1`)
 - **Data:** 2026-07-20
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -267,6 +267,21 @@ dá pra voltar exatamente para este estado.
     >10% = investigar desperdício). Critérios transparentes no rodapé; local e
     sem migração. Indicadores comparativos ganham significado a partir do 2º
     mês de uso.
+  - **⏰ Vencimentos inteligentes:** aba própria com manchete ("Existem X
+    unidades vencendo em 30 dias — R$ Y em risco"), faixas vencido/≤30d/
+    31–90d/**não serão consumidos a tempo** (cruza lote × consumo médio) e
+    **ação sugerida** por lote (consumir FEFO, priorizar/remanejar, baixa,
+    devolução). Materiais + medicamentos.
+  - **📈 Estoque preditivo:** aba com previsão item a item — "no ritmo atual
+    acaba em ~N dias" com data prevista, situação (crítico/atenção/ok), busca,
+    filtro MAT/MED e sugestão de compra.
+  - **💼 Painel Executivo ampliado:** **mapa hospitalar** (card por setor com
+    consumo R$, Δ%, requisições e item mais consumido), **simulador
+    financeiro** ("e se aumentarmos antibióticos em 30%?" → capital
+    adicional + cobertura antes/depois, alerta >90d) e **fármacos
+    monitorados** (constante SUP_FARMACOS_MONITORADOS: morfina, fentanil,
+    alteplase, tenecteplase, contraste, albumina — saídas, custo, % de uso,
+    pacientes, saldo, selo P.344). Tudo sem migração.
   - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
     `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20).
 
@@ -275,7 +290,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v32
+git reset --hard checkpoint-v33
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -284,7 +299,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v32
+git checkout -b recuperacao checkpoint-v33
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -300,6 +315,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `426e90d` ⏰📈 Vencimentos inteligentes + Estoque preditivo + Executivo ampliado (mapa por setor, simulador, fármacos monitorados)
 - `1360d0f` 💼 Painel Executivo — capital parado/liberável, economia, perdas, rupturas, custo por paciente, setores c/ Δ
 - `cd0fe03` 📦 Suprimentos Fase D — Relatórios & BI + assistente local (módulo completo)
 - `e2d54be` 📦 Suprimentos Fase C — pedidos de compra (mat+med, sugestão da previsão, recebimento parcial c/ entrada automática)
