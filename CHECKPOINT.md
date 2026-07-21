@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v34
+# 📍 Ponto de restauração — checkpoint-v35
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v34` (anteriores: `checkpoint-v33` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v35` (anteriores: `checkpoint-v34` … `checkpoint-v1`)
 - **Data:** 2026-07-21
 - **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
   (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
@@ -293,6 +293,17 @@ dá pra voltar exatamente para este estado.
     móvel** (materiais e medicamentos). **Código de barras** no cadastro (leitor
     USB) com busca por código no Estoque e no Inventário. Migração
     `supabase/migracao-suprimentos-inventario.sql` (rodada no HNSN em 2026-07-21).
+  - **🛡️ Confiança dos dados + 🎯 ponto de pedido + ✅ Ações de hoje (3 melhorias):**
+    (1) **selo de confiança** no Painel Executivo (% com custo, inventariado 90d,
+    código de barras — diz o quanto confiar nos R$); (2) **ponto de pedido
+    inteligente** — campo **prazo de entrega por fornecedor** (`lead_time_dias`),
+    "comprar agora" dispara quando a cobertura cai abaixo do prazo + margem (3d),
+    cada material herda o prazo do último fornecedor (padrão 15d), sugestão de
+    compra cobre o prazo de reposição, e **alerta de demanda instável** (↑/↓)
+    quando o consumo recente destoa da média; (3) aba **Ações de hoje** — lista
+    priorizada (rupturas, comprar, vencimentos, requisições, recebimentos,
+    contagens) com atalho para cada ferramenta. Migração
+    `supabase/migracao-suprimentos-ponto-de-pedido.sql` (rodada no HNSN em 2026-07-21).
   - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
     `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20).
 
@@ -301,7 +312,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v34
+git reset --hard checkpoint-v35
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -310,7 +321,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v34
+git checkout -b recuperacao checkpoint-v35
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -328,6 +339,9 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `fc3da31` ✅ Painel "Ações de hoje" (lista priorizada de tarefas do almoxarifado)
+- `47f7097` 🎯 Ponto de pedido inteligente (lead time por fornecedor + demanda instável)
+- `ea49925` 🛡️ Selo de confiança dos dados no Painel Executivo
 - `9d259f3` 🔢💰📷 Inventário cíclico (contagem cega ABC + acuracidade) + custo médio ponderado + código de barras
 - (PRs do Adauam) 🐛 fix de fuso horário em datas + regra única de estoque; 📄 docs de fluxo de equipe
 - `426e90d` ⏰📈 Vencimentos inteligentes + Estoque preditivo + Executivo ampliado (mapa por setor, simulador, fármacos monitorados)
