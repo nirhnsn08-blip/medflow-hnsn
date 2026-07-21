@@ -1,7 +1,7 @@
 # 📄 Contexto do Projeto — Valentrax / MedFlow HNSN
 
 > Resumo de referência para onboarding rápido de novos colaboradores (humanos ou IA).
-> Atualizado em 2026-07-21 (checkpoint-v33 + PRs #1 e #2).
+> Atualizado em 2026-07-21 (checkpoint-v37 + PRs #1 e #2).
 
 ## O que é
 
@@ -28,14 +28,14 @@ GitHub valida o build · Edge Function opcional de resumo clínico com Claude.
 
 ## Arquitetura
 
-- **Todo o front num único `src/App.jsx` (~11.400 linhas).**
+- **Todo o front num único `src/App.jsx` (~12.300 linhas).**
 - Acesso ao Supabase via `fetch` REST direto (apikey anon + JWT do usuário logado).
 - Fallback para `localStorage` quando offline — mas **o login exige Supabase**.
 - ~30 tabelas com RLS por papel (`adm_master`, `adm_silver`, `analista`,
   `visualizador`) via função `my_role()`.
 - Registros clínicos **append-only** (evoluções, prescrições, kardex, auditoria).
   A imutabilidade foi validada em teste: nem um `adm_master` apaga pela API.
-- 18 arquivos SQL em `supabase/` (schema base + migrações incrementais).
+- 21 arquivos SQL em `supabase/` (schema base + migrações incrementais).
 
 ## Como rodar localmente
 
@@ -52,7 +52,7 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
 
 ## Estado atual (2026-07-21)
 
-- Último checkpoint: **v33**. PRs **#1** (correções de bugs) e **#2** (fluxo de
+- Último checkpoint: **v37**. PRs **#1** (correções de bugs) e **#2** (fluxo de
   equipe) mergeados na `main`.
 - Documentação: [`GUIA-GIT.md`](GUIA-GIT.md) (trabalho em equipe),
   [`RELATORIO-TESTE.md`](RELATORIO-TESTE.md) + `.pdf` (bugs encontrados).
@@ -86,9 +86,9 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
 
 ## Dívidas e próximos passos (ordem de prioridade)
 
-1. **Alinhar o processo entre as duas pessoas** — o fluxo de branch + PR precisa ser
+1. **Modularizar o `App.jsx`** — ver item abaixo; virou a prioridade nº 1.
    acordado, não só documentado.
-2. **Modularizar o `App.jsx`** — cresceu de 9k para 11,4k linhas em um único dia. A
+2. **Modularizar o `App.jsx`** — cresceu de 9k para 12,3k linhas em dois dias. A
    dívida está composta e é o que mais trava o trabalho em paralelo.
 3. **Testes automatizados** — não existe nenhum, num sistema que decide alertas de
    medicação (dose máxima, interação medicamentosa, alergia).
