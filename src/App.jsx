@@ -99,6 +99,7 @@ const ICON_PATHS = {
   chart:     <><path d="M4 4v16h16"/><rect x="7.5" y="12" width="2.6" height="5"/><rect x="12" y="8" width="2.6" height="9"/><rect x="16.5" y="5" width="2.6" height="12"/></>,
   chat:      <><path d="M4 5h16v11H9l-4 4v-4H4z"/><path d="M8 9h8M8 12.5h5"/></>,
   cart:      <><circle cx="9" cy="20" r="1.6"/><circle cx="17" cy="20" r="1.6"/><path d="M3 4h2.5l2.2 11.5h10.6L21 8H6.6"/></>,
+  briefcase: <><rect x="3" y="7.5" width="18" height="12.5" rx="2"/><path d="M9 7.5V5.5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/><path d="M3 13h18"/></>,
   truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
 };
 function Icon({ name, size = 15 }) {
@@ -2106,6 +2107,7 @@ const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devoluçã
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
 const SUP_NAV = [
   { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
+  { key: "executivo",    label: "Painel executivo", icon: "briefcase" },
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
   { key: "compras",      label: "Compras",      icon: "cart" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
@@ -8805,6 +8807,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const navAtual = SUP_NAV.find(n => n.key === sub) || SUP_NAV[0];
   const subTexto = {
     dashboard: "Visão geral do almoxarifado com atalhos.",
+    executivo: "Visão financeira do estoque — capital parado, variação de gastos e perdas, rupturas previstas e capital liberável. Almoxarifado + Farmácia.",
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
     indicadores: "Relatórios & BI — consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
@@ -8871,6 +8874,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
       {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
 
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} onChanged={refresh} />}
+
+      {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} />}
 
       {sub === "indicadores" && <SupIndicadoresView itens={itens} lotes={lotes} forns={forns} pedidos={pedidos} reqs={reqs} />}
       {sub === "assistente" && <SupAssistenteView />}
@@ -9673,6 +9678,230 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           <button onClick={() => onConfirm(pedido, linhas, nf.trim())} disabled={busy || !algum} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || !algum) ? 0.5 : 1 }}>{busy ? "…" : "Confirmar recebimento"}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Painel executivo — visão financeira do estoque (almoxarifado + Farmácia).
+// Critérios transparentes: valores pelo custo unitário cadastrado; "economia" =
+// variação vs mês anterior; "capital liberável" = excesso acima de 30d + mínimo.
+const SUP_EXEC_COBERTURA_ALVO = 30; // dias de cobertura considerados necessários
+function SupExecutivoView({ itens, lotes }) {
+  const [meds, setMeds] = useState([]);
+  const [medLotes, setMedLotes] = useState([]);
+  const [supMesAtual, setSupMesAtual] = useState([]);
+  const [supMesAnt, setSupMesAnt] = useState([]);
+  const [farmMesAtual, setFarmMesAtual] = useState([]);
+  const [farmMesAnt, setFarmMesAnt] = useState([]);
+  const [supSaidas30, setSupSaidas30] = useState([]);
+  const [farmSaidas30, setFarmSaidas30] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    const iniAtual = new Date(); iniAtual.setDate(1); iniAtual.setHours(0, 0, 0, 0);
+    const fimAtual = new Date(iniAtual.getFullYear(), iniAtual.getMonth() + 1, 1);
+    const iniAnt = new Date(iniAtual.getFullYear(), iniAtual.getMonth() - 1, 1);
+    Promise.all([
+      loadFarmMedicamentos(), loadFarmLotes(),
+      loadSupMovimentosPeriodo(iniAtual.toISOString(), fimAtual.toISOString()),
+      loadSupMovimentosPeriodo(iniAnt.toISOString(), iniAtual.toISOString()),
+      loadFarmMovimentosPeriodo(iniAtual.toISOString(), fimAtual.toISOString()),
+      loadFarmMovimentosPeriodo(iniAnt.toISOString(), iniAtual.toISOString()),
+      loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
+      loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
+    ]).then(([m, ml, sa, sp, fa, fp, ss, fs]) => {
+      setMeds(m); setMedLotes(ml);
+      setSupMesAtual(sa); setSupMesAnt(sp);
+      setFarmMesAtual(fa); setFarmMesAnt(fp);
+      setSupSaidas30(ss); setFarmSaidas30(fs);
+      setCarregando(false);
+    });
+  }, []);
+
+  const itemById = {}; itens.forEach(i => itemById[i.id] = i);
+  const medById = {}; meds.forEach(m => medById[m.id] = m);
+  const ativosMat = itens.filter(i => i.ativo !== false);
+  const ativosMed = meds.filter(m => m.ativo !== false);
+
+  // ── 1. Capital parado no estoque (saldo × custo unitário) ──
+  const capMat = ativosMat.reduce((s, i) => s + supSaldoTotal(i.id, lotes) * custoUnit(i), 0);
+  const capMed = ativosMed.reduce((s, m) => s + farmSaldoTotal(m.id, medLotes) * custoUnit(m), 0);
+  const capTotal = capMat + capMed;
+  const semPreco = ativosMat.filter(i => supSaldoTotal(i.id, lotes) > 0 && !custoUnit(i)).length
+                 + ativosMed.filter(m => farmSaldoTotal(m.id, medLotes) > 0 && !custoUnit(m)).length;
+
+  // ── 2. Gasto do mês vs mês anterior (entradas = compras) ──
+  const custoSup = mv => Number(mv.quantidade || 0) * custoUnit(itemById[mv.item_id]);
+  const custoFarm = mv => Number(mv.quantidade || 0) * custoUnit(medById[mv.medicamento_id]);
+  const gasto = (sup, farm) => sup.filter(m => m.tipo === "entrada").reduce((s, m) => s + custoSup(m), 0)
+                             + farm.filter(m => m.tipo === "entrada").reduce((s, m) => s + custoFarm(m), 0);
+  const gastoAtual = gasto(supMesAtual, farmMesAtual);
+  const gastoAnt = gasto(supMesAnt, farmMesAnt);
+  const economia = gastoAnt - gastoAtual;   // positivo = gastamos menos que no mês passado
+
+  // ── 3. Perdas por vencimento: mês atual vs anterior ──
+  const ehPerda = mv => mv.tipo === "saida" && (mv.motivo || "") === "Perda / vencimento";
+  const perdas = (sup, farm) => sup.filter(ehPerda).reduce((s, m) => s + custoSup(m), 0)
+                              + farm.filter(ehPerda).reduce((s, m) => s + custoFarm(m), 0);
+  const perdasAtual = perdas(supMesAtual, farmMesAtual);
+  const perdasAnt = perdas(supMesAnt, farmMesAnt);
+  const reducaoPerdas = perdasAnt > 0 ? ((perdasAnt - perdasAtual) / perdasAnt) * 100 : null;
+
+  // ── 4. Rupturas previstas (7 dias) — materiais e medicamentos ──
+  function riscos(base, lotesBase, saidas, idKey, saldoFn) {
+    const cons = {}; saidas.forEach(s => { const id = s[idKey]; if (id) cons[id] = (cons[id] || 0) + Number(s.quantidade || 0); });
+    return base.map(x => { const media = (cons[x.id] || 0) / FARM_PREV_JANELA; const s = saldoFn(x.id); return { nome: x.nome, media, cobertura: media > 0 ? s / media : null }; })
+      .filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE)
+      .sort((a, b) => a.cobertura - b.cobertura);
+  }
+  const riscoMat = riscos(ativosMat, lotes, supSaidas30, "item_id", id => supSaldoTotal(id, lotes));
+  const riscoMed = riscos(ativosMed, medLotes, farmSaidas30, "medicamento_id", id => farmSaldoTotal(id, medLotes));
+
+  // ── 5. Medicamentos que mais custam por paciente (dispensações do mês) ──
+  const dispMes = farmMesAtual.filter(m => m.tipo === "saida" && (m.paciente_prontuario || m.paciente_iniciais));
+  const porMed = {};
+  dispMes.forEach(m => {
+    const e = porMed[m.medicamento_id] = porMed[m.medicamento_id] || { custo: 0, pacientes: new Set() };
+    e.custo += custoFarm(m);
+    e.pacientes.add(m.paciente_prontuario || m.paciente_iniciais);
+  });
+  const custoPorPaciente = Object.entries(porMed)
+    .map(([id, v]) => ({ med: medById[Number(id)], custo: v.custo, n: v.pacientes.size, porPac: v.pacientes.size ? v.custo / v.pacientes.size : 0 }))
+    .filter(x => x.custo > 0).sort((a, b) => b.porPac - a.porPac);
+
+  // ── 6. Setores: consumo em R$ no mês, com variação vs anterior ──
+  function consumoSetor(sup, farm) {
+    const m = {};
+    sup.filter(x => x.tipo === "saida").forEach(x => { const k = x.setor || "—"; m[k] = (m[k] || 0) + custoSup(x); });
+    farm.filter(x => x.tipo === "saida" && x.setor).forEach(x => { const k = x.setor; m[k] = (m[k] || 0) + custoFarm(x); });
+    return m;
+  }
+  const setorAtual = consumoSetor(supMesAtual, farmMesAtual);
+  const setorAnt = consumoSetor(supMesAnt, farmMesAnt);
+  const setoresRank = Object.keys({ ...setorAtual, ...setorAnt })
+    .map(k => ({ k, atual: setorAtual[k] || 0, ant: setorAnt[k] || 0, delta: (setorAnt[k] || 0) > 0 ? (((setorAtual[k] || 0) - setorAnt[k]) / setorAnt[k]) * 100 : null }))
+    .filter(x => x.atual > 0 || x.ant > 0).sort((a, b) => b.atual - a.atual);
+
+  // ── 7. Capital liberável: excesso acima da cobertura-alvo + mínimo ──
+  function excesso(base, lotesBase, saidas, idKey, saldoFn) {
+    const cons = {}; saidas.forEach(s => { const id = s[idKey]; if (id) cons[id] = (cons[id] || 0) + Number(s.quantidade || 0); });
+    return base.map(x => {
+      const media = (cons[x.id] || 0) / FARM_PREV_JANELA;
+      if (media <= 0 || !custoUnit(x)) return null;                     // só itens com giro e preço
+      const necessario = media * SUP_EXEC_COBERTURA_ALVO + Number(x.estoque_minimo || 0);
+      const exc = saldoFn(x.id) - necessario;
+      return exc > 0 ? { nome: x.nome, exc, valor: exc * custoUnit(x), cobertura: saldoFn(x.id) / media } : null;
+    }).filter(Boolean).sort((a, b) => b.valor - a.valor);
+  }
+  const excMat = excesso(ativosMat, lotes, supSaidas30, "item_id", id => supSaldoTotal(id, lotes));
+  const excMed = excesso(ativosMed, medLotes, farmSaidas30, "medicamento_id", id => farmSaldoTotal(id, medLotes));
+  const capLiberavel = [...excMat, ...excMed].reduce((s, x) => s + x.valor, 0);
+  const excTop = [...excMat, ...excMed].sort((a, b) => b.valor - a.valor);
+
+  const KPI = ({ label, valor, cor, sub, destaque }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: destaque ? 26 : 22, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 4 }}>{valor}</div>
+      {sub && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.4 }}>{sub}</div>}
+    </div>
+  );
+  const Painel = ({ titulo, children }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>{titulo}</div>
+      {children}
+    </div>
+  );
+  const deltaTag = d => d == null ? <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>novo</span>
+    : <span style={{ fontSize: 11, fontWeight: 800, color: d > 10 ? "#f43f5e" : d < -10 ? "#34d399" : "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{d > 0 ? "+" : ""}{d.toFixed(0)}%</span>;
+
+  if (carregando) return <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "2rem", textAlign: "center" }}>Calculando o painel executivo…</div>;
+
+  return (
+    <div>
+      {/* LINHA 1 — CAPITAL */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 12 }}>
+        <KPI destaque label="Capital parado no estoque" valor={fmtReais(capTotal)} cor={VX.turquesa}
+          sub={`${fmtReais(capMat)} almoxarifado · ${fmtReais(capMed)} farmácia${semPreco ? ` · ${semPreco} item(ns) com saldo sem preço` : ""}`} />
+        <KPI destaque label="Capital liberável p/ compras" valor={fmtReais(capLiberavel)} cor={capLiberavel > 0 ? "#34d399" : "var(--border)"}
+          sub={`estoque acima de ${SUP_EXEC_COBERTURA_ALVO} dias de cobertura + mínimo — dá para consumir antes de recomprar`} />
+        <KPI destaque label={economia >= 0 ? "Economia vs mês anterior" : "Gasto a mais vs mês anterior"} valor={fmtReais(Math.abs(economia))} cor={economia >= 0 ? "#34d399" : "#f43f5e"}
+          sub={`compras: ${fmtReais(gastoAtual)} neste mês · ${fmtReais(gastoAnt)} no anterior`} />
+        <KPI destaque label="Perdas por vencimento" valor={fmtReais(perdasAtual)} cor={perdasAtual > 0 ? "#f43f5e" : "#34d399"}
+          sub={reducaoPerdas == null ? `mês anterior: ${fmtReais(perdasAnt)}` : reducaoPerdas >= 0 ? `redução de ${reducaoPerdas.toFixed(0)}% vs mês anterior (${fmtReais(perdasAnt)})` : `aumento de ${Math.abs(reducaoPerdas).toFixed(0)}% vs mês anterior (${fmtReais(perdasAnt)})`} />
+      </div>
+
+      {/* LINHA 2 — PAINÉIS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))", gap: 14, marginBottom: 14 }}>
+        <Painel titulo={`Ruptura prevista em ${FARM_PREV_HORIZONTE} dias (${riscoMat.length + riscoMed.length} itens)`}>
+          {riscoMat.length + riscoMed.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum item deve acabar no ritmo atual de consumo. 👍</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {[...riscoMat.map(x => ({ ...x, tipo: "MAT" })), ...riscoMed.map(x => ({ ...x, tipo: "MED" }))].sort((a, b) => a.cobertura - b.cobertura).slice(0, 8).map((x, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, color: x.tipo === "MED" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "MED" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px" }}>{x.tipo}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.nome}</span>
+                  <span style={{ fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: x.cobertura <= 3 ? "#f43f5e" : "#d97706" }}>{x.cobertura < 1 ? "<1d" : Math.floor(x.cobertura) + "d"}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Painel>
+
+        <Painel titulo="Medicamentos que mais custam por paciente (mês)">
+          {custoPorPaciente.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem dispensações com paciente e custo neste mês.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {custoPorPaciente.slice(0, 8).map((x, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 16 }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.med?.nome || "—"}</span>
+                  <span style={{ fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#0d9488" }}>{fmtReais(x.porPac)}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--text-muted)", minWidth: 54 }}>{x.n} pac. · {fmtReais(x.custo)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Painel>
+
+        <Painel titulo="Consumo por setor em R$ (vs mês anterior)">
+          {setoresRank.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Sem consumo por setor com custo neste mês. Registre saídas informando o setor.</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {setoresRank.slice(0, 8).map((x, i) => (
+                <div key={x.k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 16 }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.k}</span>
+                  <span style={{ fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>{fmtReais(x.atual)}</span>
+                  {deltaTag(x.delta)}
+                </div>
+              ))}
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Δ vermelho = consumo cresceu &gt;10% — vale investigar desperdício ou mudança de demanda.</div>
+            </div>
+          )}
+        </Painel>
+
+        <Painel titulo={`Onde está o capital liberável (cobertura > ${SUP_EXEC_COBERTURA_ALVO}d)`}>
+          {excTop.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum item com excesso de estoque relevante. Capital bem dimensionado. 👍</div> : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+              {excTop.slice(0, 8).map((x, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "var(--text-muted)", width: 16 }}>{i + 1}</span>
+                  <span style={{ flex: 1, minWidth: 0, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.nome}</span>
+                  <span style={{ fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#34d399" }}>{fmtReais(x.valor)}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--text-muted)", minWidth: 60 }}>cobre {Math.floor(x.cobertura)}d</span>
+                </div>
+              ))}
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Sugestão: adiar a recompra destes itens e consumir o excedente — sem risco assistencial, pois a cobertura continua acima do alvo.</div>
+            </div>
+          )}
+        </Painel>
+      </div>
+
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.6, border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+        <strong>Critérios do painel</strong> · Valores pelo <strong>custo unitário cadastrado</strong> em cada material/medicamento (itens sem preço ficam de fora dos R$).
+        · <strong>Economia</strong> compara as compras (entradas) deste mês com o mês anterior.
+        · <strong>Capital liberável</strong> = valor do estoque acima de {SUP_EXEC_COBERTURA_ALVO} dias de cobertura + estoque mínimo, considerando o consumo médio dos últimos {FARM_PREV_JANELA} dias — itens sem giro não entram.
+        · <strong>Rupturas</strong> usam a mesma previsão de demanda do Estoque.
+        · Painel local e gratuito: nada é enviado para fora.
       </div>
     </div>
   );
