@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v30
+# 📍 Ponto de restauração — checkpoint-v31
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v30` (anteriores: `checkpoint-v29` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v31` (anteriores: `checkpoint-v30` … `checkpoint-v1`)
 - **Data:** 2026-07-20
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
@@ -249,16 +249,24 @@ dá pra voltar exatamente para este estado.
     automática** no estoque certo (material no kardex do almoxarifado com
     fornecedor; medicamento no kardex da Farmácia), com NF/lote/validade por
     item e recebimento em várias vezes. Testado e validado.
+  - **Fase D — Relatórios & BI + Assistente:** aba **Relatórios & BI** com
+    seletor de mês, 8 KPIs (consumo qtd/custo, entradas/gasto em compras,
+    perdas, requisições entregues, rupturas, validade), rankings de **top
+    materiais, consumo por setor, por categoria e gasto por fornecedor**,
+    **curva ABC por custo de consumo** e **relatório mensal imprimível/PDF**
+    Valentrax; e aba **Assistente AI** local/gratuito (panorama, o que vai
+    faltar, zerados, validade, consumo/gasto do mês, requisições, pedidos,
+    fornecedores, saldo por nome — nada sai do navegador). Sem migração.
+    **Módulo Estoque & Compras completo (A+B+C+D).**
   - **Migrações:** `supabase/migracao-suprimentos-faseA.sql`, `-faseB.sql`,
-    `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20). Fase futura:
-    BI/assistente (D).
+    `-faseC.sql` e `-seed.sql` (rodadas no HNSN em 2026-07-20).
 
 ## Como VOLTAR para este ponto (restaurar)
 
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v30
+git reset --hard checkpoint-v31
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -267,7 +275,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v30
+git checkout -b recuperacao checkpoint-v31
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -283,6 +291,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   se o SQL de limpeza ainda não foi rodado.
 
 ## Marcos incluídos (mais recentes no topo)
+- `cd0fe03` 📦 Suprimentos Fase D — Relatórios & BI + assistente local (módulo completo)
 - `e2d54be` 📦 Suprimentos Fase C — pedidos de compra (mat+med, sugestão da previsão, recebimento parcial c/ entrada automática)
 - `b988721` 📦 fix: seed de suprimentos insere por nome
 - `bef3892` 📦 Suprimentos Fase B — requisições dos setores (bipe, baixa FEFO, parcial) + seed ~120 materiais
