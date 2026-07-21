@@ -10054,6 +10054,13 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
   const invRecentes = Object.values(ultimaInv).filter(u => (Date.now() - new Date(u.created_at)) / 86400000 <= 90);
   const acuracidade = invRecentes.length ? (invRecentes.filter(u => Number(u.diferenca) === 0).length / invRecentes.length) * 100 : null;
 
+  // ── Confiança dos dados: o quanto dá para acreditar nos R$ e nas previsões ──
+  // (custo cadastrado, itens inventariados nos últimos 90d, código de barras)
+  const baseCusto = [...ativosMat, ...ativosMed];
+  const pctCusto = baseCusto.length ? (baseCusto.filter(x => custoUnit(x) > 0).length / baseCusto.length) * 100 : null;
+  const pctInventariado = ativosMat.length ? (Object.values(ultimaInv).filter(u => (Date.now() - new Date(u.created_at)) / 86400000 <= 90).length / ativosMat.length) * 100 : null;
+  const pctBarras = ativosMat.length ? (ativosMat.filter(i => (i.codigo_barras || "").trim()).length / ativosMat.length) * 100 : null;
+
   // ── 2. Gasto do mês vs mês anterior (entradas = compras) ──
   const custoSup = mv => Number(mv.quantidade || 0) * custoUnit(itemById[mv.item_id]);
   const custoFarm = mv => Number(mv.quantidade || 0) * custoUnit(medById[mv.medicamento_id]);
@@ -10140,8 +10147,30 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
 
   if (carregando) return <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "2rem", textAlign: "center" }}>Calculando o painel executivo…</div>;
 
+  // Selo de confiança: cor pela média das três coberturas de dados
+  const confMedia = [pctCusto, pctInventariado, pctBarras].filter(x => x != null).reduce((s, x, _, a) => s + x / a.length, 0);
+  const confCor = p => p == null ? "var(--text-muted)" : p >= 80 ? "#34d399" : p >= 50 ? "#d97706" : "#f43f5e";
+  const Pastilha = ({ label, pct, dica }) => (
+    <div title={dica} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 99, padding: "5px 12px" }}>
+      <span style={{ width: 8, height: 8, borderRadius: 99, background: confCor(pct), flexShrink: 0 }} />
+      <span style={{ fontSize: 11.5, color: "var(--text-2)" }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: confCor(pct) }}>{pct == null ? "—" : pct.toFixed(0) + "%"}</span>
+    </div>
+  );
+
   return (
     <div>
+      {/* SELO DE CONFIANÇA DOS DADOS */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${confCor(confMedia)}`, borderRadius: 10 }}>
+        <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>Confiança dos dados</span>
+        <Pastilha label="com custo" pct={pctCusto} dica="% de materiais e medicamentos ativos com custo unitário cadastrado. Os R$ do painel só contam esses itens." />
+        <Pastilha label="inventariado 90d" pct={pctInventariado} dica="% de materiais contados no inventário nos últimos 90 dias (cobertura da acuracidade)." />
+        <Pastilha label="com cód. barras" pct={pctBarras} dica="% de materiais com código de barras cadastrado." />
+        <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", maxWidth: 300 }}>
+          {confMedia >= 80 ? "Dados sólidos — os números abaixo são confiáveis." : confMedia >= 50 ? "Dados parciais — complete custo/contagens para os R$ ficarem fiéis." : "Poucos dados — trate os valores em R$ como estimativa grosseira por enquanto."}
+        </span>
+      </div>
+
       {/* LINHA 1 — CAPITAL */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 12, marginBottom: 12 }}>
         <KPI destaque label="Capital parado no estoque" valor={fmtReais(capTotal)} cor={VX.turquesa}
