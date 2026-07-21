@@ -16,20 +16,70 @@ const USE_SUPABASE = SUPABASE_URL.length > 10 && SUPABASE_KEY.length > 10;
 const HOSPITAL_SIGLA = import.meta.env?.VITE_HOSPITAL_SIGLA || "HNSN";
 const HOSPITAL_NOME  = import.meta.env?.VITE_HOSPITAL_NOME  || "Hospital Nossa Senhora de Navegantes";
 
+// ═══════════════════════════════════════════════════════════
+// FALHAS DE BANCO — nunca silenciosas
+// ═══════════════════════════════════════════════════════════
+// Antes, QUALQUER erro do Supabase virava `return null`: banco fora do ar,
+// coluna faltando e RLS bloqueando ficavam indistinguíveis, e a tela só
+// aparecia vazia. Numa GRAVAÇÃO isso é pior ainda — o usuário sai achando
+// que salvou. Agora toda falha vai para o console com tabela e motivo, e as
+// que enganam o usuário aparecem na tela.
+//
+// O retorno continua sendo `null` em caso de falha: as 122 chamadas
+// existentes seguem funcionando sem alteração nenhuma.
+const ouvintesFalhaSb = new Set();
+const assinarFalhasSb = fn => { ouvintesFalhaSb.add(fn); return () => ouvintesFalhaSb.delete(fn); };
+
+function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
+  console.error(`[Supabase] ${metodo} ${alvo} → ${status || "sem resposta"}${detalhe ? ` — ${detalhe}` : ""}`);
+  // Escrita SEMPRE avisa: o dano é o usuário acreditar que gravou.
+  // Leitura avisa só em 400/401/403/404 — erro de estrutura ou permissão,
+  // que é defeito de verdade. Queda de rede em leitura fica só no console,
+  // senão o modo offline (que é previsto no app) viraria uma metralhadora
+  // de alertas.
+  const escrita = metodo !== "GET";
+  const estrutural = [400, 401, 403, 404, 409, 500].includes(status);
+  if (!escrita && !estrutural) return;
+  const falha = { alvo, metodo, status, detalhe, escrita, em: Date.now() };
+  ouvintesFalhaSb.forEach(fn => { try { fn(falha); } catch {} });
+}
+
 async function sbFetch(path, opts = {}) {
   if (!USE_SUPABASE) return null;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    ...opts,
-    headers: {
-      "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": opts.method === "POST" ? "return=representation" : undefined,
-      ...opts.headers,
-    },
-  });
-  if (!res.ok) return null;
-  return res.json().catch(() => null);
+  const metodo = opts.method || "GET";
+  const alvo = String(path).split("?")[0];      // nome da tabela, sem os filtros
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      ...opts,
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": opts.method === "POST" ? "return=representation" : undefined,
+        ...opts.headers,
+      },
+    });
+    if (!res.ok) {
+      // O PostgREST devolve o motivo em JSON (message/hint/details). É essa
+      // mensagem que diz "column X does not exist" ou "permission denied".
+      let detalhe = "";
+      try {
+        const corpo = await res.text();
+        try {
+          const j = JSON.parse(corpo);
+          detalhe = [j.message, j.details, j.hint].filter(Boolean).join(" — ");
+        } catch { detalhe = corpo.slice(0, 200); }
+      } catch {}
+      registrarFalhaSb({ alvo, metodo, status: res.status, detalhe });
+      return null;
+    }
+    return res.json().catch(() => null);
+  } catch (e) {
+    // Sem isto, queda de rede rejeitava a promise e estourava no chamador —
+    // a maioria das 122 não tem try/catch.
+    registrarFalhaSb({ alvo, metodo, status: 0, detalhe: e?.message || "sem conexão" });
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -12334,6 +12384,55 @@ function LoginScreen({ onLogin }) {
 // ═══════════════════════════════════════════════════════════
 // APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════
+// Faixa de aviso quando o banco recusa uma operação. Fica no topo, não
+// bloqueia a tela (diferente de `alert`, que trava tudo e viraria um
+// pesadelo se várias gravações falhassem em sequência) e some quando o
+// usuário fecha. Mostra a tabela e o motivo devolvido pelo PostgREST,
+// para o suporte saber o que aconteceu sem precisar abrir o console.
+function AvisoFalhaBanco() {
+  const [falhas, setFalhas] = useState([]);
+  useEffect(() => assinarFalhasSb(f => {
+    setFalhas(prev => {
+      // agrupa por tabela+operação para não empilhar 50 avisos iguais
+      const chave = `${f.metodo}:${f.alvo}`;
+      const achou = prev.find(x => x.chave === chave);
+      if (achou) return prev.map(x => x.chave === chave ? { ...x, ...f, chave, vezes: x.vezes + 1 } : x);
+      return [...prev, { ...f, chave, vezes: 1 }].slice(-4);
+    });
+  }), []);
+
+  if (!falhas.length) return null;
+  return (
+    <div style={{ position: "fixed", top: 8, left: "50%", transform: "translateX(-50%)", zIndex: 9999, display: "flex", flexDirection: "column", gap: 6, maxWidth: 620, width: "calc(100% - 24px)" }}>
+      {falhas.map(f => (
+        <div key={f.chave} role="alert" style={{ background: "var(--bg-2)", border: `1px solid ${f.escrita ? "#e11d48" : "#d97706"}`, borderLeft: `4px solid ${f.escrita ? "#e11d48" : "#d97706"}`, borderRadius: 8, padding: "10px 12px", boxShadow: "0 6px 24px rgba(0,0,0,.35)", display: "flex", alignItems: "flex-start", gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: f.escrita ? "#f43f5e" : "#f59e0b" }}>
+              {f.escrita
+                ? `Não foi salvo em "${f.alvo}"`
+                : `Não foi possível carregar "${f.alvo}"`}
+              {f.vezes > 1 && <span style={{ fontWeight: 500, opacity: .7 }}> ({f.vezes}×)</span>}
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 2, wordBreak: "break-word" }}>
+              {f.detalhe || (f.status ? `erro ${f.status}` : "sem conexão com o servidor")}
+            </div>
+            {f.escrita && (
+              <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 4, fontWeight: 600 }}>
+                Confira antes de seguir — este registro pode não ter sido gravado.
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => setFalhas(prev => prev.filter(x => x.chave !== f.chave))}
+            aria-label="Fechar aviso"
+            style={{ background: "none", border: "none", color: "var(--text-3)", cursor: "pointer", fontSize: 16, lineHeight: 1, padding: 2 }}
+          >×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => loadSession());
   const [db, setDb] = useState(() => loadDB());
@@ -12410,7 +12509,9 @@ export default function App() {
 
   function handleLogout() { clearSession(); setCurrentUser(null); setActive("overview"); }
 
-  if (!currentUser) return <LoginScreen onLogin={u => setCurrentUser(u)} />;
+  // O aviso também vale na tela de login: se o banco recusar a autenticação,
+  // o usuário precisa ver o motivo em vez de um formulário que "não faz nada".
+  if (!currentUser) return <><AvisoFalhaBanco /><LoginScreen onLogin={u => setCurrentUser(u)} /></>;
 
   const now = new Date();
   const role = ROLES[currentUser.role];
@@ -12436,6 +12537,7 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
+      <AvisoFalhaBanco />
       {/* HEADER */}
       <div style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 1.5rem", flexShrink: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
