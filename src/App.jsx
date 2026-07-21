@@ -2106,9 +2106,18 @@ const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devoluçã
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
 const SUP_NAV = [
   { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
+  { key: "requisicoes",  label: "Requisições",  icon: "list" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
 ];
+// Fluxo da requisição — estados e cores (mesma régua do preparo da Farmácia)
+const SUP_REQ_STATUS = {
+  aguardando: { label: "Aguardando almoxarifado", cor: "#8d99ab" },
+  separacao:  { label: "Em separação",            cor: "#d97706" },
+  pronto:     { label: "Pronto p/ retirada",      cor: "#3b82f6" },
+  entregue:   { label: "Entregue",                cor: "#34d399" },
+  cancelado:  { label: "Cancelada",               cor: "#f43f5e" },
+};
 
 async function loadSupItens() {
   const rows = await sbFetch("sup_itens?select=*&order=nome");
@@ -2189,6 +2198,23 @@ async function upsertSupFornecedorRemote(f, user) {
 async function deleteSupFornecedorRemote(id) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
+}
+// Requisições de materiais (Fase B)
+async function loadSupRequisicoes(limit = 200) {
+  const rows = await sbFetch(`sup_requisicoes?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addSupRequisicaoRemote(req, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("sup_requisicoes", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...req, solicitado_por: user?.name || null, usuario: user?.name || null }),
+  });
+}
+async function atualizarSupReqRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_requisicoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -8636,11 +8662,13 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [, setTick] = useState(0);
   const isMaster = currentUser?.role === "adm_master";
 
+  const [reqs, setReqs] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
     loadSupLotes().then(setLotes);
     loadSupFornecedores().then(setForns);
+    loadSupRequisicoes().then(setReqs);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
   }
   useEffect(() => {
@@ -8736,6 +8764,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const navAtual = SUP_NAV.find(n => n.key === sub) || SUP_NAV[0];
   const subTexto = {
     dashboard: "Visão geral do almoxarifado com atalhos.",
+    requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     estoque: `Catálogo de materiais, entradas e saídas por lote e validade. ${totalAtivos} ativos · ${itens.length} cadastrados.`,
     fornecedores: `Cadastro de fornecedores usados nas entradas e nas compras. ${forns.filter(f => f.ativo !== false).length} ativos.`,
   };
@@ -8780,6 +8809,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
         return (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
+              <Card label="Requisições aguardando" valor={reqs.filter(r => r.status === "aguardando").length} cor={VX.azul} sub="setores esperando" nav="requisicoes" />
+              <Card label="Em separação / prontas" valor={reqs.filter(r => ["separacao", "pronto"].includes(r.status)).length} cor="#d97706" sub="no balcão do almoxarifado" nav="requisicoes" />
               <Card label="Materiais ativos" valor={ativos.length} cor={VX.azul} sub={`${itens.length} cadastrados`} nav="estoque" />
               <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
               <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
@@ -8787,10 +8818,12 @@ function SuprimentosPage({ currentUser, canEdit }) {
               <Card label="Previsão de ruptura" valor={emRisco.length} cor={emRisco.length ? "#f43f5e" : "#34d399"} sub={`acabam em ${FARM_PREV_HORIZONTE} dias no ritmo atual`} nav="estoque" />
               <Card label="Fornecedores ativos" valor={forns.filter(f => f.ativo !== false).length} cor={VX.turquesa} sub={`${forns.length} cadastrados`} nav="fornecedores" />
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 16 }}>Clique nos cartões para ir direto à ferramenta. Requisições dos setores e pedidos de compra chegam nas próximas fases.</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 16 }}>Clique nos cartões para ir direto à ferramenta. Pedidos de compra chegam na próxima fase.</div>
           </div>
         );
       })()}
+
+      {sub === "requisicoes" && <SupRequisicoesView currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} onChanged={refresh} />}
 
       {sub === "estoque" && (<>
       {/* PAINÉIS DE ALERTA */}
@@ -8956,6 +8989,294 @@ function SuprimentosPage({ currentUser, canEdit }) {
       {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} onClose={() => setMovItem(null)} onSave={registrarMov} />}
       {kardex && <SupKardexModal item={kardex} fornecedores={forns} onClose={() => setKardex(null)} />}
       {showForn && <SupFornecedorModal forn={showForn} onClose={() => setShowForn(null)} onSave={salvarForn} />}
+      </div>
+    </div>
+  );
+}
+
+// Requisições de materiais — o setor pede, o almoxarifado recebe (bipe),
+// separa (baixa FEFO automática no estoque), marca pronto e o setor confirma.
+function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
+  const [reqs, setReqs] = useState([]);
+  const [setores, setSetores] = useState([]);
+  const [showNova, setShowNova] = useState(false);
+  const [somOk, setSomOk] = useState(somAtivo());
+  const [busyId, setBusyId] = useState(null);
+  const [verHistorico, setVerHistorico] = useState(false);
+  const [, setTick] = useState(0);
+  const prevAguardando = useRef(null);
+  const isMaster = currentUser?.role === "adm_master";
+
+  function carregar() {
+    loadSupRequisicoes().then(rows => {
+      const n = rows.filter(r => r.status === "aguardando").length;
+      if (prevAguardando.current != null && n > prevAguardando.current && somAtivo()) farmBeep(true);
+      prevAguardando.current = n;
+      setReqs(rows);
+    });
+  }
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    carregar();
+    loadSetoresFromSupabase().then(r => r && setSetores(r));
+    const poll = setInterval(carregar, 15000);
+    const tick = setInterval(() => setTick(t => t + 1), 30000);
+    return () => { clearInterval(poll); clearInterval(tick); };
+  }, []);
+
+  const itemById = {}; itens.forEach(i => itemById[i.id] = i);
+  const tempoDesde = iso => {
+    if (!iso) return "";
+    const min = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    if (min < 60) return `${min} min`;
+    const h = Math.floor(min / 60);
+    return h < 24 ? `${h}h${String(min % 60).padStart(2, "0")}` : `${Math.floor(h / 24)}d ${h % 24}h`;
+  };
+
+  async function mudarStatus(req, campos) {
+    setBusyId(req.id);
+    await atualizarSupReqRemote(req.id, campos);
+    setBusyId(null);
+    carregar();
+    onChanged && onChanged();
+  }
+  function receber(req) {
+    mudarStatus(req, { status: "separacao", recebido_em: nowISO(), recebido_por: currentUser?.name || null });
+  }
+  // Concluir a separação: dá baixa FEFO no estoque, item a item, e marca pronto.
+  // Se faltar saldo, atende o que tem (parcial) e registra qtd_atendida.
+  async function separar(req) {
+    const itensReq = Array.isArray(req.itens) ? req.itens : [];
+    if (!itensReq.length) { alert("Requisição sem itens."); return; }
+    setBusyId(req.id);
+    const atendidos = [];
+    const faltas = [];
+    for (const it of itensReq) {
+      const pedida = Number(it.qtd || 0);
+      let restante = pedida;
+      // lotes do item com saldo, vence primeiro sai primeiro (FEFO)
+      const meusLotes = lotes.filter(l => l.item_id === it.item_id && Number(l.quantidade) > 0)
+        .sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999"));
+      for (const l of meusLotes) {
+        if (restante <= 0) break;
+        const q = Math.min(restante, Number(l.quantidade));
+        const r = await addSupMovimentoRemote({
+          item_id: it.item_id, tipo: "saida", quantidade: q,
+          lote: l.lote || null, validade: l.validade || null,
+          motivo: "Requisição", documento: `REQ-${req.id}`, setor: req.setor,
+        }, currentUser);
+        if (r.ok) restante -= q;
+        else { alert(`Falha na baixa de "${it.nome}":\n${r.erro || ""}`); break; }
+      }
+      const atendida = pedida - restante;
+      atendidos.push({ ...it, qtd_atendida: atendida });
+      if (restante > 0) faltas.push(`${it.nome}: pedido ${farmFmtQtd(pedida)}, atendido ${farmFmtQtd(atendida)}`);
+    }
+    await atualizarSupReqRemote(req.id, {
+      itens: atendidos, status: "pronto",
+      pronto_em: nowISO(), pronto_por: currentUser?.name || null,
+    });
+    addAuditLog(currentUser, "separar requisição", `REQ-${req.id} · ${req.setor}`, {});
+    if (somAtivo()) farmBeep(false);
+    setBusyId(null);
+    if (faltas.length) alert("Separação concluída com PENDÊNCIAS (sem saldo):\n\n" + faltas.join("\n"));
+    carregar();
+    onChanged && onChanged();
+  }
+  function entregar(req) {
+    mudarStatus(req, { status: "entregue", entregue_em: nowISO(), entregue_por: currentUser?.name || null });
+    addAuditLog(currentUser, "entregar requisição", `REQ-${req.id} · ${req.setor}`, {});
+  }
+  function cancelar(req) {
+    if (!confirm(`Cancelar a requisição REQ-${req.id} do setor ${req.setor}?${req.status === "pronto" ? "\n\nAtenção: a baixa de estoque já foi feita — devolva os itens por Entrada, se for o caso." : ""}`)) return;
+    mudarStatus(req, { status: "cancelado" });
+    addAuditLog(currentUser, "cancelar requisição", `REQ-${req.id} · ${req.setor}`, {});
+  }
+  async function criarRequisicao(nova) {
+    await addSupRequisicaoRemote(nova, currentUser);
+    addAuditLog(currentUser, "criar requisição", `${nova.setor} · ${nova.itens.length} itens`, {});
+    setShowNova(false);
+    carregar();
+    onChanged && onChanged();
+  }
+
+  const ativas = reqs.filter(r => !["entregue", "cancelado"].includes(r.status));
+  const historico = reqs.filter(r => ["entregue", "cancelado"].includes(r.status));
+  const colunas = ["aguardando", "separacao", "pronto"];
+
+  const ReqCard = ({ r }) => {
+    const st = SUP_REQ_STATUS[r.status] || SUP_REQ_STATUS.aguardando;
+    const its = Array.isArray(r.itens) ? r.itens : [];
+    const parcial = r.status !== "aguardando" && r.status !== "separacao" && its.some(x => Number(x.qtd_atendida ?? x.qtd) < Number(x.qtd));
+    const busy = busyId === r.id;
+    return (
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 10, padding: "10px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, fontSize: 13 }}>{r.setor}</span>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>REQ-{r.id}</span>
+          {parcial && <span style={{ fontSize: 9.5, color: "#d97706", border: "1px solid #d9770655", borderRadius: 99, padding: "0 6px", fontWeight: 800 }}>PARCIAL</span>}
+          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{tempoDesde(r.created_at)}</span>
+        </div>
+        <div style={{ margin: "7px 0", display: "flex", flexDirection: "column", gap: 2 }}>
+          {its.map((x, i) => {
+            const at = x.qtd_atendida;
+            const falta = at != null && Number(at) < Number(x.qtd);
+            return (
+              <div key={i} style={{ fontSize: 12, color: "var(--text-2)", display: "flex", gap: 6 }}>
+                <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 46, textAlign: "right", color: falta ? "#d97706" : "var(--text-2)" }}>{at != null ? `${farmFmtQtd(at)}/` : ""}{farmFmtQtd(x.qtd)}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>{x.nome}{x.unidade ? ` (${x.unidade})` : ""}</span>
+              </div>
+            );
+          })}
+        </div>
+        {r.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{r.observacao}</div>}
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 7 }}>
+          {r.solicitado_por ? `pedido por ${r.solicitado_por}` : ""}{r.recebido_por ? ` · recebido por ${r.recebido_por}` : ""}{r.pronto_por ? ` · separado por ${r.pronto_por}` : ""}{r.entregue_por ? ` · entregue a ${r.entregue_por}` : ""}
+        </div>
+        {canEdit && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {r.status === "aguardando" && <button disabled={busy} onClick={() => receber(r)} style={btnLeito("#d97706")}>Receber / separar</button>}
+            {r.status === "separacao" && <button disabled={busy} onClick={() => separar(r)} style={btnLeito("#3b82f6")}>{busy ? "…" : "Concluir separação (baixa)"}</button>}
+            {r.status === "pronto" && <button disabled={busy} onClick={() => entregar(r)} style={btnLeito("#34d399")}>Confirmar entrega</button>}
+            {!["entregue", "cancelado"].includes(r.status) && <button disabled={busy} onClick={() => cancelar(r)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        {canEdit && <button onClick={() => setShowNova(true)} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Nova requisição</button>}
+        <button onClick={() => { const v = !somOk; setSomAtivo(v); setSomOk(v); if (v) farmBeep(false); }} style={{ background: "transparent", border: `1px solid ${somOk ? VX.turquesa : "var(--border)"}`, borderRadius: 6, padding: "8px 14px", color: somOk ? VX.turquesa : "var(--text-3)", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>{somOk ? "Som ativo" : "Ativar som"}</button>
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Bipe quando chega requisição nova. Atualiza a cada 15 s.</span>
+        <button onClick={() => setVerHistorico(h => !h)} style={{ marginLeft: "auto", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", color: "var(--text-3)", cursor: "pointer", fontSize: 12.5 }}>{verHistorico ? "Ver ativas" : `Histórico (${historico.length})`}</button>
+      </div>
+
+      {!verHistorico ? (
+        ativas.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma requisição em andamento. Os setores pedem por aqui em “+ Nova requisição”.</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
+            {colunas.map(col => (
+              <div key={col}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: SUP_REQ_STATUS[col].cor, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
+                  {SUP_REQ_STATUS[col].label} · {ativas.filter(r => r.status === col).length}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {ativas.filter(r => r.status === col).map(r => <ReqCard key={r.id} r={r} />)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        historico.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma requisição concluída ainda.</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
+            {historico.slice(0, 60).map(r => <ReqCard key={r.id} r={r} />)}
+          </div>
+        )
+      )}
+
+      {showNova && <SupNovaReqModal itens={itens} setores={setores} lotes={lotes} onClose={() => setShowNova(false)} onSave={criarRequisicao} />}
+    </div>
+  );
+}
+
+// Montagem de uma requisição: setor + itens do catálogo com quantidades
+function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
+  const [setor, setSetor] = useState(setores[0]?.nome || "");
+  const [obs, setObs] = useState("");
+  const [lista, setLista] = useState([]);          // [{item_id, nome, unidade, qtd}]
+  const [itemSel, setItemSel] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const itensDisp = itens.filter(i => !lista.some(x => x.item_id === i.id))
+    .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
+  const sel = itens.find(i => String(i.id) === String(itemSel));
+  const saldoSel = sel ? supSaldoTotal(sel.id, lotes) : null;
+
+  function adicionar() {
+    const q = Number(qtd);
+    if (!sel) { alert("Escolha o material."); return; }
+    if (!q || q <= 0) { alert("Informe uma quantidade maior que zero."); return; }
+    setLista(l => [...l, { item_id: sel.id, nome: sel.nome, unidade: sel.unidade || "", qtd: q }]);
+    setItemSel(""); setQtd("");
+  }
+  async function salvar() {
+    if (!setor.trim()) { alert("Informe o setor solicitante."); return; }
+    if (!lista.length) { alert("Adicione pelo menos um material."); return; }
+    setBusy(true);
+    await onSave({ setor: setor.trim(), itens: lista, observacao: obs.trim() || null, status: "aguardando" });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 540, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Nova requisição de materiais</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <div>
+            <label style={farmLbl}>Setor solicitante *</label>
+            {setores.length ? (
+              <select value={setor} onChange={e => setSetor(e.target.value)} style={farmInp}>
+                {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+                <option value="">Outro…</option>
+              </select>
+            ) : (
+              <input value={setor} onChange={e => setSetor(e.target.value)} placeholder="Ex.: Posto 2" style={farmInp} autoFocus />
+            )}
+          </div>
+          {setores.length > 0 && setor === "" && (
+            <div>
+              <label style={farmLbl}>Nome do setor</label>
+              <input value={setor} onChange={e => setSetor(e.target.value)} placeholder="Digite o setor" style={farmInp} autoFocus />
+            </div>
+          )}
+        </div>
+
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Adicionar material</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 8, alignItems: "end" }}>
+            <div>
+              <label style={farmLbl}>Material</label>
+              <select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}>
+                <option value="">— escolha —</option>
+                {itensDisp.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={farmLbl}>Qtd *</label>
+              <input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} />
+            </div>
+            <button onClick={adicionar} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
+          </div>
+          {sel && <div style={{ fontSize: 11, color: saldoSel > 0 ? "var(--text-muted)" : "#d97706", marginTop: 6 }}>Saldo atual no almoxarifado: <strong>{farmFmtQtd(saldoSel)} {sel.unidade || ""}</strong>{saldoSel <= 0 ? " — sem estoque; a requisição pode ficar parcial." : ""}</div>}
+        </div>
+
+        {lista.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+            {lista.map((x, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
+                <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 40, textAlign: "right" }}>{farmFmtQtd(x.qtd)}</span>
+                <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{x.nome}{x.unidade ? ` (${x.unidade})` : ""}</span>
+                <button onClick={() => setLista(l => l.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={farmLbl}>Observação</label>
+          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Urgência, detalhe do pedido…" style={farmInp} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Enviar requisição"}</button>
+        </div>
       </div>
     </div>
   );
