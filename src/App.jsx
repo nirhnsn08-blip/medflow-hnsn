@@ -2288,6 +2288,37 @@ function custoMedioPonderado(custoAtual, saldoAntes, qtdEntrada, custoEntrada) {
   if (ca <= 0 || sa <= 0) return ce;                 // sem base anterior → adota o custo da entrada
   return (sa * ca + qe * ce) / (sa + qe);
 }
+// Lê o XML de uma NF-e e extrai fornecedor + itens (código, EAN, nome, qtd,
+// unidade, custo unitário, lote/validade quando há rastreabilidade). Local, sem lib.
+function parseNFe(xmlText) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(xmlText, "application/xml"); }
+  catch { return { erro: "Não consegui ler o arquivo." }; }
+  if (!doc || doc.getElementsByTagName("parsererror").length) return { erro: "XML inválido ou corrompido." };
+  const txt = (el, tag) => el ? (el.getElementsByTagName(tag)[0]?.textContent || "").trim() : "";
+  const emit = doc.getElementsByTagName("emit")[0];
+  const ide  = doc.getElementsByTagName("ide")[0];
+  if (!emit && !doc.getElementsByTagName("det").length) return { erro: "Este arquivo não parece uma NF-e." };
+  const fornecedor = { cnpj: txt(emit, "CNPJ"), nome: txt(emit, "xNome") };
+  const nf = txt(ide, "nNF");
+  const itens = Array.from(doc.getElementsByTagName("det")).map(det => {
+    const prod = det.getElementsByTagName("prod")[0];
+    const rastro = det.getElementsByTagName("rastro")[0];
+    const ean = txt(prod, "cEAN");
+    return {
+      codigo: txt(prod, "cProd"),
+      ean: /^[0-9]{8,14}$/.test(ean) ? ean : "",         // "SEM GTIN" e afins → ignora
+      nome: txt(prod, "xProd"),
+      unidade: txt(prod, "uCom").toLowerCase(),
+      qtd: Number(txt(prod, "qCom")) || 0,
+      custo_unit: Number(txt(prod, "vUnCom")) || 0,
+      lote: rastro ? txt(rastro, "nLote") : "",
+      validade: rastro ? txt(rastro, "dVal") : "",        // rastro/dVal já vem YYYY-MM-DD
+    };
+  }).filter(x => x.nome && x.qtd > 0);
+  if (!itens.length) return { erro: "Nenhum item encontrado no XML." };
+  return { fornecedor, nf, itens };
+}
 async function setSupItemCustoRemote(itemId, custo) {
   if (!USE_SUPABASE || custo == null) return;
   await sbFetch(`sup_itens?id=eq.${itemId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
@@ -8776,6 +8807,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [movItem, setMovItem]   = useState(null);   // { item, tipo }
   const [kardex, setKardex]     = useState(null);   // item para histórico
   const [showForn, setShowForn] = useState(null);   // fornecedor (novo/editar) ou null
+  const [showNfe, setShowNfe] = useState(false);    // modal de importar NF-e
   const [sub, setSub] = useState("dashboard");      // ver SUP_NAV
   const [saidasHist, setSaidasHist] = useState([]);
   const [, setTick] = useState(0);
@@ -8879,6 +8911,44 @@ function SuprimentosPage({ currentUser, canEdit }) {
     setTimeout(refresh, 350);
     return true;
   }
+  // Importa uma NF-e: cria entradas em lote (e materiais/fornecedor novos, se preciso)
+  async function importarNfe({ fornecedor, nf, linhas }) {
+    // fornecedor: casa por CNPJ; se não existir e vier CNPJ, cria
+    let fornId = null;
+    if (fornecedor?.cnpj) {
+      const achado = forns.find(f => (f.cnpj || "").replace(/\D/g, "") === fornecedor.cnpj.replace(/\D/g, ""));
+      if (achado) fornId = achado.id;
+      else {
+        const criado = await upsertSupFornecedorRemote({ nome: fornecedor.nome || fornecedor.cnpj, cnpj: fornecedor.cnpj, ativo: true }, currentUser);
+        fornId = Array.isArray(criado) ? criado[0]?.id : null;
+      }
+    }
+    let ok = 0; const erros = [];
+    for (const ln of linhas) {
+      if (ln.alvo === "skip") continue;
+      let itemId = ln.alvo === "novo" ? null : Number(ln.alvo);
+      if (ln.alvo === "novo") {
+        const novo = await upsertSupItemRemote({ nome: ln.nome, unidade: ln.unidade || "unidade", codigo_barras: ln.ean || null, custo_unitario: ln.custo_unit || null, ativo: true }, currentUser);
+        itemId = Array.isArray(novo) ? novo[0]?.id : null;
+        if (!itemId) { erros.push(`${ln.nome}: falha ao criar o material`); continue; }
+      }
+      const saldoAntes = supSaldoTotal(itemId, lotes);
+      const r = await addSupMovimentoRemote({
+        item_id: itemId, tipo: "entrada", quantidade: Number(ln.qtd),
+        lote: ln.lote?.trim() || null, validade: ln.validade || null,
+        motivo: "Compra / nota fiscal", documento: nf ? `NF ${nf}` : "NF-e",
+        fornecedor_id: fornId, custo_unit: ln.custo_unit || null,
+      }, currentUser);
+      if (r.ok) {
+        ok++;
+        if (ln.custo_unit) { const c = custoMedioPonderado((itens.find(x => x.id === itemId) || {}).custo_unitario, saldoAntes, ln.qtd, ln.custo_unit); if (c != null) await setSupItemCustoRemote(itemId, c); }
+      } else erros.push(`${ln.nome}: ${r.erro || "falha"}`);
+    }
+    addAuditLog(currentUser, "importar NF-e", `${nf ? "NF " + nf : "NF-e"} · ${ok} entrada(s)`, {});
+    setShowNfe(false);
+    setTimeout(refresh, 400);
+    alert(`Importação concluída: ${ok} entrada(s) lançada(s).` + (erros.length ? `\n\nPendências:\n${erros.join("\n")}` : ""));
+  }
   async function salvarInventario(inv) {
     await addSupInventarioRemote(inv, currentUser);
     // Se houver diferença, lança o ajuste no kardex (entrada/saída) para casar o saldo
@@ -8944,7 +9014,10 @@ function SuprimentosPage({ currentUser, canEdit }) {
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{subTexto[sub] || ""}</div>
         </div>
-        {sub === "estoque" && canEdit && <button onClick={() => setShowItem({ nome: "", categoria: "", unidade: "unidade", estoque_minimo: "", custo_unitario: "", ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo material</button>}
+        {sub === "estoque" && canEdit && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setShowNfe(true)} style={{ background: "transparent", color: VX.azul, border: `1px solid ${VX.azul}66`, borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Importar NF-e (XML)</button>
+          <button onClick={() => setShowItem({ nome: "", categoria: "", unidade: "unidade", estoque_minimo: "", custo_unitario: "", ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo material</button>
+        </div>}
         {sub === "fornecedores" && canEdit && <button onClick={() => setShowForn({ nome: "", cnpj: "", contato: "", telefone: "", email: "", categorias: "", observacao: "", ativo: true })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo fornecedor</button>}
       </div>
 
@@ -9157,6 +9230,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} onClose={() => setMovItem(null)} onSave={registrarMov} />}
       {kardex && <SupKardexModal item={kardex} fornecedores={forns} onClose={() => setKardex(null)} />}
       {showForn && <SupFornecedorModal forn={showForn} onClose={() => setShowForn(null)} onSave={salvarForn} />}
+      {showNfe && <SupNfeModal itens={itens} forns={forns} onClose={() => setShowNfe(false)} onConfirm={importarNfe} />}
       </div>
     </div>
   );
@@ -10983,6 +11057,108 @@ function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
           {revelado && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar contagem"}</button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Importar NF-e (XML): lê a nota, casa itens com o catálogo (por código de barras
+// ou nome), deixa revisar e lança as entradas de uma vez — com custo médio.
+function SupNfeModal({ itens, forns, onClose, onConfirm }) {
+  const [parsed, setParsed] = useState(null);   // { fornecedor, nf, itens } ou { erro }
+  const [linhas, setLinhas] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const ativos = itens.filter(i => i.ativo !== false);
+
+  function matchItem(x) {
+    if (x.ean) { const porEan = ativos.find(i => (i.codigo_barras || "").trim() === x.ean); if (porEan) return String(porEan.id); }
+    const nx = normTxt(x.nome);
+    const porNome = ativos.find(i => normTxt(i.nome) === nx) || ativos.find(i => nx.length >= 5 && (normTxt(i.nome).includes(nx) || nx.includes(normTxt(i.nome))));
+    return porNome ? String(porNome.id) : "novo";
+  }
+  function carregarArquivo(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const res = parseNFe(String(e.target.result || ""));
+      setParsed(res);
+      if (!res.erro) setLinhas(res.itens.map(x => ({ ...x, alvo: matchItem(x) })));
+    };
+    reader.readAsText(file, "ISO-8859-1");   // NF-e costuma vir em latin1
+  }
+  const set = (i, k, v) => setLinhas(l => l.map((x, j) => j === i ? { ...x, [k]: v } : x));
+  const aImportar = linhas.filter(l => l.alvo !== "skip").length;
+  const fornExiste = parsed?.fornecedor?.cnpj && forns.some(f => (f.cnpj || "").replace(/\D/g, "") === parsed.fornecedor.cnpj.replace(/\D/g, ""));
+
+  async function confirmar() {
+    if (!aImportar) { alert("Nenhum item selecionado para importar."); return; }
+    setBusy(true);
+    await onConfirm({ fornecedor: parsed.fornecedor, nf: parsed.nf, linhas });
+    setBusy(false);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 780, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Importar NF-e (XML)</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Selecione o arquivo XML da nota. O sistema lê os itens e casa com o catálogo (por código de barras ou nome); você revisa e confirma. Cada item vira uma <strong>entrada</strong> no estoque, com lote, validade e custo da nota.</div>
+
+        {!parsed && (
+          <div style={{ border: "2px dashed var(--border)", borderRadius: 10, padding: "2rem", textAlign: "center" }}>
+            <input type="file" accept=".xml,text/xml,application/xml" onChange={e => carregarArquivo(e.target.files[0])} style={{ fontSize: 13 }} />
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10 }}>O arquivo é lido localmente no seu navegador — nada é enviado para fora.</div>
+          </div>
+        )}
+
+        {parsed?.erro && (
+          <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "12px 14px" }}>{parsed.erro} <button onClick={() => setParsed(null)} style={{ marginLeft: 8, background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", color: "var(--text-2)", cursor: "pointer", fontSize: 12 }}>Tentar outro arquivo</button></div>
+        )}
+
+        {parsed && !parsed.erro && (<>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5, marginBottom: 12, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8 }}>
+            <div><span style={{ color: "var(--text-muted)" }}>Fornecedor:</span> <strong>{parsed.fornecedor.nome || "—"}</strong> {parsed.fornecedor.cnpj ? `· ${parsed.fornecedor.cnpj}` : ""} {parsed.fornecedor.cnpj && !fornExiste && <span style={{ fontSize: 10.5, color: "#d97706", border: "1px solid #d9770655", borderRadius: 99, padding: "0 6px", marginLeft: 4 }}>será cadastrado</span>}</div>
+            <div><span style={{ color: "var(--text-muted)" }}>NF:</span> <strong>{parsed.nf || "—"}</strong></div>
+            <div style={{ marginLeft: "auto" }}><span style={{ color: "var(--text-muted)" }}>Itens:</span> <strong>{aImportar}</strong> de {linhas.length} selecionado(s)</div>
+          </div>
+
+          <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 720 }}>
+              <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 10.5, textTransform: "uppercase" }}>
+                <th style={{ padding: "7px 10px" }}>Item da nota → material no catálogo</th>
+                <th style={{ padding: "7px 10px", textAlign: "right" }}>Qtd</th>
+                <th style={{ padding: "7px 10px", textAlign: "right" }}>Custo un.</th>
+                <th style={{ padding: "7px 10px" }}>Lote</th>
+                <th style={{ padding: "7px 10px" }}>Validade</th>
+              </tr></thead>
+              <tbody>
+                {linhas.map((x, i) => (
+                  <tr key={i} style={{ borderTop: "1px solid var(--border)", opacity: x.alvo === "skip" ? 0.5 : 1 }}>
+                    <td style={{ padding: "7px 10px" }}>
+                      <div style={{ fontWeight: 600, marginBottom: 3 }}>{x.nome} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 400 }}>{x.ean ? `· EAN ${x.ean}` : ""}</span></div>
+                      <select value={x.alvo} onChange={e => set(i, "alvo", e.target.value)} style={{ ...farmInp, padding: "5px 8px", fontSize: 12 }}>
+                        <option value="novo">➕ Criar novo material</option>
+                        <option value="skip">✕ Não importar</option>
+                        <optgroup label="Casar com material existente">
+                          {ativos.slice().sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR")).map(it => <option key={it.id} value={String(it.id)}>{it.nome}</option>)}
+                        </optgroup>
+                      </select>
+                    </td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.qtd} onChange={e => set(i, "qtd", e.target.value)} style={{ ...farmInp, width: 70, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.custo_unit} onChange={e => set(i, "custo_unit", e.target.value)} style={{ ...farmInp, width: 80, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px" }}><input value={x.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="—" style={{ ...farmInp, width: 90, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px" }}><input type="date" value={x.validade} onChange={e => set(i, "validade", e.target.value)} style={{ ...farmInp, width: 130, padding: "5px 7px", fontSize: 12 }} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 14 }}>Itens já com código de barras cadastrado casam sozinhos. Confira as quantidades e validades antes de confirmar — vira estoque de verdade.</div>
+        </>)}
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          {parsed && !parsed.erro && <button onClick={confirmar} disabled={busy || !aImportar} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || !aImportar) ? 0.5 : 1 }}>{busy ? "Importando…" : `Importar ${aImportar} item(ns)`}</button>}
         </div>
       </div>
     </div>
