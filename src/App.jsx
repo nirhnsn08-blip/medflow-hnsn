@@ -4555,44 +4555,40 @@ function PSPage({ currentUser, canEdit }) {
               const n = doDia.filter(p => p.classificacao === k).length;
               return { k, n, pct: (n / doDia.length) * 100, ...MANCHESTER[k] };
             });
-            const R = 52, STROKE = 20, C = 2 * Math.PI * R;   // circunferência
+            const R = 30, STROKE = 11, C = 2 * Math.PI * R;   // rosca compacta
             let offset = 0;
-            return (<>
-              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                {/* DONUT */}
-                <div style={{ position: "relative", width: 140, height: 140, flexShrink: 0 }}>
-                  <svg viewBox="0 0 140 140" width="140" height="140" style={{ transform: "rotate(-90deg)" }}>
-                    <circle cx="70" cy="70" r={R} fill="none" stroke="var(--surface-3)" strokeWidth={STROKE} />
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {/* DONUT pequeno */}
+                <div style={{ position: "relative", width: 78, height: 78, flexShrink: 0 }}>
+                  <svg viewBox="0 0 78 78" width="78" height="78" style={{ transform: "rotate(-90deg)" }}>
+                    <circle cx="39" cy="39" r={R} fill="none" stroke="var(--surface-3)" strokeWidth={STROKE} />
                     {fatias.filter(f => f.n > 0).map(f => {
                       const len = (f.pct / 100) * C;
-                      const el = <circle key={f.k} cx="70" cy="70" r={R} fill="none" stroke={f.cor} strokeWidth={STROKE}
+                      const el = <circle key={f.k} cx="39" cy="39" r={R} fill="none" stroke={f.cor} strokeWidth={STROKE}
                         strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />;
                       offset += len;
                       return el;
                     })}
                   </svg>
                   <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: "var(--text)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1 }}>{doDia.length}</div>
-                    <div style={{ fontSize: 9.5, color: "var(--text-muted)", marginTop: 2 }}>classificados</div>
-                    <div style={{ fontSize: 9, color: "var(--text-muted)" }}>hoje</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1 }}>{doDia.length}</div>
+                    <div style={{ fontSize: 8, color: "var(--text-muted)" }}>hoje</div>
                   </div>
                 </div>
-                {/* LEGENDA */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 130px", minWidth: 130 }}>
+                {/* LEGENDA compacta */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 }}>
                   {fatias.map(f => (
-                    <div key={f.k} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 99, background: f.cor, flexShrink: 0, opacity: f.n ? 1 : 0.35 }} />
-                      <span style={{ color: f.n ? "var(--text-2)" : "var(--text-muted)", flex: 1, whiteSpace: "nowrap" }}>{f.label}</span>
-                      <strong style={{ fontFamily: "JetBrains Mono, monospace", color: f.n ? f.cor : "var(--text-muted)", minWidth: 40, textAlign: "right" }}>{f.pct.toFixed(0)}%</strong>
-                      <span style={{ color: "var(--text-muted)", fontSize: 10.5, minWidth: 22, textAlign: "right" }}>({f.n})</span>
+                    <div key={f.k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: 99, background: f.cor, flexShrink: 0, opacity: f.n ? 1 : 0.3 }} />
+                      <span style={{ color: f.n ? "var(--text-2)" : "var(--text-muted)", flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.label}</span>
+                      <strong style={{ fontFamily: "JetBrains Mono, monospace", color: f.n ? f.cor : "var(--text-muted)" }}>{f.n}</strong>
+                      <span style={{ color: "var(--text-muted)", minWidth: 30, textAlign: "right" }}>{f.pct.toFixed(0)}%</span>
                     </div>
                   ))}
                 </div>
               </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
-                Tempos-alvo: imediato · 10min · 60min · 120min · 240min.
-              </div>
-            </>);
+            );
           })()}
         </div>
       </div>
