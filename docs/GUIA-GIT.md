@@ -90,29 +90,55 @@ Só faça o merge com tudo verde **e** depois de testar o preview.
 
 ## 5. ⚠️ Os dois riscos específicos deste projeto
 
-### Risco 1 — O banco de dados é COMPARTILHADO
+### Risco 1 — Existem DOIS bancos, e é fácil confundir
 
-Os previews isolam o **código**, mas todos apontam para o **mesmo Supabase**:
+| Banco | Projeto Supabase | Para quê |
+|---|---|---|
+| **Principal** | `riuvyxppixeclxudsgpv` | o hospital. Dado que entra aqui é pra valer |
+| **Demo** | `ufxqdvxhruaswuzhmxyf` | testes. Descartável, mesma estrutura do principal |
+
+⚠️ **Cada PR gera DUAS URLs de preview na Vercel** — e elas parecem iguais:
 
 ```
-Preview dela  ──┐
-Preview seu   ──┼──►  MESMO banco (dados reais)
-Produção      ──┘
+medflow-demo-git-<branch>…vercel.app   →  banco DEMO      ✅ teste aqui
+medflow-hnsn-git-<branch>…vercel.app   →  banco PRINCIPAL ❌ grava de verdade
 ```
 
-**O que isso significa na prática:**
-- Salvar algo testando no preview **grava no banco de verdade**
-- Rodar uma migração SQL **afeta a outra pessoa na hora**
+**Como saber onde você está:** quando o app aponta para um banco de teste, aparece
+uma **faixa laranja no topo** com o rótulo e a referência do projeto. **Sem faixa =
+você está na produção.** Nunca confie só na URL.
 
-**Regras para não quebrar:**
-1. Migração de banco é **sempre aditiva**: `add column if not exists`, `create table
-   if not exists`. **Nunca** `drop column` / `drop table` com dado dentro.
-2. **Avise a outra pessoa antes** de rodar qualquer SQL.
-3. Se a mudança usa coluna nova: **rode o SQL primeiro**, confirme, **só então** faça
-   o merge do código. Na ordem inversa, a tela nova procura uma coluna que não
-   existe e quebra.
-4. Nunca teste escrita em dados reais (não dê alta/internação em leito de verdade
-   só para "ver se funciona").
+#### Testar localmente contra o demo
+
+```bash
+npm run dev:demo     # usa o .env.demo — faixa laranja aparece
+npm run dev          # usa o .env — PRODUÇÃO, sem faixa
+```
+
+Para criar o `.env.demo`, veja as instruções no `.env.example`.
+
+#### Fluxo quando a mudança precisa de tabela/coluna nova
+
+```
+1. branch + código
+2. rodar o SQL no DEMO            ← painel do Supabase
+3. testar (npm run dev:demo ou a URL medflow-demo-git-…)
+4. deu certo? rodar o MESMO SQL no PRINCIPAL
+5. só então: merge do código
+```
+
+A ordem dos passos 4 e 5 não é opcional: o código sobe sozinho na Vercel ao
+mergear, o banco **não**. Invertendo, a tela nova chega procurando uma coluna que
+ainda não existe.
+
+**Regras que continuam valendo:**
+1. Migração é **sempre aditiva**: `add column if not exists`, `create table if not
+   exists`. **Nunca** `drop column` / `drop table` com dado dentro.
+2. **Avise a outra pessoa antes** de rodar qualquer SQL no principal.
+3. Nunca teste escrita no banco principal (não dê alta/internação em leito de
+   verdade só para "ver se funciona") — é para isso que o demo existe.
+4. Depois de criar migração nova, rode `node supabase/validar-sql.mjs` e
+   `node supabase/gerar-auditoria.mjs`.
 
 ### Risco 2 — Todo o app está em UM arquivo gigante
 

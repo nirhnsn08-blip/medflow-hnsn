@@ -16,6 +16,19 @@ const USE_SUPABASE = SUPABASE_URL.length > 10 && SUPABASE_KEY.length > 10;
 const HOSPITAL_SIGLA = import.meta.env?.VITE_HOSPITAL_SIGLA || "HNSN";
 const HOSPITAL_NOME  = import.meta.env?.VITE_HOSPITAL_NOME  || "Hospital Nossa Senhora de Navegantes";
 
+// Rótulo do ambiente. VAZIO = produção (nenhum aviso na tela, para não
+// poluir o sistema de quem trabalha no hospital). Preenchido = mostra a
+// faixa de alerta no topo.
+//
+// Existe porque a origem do erro mais caro daqui é sempre a mesma: duas
+// telas idênticas, bancos diferentes, e nada avisando qual é qual. Já
+// mandou dado de teste para a produção uma vez.
+const AMBIENTE = import.meta.env?.VITE_AMBIENTE || "";
+// Referência do projeto Supabase (o "ufxqdv..." da URL). Mostrada na faixa
+// para não depender só do rótulo: se o .env estiver errado, o número exposto
+// denuncia na hora em qual banco você realmente está.
+const SUPABASE_REF = (SUPABASE_URL.match(/https:\/\/([a-z0-9]+)\.supabase/) || [])[1] || "?";
+
 // ═══════════════════════════════════════════════════════════
 // FALHAS DE BANCO — nunca silenciosas
 // ═══════════════════════════════════════════════════════════
@@ -13965,6 +13978,32 @@ function LoginScreen({ onLogin }) {
 // ═══════════════════════════════════════════════════════════
 // APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════
+// Faixa fixa no topo identificando o ambiente quando NÃO é produção.
+// Não é dispensável de propósito: se der para fechar, alguém fecha e volta
+// a ficar no escuro — que é exatamente o problema que ela resolve.
+// Mostra também a referência do projeto Supabase, para o aviso não depender
+// do rótulo estar certo.
+function FaixaAmbiente() {
+  if (!AMBIENTE) return null;               // produção: nada na tela
+  return (
+    <div
+      role="status"
+      style={{
+        flexShrink: 0, background: "#b45309", color: "#fff",
+        fontSize: 11.5, fontWeight: 700, letterSpacing: ".04em",
+        padding: "5px 12px", display: "flex", alignItems: "center",
+        justifyContent: "center", gap: 10, textAlign: "center",
+      }}
+    >
+      <span>⚠ {AMBIENTE.toUpperCase()}</span>
+      <span style={{ fontWeight: 500, opacity: 0.9 }}>
+        banco <code style={{ fontFamily: "JetBrains Mono, monospace" }}>{SUPABASE_REF}</code>
+        {" "}— o que você salvar aqui não vai para o hospital
+      </span>
+    </div>
+  );
+}
+
 // Faixa de aviso quando o banco recusa uma operação. Fica no topo, não
 // bloqueia a tela (diferente de `alert`, que trava tudo e viraria um
 // pesadelo se várias gravações falhassem em sequência) e some quando o
@@ -14090,9 +14129,17 @@ export default function App() {
 
   function handleLogout() { clearSession(); setCurrentUser(null); setActive("overview"); }
 
-  // O aviso também vale na tela de login: se o banco recusar a autenticação,
-  // o usuário precisa ver o motivo em vez de um formulário que "não faz nada".
-  if (!currentUser) return <><AvisoFalhaBanco /><LoginScreen onLogin={u => setCurrentUser(u)} /></>;
+  // Os dois avisos valem já na tela de login: o de falha, porque se o banco
+  // recusar a autenticação o usuário precisa ver o motivo em vez de um
+  // formulário que "não faz nada"; e o de ambiente, para saber em qual banco
+  // está ANTES de digitar qualquer coisa.
+  if (!currentUser) return (
+    <>
+      <FaixaAmbiente />
+      <AvisoFalhaBanco />
+      <LoginScreen onLogin={u => setCurrentUser(u)} />
+    </>
+  );
 
   const now = new Date();
   const role = ROLES[currentUser.role];
@@ -14118,6 +14165,7 @@ export default function App() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 14 }}>
+      <FaixaAmbiente />
       <AvisoFalhaBanco />
       {/* HEADER */}
       <div style={{ background: "var(--bg-2)", borderBottom: "1px solid var(--border)", height: 52, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 1.5rem", flexShrink: 0, zIndex: 100 }}>
