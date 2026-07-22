@@ -8,9 +8,12 @@
 --   ❌ RLS DESLIGADO → tabela exposta: qualquer usuário logado lê tudo
 --   ❌ SEM POLÍTICA  → RLS ligado sem regra: a tela fica vazia para todos
 --
--- GERADO AUTOMATICAMENTE a partir dos .sql de supabase/ (39 tabelas,
--- 496 colunas). Ao criar uma migração nova, regenere este arquivo
--- para que a auditoria não fique cega ao módulo novo.
+-- ⚠️ ARQUIVO GERADO — não edite à mão. Ao criar uma migração nova, rode:
+--        node supabase/gerar-auditoria.mjs
+--    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
+--    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
+--
+-- Cobertura atual: 39 tabelas, 496 colunas.
 -- ============================================================
 
 with
