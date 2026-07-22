@@ -30,8 +30,16 @@ const colunas = new Map();   // "tabela.coluna" -> { t, c, org }
 const origemDe = f => f.replace(/^migracao-/, "").replace(/\.sql$/, "");
 const limpa = s => s.toLowerCase().replace(/^public\./, "").replace(/"/g, "");
 
+// `reconstruir-banco.sql` fica de fora: é a concatenação dos outros
+// arquivos, não acrescenta nenhuma tabela real — mas o `create table
+// public._confirmo_reconstruir()` da trava de segurança dele entrava na
+// lista e a auditoria passava a reportar, para sempre, um
+// "❌ FALTANDO _confirmo_reconstruir" no topo. Ruído fixo no topo de um
+// relatório de problemas é o começo de ninguém mais ler o relatório.
 const arquivos = fs.readdirSync(dir)
-  .filter(f => f.endsWith(".sql") && !f.startsWith("auditoria-"))
+  .filter(f => f.endsWith(".sql")
+            && !f.startsWith("auditoria-")
+            && f !== "reconstruir-banco.sql")
   .sort();
 
 for (const f of arquivos) {
