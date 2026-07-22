@@ -4800,8 +4800,8 @@ function PSPage({ currentUser, canEdit }) {
         );
       })()}
 
-      {/* 3 colunas: em atendimento · mapa de salas · encaminhamentos */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 16, alignItems: "start" }}>
+      {/* Em atendimento + Mapa de salas lado a lado (mesma altura); encaminhamentos abaixo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
 
         {/* Pacientes em atendimento */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
@@ -4896,8 +4896,10 @@ function PSPage({ currentUser, canEdit }) {
             </>);
           })()}
         </div>
+      </div>
 
-        {/* Encaminhamentos de hoje */}
+      {/* Encaminhamentos de hoje — largura total, abaixo dos dois */}
+      <div style={{ marginBottom: 16 }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
           <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Encaminhamentos de hoje</div>
           {(() => {
