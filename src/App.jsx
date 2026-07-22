@@ -2868,6 +2868,15 @@ async function loadPsSinais(atendimentoId) {
 }
 // Registros do atendimento (evolução médica, prescrição, exames)
 const PS_EXAME_CATEGORIAS = { laboratorial: "Laboratorial", imagem: "Imagem", outro: "Outro" };
+// Quem registrou a evolução no PS. Usa ps_registros.categoria (coluna já existente).
+// Antes tudo era rotulado "Evolução médica", mesmo escrito por enfermeiro/técnico.
+const PS_EVOL_CATEGORIAS = {
+  medica:       { label: "Evolução médica",        curto: "Médica",     cor: "#3b82f6" },
+  enfermagem:   { label: "Evolução de enfermagem", curto: "Enfermagem", cor: "#0d9488" },
+  tecnico:      { label: "Anotação do técnico",    curto: "Técnico",    cor: "#6366f1" },
+  fisioterapia: { label: "Fisioterapia",           curto: "Fisio",      cor: "#d97706" },
+  outro:        { label: "Outro profissional",     curto: "Outro",      cor: "#8d99ab" },
+};
 async function loadPsRegistros(atendimentoId) {
   const rows = await sbFetch(`ps_registros?atendimento_id=eq.${atendimentoId}&select=*&order=criado_em.desc`);
   return Array.isArray(rows) ? rows : [];
@@ -3296,7 +3305,7 @@ function montarTimeline(d) {
     push(e.criado_em, TIPOS_EVOLUCAO[e.tipo]?.label || "Evolução", TIPOS_EVOLUCAO[e.tipo]?.cor || "#3b82f6", TIPOS_EVOLUCAO[e.tipo]?.label || e.tipo, e.texto);
   });
   (d.registrosPS || []).forEach(r => {
-    if (r.tipo === "evolucao") push(r.criado_em, "PS", "#3b82f6", "Evolução médica no PS", r.texto);
+    if (r.tipo === "evolucao") { const ec = PS_EVOL_CATEGORIAS[r.categoria] || PS_EVOL_CATEGORIAS.medica; push(r.criado_em, "PS", ec.cor, ec.label + " no PS", r.texto); }
     else if (r.tipo === "prescricao") push(r.criado_em, "PS", "#6366f1", "Prescrição no PS", r.texto);
     else if (r.tipo === "exame") {
       push(r.criado_em, "PS", "#d97706", `Exame solicitado: ${r.texto}`, null);
@@ -5714,6 +5723,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [texto, setTexto] = useState("");
   const [gravando, setGravando] = useState(false);
   const [exForm, setExForm] = useState({ categoria: "laboratorial", nome: "" });
+  const [evolCat, setEvolCat] = useState("medica");   // quem está evoluindo
   const [resultadoDe, setResultadoDe] = useState(null); // { id, texto }
   const [busy, setBusy] = useState(false);
   // Prescrição estruturada (Farmácia Fase B) + farmácia clínica (Fase 1)
@@ -5775,8 +5785,8 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
     if (!confirm(`Salvar esta ${tipo === "evolucao" ? "evolução" : "prescrição"}? Ela NÃO poderá ser editada nem apagada depois (registro clínico).`)) return;
     setBusy(true);
     if (gravando) { recRef.current?.stop(); setGravando(false); }
-    await addPsRegistroRemote({ atendimento_id: paciente.id, tipo, texto: texto.trim(), criado_em: nowISO() }, currentUser);
-    addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? "evolução" : "prescrição"}`, paciente.iniciais, {});
+    await addPsRegistroRemote({ atendimento_id: paciente.id, tipo, categoria: tipo === "evolucao" ? evolCat : null, texto: texto.trim(), criado_em: nowISO() }, currentUser);
+    addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? (PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução") : "prescrição"}`, paciente.iniciais, {});
     setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
   }
   async function salvarContexto() {
@@ -5864,25 +5874,37 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
         {fmtSinaisVitais(paciente) && <div style={{ fontSize: 11, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace", marginBottom: 12 }}>{fmtSinaisVitais(paciente)}</div>}
 
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-          <button onClick={() => setAba("evolucao")} style={abaBtn(aba === "evolucao")}>Evolução médica ({evolucoes.length})</button>
+          <button onClick={() => setAba("evolucao")} style={abaBtn(aba === "evolucao")}>Evoluções ({evolucoes.length})</button>
           <button onClick={() => setAba("prescricao")} style={abaBtn(aba === "prescricao")}>Prescrição ({prescricoes.length})</button>
           <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>Exames ({exames.length})</button>
         </div>
 
         {aba === "evolucao" && (
           <>
-            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder="Escreva a evolução médica — ou clique em Ditar e fale." style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 5 }}>Quem está registrando</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {Object.entries(PS_EVOL_CATEGORIAS).map(([k, v]) => (
+                  <button key={k} onClick={() => setEvolCat(k)}
+                    style={{ background: evolCat === k ? v.cor : "transparent", color: evolCat === k ? "#fff" : "var(--text-3)", border: `1px solid ${evolCat === k ? v.cor : "var(--border)"}`, borderRadius: 99, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{v.curto}</button>
+                ))}
+              </div>
+            </div>
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder={`Escreva a ${(PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução").toLowerCase()} — ou clique em Ditar e fale.`} style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
               {suportaVoz && <button onClick={toggleVoz} style={{ background: gravando ? "#f43f5e" : "transparent", color: gravando ? "#fff" : "var(--text-2)", border: `1px solid ${gravando ? "#f43f5e" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{gravando ? "● Gravando… (parar)" : "Ditar por voz"}</button>}
               <button onClick={() => salvarTexto("evolucao")} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {evolucoes.map(r => (
-                <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
-                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginBottom: 4 }}>{horaFmt(r.criado_em)} · {r.usuario || "?"}</div>
+              {evolucoes.map(r => { const ec = PS_EVOL_CATEGORIAS[r.categoria] || PS_EVOL_CATEGORIAS.medica; return (
+                <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${ec.cor}`, borderRadius: 8, padding: "10px 13px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: ec.cor, border: `1px solid ${ec.cor}55`, borderRadius: 99, padding: "0 7px", textTransform: "uppercase" }}>{ec.curto}</span>
+                    <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{horaFmt(r.criado_em)} · {r.usuario || "?"}</span>
+                  </div>
                   <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{r.texto}</div>
                 </div>
-              ))}
+              ); })}
               {evolucoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum registro ainda.</div>}
             </div>
             <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Registros assinados com data/hora e imutáveis (não podem ser editados nem apagados).</div>
