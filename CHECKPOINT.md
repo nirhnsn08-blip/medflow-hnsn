@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v37
+# 📍 Ponto de restauração — checkpoint-v38
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v37` (anteriores: `checkpoint-v36` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v38` (anteriores: `checkpoint-v37` … `checkpoint-v1`)
 - **Data:** 2026-07-21
 - **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
   (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
@@ -64,6 +64,44 @@ dá pra voltar exatamente para este estado.
   automaticamente — primeira
   **jornada do paciente ponta a ponta**: PS → fila → leito → alta → higienização.
   Indicadores: porta→triagem, permanência média, atendidos hoje. Testado e validado.
+- **🏥 Pronto-Socorro REFORMULADO (barra lateral dupla + salas + protocolo):**
+  o módulo ganhou **barra lateral própria com dois blocos**, no padrão Farmácia:
+  - **TRIAGEM:** Painel de Triagem · Classificar Paciente · Fila de Espera ·
+    Reavaliação · Protocolo Manchester · Indicadores.
+  - **EMERGÊNCIA (PS):** Painel da Emergência · Em atendimento · Leitos
+    detalhados · Transferências · Aguardando leito · Assistente IA.
+  - **Manchester adaptado do HNSN:** nomenclatura oficial da unidade
+    (Imediato 0min · Rápido 10min · Breve 60min · Moderado 120min · Não
+    prioritário 240min) nos cards, no guia e na triagem. Aba **Protocolo**
+    com material didático: 5 cards por nível (sinais/discriminadores e
+    conduta), 6 discriminadores gerais e a escala AVPU. As faixas de sinais
+    vitais mostradas são as mesmas que o motor usa para sugerir.
+  - **Painel:** 6 cards de risco compactos numa linha (5 cores + aguardando
+    classificação) com **tempo-alvo** e selo de **fora do alvo**; faixa de
+    segurança; rosca da distribuição do dia; e a seção do PS com 6 KPIs
+    (em atendimento, aguardando, leitos ocupados, **óbitos**, tempo médio de
+    permanência, atendidos) + Pacientes em Atendimento e Mapa de Salas lado a
+    lado e Encaminhamentos em largura total.
+  - **🛏️ Mapa de vagas do PS (`ps_salas`)** no modelo Giro de Leitos: 24 vagas
+    por área (Sala Vermelha 3 · Laranja 3 · AVC 5 · Isolamento AQUARIO+GUARIDA ·
+    Pediatria 2+1 iso · Observação 3 · Procedimento 3 · PCR 2), com status
+    disponível/ocupado/limpeza/manutenção, alocação de paciente e cronômetro.
+    ⚠️ **Regra de censo (`conta_censo`):** observação, procedimento, PCR e
+    isolamento infantil são **retaguarda provisória** e **NÃO entram nos 75
+    leitos do hospital** — contam só no panorama do PS. 15 no censo · 9 de
+    retaguarda. O mapa exibe os dois grupos separados e marca a retaguarda com "R".
+  - **Transferências** com via **Vaga Zero / GERINT / contato direto**, escolhida
+    no desfecho e contabilizada no painel.
+  - **Card de desfechos** separando **óbito no PS (antes de internar)** de
+    **óbito após internação** — fontes diferentes, não somar.
+  - **Protocolos institucionais** (`ps_protocolos`): biblioteca com busca e
+    **cadastro próprio** (título, categoria, passos, referência).
+  - **Assistente IA local** do PS + busca rápida **Ctrl+K** nas telas de lista.
+  - **Estoque na prescrição:** ao prescrever, selo **SEM ESTOQUE / estoque baixo**
+    e botão **similares com saldo** (mesmo princípio ativo ou classe); aviso ao
+    assinar. A baixa continua na dispensação da Farmácia (momento correto).
+  - Migrações: `supabase/migracao-ps-salas.sql` e `-ps-salas-censo.sql`
+    (rodadas no HNSN em 2026-07-21).
 - **💊 Farmácia — Fase A (catálogo + estoque):** módulo próprio com catálogo de
   medicamentos (princípio ativo, classe terapêutica, forma, unidade, estoque mínimo,
   marcação de **Controlado / Portaria 344**), controle de estoque **por lote e
@@ -324,7 +362,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v37
+git reset --hard checkpoint-v38
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -333,7 +371,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v37
+git checkout -b recuperacao checkpoint-v38
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -351,6 +389,14 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `0338a54` 🏥 PS — ajustes de layout (cards iguais, encaminhamentos em largura total)
+- `198de71` 🏥 PS — KPIs compactos (leitos ocupados, óbitos, tempo médio de permanência)
+- `f6bd24d` 🏥 PS — card de desfechos separando óbito no PS × pós-internação
+- `76231ca` 🏥 PS — bloco EMERGÊNCIA (6 abas, mapa com regra de censo, transferências, assistente, protocolos)
+- `692465f` 🏥 PS — barra lateral TRIAGEM + Protocolo Manchester didático
+- `e0c011e` 🏥 PS — painel em duas seções (Triagem / Pronto-Socorro)
+- `127f599` 💊 Estoque na prescrição do PS (sem estoque + similares)
+- (PRs do Adauam) 📊 relatório mensal do PS · 🔍 auditoria ampliada · 🐛 falhas de banco visíveis
 - `9d6fe93` 💱 Cotação de compra (matriz preço × fornecedor, gera pedido do vencedor)
 - `7ac79d7` 📄 Importar NF-e (XML) no estoque (entradas em lote, casamento por código/nome, custo médio)
 - `fc3da31` ✅ Painel "Ações de hoje" (lista priorizada de tarefas do almoxarifado)
