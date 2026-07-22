@@ -4772,21 +4772,30 @@ function PSPage({ currentUser, canEdit }) {
         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Atendimento e Tratamento</div>
       </div>
 
-      {/* KPIs do PS */}
+      {/* KPIs do PS — 6 compactos numa linha só */}
       {(() => {
         const salasAtivas = salas.filter(s => s.ativo !== false);
         const ocup = salasAtivas.filter(s => s.status === "ocupado").length;
-        const disp = salasAtivas.filter(s => (s.status || "disponivel") === "disponivel").length;
         const tot = salasAtivas.length;
-        const pct = n => tot ? Math.round((n / tot) * 100) + "%" : "—";
+        const pct = tot ? Math.round((ocup / tot) * 100) : 0;
+        const obitoPS = finalizados.filter(p => p.desfecho === "obito").length;
+        const obitosTot = obitoPS + obitosInternacao;
+        // Card compacto: rótulo pequeno, número grande, subtexto de apoio
+        const Mini = ({ label, valor, cor, sub }) => (
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${cor}`, borderRadius: 9, padding: "9px 11px", minWidth: 0 }}>
+            <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700, lineHeight: 1.25, minHeight: 22 }}>{label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace", marginTop: 2, lineHeight: 1.1 }}>{valor}</div>
+            <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>
+          </div>
+        );
         return (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
-            <Card label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" />
-            <Card label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" />
-            <Card label={`Salas ocupadas${tot ? ` (${pct(ocup)})` : ""}`} valor={tot ? `${ocup}/${tot}` : "—"} cor={ocup ? "#f43f5e" : "#34d399"} />
-            <Card label={`Salas disponíveis${tot ? ` (${pct(disp)})` : ""}`} valor={tot ? `${disp}/${tot}` : "—"} cor={disp ? "#34d399" : "#f43f5e"} />
-            <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
-            <Card label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 8, marginBottom: 12 }}>
+            <Mini label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" sub="pacientes agora" />
+            <Mini label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" sub="na fila" />
+            <Mini label="Leitos ocupados" valor={tot ? `${ocup}/${tot}` : "—"} cor={ocup ? "#f43f5e" : "#34d399"} sub={tot ? `${pct}% de ocupação` : "sem leitos"} />
+            <Mini label="Óbitos" valor={obitosTot} cor={obitosTot ? "#f43f5e" : "#34d399"} sub={obitosTot ? `${obitoPS} no PS · ${obitosInternacao} pós-intern.` : "nenhum hoje"} />
+            <Mini label="Tempo médio de permanência" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" sub="chegada → desfecho" />
+            <Mini label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" sub="finalizados" />
           </div>
         );
       })()}
