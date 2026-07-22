@@ -351,6 +351,33 @@ drop policy if exists ps_presc_itens_insert on public.ps_prescricao_itens;
 create policy ps_presc_itens_select on public.ps_prescricao_itens for select to authenticated using (true);
 create policy ps_presc_itens_insert on public.ps_prescricao_itens for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
 
+-- Checagem de medicação administrada — APPEND-ONLY.
+-- A dispensação prova que o remédio saiu da farmácia; só esta tabela prova
+-- que ele entrou no paciente, com hora e quem administrou.
+create table if not exists public.ps_administracoes (
+  id bigserial primary key,
+  atendimento_id bigint not null references public.ps_atendimentos(id) on delete cascade,
+  prescricao_item_id bigint references public.ps_prescricao_itens(id) on delete set null,
+  medicamento_id bigint,
+  medicamento_nome text not null,
+  dose text,
+  via text,
+  status text not null default 'administrado',  -- administrado | nao_administrado
+  motivo text,                                  -- preenchido quando nao_administrado
+  observacao text,
+  categoria text,                               -- enfermagem | tecnico | medica | outro
+  administrado_em timestamptz not null default now(),
+  usuario text,
+  criado_em timestamptz not null default now()
+);
+create index if not exists ps_adm_atend_idx on public.ps_administracoes (atendimento_id, administrado_em desc);
+create index if not exists ps_adm_item_idx  on public.ps_administracoes (prescricao_item_id);
+alter table public.ps_administracoes enable row level security;
+drop policy if exists ps_adm_select on public.ps_administracoes;
+drop policy if exists ps_adm_insert on public.ps_administracoes;
+create policy ps_adm_select on public.ps_administracoes for select to authenticated using (true);
+create policy ps_adm_insert on public.ps_administracoes for insert to authenticated with check (public.my_role() in ('adm_master','adm_silver'));
+
 -- ===== SCIH Fase B: base de germes com embasamento =====
 create table if not exists public.scih_germes (
   nome text primary key,

@@ -2498,6 +2498,7 @@ const PS_DISCRIMINADORES = [
 const PS_NAV_EMERG = [
   { key: "e_painel",         label: "Painel da Emergência", icon: "dashboard" },
   { key: "e_atendimento",    label: "Em atendimento",       icon: "activity" },
+  { key: "e_checagem",       label: "Checagem de medicação", icon: "pill" },
   { key: "e_leitos",         label: "Leitos detalhados",    icon: "bed" },
   { key: "e_transferencias", label: "Transferências",       icon: "truck" },
   { key: "e_aguardando",     label: "Aguardando leito",     icon: "clock" },
@@ -2911,10 +2912,42 @@ async function loadPsPrescricaoItensByAtendimentos(ids) {
   const rows = await sbFetch(`ps_prescricao_itens?atendimento_id=in.(${ids.join(",")})&select=*&order=created_at`);
   return Array.isArray(rows) ? rows : [];
 }
+// ===== Checagem de medicação administrada (append-only) =====
+// A dispensação diz que o remédio SAIU DA FARMÁCIA; só a checagem diz que ele
+// ENTROU NO PACIENTE, com hora e quem administrou.
+const PS_ADM_STATUS = {
+  administrado:     { label: "Administrado",     cor: "#34d399" },
+  nao_administrado: { label: "Não administrado", cor: "#f43f5e" },
+};
+// Por que a dose prescrita e dispensada não foi dada — vira indicador de segurança
+const PS_ADM_MOTIVOS = ["Recusa do paciente", "Paciente em jejum", "Acesso venoso perdido", "Paciente ausente (exame/procedimento)", "Suspenso pelo médico", "Sem estoque na unidade", "Intercorrência clínica", "Outro"];
+// Quem administra à beira do leito
+const PS_ADM_CATEGORIAS = {
+  enfermagem: { label: "Enfermeiro(a)",              curto: "Enfermagem", cor: "#0d9488" },
+  tecnico:    { label: "Técnico(a) de enfermagem",   curto: "Técnico",    cor: "#6366f1" },
+  medica:     { label: "Médico(a)",                  curto: "Médica",     cor: "#3b82f6" },
+  outro:      { label: "Outro profissional",         curto: "Outro",      cor: "#8d99ab" },
+};
+async function addPsAdministracao(reg, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("ps_administracoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
+}
+async function loadPsAdministracoes(atendimentoId) {
+  const rows = await sbFetch(`ps_administracoes?atendimento_id=eq.${atendimentoId}&select=*&order=administrado_em.desc`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadPsAdministracoesByAtendimentos(ids) {
+  if (!ids.length) return [];
+  const rows = await sbFetch(`ps_administracoes?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,status,administrado_em`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Doses já dadas de um item (só as efetivamente administradas contam)
+const psDosesDadas = (itemId, adms) => adms.filter(a => String(a.prescricao_item_id) === String(itemId) && a.status !== "nao_administrado").length;
+
 // Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
 async function loadFarmSaidasByAtendimentos(ids) {
   if (!ids.length) return [];
-  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&tipo=eq.saida&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade`);
+  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&tipo=eq.saida&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at`);
   return Array.isArray(rows) ? rows : [];
 }
 async function loadFarmSaidasByAtendimento(atendimentoId) {
@@ -4424,7 +4457,9 @@ function PSPage({ currentUser, canEdit }) {
   const [reavaliando, setReavaliando] = useState(null);
   const [desfechando, setDesfechando] = useState(null);
   const [atendendo, setAtendendo] = useState(null);
+  const [atendendoAba, setAtendendoAba] = useState(null);   // abre o modal já na aba certa
   const [examesPend, setExamesPend] = useState({});
+  const [checagemPend, setChecagemPend] = useState({});     // medicação entregue e não checada
   const [busy, setBusy] = useState(false);
   const [busca, setBusca] = useState("");
   const [salas, setSalas] = useState([]);
@@ -4452,6 +4487,24 @@ function PSPage({ currentUser, canEdit }) {
         const m = {};
         list.forEach(x => { m[x.atendimento_id] = m[x.atendimento_id] || { aguardando: 0, prontos: 0 }; if (x.status === "resultado_disponivel") m[x.atendimento_id].prontos++; else m[x.atendimento_id].aguardando++; });
         setExamesPend(m);
+      });
+      // Medicação já dispensada pela farmácia e ainda sem checagem à beira do leito
+      Promise.all([
+        loadPsPrescricaoItensByAtendimentos(ids),
+        loadFarmSaidasByAtendimentos(ids),
+        loadPsAdministracoesByAtendimentos(ids),
+      ]).then(([itens, saidasAll, admsAll]) => {
+        const m = {};
+        itens.forEach(it => {
+          const doItem = saidasAll.filter(s => String(s.prescricao_item_id) === String(it.id));
+          if (!doItem.length) return;                                                    // farmácia ainda não entregou
+          if (admsAll.some(a => String(a.prescricao_item_id) === String(it.id))) return; // já checado
+          const desde = doItem.map(s => s.created_at).filter(Boolean).sort()[0] || null;
+          const e = m[it.atendimento_id] || (m[it.atendimento_id] = { itens: [], desde: null });
+          e.itens.push(it);
+          if (desde && (!e.desde || desde < e.desde)) e.desde = desde;                   // espera pelo mais antigo
+        });
+        setChecagemPend(m);
       });
     });
     loadPsFinalizadosHoje().then(setFinalizados);
@@ -4617,6 +4670,7 @@ function PSPage({ currentUser, canEdit }) {
   const subTexto = {
     e_painel: "Panorama da emergência — ocupação das vagas do PS e fluxo do plantão.",
     e_atendimento: "Pacientes em atendimento agora, com sala e tempo.",
+    e_checagem: "Medicação que a farmácia já entregou e ainda não foi checada à beira do leito.",
     e_leitos: "Mapa detalhado das vagas do PS por área, com a regra de censo.",
     e_transferencias: "Transferências externas — Vaga Zero, GERINT e contato direto.",
     e_aguardando: "Pacientes com internação decidida, aguardando leito no hospital.",
@@ -5437,10 +5491,11 @@ function PSPage({ currentUser, canEdit }) {
                       <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.atendimento_em, agora))}</span>
                       {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir atendimento</button>}
                       {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
-                      {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0) && (
+                      {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0 || checagemPend[p.id]?.itens?.length > 0) && (
                         <div style={{ width: "100%", display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
                           {examesPend[p.id]?.aguardando > 0 && <span style={{ color: "#d97706" }}>{examesPend[p.id].aguardando} exame(s) aguardando</span>}
                           {examesPend[p.id]?.prontos > 0 && <span style={{ color: "#3b82f6" }}>{examesPend[p.id].prontos} resultado(s) pronto(s)</span>}
+                          {checagemPend[p.id]?.itens?.length > 0 && <span style={{ color: "#f43f5e" }}>{checagemPend[p.id].itens.length} medicamento(s) sem checagem</span>}
                         </div>
                       )}
                       {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
@@ -5451,6 +5506,60 @@ function PSPage({ currentUser, canEdit }) {
             )}
           </div>
         );
+
+        // ── Checagem de medicação: lista de trabalho da enfermagem ──
+        // Ordena pelo que espera há mais tempo desde que a farmácia entregou.
+        if (sub === "e_checagem") {
+          const pend = emAtendimento
+            .map(p => ({ p, info: checagemPend[p.id] }))
+            .filter(x => x.info && x.info.itens.length)
+            .sort((a, b) => new Date(a.info.desde || 0) - new Date(b.info.desde || 0));
+          const totalItens = pend.reduce((a, x) => a + x.info.itens.length, 0);
+          const esperaDe = x => diffMin(x.info.desde, agora);
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 12 }}>
+                <Card label="Pacientes a checar" valor={pend.length} cor={pend.length ? "#d97706" : "#34d399"} />
+                <Card label="Medicamentos aguardando" valor={totalItens} cor={totalItens ? "#d97706" : "#34d399"} />
+                <Card label="Em atendimento agora" valor={emAtendimento.length} cor={VX.azul} />
+              </div>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", marginBottom: 12, fontSize: 12, color: "var(--text-2)", lineHeight: 1.6 }}>
+                A farmácia entregou estes medicamentos e ninguém registrou o que foi feito com eles. Abrir o paciente leva direto à aba <strong>Checagem</strong>, onde a dose é marcada como administrada — ou justificada, se não foi dada.
+              </div>
+              {pend.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma medicação aguardando checagem. Toda dose entregue pela farmácia já foi registrada.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {pend.map(({ p, info }) => {
+                    const espera = esperaDe({ info });
+                    const atraso = espera != null && espera >= 60;   // entregue há 1h e ninguém checou
+                    const sala = salas.find(s => s.atendimento_id === p.id);
+                    return (
+                      <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${atraso ? "#f43f5e" : "#d97706"}` }}>
+                        <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+                        {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                        <ClasseBadge c={p.classificacao} />
+                        {sala && <span style={{ fontSize: 10.5, fontWeight: 700, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>{sala.identificacao} · {sala.area}</span>}
+                        <span style={{ marginLeft: "auto", fontSize: 12, color: atraso ? "#f43f5e" : "var(--text-3)", fontFamily: "JetBrains Mono, monospace", fontWeight: atraso ? 700 : 400 }}>
+                          {espera != null ? `entregue há ${fmtDur(espera)}` : "—"}
+                        </span>
+                        {canEdit && <button onClick={() => { setAtendendoAba("checagem"); setAtendendo(p); }} style={btnLeito(atraso ? "#f43f5e" : "#d97706")}>Checar medicação</button>}
+                        <div style={{ width: "100%", fontSize: 11.5, color: "var(--text-2)", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {info.itens.map(it => (
+                            <span key={it.id} style={{ border: "1px solid var(--border)", borderRadius: 99, padding: "1px 9px" }}>
+                              {it.medicamento_nome}{it.dose ? ` · ${it.dose}` : ""}{it.via ? ` · ${it.via}` : ""}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Lista dos pacientes <strong>em atendimento</strong>. Quem já teve desfecho registrado sai daqui — a checagem desses fica no histórico do atendimento.</div>
+            </div>
+          );
+        }
 
         // ── Leitos detalhados ──
         if (sub === "e_leitos") return (
@@ -5607,7 +5716,7 @@ function PSPage({ currentUser, canEdit }) {
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
 
       {/* PAINEL DO ATENDIMENTO (evolução, prescrição, exames) */}
-      {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} onClose={() => { setAtendendo(null); refresh(); }} onChanged={() => {}} />}
+      {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} abaInicial={atendendoAba} onClose={() => { setAtendendo(null); setAtendendoAba(null); refresh(); }} onChanged={() => {}} />}
       </div>
     </div>
   );
@@ -5716,10 +5825,11 @@ function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
   );
 }
 
-// Painel do atendimento médico no PS: evolução, prescrição e exames
-function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
+// Painel do atendimento médico no PS: evolução, prescrição, checagem e exames.
+// abaInicial permite abrir direto na aba certa (a lista da enfermagem cai na Checagem).
+function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicial }) {
   const [registros, setRegistros] = useState([]);
-  const [aba, setAba] = useState("evolucao"); // evolucao | prescricao | exames
+  const [aba, setAba] = useState(abaInicial || "evolucao"); // evolucao | prescricao | checagem | exames
   const [texto, setTexto] = useState("");
   const [gravando, setGravando] = useState(false);
   const [exForm, setExForm] = useState({ categoria: "laboratorial", nome: "" });
@@ -5735,6 +5845,9 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [presObs, setPresObs] = useState("");
   const [presItensSalvos, setPresItensSalvos] = useState([]); // itens já assinados neste atendimento
   const [saidas, setSaidas] = useState([]);                   // dispensações deste atendimento
+  const [adms, setAdms] = useState([]);                       // checagens de medicação deste atendimento
+  const [checando, setChecando] = useState(null);             // item aberto para checar
+  const [chkForm, setChkForm] = useState({ status: "administrado", motivo: "", observacao: "", categoria: "enfermagem", quando: "" });
   const [ctx, setCtx] = useState({ idade: paciente.idade ?? "", peso: paciente.peso ?? "", clearance_renal: paciente.clearance_renal ?? "", funcao_hepatica: paciente.funcao_hepatica ?? "", alergias: paciente.alergias ?? "", em_sonda: !!paciente.em_sonda, gestante: !!paciente.gestante });
   const [ctxAberto, setCtxAberto] = useState(false);
   const [ctxBusy, setCtxBusy] = useState(false);
@@ -5766,7 +5879,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
-  const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(paciente.id).then(setSaidas); };
+  const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(paciente.id).then(setSaidas); loadPsAdministracoes(paciente.id).then(setAdms); };
   useEffect(() => { carregarRegistros(); }, []);
   useEffect(() => { loadFarmMedicamentos().then(setCatalogo); loadFarmLotes().then(setPresLotes); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); carregarPrescricao(); }, []);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
@@ -5836,6 +5949,36 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
     carregarRegistros(); carregarPrescricao(); onChanged?.();
   }
   const dispensadoDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  // Item ainda sem nenhuma checagem (nem administrado, nem justificado)
+  const semChecagem = it => !adms.some(a => String(a.prescricao_item_id) === String(it.id));
+  // A farmácia entregou e ninguém registrou o que foi feito com o medicamento
+  const itensPendentesChecagem = presItensSalvos.filter(it => dispensadoDoItem(it.id) > 0 && semChecagem(it));
+  // Abre a checagem de um item. A hora vem preenchida com agora, mas é editável:
+  // à beira do leito a enfermagem administra primeiro e registra depois.
+  function abrirChecagem(it) {
+    setChecando(it);
+    setChkForm(f => ({ status: "administrado", motivo: "", observacao: "", categoria: f.categoria || "enfermagem", quando: isoToLocal(nowISO()) }));
+  }
+  async function confirmarChecagem() {
+    const it = checando;
+    if (!it) return;
+    if (chkForm.status === "nao_administrado" && !chkForm.motivo) { alert("Informe o motivo de a dose não ter sido administrada."); return; }
+    const quandoIso = chkForm.quando ? localToIso(chkForm.quando) : nowISO();
+    if (new Date(quandoIso) > new Date()) { alert("A hora da administração não pode estar no futuro."); return; }
+    const rotulo = chkForm.status === "administrado" ? "administrado" : "NÃO administrado";
+    if (!confirm(`Registrar ${it.medicamento_nome} como ${rotulo} em ${horaFmt(quandoIso)}?\n\nÉ um registro clínico: NÃO poderá ser editado nem apagado depois.`)) return;
+    setBusy(true);
+    await addPsAdministracao({
+      atendimento_id: paciente.id, prescricao_item_id: it.id, medicamento_id: it.medicamento_id || null,
+      medicamento_nome: it.medicamento_nome, dose: it.dose || null, via: it.via || null,
+      status: chkForm.status, motivo: chkForm.status === "nao_administrado" ? chkForm.motivo : null,
+      observacao: chkForm.observacao.trim() || null, categoria: chkForm.categoria, administrado_em: quandoIso,
+    }, currentUser);
+    addAuditLog(currentUser, `PS: checagem de medicação (${rotulo})`, `${paciente.iniciais} · ${it.medicamento_nome}`, {});
+    setChecando(null); setBusy(false);
+    loadPsAdministracoes(paciente.id).then(setAdms);
+    onChanged?.();
+  }
   async function solicitarExame() {
     if (!exForm.nome.trim()) { alert("Informe o nome do exame."); return; }
     setBusy(true);
@@ -5876,6 +6019,10 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           <button onClick={() => setAba("evolucao")} style={abaBtn(aba === "evolucao")}>Evoluções ({evolucoes.length})</button>
           <button onClick={() => setAba("prescricao")} style={abaBtn(aba === "prescricao")}>Prescrição ({prescricoes.length})</button>
+          <button onClick={() => setAba("checagem")} style={abaBtn(aba === "checagem")}>
+            Checagem ({adms.length})
+            {itensPendentesChecagem.length > 0 && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: aba === "checagem" ? "#000" : "#d97706" }}>● {itensPendentesChecagem.length} a checar</span>}
+          </button>
           <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>Exames ({exames.length})</button>
         </div>
 
@@ -6101,7 +6248,119 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
               })}
               {prescricoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhuma prescrição assinada ainda.</div>}
             </div>
-            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Prescrições são assinadas com data/hora e imutáveis. A dispensação (baixa de estoque) é feita na Farmácia.</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>Prescrições são assinadas com data/hora e imutáveis. A dispensação (baixa de estoque) é feita na Farmácia; o registro de que o paciente recebeu fica na aba <strong>Checagem</strong>.</div>
+          </>
+        )}
+
+        {aba === "checagem" && (
+          <>
+            <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", marginBottom: 12, fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.55 }}>
+              <strong>Dispensado</strong> significa que o medicamento saiu da farmácia. <strong>Checado</strong> significa que ele foi administrado ao paciente — com hora e responsável. São coisas diferentes: só a checagem fecha o ciclo.
+            </div>
+
+            {presItensSalvos.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum medicamento prescrito neste atendimento.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {presItensSalvos.map(it => {
+                  const qtd = Number(it.quantidade || 0);
+                  const disp = dispensadoDoItem(it.id);
+                  const dadas = psDosesDadas(it.id, adms);
+                  const previstas = Number(it.frequencia_dia || 0);
+                  const naoDadas = adms.filter(a => String(a.prescricao_item_id) === String(it.id) && a.status === "nao_administrado").length;
+                  const dispSt = qtd <= 0 ? (disp > 0 ? { c: "#34d399", t: "dispensado" } : { c: "#8d99ab", t: "sem dispensação" })
+                    : disp >= qtd ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `dispensado parcial ${farmFmtQtd(disp)}/${farmFmtQtd(qtd)}` } : { c: "#8d99ab", t: "não dispensado" };
+                  const pendente = disp > 0 && semChecagem(it);
+                  const aberto = checando?.id === it.id;
+                  return (
+                    <div key={it.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${pendente ? "#d97706" : dadas > 0 ? "#34d399" : "var(--border-2)"}`, borderRadius: 8, padding: "10px 13px" }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                        <span style={{ flex: 1, fontSize: 13, color: "var(--text)", minWidth: 180 }}>
+                          <strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via || ""}</span>
+                        </span>
+                        <span style={{ fontSize: 10.5, color: dispSt.c, fontWeight: 700, whiteSpace: "nowrap" }}>{dispSt.t}</span>
+                        {!aberto && <button onClick={() => abrirChecagem(it)} style={btnLeito(pendente ? "#d97706" : "#22d3ee")}>Checar</button>}
+                        {aberto && <button onClick={() => setChecando(null)} style={btnLeito("#8d99ab")}>Fechar</button>}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <span style={{ color: dadas > 0 ? "#34d399" : "var(--text-muted)", fontWeight: dadas > 0 ? 700 : 500 }}>
+                          {dadas} dose(s) administrada(s){previstas > 0 ? ` de ${previstas} previstas por dia` : ""}
+                        </span>
+                        {naoDadas > 0 && <span style={{ color: "#f43f5e", fontWeight: 700 }}>{naoDadas} não administrada(s)</span>}
+                        {pendente && <span style={{ color: "#d97706", fontWeight: 700 }}>aguardando checagem</span>}
+                      </div>
+
+                      {aberto && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                          <div style={{ display: "flex", gap: 6, marginBottom: 9, flexWrap: "wrap" }}>
+                            {Object.entries(PS_ADM_STATUS).map(([k, v]) => (
+                              <button key={k} onClick={() => setChkForm(f => ({ ...f, status: k, motivo: k === "administrado" ? "" : f.motivo }))}
+                                style={{ background: chkForm.status === k ? v.cor : "transparent", color: chkForm.status === k ? "#000" : "var(--text-3)", border: `1px solid ${chkForm.status === k ? v.cor : "var(--border)"}`, borderRadius: 99, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{v.label}</button>
+                            ))}
+                          </div>
+
+                          {chkForm.status === "nao_administrado" && (
+                            <div style={{ marginBottom: 9 }}>
+                              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Motivo (obrigatório)</div>
+                              <select value={chkForm.motivo} onChange={e => setChkForm(f => ({ ...f, motivo: e.target.value }))} style={inp}>
+                                <option value="">Selecione o motivo…</option>
+                                {PS_ADM_MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </div>
+                          )}
+
+                          <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Quem administrou</div>
+                          <div style={{ display: "flex", gap: 6, marginBottom: 9, flexWrap: "wrap" }}>
+                            {Object.entries(PS_ADM_CATEGORIAS).map(([k, v]) => (
+                              <button key={k} onClick={() => setChkForm(f => ({ ...f, categoria: k }))}
+                                style={{ background: chkForm.categoria === k ? v.cor : "transparent", color: chkForm.categoria === k ? "#fff" : "var(--text-3)", border: `1px solid ${chkForm.categoria === k ? v.cor : "var(--border)"}`, borderRadius: 99, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{v.curto}</button>
+                            ))}
+                          </div>
+
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 9 }}>
+                            <div style={{ flex: "1 1 200px" }}>
+                              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Hora da administração</div>
+                              <input type="datetime-local" value={chkForm.quando} onChange={e => setChkForm(f => ({ ...f, quando: e.target.value }))} style={inp} />
+                            </div>
+                            <div style={{ flex: "2 1 260px" }}>
+                              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Observação (opcional)</div>
+                              <input value={chkForm.observacao} onChange={e => setChkForm(f => ({ ...f, observacao: e.target.value }))} placeholder="Ex.: reação no local, dose fracionada…" style={inp} />
+                            </div>
+                          </div>
+
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>Registro permanente, assinado como <strong>{currentUser?.name || "—"}</strong>.</span>
+                            <button onClick={confirmarChecagem} disabled={busy} style={{ marginLeft: "auto", background: chkForm.status === "administrado" ? "#34d399" : "#f43f5e", color: chkForm.status === "administrado" ? "#000" : "#fff", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar checagem"}</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".04em", margin: "16px 0 8px" }}>Histórico de administrações</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {adms.map(a => { const st = PS_ADM_STATUS[a.status] || PS_ADM_STATUS.administrado; const cat = PS_ADM_CATEGORIAS[a.categoria] || PS_ADM_CATEGORIAS.outro; return (
+                <div key={a.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${st.cor}`, borderRadius: 8, padding: "8px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: st.cor, border: `1px solid ${st.cor}55`, borderRadius: 99, padding: "0 7px", textTransform: "uppercase" }}>{st.label}</span>
+                    <strong style={{ fontSize: 12.5, color: "var(--text)" }}>{a.medicamento_nome}</strong>
+                    {a.dose && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.dose}</span>}
+                    {a.via && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.via}</span>}
+                    <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{horaFmt(a.administrado_em)} · {cat.curto} · {a.usuario || "?"}</span>
+                  </div>
+                  {(a.motivo || a.observacao) && (
+                    <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3 }}>
+                      {a.motivo ? <span style={{ color: "#f43f5e", fontWeight: 600 }}>{a.motivo}</span> : null}{a.motivo && a.observacao ? " · " : ""}{a.observacao || ""}
+                    </div>
+                  )}
+                </div>
+              ); })}
+              {adms.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhuma medicação checada ainda.</div>}
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>A checagem é um registro clínico append-only: cada dose fica gravada com hora, categoria profissional e responsável. Não pode ser editada nem apagada.</div>
           </>
         )}
 
