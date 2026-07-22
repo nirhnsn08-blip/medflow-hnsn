@@ -2440,12 +2440,15 @@ const fmtBRL = v => Number(v || 0).toLocaleString("pt-BR", { style: "currency", 
 // PRONTO-SOCORRO — triagem Manchester + jornada do paciente
 // ═══════════════════════════════════════════════════════════
 // Cores do Protocolo de Manchester são normativas (semântica clínica oficial).
+// Protocolo de Manchester ADAPTADO do HNSN — nomenclatura e tempos-alvo oficiais
+// da instituição (confirmados pela enfermagem em 2026-07-21).
+// `atend` = tipo de atendimento no vocabulário usado no hospital.
 const MANCHESTER = {
-  vermelho: { label: "Emergência",     cor: "#ef4444", bg: "#3d0f18", alvoMin: 0,   desc: "Risco de vida imediato. Atendimento IMEDIATO — sala de emergência." },
-  laranja:  { label: "Muito urgente",  cor: "#f97316", bg: "#3d2206", alvoMin: 10,  desc: "Risco significativo. Atendimento em até 10 minutos." },
-  amarelo:  { label: "Urgente",        cor: "#eab308", bg: "#3d2e06", alvoMin: 60,  desc: "Condição aguda sem risco imediato. Atendimento em até 60 minutos." },
-  verde:    { label: "Pouco urgente",  cor: "#22c55e", bg: "#0a3d2a", alvoMin: 120, desc: "Condição de menor gravidade. Atendimento em até 120 minutos." },
-  azul:     { label: "Não urgente",    cor: "#3b82f6", bg: "#132c47", alvoMin: 240, desc: "Queixa simples/crônica. Atendimento em até 240 minutos ou encaminhamento." },
+  vermelho: { label: "Emergência",     atend: "Imediato",        cor: "#ef4444", bg: "#3d0f18", alvoMin: 0,   desc: "Risco de vida. Atendimento IMEDIATO (0 min) — sala de emergência." },
+  laranja:  { label: "Muito urgente",  atend: "Rápido",          cor: "#f97316", bg: "#3d2206", alvoMin: 10,  desc: "Risco significativo. Atendimento urgente RÁPIDO — em até 10 minutos." },
+  amarelo:  { label: "Urgente",        atend: "Breve",           cor: "#eab308", bg: "#3d2e06", alvoMin: 60,  desc: "Condição aguda sem risco imediato. Atendimento BREVE — em até 60 minutos." },
+  verde:    { label: "Pouco urgente",  atend: "Moderado",        cor: "#22c55e", bg: "#0a3d2a", alvoMin: 120, desc: "Condição de menor gravidade. Atendimento MODERADO — em até 120 minutos." },
+  azul:     { label: "Não urgente",    atend: "Não prioritário", cor: "#3b82f6", bg: "#132c47", alvoMin: 240, desc: "Queixa simples/crônica. Atendimento NÃO PRIORITÁRIO — em até 240 minutos ou encaminhamento." },
 };
 const PS_DESFECHOS = {
   alta:          { label: "Alta",          cor: "#34d399" },
@@ -4237,7 +4240,7 @@ function PSPage({ currentUser, canEdit }) {
             <div style={{ fontSize: 10.5, color: c.cor, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 800 }}>{c.label}</div>
             <div style={{ fontSize: 26, fontWeight: 800, color: c.n ? c.cor : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{String(c.n).padStart(2, "0")}</div>
             <div style={{ fontSize: 10.5, marginTop: 2, color: c.fora ? "#f43f5e" : "var(--text-muted)", fontWeight: c.fora ? 800 : 400 }}>
-              {c.fora ? `⚠ ${c.fora} fora do alvo` : `alvo ${c.alvoMin === 0 ? "imediato" : fmtDur(c.alvoMin)}`}
+              {c.fora ? `⚠ ${c.fora} fora do alvo` : `${c.atend} · ${c.alvoMin === 0 ? "0 min" : fmtDur(c.alvoMin)}`}
             </div>
           </div>
         ))}
