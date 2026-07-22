@@ -4902,7 +4902,7 @@ function PSPage({ currentUser, canEdit }) {
               { label: "Transferência externa", n: finalizados.filter(p => p.desfecho === "transferencia").length, cor: "#6366f1" },
               { label: "Alta", n: finalizados.filter(p => p.desfecho === "alta").length, cor: "#34d399" },
               { label: "Evasão", n: finalizados.filter(p => p.desfecho === "evasao").length, cor: "#d97706" },
-              { label: "Óbito", n: finalizados.filter(p => p.desfecho === "obito").length + obitosInternacao, cor: "#f43f5e" },
+              { label: "Óbito no PS", n: finalizados.filter(p => p.desfecho === "obito").length, cor: "#f43f5e" },
             ].filter(x => x.n > 0);
             if (!linhas.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Nenhum desfecho registrado hoje.</div>;
             return (
@@ -5223,6 +5223,47 @@ function PSPage({ currentUser, canEdit }) {
               <strong style={{ color: "#d97706" }}>{retaguarda.length} de retaguarda</strong> (observação, procedimento, PCR e isolamento infantil) contam <strong>só aqui</strong>, por serem provisórias e de alta rotatividade.
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
+              {/* DESFECHOS DO DIA — com os dois tipos de óbito separados */}
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 3 }}>Desfechos do dia</div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 10 }}>{finalizados.length} atendimento(s) finalizado(s) no PS hoje.</div>
+                {(() => {
+                  const obitoPS = finalizados.filter(p => p.desfecho === "obito").length;
+                  const linhas = Object.keys(PS_DESFECHOS).map(k => ({
+                    k,
+                    label: k === "obito" ? "Óbito no PS (antes de internar)" : PS_DESFECHOS[k].label,
+                    cor: PS_DESFECHOS[k].cor,
+                    n: finalizados.filter(p => p.desfecho === k).length,
+                  }));
+                  const totalObitos = obitoPS + obitosInternacao;
+                  return (<>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {linhas.map(x => (
+                        <div key={x.k} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: 99, background: x.cor, flexShrink: 0 }} />
+                          <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{x.label}</span>
+                          <strong style={{ fontFamily: "JetBrains Mono, monospace", color: x.n ? x.cor : "var(--text-muted)" }}>{x.n}</strong>
+                        </div>
+                      ))}
+                      {/* Óbito após internação vem de leitos_saidas — não é desfecho do PS */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px dashed var(--border)", borderRadius: 7, padding: "7px 11px" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: 99, background: "#f43f5e", flexShrink: 0, opacity: .6 }} />
+                        <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-3)" }}>Óbito após internação <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(fora do PS)</span></span>
+                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: obitosInternacao ? "#f43f5e" : "var(--text-muted)" }}>{obitosInternacao}</strong>
+                      </div>
+                    </div>
+                    {totalObitos > 0 && (
+                      <div style={{ marginTop: 9, background: "#f43f5e10", border: "1px solid #f43f5e44", borderRadius: 7, padding: "8px 11px", fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+                        <strong style={{ color: "#f43f5e" }}>Óbitos hoje: {totalObitos}</strong> — {obitoPS} no PS antes de internar · {obitosInternacao} após internação.
+                      </div>
+                    )}
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>
+                      Os dois óbitos são contados em fontes diferentes: o do PS vem do desfecho do atendimento; o pós-internação vem da saída do leito. Somar sem separar infla o indicador do PS.
+                    </div>
+                  </>);
+                })()}
+              </div>
+
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Mapa resumido</div>
                 {ativas.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma vaga cadastrada.</div> : <MapaAreas lista={ativas} />}
@@ -5237,7 +5278,7 @@ function PSPage({ currentUser, canEdit }) {
                     { label: "Transferência externa", n: finalizados.filter(p => p.desfecho === "transferencia").length, cor: "#6366f1" },
                     { label: "Alta", n: finalizados.filter(p => p.desfecho === "alta").length, cor: "#34d399" },
                     { label: "Evasão", n: finalizados.filter(p => p.desfecho === "evasao").length, cor: "#d97706" },
-                    { label: "Óbito", n: finalizados.filter(p => p.desfecho === "obito").length + obitosInternacao, cor: "#f43f5e" },
+                    { label: "Óbito no PS", n: finalizados.filter(p => p.desfecho === "obito").length, cor: "#f43f5e" },
                   ].filter(x => x.n > 0);
                   if (!linhas.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum desfecho hoje.</div>;
                   return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{linhas.map((x, i) => (
