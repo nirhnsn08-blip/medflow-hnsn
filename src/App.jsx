@@ -2494,8 +2494,34 @@ const PS_DISCRIMINADORES = [
   { nome: "Agudeza / tempo de evolução", desc: "Início súbito e progressão rápida aumentam a prioridade frente ao mesmo sintoma de curso arrastado.", cor: "#0d9488" },
 ];
 
-// Mapa de salas do PS — áreas sugeridas e situações possíveis
-const PS_AREAS = ["Emergência", "Observação", "Sala Vermelha", "Consultório", "Medicação", "Outros"];
+// Barra lateral interna — bloco EMERGÊNCIA (PS)
+const PS_NAV_EMERG = [
+  { key: "e_painel",         label: "Painel da Emergência", icon: "dashboard" },
+  { key: "e_atendimento",    label: "Em atendimento",       icon: "activity" },
+  { key: "e_leitos",         label: "Leitos detalhados",    icon: "bed" },
+  { key: "e_transferencias", label: "Transferências",       icon: "truck" },
+  { key: "e_aguardando",     label: "Aguardando leito",     icon: "clock" },
+  { key: "e_ia",             label: "Assistente IA",        icon: "chat" },
+];
+// Vias de transferência externa usadas na rede
+const PS_VIAS_TRANSF = ["Vaga Zero", "GERINT", "Contato direto", "Outro"];
+// Mapa de vagas do PS — ordem fixa das áreas (igual ao padrão do Giro de Leitos)
+const PS_AREAS = ["Sala Vermelha", "Sala Laranja", "Sala AVC", "Isolamento", "Pediatria", "Observação", "Procedimento", "PCR", "Outros"];
+// Retaguarda provisória: alta rotatividade, NÃO entra no censo dos leitos do
+// hospital — conta só no panorama do PS. A fonte da verdade é ps_salas.conta_censo.
+const psContaCenso = s => s.conta_censo !== false;
+async function loadPsProtocolos() {
+  const rows = await sbFetch("ps_protocolos?select=*&order=categoria,titulo");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertPsProtocoloRemote(p, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...p, usuario: user?.name || null, updated_at: nowISO() };
+  if (p.id) { await sbFetch(`ps_protocolos?id=eq.${p.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
+  delete body.id;
+  return await sbFetch("ps_protocolos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deletePsProtocoloRemote(id) { if (USE_SUPABASE) await sbFetch(`ps_protocolos?id=eq.${id}`, { method: "DELETE" }); }
 const PS_SALA_STATUS = {
   disponivel:  { label: "Disponível",  cor: "#34d399" },
   ocupado:     { label: "Ocupado",     cor: "#f43f5e" },
@@ -2514,6 +2540,176 @@ async function upsertPsSalaRemote(sala, user) {
   return await sbFetch("ps_salas", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
 }
 async function deletePsSalaRemote(id) { if (USE_SUPABASE) await sbFetch(`ps_salas?id=eq.${id}`, { method: "DELETE" }); }
+
+// Assistente local do Pronto-Socorro — responde a partir dos dados da tela
+const PS_ASSIST_HELP = 'Posso responder sobre: panorama do PS, fila e tempos-alvo, quem está fora do alvo, vagas livres por área, retaguarda vs censo, pacientes em atendimento, aguardando leito, transferências e desfechos do dia. Ex.: "panorama", "quem está fora do alvo?", "vagas livres", "sala vermelha", "aguardando leito".';
+function PsAssistenteView({ fila, finalizados, salas, leitos }) {
+  const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do Pronto-Socorro. " + PS_ASSIST_HELP }]);
+  const [q, setQ] = useState("");
+  const fimRef = useRef(null);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+  const agora = nowISO();
+  const aguardTri = fila.filter(p => p.status === "aguardando_triagem");
+  const aguardAtend = fila.filter(p => p.status === "aguardando_atendimento");
+  const emAtend = fila.filter(p => p.status === "em_atendimento");
+  const estourou = p => { const alvo = MANCHESTER[p.classificacao]?.alvoMin; if (alvo == null) return false; const m = diffMin(p.triagem_em, agora); return alvo === 0 ? true : (m != null && m > alvo); };
+  const fora = aguardAtend.filter(estourou);
+  const doCenso = salas.filter(psContaCenso), retag = salas.filter(s => !psContaCenso(s));
+  const livres = a => a.filter(s => (s.status || "disponivel") === "disponivel");
+  const ocup = a => a.filter(s => s.status === "ocupado");
+
+  function responder(pergunta) {
+    const s = normTxt(pergunta);
+    const has = (...ks) => ks.some(k => s.includes(k));
+    if (!s) return PS_ASSIST_HELP;
+    if (has("ajuda", "o que voce", "comando") || s === "?") return PS_ASSIST_HELP;
+    if (has("bom dia", "boa tarde", "boa noite", "obrigad", "valeu") || s === "oi" || s === "ola") return "Olá! " + PS_ASSIST_HELP;
+    if (has("panorama", "resumo", "visao geral", "situacao", "como esta")) {
+      return `Panorama do PS agora:\n• Triagem: ${aguardTri.length} aguardando classificação\n• Fila: ${aguardAtend.length} aguardando atendimento${fora.length ? ` · ⚠ ${fora.length} FORA do tempo-alvo` : " · todos no alvo"}\n• Em atendimento: ${emAtend.length}\n• Vagas: ${livres(salas).length} livre(s) de ${salas.length} (${ocup(salas).length} ocupada(s))\n• Censo: ${doCenso.length} vagas contam nos leitos do hospital · ${retag.length} são retaguarda`;
+    }
+    if (has("fora do alvo", "estourad", "atrasad", "demorando")) {
+      if (!fora.length) return "Ninguém fora do tempo-alvo agora. 👍";
+      return `${fora.length} paciente(s) fora do tempo-alvo:\n` + fora.map(p => `• ${p.iniciais} — ${MANCHESTER[p.classificacao]?.label} · esperando ${fmtDur(diffMin(p.triagem_em, agora))} (alvo ${MANCHESTER[p.classificacao]?.alvoMin} min)`).join("\n");
+    }
+    if (has("vaga", "leito livre", "livres", "disponiv")) {
+      const porArea = {}; livres(salas).forEach(s => { const a = s.area || "Outros"; porArea[a] = (porArea[a] || 0) + 1; });
+      const linhas = Object.entries(porArea).map(([a, n]) => `• ${a}: ${n} livre(s)`);
+      return linhas.length ? `${livres(salas).length} vaga(s) livre(s) no PS:\n` + linhas.join("\n") : "Nenhuma vaga livre no PS no momento.";
+    }
+    if (has("retaguarda", "censo", "75", "conta")) {
+      return `Censo do PS:\n• ${doCenso.length} vaga(s) contam nos leitos do hospital (${ocup(doCenso).length} ocupada(s))\n• ${retag.length} de retaguarda provisória — observação, procedimento, PCR e isolamento infantil — contam SÓ no panorama do PS, por alta rotatividade.`;
+    }
+    if (has("atendimento", "atendendo")) {
+      return emAtend.length ? `${emAtend.length} em atendimento:\n` + emAtend.map(p => { const sl = salas.find(x => x.atendimento_id === p.id); return `• ${p.iniciais}${sl ? ` — ${sl.identificacao}` : ""} · há ${fmtDur(diffMin(p.atendimento_em, agora))}`; }).join("\n") : "Ninguém em atendimento agora.";
+    }
+    if (has("aguardando leito", "internacao", "internar")) {
+      const int = finalizados.filter(p => p.desfecho === "internacao");
+      const sem = int.filter(p => !leitos.some(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario));
+      return `${int.length} internação(ões) decidida(s) hoje · ${sem.length} ainda sem leito. Leitos livres no hospital: ${leitos.filter(l => l.status === "livre").length}.`;
+    }
+    if (has("transferencia", "vaga zero", "gerint")) {
+      const t = finalizados.filter(p => p.desfecho === "transferencia");
+      const via = v => t.filter(p => normTxt(p.observacao).includes(normTxt(v))).length;
+      return `${t.length} transferência(s) hoje — Vaga Zero: ${via("Vaga Zero")} · GERINT: ${via("GERINT")}.`;
+    }
+    if (has("fila", "espera", "aguardando")) {
+      return `Fila: ${aguardTri.length} aguardando classificação · ${aguardAtend.length} classificados aguardando atendimento${fora.length ? ` (${fora.length} fora do alvo)` : ""}.`;
+    }
+    if (has("desfecho", "alta", "obito", "evasao", "hoje")) {
+      const c = k => finalizados.filter(p => p.desfecho === k).length;
+      return `Desfechos de hoje: alta ${c("alta")} · internação ${c("internacao")} · transferência ${c("transferencia")} · evasão ${c("evasao")} · óbito ${c("obito")}. Total atendidos: ${finalizados.length}.`;
+    }
+    // busca por área de sala
+    const area = [...new Set(salas.map(x => x.area))].find(a => a && s.includes(normTxt(a)));
+    if (area) {
+      const da = salas.filter(x => x.area === area);
+      return `${area}: ${da.length} vaga(s) · ${livres(da).length} livre(s) · ${ocup(da).length} ocupada(s)${da.some(x => !psContaCenso(x)) ? "\n(retaguarda — não conta no censo do hospital)" : ""}`;
+    }
+    return "Não entendi. " + PS_ASSIST_HELP;
+  }
+  function enviar(t0) { const t = (t0 != null ? t0 : q).trim(); if (!t) return; setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: responder(t) }]); setQ(""); }
+  const sugestoes = ["Panorama", "Quem está fora do alvo?", "Vagas livres", "Aguardando leito", "Retaguarda vs censo", "Transferências"];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 260px)", minHeight: 340, maxWidth: 760, marginBottom: 16 }}>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: "4px 2px 12px" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "u" ? "flex-end" : "flex-start", maxWidth: "85%", background: m.role === "u" ? VX.royal : "var(--surface)", color: m.role === "u" ? "#fff" : "var(--text)", border: m.role === "u" ? "none" : "1px solid var(--border)", borderRadius: 12, padding: "9px 13px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
+        ))}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {sugestoes.map(sg => <button key={sg} onClick={() => enviar(sg)} style={{ background: "transparent", color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "4px 11px", fontSize: 11.5, cursor: "pointer" }}>{sg}</button>)}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && enviar()} placeholder="Pergunte sobre o Pronto-Socorro…" style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
+        <button onClick={() => enviar()} style={{ background: VX.azul, color: "#04263b", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Enviar</button>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>Assistente local — responde a partir dos dados do sistema; nada é enviado para fora.</div>
+    </div>
+  );
+}
+
+// Biblioteca de protocolos do PS — abrir e cadastrar
+function PsProtocolosModal({ currentUser, canEdit, isMaster, onClose }) {
+  const [lista, setLista] = useState([]);
+  const [edit, setEdit] = useState(null);   // protocolo em edição/novo
+  const [busca, setBusca] = useState("");
+  const [busy, setBusy] = useState(false);
+  const carregar = () => loadPsProtocolos().then(setLista);
+  useEffect(() => { if (USE_SUPABASE) carregar(); }, []);
+  const inp2 = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const q = normTxt(busca);
+  const view = lista.filter(p => !q || [p.titulo, p.categoria, p.resumo].some(x => normTxt(x).includes(q)));
+  async function salvar() {
+    if (!edit.titulo?.trim()) { alert("Informe o título do protocolo."); return; }
+    setBusy(true);
+    await upsertPsProtocoloRemote({ ...(edit.id ? { id: edit.id } : {}), titulo: edit.titulo.trim(), categoria: edit.categoria?.trim() || null, resumo: edit.resumo?.trim() || null, conteudo: edit.conteudo?.trim() || null, referencia: edit.referencia?.trim() || null, ativo: true }, currentUser);
+    addAuditLog(currentUser, edit.id ? "PS: editar protocolo" : "PS: cadastrar protocolo", edit.titulo, {});
+    setBusy(false); setEdit(null); carregar();
+  }
+  async function excluir(p) {
+    if (!confirm(`Excluir o protocolo "${p.titulo}"?`)) return;
+    await deletePsProtocoloRemote(p.id); addAuditLog(currentUser, "PS: excluir protocolo", p.titulo, {}); carregar();
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 660, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Protocolos do Pronto-Socorro</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Protocolos institucionais para consulta no plantão. Revisar periodicamente com a equipe.</div>
+
+        {edit ? (
+          <div style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "12px 14px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{edit.id ? "Editar protocolo" : "Novo protocolo"}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 9, marginBottom: 9 }}>
+              <div><label style={farmLbl}>Título *</label><input value={edit.titulo || ""} onChange={e => setEdit(p => ({ ...p, titulo: e.target.value }))} placeholder="Ex.: Protocolo de Dor Torácica" style={inp2} autoFocus /></div>
+              <div><label style={farmLbl}>Categoria</label><input value={edit.categoria || ""} onChange={e => setEdit(p => ({ ...p, categoria: e.target.value }))} placeholder="Ex.: Cardiologia" style={inp2} /></div>
+            </div>
+            <div style={{ marginBottom: 9 }}><label style={farmLbl}>Resumo</label><input value={edit.resumo || ""} onChange={e => setEdit(p => ({ ...p, resumo: e.target.value }))} placeholder="Uma linha sobre quando aplicar" style={inp2} /></div>
+            <div style={{ marginBottom: 9 }}><label style={farmLbl}>Conteúdo / passos</label><textarea value={edit.conteudo || ""} onChange={e => setEdit(p => ({ ...p, conteudo: e.target.value }))} rows={7} placeholder={"1. …\n2. …\n3. …"} style={{ ...inp2, resize: "vertical", fontFamily: "inherit" }} /></div>
+            <div style={{ marginBottom: 12 }}><label style={farmLbl}>Referência / fonte</label><input value={edit.referencia || ""} onChange={e => setEdit(p => ({ ...p, referencia: e.target.value }))} placeholder="Diretriz, ano, sociedade…" style={inp2} /></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button onClick={() => setEdit(null)} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+              <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar"}</button>
+            </div>
+          </div>
+        ) : (<>
+          <div style={{ display: "flex", gap: 9, marginBottom: 12, flexWrap: "wrap" }}>
+            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar protocolo…" style={{ ...inp2, flex: 1, minWidth: 180 }} />
+            {canEdit && <button onClick={() => setEdit({ titulo: "", categoria: "", resumo: "", conteudo: "", referencia: "" })} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Cadastrar protocolo</button>}
+          </div>
+          {view.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>
+              {lista.length === 0 ? "Nenhum protocolo cadastrado ainda." : "Nenhum resultado."}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {view.map(p => (
+                <details key={p.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px" }}>
+                  <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong style={{ fontSize: 13 }}>{p.titulo}</strong>
+                    {p.categoria && <span style={{ fontSize: 10, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px", fontWeight: 700 }}>{p.categoria}</span>}
+                    {p.resumo && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{p.resumo}</span>}
+                  </summary>
+                  {p.conteudo && <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6, whiteSpace: "pre-wrap", marginTop: 8 }}>{p.conteudo}</div>}
+                  {p.referencia && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>Fonte: {p.referencia}</div>}
+                  {canEdit && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                      <button onClick={() => setEdit(p)} style={btnLeito("#3b82f6")}>Editar</button>
+                      {isMaster && <button onClick={() => excluir(p)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                    </div>
+                  )}
+                </details>
+              ))}
+            </div>
+          )}
+        </>)}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Alocar um paciente do PS numa sala livre
 function PsAlocarSalaModal({ sala, pacientes, onClose, onSave }) {
@@ -2592,6 +2788,8 @@ function PsSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
                   <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, minWidth: 42 }}>{s.identificacao}</span>
                   <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{s.area}</span>
                   <span style={{ fontSize: 10.5, color: st.cor, border: `1px solid ${st.cor}55`, borderRadius: 99, padding: "0 7px", fontWeight: 700 }}>{st.label}</span>
+                  <button onClick={() => onSave({ id: s.id, conta_censo: !psContaCenso(s) })} title="Alterna se a vaga entra nos leitos do hospital ou é retaguarda só do PS"
+                    style={btnLeito(psContaCenso(s) ? "#0d9488" : "#d97706")}>{psContaCenso(s) ? "No censo" : "Retaguarda"}</button>
                   <button onClick={() => onSave({ id: s.id, ativo: !(s.ativo !== false) })} style={btnLeito(s.ativo !== false ? "#8d99ab" : "#34d399")}>{s.ativo !== false ? "Desativar" : "Ativar"}</button>
                   {isMaster && <button onClick={() => onDelete(s)} style={btnLeito("#f43f5e")}>Excluir</button>}
                 </div>
@@ -4216,6 +4414,7 @@ function PSPage({ currentUser, canEdit }) {
   const [busca, setBusca] = useState("");
   const [salas, setSalas] = useState([]);
   const [showSalas, setShowSalas] = useState(false);   // gestão do cadastro de salas
+  const [showProtocolos, setShowProtocolos] = useState(false);
   const [alocando, setAlocando] = useState(null);      // sala recebendo paciente
   const buscaRef = useRef(null);
   const [, setTick] = useState(0);
@@ -4388,8 +4587,14 @@ function PSPage({ currentUser, canEdit }) {
     </div>
   );
 
-  const navAtual = PS_NAV.find(n => n.key === sub) || PS_NAV[0];
+  const navAtual = [...PS_NAV, ...PS_NAV_EMERG].find(n => n.key === sub) || PS_NAV[0];
   const subTexto = {
+    e_painel: "Panorama da emergência — ocupação das vagas do PS e fluxo do plantão.",
+    e_atendimento: "Pacientes em atendimento agora, com sala e tempo.",
+    e_leitos: "Mapa detalhado das vagas do PS por área, com a regra de censo.",
+    e_transferencias: "Transferências externas — Vaga Zero, GERINT e contato direto.",
+    e_aguardando: "Pacientes com internação decidida, aguardando leito no hospital.",
+    e_ia: "Assistente local do Pronto-Socorro (nada é enviado para fora).",
     painel: "Visão do plantão — risco, fila, salas e encaminhamentos.",
     classificar: "Registrar a chegada e classificar o risco pelo Manchester adaptado.",
     fila: "Pacientes já classificados, na ordem de prioridade e contra o tempo-alvo.",
@@ -4410,6 +4615,17 @@ function PSPage({ currentUser, canEdit }) {
             <Icon name={it.icon} size={16} />{it.label}
           </button>
         ); })}
+
+        <div style={{ height: 1, background: "var(--surface-3)", margin: ".7rem 12px" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 10px" }}>
+          <Icon name="bed" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.azul }}>EMERGÊNCIA (PS)</span>
+        </div>
+        {PS_NAV_EMERG.map(it => { const active = sub === it.key; return (
+          <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.azul : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.azul : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
+            <Icon name={it.icon} size={16} />{it.label}
+          </button>
+        ); })}
+
         <div style={{ height: 1, background: "var(--surface-3)", margin: ".7rem 12px" }} />
         <div style={{ padding: "0 16px" }}>
           <button onClick={() => setAba("relatorio")} style={{ width: "100%", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text-3)", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>Relatório mensal</button>
@@ -4944,6 +5160,243 @@ function PSPage({ currentUser, canEdit }) {
         );
       })()}
 
+      {/* ═════════ EMERGÊNCIA (PS) — telas do bloco ═════════ */}
+      {sub.startsWith("e_") && (() => {
+        const ativas = salas.filter(s => s.ativo !== false);
+        const doCenso = ativas.filter(psContaCenso);          // entram nos leitos do hospital
+        const retaguarda = ativas.filter(s => !psContaCenso(s)); // só no panorama do PS
+        const pacById = {}; fila.forEach(p => pacById[p.id] = p);
+        const ocupadas = a => a.filter(s => s.status === "ocupado").length;
+        const dispon = a => a.filter(s => (s.status || "disponivel") === "disponivel").length;
+        const areasOrd = [...new Set(ativas.map(s => s.area || "Outros"))]
+          .sort((a, b) => { const ia = PS_AREAS.indexOf(a), ib = PS_AREAS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "pt-BR"); });
+
+        // Tile pequeno no padrão do Giro de Leitos
+        const Tile = ({ s }) => {
+          const st = PS_SALA_STATUS[s.status] || PS_SALA_STATUS.disponivel;
+          const pac = s.atendimento_id ? pacById[s.atendimento_id] : null;
+          const desde = s.ocupado_em ? diffMin(s.ocupado_em, agora) : null;
+          return (
+            <div title={`${s.identificacao} · ${st.label}${pac ? ` · ${pac.iniciais}` : ""}${desde != null ? ` · ${fmtDur(desde)}` : ""}${psContaCenso(s) ? "" : " · retaguarda (fora do censo)"}`}
+              style={{ background: st.cor + "1e", border: `1px solid ${st.cor}66`, borderTop: `3px solid ${st.cor}`, borderRadius: 7, padding: "5px 7px", minWidth: 62, position: "relative" }}>
+              {!psContaCenso(s) && <span style={{ position: "absolute", top: 2, right: 4, fontSize: 8, color: "var(--text-muted)", fontWeight: 800 }} title="Não conta no censo do hospital">R</span>}
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: st.cor, fontFamily: "JetBrains Mono, monospace" }}>{s.identificacao}</div>
+              <div style={{ fontSize: 9, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 72 }}>{pac ? pac.iniciais : st.label}</div>
+              {canEdit && (
+                <div style={{ display: "flex", gap: 3, marginTop: 3, flexWrap: "wrap" }}>
+                  {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnLeito("#22d3ee"), padding: "0 5px", fontSize: 9 }}>Alocar</button>}
+                  {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnLeito("#d97706"), padding: "0 5px", fontSize: 9 }}>Liberar</button>}
+                  {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 5px", fontSize: 9 }}>Pronta</button>}
+                  {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 5px", fontSize: 9 }}>Liberar</button>}
+                </div>
+              )}
+            </div>
+          );
+        };
+        const MapaAreas = ({ lista }) => (
+          <>{areasOrd.filter(a => lista.some(s => (s.area || "Outros") === a)).map(area => {
+            const doArea = lista.filter(s => (s.area || "Outros") === area);
+            return (
+              <div key={area} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 4 }}>
+                  {area} <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>· {doArea.length} vaga(s) · {dispon(doArea)} livre(s)</span>
+                </div>
+                <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>{doArea.map(s => <Tile key={s.id} s={s} />)}</div>
+              </div>
+            );
+          })}</>
+        );
+
+        // ── Painel da Emergência ──
+        if (sub === "e_painel") return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
+              <Card label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" />
+              <Card label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" />
+              <Card label="Vagas ocupadas (PS)" valor={ativas.length ? `${ocupadas(ativas)}/${ativas.length}` : "—"} cor={ocupadas(ativas) ? "#f43f5e" : "#34d399"} />
+              <Card label="Vagas livres (PS)" valor={ativas.length ? `${dispon(ativas)}/${ativas.length}` : "—"} cor={dispon(ativas) ? "#34d399" : "#f43f5e"} />
+              <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
+              <Card label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" />
+            </div>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", marginBottom: 12, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>
+              <strong>Censo:</strong> {doCenso.length} vaga(s) do PS entram nos leitos do hospital ({ocupadas(doCenso)} ocupada(s)) ·{" "}
+              <strong style={{ color: "#d97706" }}>{retaguarda.length} de retaguarda</strong> (observação, procedimento, PCR e isolamento infantil) contam <strong>só aqui</strong>, por serem provisórias e de alta rotatividade.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, alignItems: "start" }}>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Mapa resumido</div>
+                {ativas.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma vaga cadastrada.</div> : <MapaAreas lista={ativas} />}
+              </div>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Encaminhamentos de hoje</div>
+                {(() => {
+                  const internados = finalizados.filter(p => p.desfecho === "internacao");
+                  const porSetor = {}; internados.forEach(p => { const k = p.setor_destino || "Sem setor"; porSetor[k] = (porSetor[k] || 0) + 1; });
+                  const linhas = [
+                    ...Object.entries(porSetor).map(([k, n]) => ({ label: k, n, cor: "#3b82f6" })),
+                    { label: "Transferência externa", n: finalizados.filter(p => p.desfecho === "transferencia").length, cor: "#6366f1" },
+                    { label: "Alta", n: finalizados.filter(p => p.desfecho === "alta").length, cor: "#34d399" },
+                    { label: "Evasão", n: finalizados.filter(p => p.desfecho === "evasao").length, cor: "#d97706" },
+                    { label: "Óbito", n: finalizados.filter(p => p.desfecho === "obito").length + obitosInternacao, cor: "#f43f5e" },
+                  ].filter(x => x.n > 0);
+                  if (!linhas.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum desfecho hoje.</div>;
+                  return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{linhas.map((x, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 11px" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 99, background: x.cor }} />
+                      <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{x.label}</span>
+                      <strong style={{ fontFamily: "JetBrains Mono, monospace", color: x.cor }}>{x.n}</strong>
+                    </div>
+                  ))}</div>;
+                })()}
+              </div>
+            </div>
+          </div>
+        );
+
+        // ── Em atendimento ──
+        if (sub === "e_atendimento") return (
+          <div style={{ marginBottom: 16 }}>
+            {emAtendimento.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum paciente em atendimento.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {emAtendimento.map(p => {
+                  const sala = salas.find(s => s.atendimento_id === p.id);
+                  return (
+                    <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${MANCHESTER[p.classificacao]?.cor || "var(--border)"}` }}>
+                      <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+                      {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                      <ClasseBadge c={p.classificacao} />
+                      {sala && <span style={{ fontSize: 10.5, fontWeight: 700, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>{sala.identificacao} · {sala.area}</span>}
+                      {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
+                      <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.atendimento_em, agora))}</span>
+                      {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir atendimento</button>}
+                      {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+                      {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0) && (
+                        <div style={{ width: "100%", display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
+                          {examesPend[p.id]?.aguardando > 0 && <span style={{ color: "#d97706" }}>{examesPend[p.id].aguardando} exame(s) aguardando</span>}
+                          {examesPend[p.id]?.prontos > 0 && <span style={{ color: "#3b82f6" }}>{examesPend[p.id].prontos} resultado(s) pronto(s)</span>}
+                        </div>
+                      )}
+                      {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+
+        // ── Leitos detalhados ──
+        if (sub === "e_leitos") return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 12 }}>
+              <Card label="Total de vagas do PS" valor={ativas.length} cor={VX.azul} />
+              <Card label="No censo do hospital" valor={doCenso.length} cor="#0d9488" />
+              <Card label="Retaguarda (fora do censo)" valor={retaguarda.length} cor="#d97706" />
+              <Card label="Ocupadas" valor={ocupadas(ativas)} cor={ocupadas(ativas) ? "#f43f5e" : "#34d399"} />
+              <Card label="Livres" valor={dispon(ativas)} cor={dispon(ativas) ? "#34d399" : "#f43f5e"} />
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+              {Object.entries(PS_SALA_STATUS).map(([k, v]) => (
+                <span key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 3, background: v.cor }} />{v.label} ({ativas.filter(s => (s.status || "disponivel") === k).length})
+                </span>
+              ))}
+              <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 6 }}><strong>R</strong> = retaguarda, não conta no censo do hospital</span>
+              {canEdit && <button onClick={() => setShowSalas(true)} style={{ marginLeft: "auto", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 12px", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>Gerenciar vagas</button>}
+            </div>
+            {ativas.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma vaga cadastrada. Rode a migração das vagas do PS ou cadastre em “Gerenciar vagas”.</div>
+            ) : (<>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px", marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#0d9488", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 9 }}>Vagas que contam no censo do hospital ({doCenso.length})</div>
+                <MapaAreas lista={doCenso} />
+              </div>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: "4px solid #d97706", borderRadius: 10, padding: "13px 15px" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#d97706", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 4 }}>Retaguarda provisória — só no panorama do PS ({retaguarda.length})</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 9 }}>Observação, procedimento, PCR e isolamento infantil: alta rotatividade, não entram nos leitos do hospital.</div>
+                <MapaAreas lista={retaguarda} />
+              </div>
+            </>)}
+          </div>
+        );
+
+        // ── Transferências ──
+        if (sub === "e_transferencias") {
+          const transf = finalizados.filter(p => p.desfecho === "transferencia");
+          const viaDe = p => PS_VIAS_TRANSF.find(v => normTxt(p.observacao).includes(normTxt(v))) || "Não informada";
+          const porVia = {}; transf.forEach(p => { const v = viaDe(p); porVia[v] = (porVia[v] || 0) + 1; });
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
+                <Card label="Transferências hoje" valor={transf.length} cor="#6366f1" />
+                {PS_VIAS_TRANSF.slice(0, 2).map(v => <Card key={v} label={v} valor={porVia[v] || 0} cor={v === "Vaga Zero" ? "#f43f5e" : VX.azul} />)}
+              </div>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 16px", marginBottom: 12, fontSize: 12, color: "var(--text-2)", lineHeight: 1.6 }}>
+                A via da transferência é registrada no <strong>Desfecho → Transferência</strong>, no campo “Via”: <strong>Vaga Zero</strong> (imposição de vaga em urgência), <strong>GERINT</strong> (regulação), contato direto ou outro.
+              </div>
+              {transf.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma transferência externa hoje.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {transf.map(p => (
+                    <div key={p.id} style={{ ...linhaPac, borderLeft: "4px solid #6366f1" }}>
+                      <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+                      <ClasseBadge c={p.classificacao} />
+                      <span style={{ fontSize: 10.5, fontWeight: 800, color: viaDe(p) === "Vaga Zero" ? "#f43f5e" : VX.azul, border: `1px solid ${viaDe(p) === "Vaga Zero" ? "#f43f5e55" : VX.azul + "55"}`, borderRadius: 99, padding: "0 8px" }}>{viaDe(p)}</span>
+                      {p.observacao && <span style={{ fontSize: 12, color: "var(--text-3)", flex: 1 }}>{p.observacao}</span>}
+                      <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{horaFmt(p.desfecho_em)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // ── Aguardando leito ──
+        if (sub === "e_aguardando") {
+          const internar = finalizados.filter(p => p.desfecho === "internacao");
+          const naFila = internar.filter(p => !leitos.some(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario));
+          return (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 12 }}>
+                <Card label="Internações decididas hoje" valor={internar.length} cor="#3b82f6" />
+                <Card label="Ainda sem leito" valor={naFila.length} cor={naFila.length ? "#d97706" : "#34d399"} />
+                <Card label="Leitos livres no hospital" valor={leitos.filter(l => l.status === "livre").length} cor="#34d399" />
+              </div>
+              {internar.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma internação decidida hoje.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {internar.map(p => {
+                    const alocado = leitos.find(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario);
+                    return (
+                      <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${alocado ? "#34d399" : "#d97706"}` }}>
+                        <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+                        {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                        <ClasseBadge c={p.classificacao} />
+                        {p.setor_destino && <span style={{ fontSize: 12, color: "var(--text-3)" }}>→ {p.setor_destino}</span>}
+                        <span style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 800, color: alocado ? "#34d399" : "#d97706", border: `1px solid ${alocado ? "#34d39955" : "#d9770655"}`, borderRadius: 99, padding: "0 8px" }}>
+                          {alocado ? `internado · leito ${alocado.identificacao}` : "aguardando leito"}
+                        </span>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>desde {horaFmt(p.desfecho_em)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>A alocação do leito é feita no módulo <strong>Giro de Leitos</strong>. Aqui você acompanha quem saiu do PS com internação decidida e ainda não tem leito.</div>
+            </div>
+          );
+        }
+
+        // ── Assistente IA do PS ──
+        if (sub === "e_ia") return <PsAssistenteView fila={fila} finalizados={finalizados} salas={ativas} leitos={leitos} />;
+        return null;
+      })()}
+
       {/* FINALIZADOS HOJE */}
       {finalizados.length > 0 && (
         <details style={{ marginBottom: "1.25rem" }}>
@@ -4962,6 +5415,23 @@ function PSPage({ currentUser, canEdit }) {
       )}
 
       {/* MODAL TRIAGEM / REAVALIAÇÃO */}
+      {/* AÇÕES RÁPIDAS — rodapé fixo do módulo */}
+      <div style={{ display: "flex", gap: 9, flexWrap: "wrap", padding: "12px 0 4px", marginTop: 6, borderTop: "1px solid var(--border)" }}>
+        {canEdit && <button onClick={() => { setSub("classificar"); setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 50); }}
+          style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 7 }}>
+          <Icon name="activity" size={15} />Novo atendimento
+        </button>}
+        <button onClick={() => setShowProtocolos(true)}
+          style={{ background: "transparent", color: VX.azul, border: `1px solid ${VX.azul}66`, borderRadius: 8, padding: "10px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 7 }}>
+          <Icon name="clipboard" size={15} />Abrir protocolos
+        </button>
+        <button onClick={() => setSub("protocolo")}
+          style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", gap: 7 }}>
+          <Icon name="checks" size={15} />Manchester adaptado
+        </button>
+      </div>
+
+      {showProtocolos && <PsProtocolosModal currentUser={currentUser} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowProtocolos(false)} />}
       {showSalas && <PsSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={salvarSala} onDelete={excluirSala} isMaster={currentUser?.role === "adm_master"} />}
       {alocando && <PsAlocarSalaModal sala={alocando} pacientes={fila.filter(p => ["aguardando_atendimento", "em_atendimento"].includes(p.status) && !salas.some(s => s.atendimento_id === p.id))} onClose={() => setAlocando(null)} onSave={ocuparSala} />}
       {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug) => triar(triando, cls, vitais, sug)} />}
@@ -5045,6 +5515,26 @@ function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
               </div>
             </div>
           </>
+        )}
+
+        {/* Via da transferência externa — alimenta o painel de Transferências */}
+        {desfecho === "transferencia" && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={lbl}>Via da transferência *</label>
+            <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+              {PS_VIAS_TRANSF.map(v => {
+                const ativo = normTxt(obs).includes(normTxt(v));
+                return (
+                  <button key={v} onClick={() => setObs(o => {
+                    const limpo = PS_VIAS_TRANSF.reduce((s, x) => s.replace(new RegExp(`^${x}\\s*—\\s*`, "i"), ""), o).trim();
+                    return `${v}${limpo ? ` — ${limpo}` : ""}`;
+                  })}
+                    style={{ background: ativo ? (v === "Vaga Zero" ? "#f43f5e" : VX.azul) : "transparent", color: ativo ? "#fff" : "var(--text-3)", border: `1px solid ${ativo ? (v === "Vaga Zero" ? "#f43f5e" : VX.azul) : "var(--border)"}`, borderRadius: 99, padding: "5px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{v}</button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 5 }}>Vaga Zero = imposição de vaga na urgência · GERINT = regulação. A via fica registrada na observação e aparece no painel de Transferências.</div>
+          </div>
         )}
 
         <div style={{ marginBottom: 16 }}>
