@@ -4477,29 +4477,46 @@ function PSPage({ currentUser, canEdit }) {
           {(() => {
             const doDia = fila.concat(finalizados).filter(p => p.classificacao);
             if (!doDia.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Nenhuma classificação hoje ainda.</div>;
+            // Rosca (donut) da distribuição — cada fatia é um arco do círculo
+            const fatias = Object.keys(MANCHESTER).map(k => {
+              const n = doDia.filter(p => p.classificacao === k).length;
+              return { k, n, pct: (n / doDia.length) * 100, ...MANCHESTER[k] };
+            });
+            const R = 52, STROKE = 20, C = 2 * Math.PI * R;   // circunferência
+            let offset = 0;
             return (<>
-              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 8 }}>Classificações de hoje · {doDia.length} paciente(s)</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                {Object.keys(MANCHESTER).map(k => {
-                  const n = doDia.filter(p => p.classificacao === k).length;
-                  const pct = doDia.length ? (n / doDia.length) * 100 : 0;
-                  const v = MANCHESTER[k];
-                  return (
-                    <div key={k}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, marginBottom: 2 }}>
-                        <span style={{ width: 9, height: 9, borderRadius: 99, background: v.cor, flexShrink: 0 }} />
-                        <span style={{ color: "var(--text-2)", flex: 1 }}>{v.label}</span>
-                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: v.cor }}>{n}</strong>
-                        <span style={{ color: "var(--text-muted)", fontSize: 10.5, minWidth: 34, textAlign: "right" }}>{pct.toFixed(0)}%</span>
-                      </div>
-                      <div style={{ height: 6, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}>
-                        <div style={{ width: Math.max(pct ? 3 : 0, pct) + "%", height: "100%", background: v.cor, borderRadius: 99 }} />
-                      </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                {/* DONUT */}
+                <div style={{ position: "relative", width: 140, height: 140, flexShrink: 0 }}>
+                  <svg viewBox="0 0 140 140" width="140" height="140" style={{ transform: "rotate(-90deg)" }}>
+                    <circle cx="70" cy="70" r={R} fill="none" stroke="var(--surface-3)" strokeWidth={STROKE} />
+                    {fatias.filter(f => f.n > 0).map(f => {
+                      const len = (f.pct / 100) * C;
+                      const el = <circle key={f.k} cx="70" cy="70" r={R} fill="none" stroke={f.cor} strokeWidth={STROKE}
+                        strokeDasharray={`${len} ${C - len}`} strokeDashoffset={-offset} />;
+                      offset += len;
+                      return el;
+                    })}
+                  </svg>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "var(--text)", fontFamily: "JetBrains Mono, monospace", lineHeight: 1 }}>{doDia.length}</div>
+                    <div style={{ fontSize: 9.5, color: "var(--text-muted)", marginTop: 2 }}>classificados</div>
+                    <div style={{ fontSize: 9, color: "var(--text-muted)" }}>hoje</div>
+                  </div>
+                </div>
+                {/* LEGENDA */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: "1 1 130px", minWidth: 130 }}>
+                  {fatias.map(f => (
+                    <div key={f.k} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 99, background: f.cor, flexShrink: 0, opacity: f.n ? 1 : 0.35 }} />
+                      <span style={{ color: f.n ? "var(--text-2)" : "var(--text-muted)", flex: 1, whiteSpace: "nowrap" }}>{f.label}</span>
+                      <strong style={{ fontFamily: "JetBrains Mono, monospace", color: f.n ? f.cor : "var(--text-muted)", minWidth: 40, textAlign: "right" }}>{f.pct.toFixed(0)}%</strong>
+                      <span style={{ color: "var(--text-muted)", fontSize: 10.5, minWidth: 22, textAlign: "right" }}>({f.n})</span>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
                 Tempos-alvo: imediato · 10min · 60min · 120min · 240min.
               </div>
             </>);
