@@ -1,6 +1,13 @@
 name: CI — build
 
-# Valida que o app compila a cada push/PR.
+# Valida a cada push/PR que:
+#   1. os scripts SQL estão íntegros (já houve `create table` perdido numa
+#      consolidação, o que impedia criar um banco novo — e ninguém notou,
+#      porque o schema.sql quase nunca é re-executado);
+#   2. o motor de alertas da farmácia clínica continua se comportando como
+#      o esperado (dose máxima, interação, alergia, Beers, sonda, ajustes);
+#   3. o app compila.
+#
 # O deploy em si é feito automaticamente pelo Vercel (integração GitHub).
 
 on:
@@ -23,6 +30,12 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Validar scripts SQL
+        run: node supabase/validar-sql.mjs
+
+      - name: Testes (farmácia clínica)
+        run: npm test
 
       - name: Build
         run: npm run build
