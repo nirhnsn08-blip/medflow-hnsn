@@ -949,6 +949,8 @@ alter table public.sup_fornecedores
   add column if not exists lead_time_dias int;
 
 -- ── Suprimentos: cotação de compra (comparar preços entre fornecedores) ──
+create table if not exists public.sup_cotacoes (
+  id bigserial primary key,
   descricao text,
   itens jsonb not null default '[]',
   -- [{tipo:'material'|'medicamento', item_id, nome, unidade, qtd,
@@ -983,6 +985,7 @@ create policy sup_cot_delete on public.sup_cotacoes
 
 
 -- ── Pronto-Socorro: mapa de salas (Emergência / Observação / Sala Vermelha) ──
+create table if not exists public.ps_salas (
   id bigserial primary key,
   identificacao text not null unique,   -- "01", "02", "Sala 03"...
   area text not null default 'Emergência',  -- Emergência | Observação | Sala Vermelha | ...
