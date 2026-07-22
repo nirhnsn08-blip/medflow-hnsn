@@ -4052,7 +4052,18 @@ function PSPage({ currentUser, canEdit }) {
   const [atendendo, setAtendendo] = useState(null);
   const [examesPend, setExamesPend] = useState({});
   const [busy, setBusy] = useState(false);
+  const [busca, setBusca] = useState("");
+  const buscaRef = useRef(null);
   const [, setTick] = useState(0);
+  // Ctrl+K foca a busca rápida (padrão de plantão: achar o paciente sem tirar a mão do teclado)
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); buscaRef.current?.focus(); }
+      if (e.key === "Escape" && document.activeElement === buscaRef.current) setBusca("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function refresh() {
     if (!USE_SUPABASE) return;
@@ -4133,10 +4144,27 @@ function PSPage({ currentUser, canEdit }) {
   }
 
   const agora = nowISO();
-  const aguardandoTriagem = fila.filter(p => p.status === "aguardando_triagem");
-  const aguardandoAtend = fila.filter(p => p.status === "aguardando_atendimento")
+  // Busca rápida (Ctrl+K) — filtra as três filas por iniciais/prontuário/queixa
+  const bq = normTxt(busca);
+  const casa = p => !bq || [p.iniciais, p.prontuario, p.queixa].some(x => normTxt(x).includes(bq));
+  const aguardandoTriagem = fila.filter(p => p.status === "aguardando_triagem").filter(casa);
+  const aguardandoAtend = fila.filter(p => p.status === "aguardando_atendimento").filter(casa)
     .sort((a, b) => (PS_PRIORIDADE[a.classificacao] ?? 9) - (PS_PRIORIDADE[b.classificacao] ?? 9) || new Date(a.triagem_em) - new Date(b.triagem_em));
-  const emAtendimento = fila.filter(p => p.status === "em_atendimento");
+  const emAtendimento = fila.filter(p => p.status === "em_atendimento").filter(casa);
+  // Espera atual de um paciente triado e se estourou o tempo-alvo da cor
+  const esperaMin = p => diffMin(p.triagem_em || p.chegada_em, p.atendimento_em || agora);
+  const estourouAlvo = p => {
+    const alvo = p.classificacao ? MANCHESTER[p.classificacao]?.alvoMin : null;
+    if (alvo == null) return false;
+    const m = esperaMin(p);
+    return alvo === 0 ? p.status === "aguardando_atendimento" : (m != null && m > alvo);
+  };
+  // Aguardando atendimento por cor Manchester (5 níveis) + quantos fora do alvo
+  const porCor = Object.keys(MANCHESTER).map(k => {
+    const lista = fila.filter(p => p.status === "aguardando_atendimento" && p.classificacao === k);
+    return { k, ...MANCHESTER[k], n: lista.length, fora: lista.filter(estourouAlvo).length };
+  });
+  const foraDoAlvoTotal = porCor.reduce((s, c) => s + c.fora, 0);
   const portaTriagem = fila.concat(finalizados).map(p => diffMin(p.chegada_em, p.triagem_em)).filter(v => v != null);
   const portaTriagemMedia = portaTriagem.length ? portaTriagem.reduce((a, b) => a + b, 0) / portaTriagem.length : null;
   const permanencias = finalizados.map(p => diffMin(p.chegada_em, p.desfecho_em)).filter(v => v != null);
@@ -4185,9 +4213,45 @@ function PSPage({ currentUser, canEdit }) {
       <PsRetiradaBanner currentUser={currentUser} canEdit={canEdit} />
       <PsIntervencaoBanner currentUser={currentUser} canEdit={canEdit} />
 
+      {/* BUSCA RÁPIDA */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 420 }}>
+          <input ref={buscaRef} value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder="Buscar paciente por iniciais, prontuário ou queixa…"
+            style={{ ...inp, width: "100%", paddingRight: 62 }} />
+          <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 6px", fontFamily: "JetBrains Mono, monospace", pointerEvents: "none" }}>Ctrl+K</span>
+        </div>
+        {busca && <button onClick={() => setBusca("")} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 12px", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>Limpar</button>}
+        {busca && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{aguardandoTriagem.length + aguardandoAtend.length + emAtendimento.length} paciente(s) no filtro</span>}
+      </div>
+
+      {/* FILA POR CLASSIFICAÇÃO DE RISCO — os 5 níveis Manchester + fora do tempo-alvo */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 10 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${aguardandoTriagem.length ? "#fbbf24" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>Aguardando classificação</div>
+          <div style={{ fontSize: 26, fontWeight: 800, color: aguardandoTriagem.length ? "#fbbf24" : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{String(aguardandoTriagem.length).padStart(2, "0")}</div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>pacientes sem triagem</div>
+        </div>
+        {porCor.map(c => (
+          <div key={c.k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${c.cor}`, borderRadius: 10, padding: "12px 14px" }}>
+            <div style={{ fontSize: 10.5, color: c.cor, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 800 }}>{c.label}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: c.n ? c.cor : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{String(c.n).padStart(2, "0")}</div>
+            <div style={{ fontSize: 10.5, marginTop: 2, color: c.fora ? "#f43f5e" : "var(--text-muted)", fontWeight: c.fora ? 800 : 400 }}>
+              {c.fora ? `⚠ ${c.fora} fora do alvo` : `alvo ${c.alvoMin === 0 ? "imediato" : fmtDur(c.alvoMin)}`}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* SEGURANÇA: quem estourou o tempo-alvo é o que mais importa */}
+      <div style={{ background: foraDoAlvoTotal ? "#f43f5e12" : "var(--surface)", border: `1px solid ${foraDoAlvoTotal ? "#f43f5e55" : "var(--border)"}`, borderRadius: 10, padding: "11px 16px", marginBottom: 14, fontSize: 13.5, color: "var(--text)" }}>
+        {foraDoAlvoTotal === 0
+          ? "✓ Nenhum paciente fora do tempo-alvo do Manchester."
+          : <><strong style={{ color: "#f43f5e" }}>{foraDoAlvoTotal} paciente(s) fora do tempo-alvo</strong> — {porCor.filter(c => c.fora).map(c => `${c.fora} ${c.label.toLowerCase()}`).join(" · ")}. Priorize na fila abaixo.</>}
+      </div>
+
+      {/* OPERAÇÃO DO DIA */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
-        <Card label="Aguardando triagem" valor={aguardandoTriagem.length} cor={aguardandoTriagem.length > 0 ? "#fbbf24" : "#34d399"} />
-        <Card label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" />
         <Card label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" />
         <Card label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" />
         <Card label="Porta→triagem (média)" valor={portaTriagemMedia != null ? fmtDur(Math.round(portaTriagemMedia)) : "—"} cor="#6366f1" />
