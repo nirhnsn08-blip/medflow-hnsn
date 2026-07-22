@@ -2450,6 +2450,119 @@ const MANCHESTER = {
   verde:    { label: "Pouco urgente",  atend: "Moderado",        cor: "#22c55e", bg: "#0a3d2a", alvoMin: 120, desc: "Condição de menor gravidade. Atendimento MODERADO — em até 120 minutos." },
   azul:     { label: "Não urgente",    atend: "Não prioritário", cor: "#3b82f6", bg: "#132c47", alvoMin: 240, desc: "Queixa simples/crônica. Atendimento NÃO PRIORITÁRIO — em até 240 minutos ou encaminhamento." },
 };
+// Mapa de salas do PS — áreas sugeridas e situações possíveis
+const PS_AREAS = ["Emergência", "Observação", "Sala Vermelha", "Consultório", "Medicação", "Outros"];
+const PS_SALA_STATUS = {
+  disponivel:  { label: "Disponível",  cor: "#34d399" },
+  ocupado:     { label: "Ocupado",     cor: "#f43f5e" },
+  limpeza:     { label: "Limpeza",     cor: "#d97706" },
+  manutencao:  { label: "Manutenção",  cor: "#8d99ab" },
+};
+async function loadPsSalas() {
+  const rows = await sbFetch("ps_salas?select=*&order=area,ordem,identificacao");
+  return Array.isArray(rows) ? rows : [];
+}
+async function upsertPsSalaRemote(sala, user) {
+  if (!USE_SUPABASE) return null;
+  const body = { ...sala, usuario: user?.name || null, updated_at: nowISO() };
+  if (sala.id) { await sbFetch(`ps_salas?id=eq.${sala.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
+  delete body.id;
+  return await sbFetch("ps_salas", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+async function deletePsSalaRemote(id) { if (USE_SUPABASE) await sbFetch(`ps_salas?id=eq.${id}`, { method: "DELETE" }); }
+
+// Alocar um paciente do PS numa sala livre
+function PsAlocarSalaModal({ sala, pacientes, onClose, onSave }) {
+  const [sel, setSel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const p = pacientes.find(x => String(x.id) === String(sel));
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 460, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Alocar paciente — sala {sala.identificacao}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{sala.area} · escolha quem vai ocupar a sala.</div>
+        {pacientes.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum paciente disponível (todos já estão em uma sala, ou não há ninguém aguardando/em atendimento).</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {pacientes.map(x => {
+              const m = MANCHESTER[x.classificacao];
+              const ativo = String(sel) === String(x.id);
+              return (
+                <button key={x.id} onClick={() => setSel(String(x.id))} style={{ textAlign: "left", background: ativo ? "var(--surface-3)" : "var(--surface-2)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 8, padding: "9px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                  {m && <span style={{ width: 9, height: 9, borderRadius: 99, background: m.cor, flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{x.iniciais}{x.prontuario ? <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> · reg. {x.prontuario}</span> : ""}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{m ? m.label : "sem triagem"}{x.queixa ? ` · ${x.queixa}` : ""}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
+          <button onClick={async () => { if (!p) { alert("Escolha o paciente."); return; } setBusy(true); await onSave(sala, p); setBusy(false); }} disabled={busy || !p}
+            style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, opacity: (busy || !p) ? 0.5 : 1 }}>{busy ? "…" : "Alocar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cadastro das salas do PS (por área)
+function PsSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
+  const [nova, setNova] = useState({ identificacao: "", area: PS_AREAS[0], ordem: "" });
+  const [busy, setBusy] = useState(false);
+  const inp2 = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  async function add() {
+    if (!nova.identificacao.trim()) { alert("Informe a identificação da sala (ex.: 01)."); return; }
+    setBusy(true);
+    await onSave({ identificacao: nova.identificacao.trim(), area: nova.area, ordem: nova.ordem === "" ? 0 : Number(nova.ordem), status: "disponivel", ativo: true });
+    setNova({ identificacao: "", area: nova.area, ordem: "" });
+    setBusy(false);
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Salas do Pronto-Socorro</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Cadastre as salas por área. Elas aparecem no mapa do painel.</div>
+
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 70px auto", gap: 8, alignItems: "end" }}>
+            <div><label style={farmLbl}>Identificação *</label><input value={nova.identificacao} onChange={e => setNova(p => ({ ...p, identificacao: e.target.value }))} placeholder="01" style={inp2} /></div>
+            <div><label style={farmLbl}>Área</label><select value={nova.area} onChange={e => setNova(p => ({ ...p, area: e.target.value }))} style={inp2}>{PS_AREAS.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
+            <div><label style={farmLbl}>Ordem</label><input type="number" value={nova.ordem} onChange={e => setNova(p => ({ ...p, ordem: e.target.value }))} placeholder="0" style={inp2} /></div>
+            <button onClick={add} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
+          </div>
+        </div>
+
+        {salas.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma sala cadastrada ainda.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {salas.map(s => {
+              const st = PS_SALA_STATUS[s.status] || PS_SALA_STATUS.disponivel;
+              return (
+                <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", opacity: s.ativo === false ? 0.5 : 1 }}>
+                  <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, minWidth: 42 }}>{s.identificacao}</span>
+                  <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{s.area}</span>
+                  <span style={{ fontSize: 10.5, color: st.cor, border: `1px solid ${st.cor}55`, borderRadius: 99, padding: "0 7px", fontWeight: 700 }}>{st.label}</span>
+                  <button onClick={() => onSave({ id: s.id, ativo: !(s.ativo !== false) })} style={btnLeito(s.ativo !== false ? "#8d99ab" : "#34d399")}>{s.ativo !== false ? "Desativar" : "Ativar"}</button>
+                  {isMaster && <button onClick={() => onDelete(s)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PS_DESFECHOS = {
   alta:          { label: "Alta",          cor: "#34d399" },
   internacao:    { label: "Internação",    cor: "#22d3ee" },
@@ -4056,6 +4169,9 @@ function PSPage({ currentUser, canEdit }) {
   const [examesPend, setExamesPend] = useState({});
   const [busy, setBusy] = useState(false);
   const [busca, setBusca] = useState("");
+  const [salas, setSalas] = useState([]);
+  const [showSalas, setShowSalas] = useState(false);   // gestão do cadastro de salas
+  const [alocando, setAlocando] = useState(null);      // sala recebendo paciente
   const buscaRef = useRef(null);
   const [, setTick] = useState(0);
   // Ctrl+K foca a busca rápida (padrão de plantão: achar o paciente sem tirar a mão do teclado)
@@ -4080,6 +4196,7 @@ function PSPage({ currentUser, canEdit }) {
       });
     });
     loadPsFinalizadosHoje().then(setFinalizados);
+    loadPsSalas().then(setSalas);
     loadSetoresFromSupabase().then(r => r && setSetores(r));
     loadLeitosFromSupabase().then(r => r && setLeitos(r));
     // óbitos ocorridos APÓS internação, hoje (fonte: leitos_saidas)
@@ -4116,6 +4233,29 @@ function PSPage({ currentUser, canEdit }) {
     await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
     setReavaliando(null); setTimeout(refresh, 300);
+  }
+  // ── Mapa de salas do PS ──
+  async function salvarSala(s) {
+    await upsertPsSalaRemote(s, currentUser);
+    addAuditLog(currentUser, s.id ? "PS: editar sala" : "PS: cadastrar sala", s.identificacao, {});
+    setTimeout(refresh, 300);
+  }
+  async function excluirSala(s) {
+    if (!confirm(`Excluir a sala "${s.identificacao}"?`)) return;
+    await deletePsSalaRemote(s.id);
+    addAuditLog(currentUser, "PS: excluir sala", s.identificacao, {});
+    setTimeout(refresh, 300);
+  }
+  async function ocuparSala(sala, paciente) {
+    await upsertPsSalaRemote({ id: sala.id, status: "ocupado", atendimento_id: paciente.id, ocupado_em: nowISO() }, currentUser);
+    addAuditLog(currentUser, "PS: alocar sala", `${sala.identificacao} · ${paciente.iniciais}`, {});
+    setAlocando(null); setTimeout(refresh, 300);
+  }
+  // Liberar manda para limpeza (fluxo real: sala usada precisa ser higienizada)
+  async function mudarStatusSala(sala, status) {
+    await upsertPsSalaRemote({ id: sala.id, status, atendimento_id: status === "ocupado" ? sala.atendimento_id : null, ocupado_em: status === "ocupado" ? sala.ocupado_em : null }, currentUser);
+    addAuditLog(currentUser, "PS: sala " + status, sala.identificacao, {});
+    setTimeout(refresh, 300);
   }
   async function iniciarAtendimento(p) {
     await updatePsAtendimentoRemote(p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
@@ -4260,6 +4400,64 @@ function PSPage({ currentUser, canEdit }) {
         <Card label="Porta→triagem (média)" valor={portaTriagemMedia != null ? fmtDur(Math.round(portaTriagemMedia)) : "—"} cor="#6366f1" />
         <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
       </div>
+
+      {/* MAPA DE SALAS DO PS */}
+      {(() => {
+        const ativas = salas.filter(s => s.ativo !== false);
+        const pacById = {}; fila.forEach(p => pacById[p.id] = p);
+        const areas = [...new Set(ativas.map(s => s.area || "Outros"))]
+          .sort((a, b) => { const ia = PS_AREAS.indexOf(a), ib = PS_AREAS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "pt-BR"); });
+        const cont = k => ativas.filter(s => (s.status || "disponivel") === k).length;
+        return (
+          <div style={{ marginBottom: "1.25rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <div style={{ ...secLbl, marginBottom: 0 }}>Mapa de salas {ativas.length > 0 && `· ${cont("disponivel")} disponível(is) de ${ativas.length}`}</div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginLeft: "auto", alignItems: "center" }}>
+                {Object.entries(PS_SALA_STATUS).map(([k, v]) => (
+                  <span key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: v.cor }} />{v.label}{ativas.length ? ` (${cont(k)})` : ""}
+                  </span>
+                ))}
+                {canEdit && <button onClick={() => setShowSalas(true)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 12px", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>Gerenciar salas</button>}
+              </div>
+            </div>
+            {ativas.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "14px", textAlign: "center" }}>
+                Nenhuma sala cadastrada. {canEdit ? "Clique em “Gerenciar salas” para cadastrar (ex.: Emergência 01–06, Observação 07–12, Sala Vermelha 13–16)." : "Peça ao administrador para cadastrar."}
+              </div>
+            ) : areas.map(area => (
+              <div key={area} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>{area}</div>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  {ativas.filter(s => (s.area || "Outros") === area).map(s => {
+                    const st = PS_SALA_STATUS[s.status] || PS_SALA_STATUS.disponivel;
+                    const pac = s.atendimento_id ? pacById[s.atendimento_id] : null;
+                    const desde = s.ocupado_em ? diffMin(s.ocupado_em, agora) : null;
+                    return (
+                      <div key={s.id} title={pac ? `${pac.iniciais}${pac.prontuario ? ` · reg. ${pac.prontuario}` : ""}${desde != null ? ` · ${fmtDur(desde)}` : ""}` : st.label}
+                        style={{ background: st.cor + "1e", border: `1px solid ${st.cor}66`, borderTop: `3px solid ${st.cor}`, borderRadius: 8, padding: "7px 10px", minWidth: 92 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: st.cor, fontFamily: "JetBrains Mono, monospace" }}>{s.identificacao}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>
+                          {pac ? pac.iniciais : st.label}{pac && desde != null ? ` · ${fmtDur(desde)}` : ""}
+                        </div>
+                        {canEdit && (
+                          <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
+                            {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnLeito("#22d3ee"), padding: "1px 7px", fontSize: 10 }}>Alocar</button>}
+                            {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnLeito("#d97706"), padding: "1px 7px", fontSize: 10 }}>Liberar</button>}
+                            {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "1px 7px", fontSize: 10 }}>Pronta</button>}
+                            {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "1px 7px", fontSize: 10 }}>Liberar</button>}
+                            {["disponivel", "limpeza"].includes(s.status) && <button onClick={() => mudarStatusSala(s, "manutencao")} style={{ ...btnLeito("#8d99ab"), padding: "1px 7px", fontSize: 10 }}>Manut.</button>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* INDICADORES DE TRIAGEM DO DIA */}
       {(() => {
@@ -4459,6 +4657,8 @@ function PSPage({ currentUser, canEdit }) {
       )}
 
       {/* MODAL TRIAGEM / REAVALIAÇÃO */}
+      {showSalas && <PsSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={salvarSala} onDelete={excluirSala} isMaster={currentUser?.role === "adm_master"} />}
+      {alocando && <PsAlocarSalaModal sala={alocando} pacientes={fila.filter(p => ["aguardando_atendimento", "em_atendimento"].includes(p.status) && !salas.some(s => s.atendimento_id === p.id))} onClose={() => setAlocando(null)} onSave={ocuparSala} />}
       {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug) => triar(triando, cls, vitais, sug)} />}
       {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug) => reavaliar(reavaliando, cls, vitais, sug)} />}
 
