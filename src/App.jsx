@@ -2505,6 +2505,12 @@ const PS_NAV_EMERG = [
 ];
 // Vias de transferência externa usadas na rede
 const PS_VIAS_TRANSF = ["Vaga Zero", "GERINT", "Contato direto", "Outro"];
+// Como o paciente chegou ao PS — dado de pactuação regional e epidemiologia
+const PS_ORIGENS = ["Meios próprios", "SAMU", "Transalva", "Polícia Militar", "Bombeiros", "GERINT (aceite)", "Outro"];
+// Unidades de origem quando o aceite vem pela regulação
+const PS_ORIGEM_UNIDADES = ["PA Torres", "Arroio do Sal", "Três Cachoeiras", "Outra unidade"];
+// Origens que exigem detalhar a unidade de procedência
+const psPedeDetalhe = o => o === "GERINT (aceite)" || o === "Outro";
 // Mapa de vagas do PS — ordem fixa das áreas (igual ao padrão do Giro de Leitos)
 const PS_AREAS = ["Sala Vermelha", "Sala Laranja", "Sala AVC", "Isolamento", "Pediatria", "Observação", "Procedimento", "PCR", "Outros"];
 // Retaguarda provisória: alta rotatividade, NÃO entra no censo dos leitos do
@@ -2584,7 +2590,7 @@ function PsAssistenteView({ fila, finalizados, salas, leitos }) {
     }
     if (has("aguardando leito", "internacao", "internar")) {
       const int = finalizados.filter(p => p.desfecho === "internacao");
-      const sem = int.filter(p => !leitos.some(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario));
+      const sem = int.filter(p => !leitos.some(l => l.ps_atendimento_id === p.id || (l.prontuario && p.prontuario && l.prontuario === p.prontuario)));
       return `${int.length} internação(ões) decidida(s) hoje · ${sem.length} ainda sem leito. Leitos livres no hospital: ${leitos.filter(l => l.status === "livre").length}.`;
     }
     if (has("transferencia", "vaga zero", "gerint")) {
@@ -3917,7 +3923,7 @@ function AgendarCirurgiaModal({ cirurgia, data, salas, cirurgiasDoDia, onClose, 
               {salas.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
             </select></div>
           <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="J.S.M." style={inp} /></div>
-          <div><label style={lbl}>Prontuário</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="48213" style={inp} /></div>
+          <div><label style={lbl}>Prontuário *</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="48213" style={inp} /></div>
         </div>
         {conflitos.length > 0 && <div style={{ background: "#3d2206", border: "1px solid #f9731666", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#f97316", fontWeight: 600, marginBottom: 10 }}>Conflito de sala: já há {conflitos.length} cirurgia(s) na {f.sala} nesse intervalo.</div>}
         <div style={{ marginBottom: 10 }}><label style={lbl}>Procedimento *</label><input value={f.procedimento} onChange={e => set("procedimento", e.target.value)} placeholder="Ex.: Colecistectomia videolaparoscópica" style={inp} /></div>
@@ -4404,7 +4410,7 @@ function PSPage({ currentUser, canEdit }) {
   const [obitosInternacao, setObitosInternacao] = useState(0);
   const [aba, setAba] = useState("operacao");   // operacao | relatorio
   const [sub, setSub] = useState("painel");     // ver PS_NAV
-  const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "" });
+  const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "", origem: "Meios próprios", origem_detalhe: "" });
   const [triando, setTriando] = useState(null);
   const [reavaliando, setReavaliando] = useState(null);
   const [desfechando, setDesfechando] = useState(null);
@@ -4459,11 +4465,21 @@ function PSPage({ currentUser, canEdit }) {
   const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
 
   async function registrarChegada() {
-    if (!novo.iniciais.trim()) { alert("Informe ao menos as iniciais do paciente."); return; }
+    if (!novo.iniciais.trim()) { alert("Informe as iniciais do paciente."); return; }
+    // Prontuário obrigatório: é o que liga o paciente ao histórico (Paciente 360)
+    // e sustenta a jornada PS → internação. Sem ele o rastro se perde.
+    if (!novo.prontuario.trim()) { alert("Informe o número do prontuário.\n\nEle liga este atendimento ao histórico do paciente e à internação. Sem prontuário, a jornada do paciente fica quebrada."); return; }
+    if (!novo.origem) { alert("Informe por onde o paciente chegou."); return; }
+    if (psPedeDetalhe(novo.origem) && !novo.origem_detalhe.trim()) { alert("Informe a unidade/origem de procedência."); return; }
     setBusy(true);
-    await addPsAtendimentoRemote({ iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim() || null, queixa: novo.queixa.trim() || null, chegada_em: nowISO(), status: "aguardando_triagem" }, currentUser);
-    addAuditLog(currentUser, "PS: chegada", novo.iniciais.trim(), {});
-    setNovo({ iniciais: "", prontuario: "", queixa: "" });
+    await addPsAtendimentoRemote({
+      iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim(),
+      queixa: novo.queixa.trim() || null, origem: novo.origem,
+      origem_detalhe: novo.origem_detalhe.trim() || null,
+      chegada_em: nowISO(), status: "aguardando_triagem",
+    }, currentUser);
+    addAuditLog(currentUser, "PS: chegada", `${novo.iniciais.trim()} · ${novo.origem}${novo.origem_detalhe ? " — " + novo.origem_detalhe : ""}`, {});
+    setNovo({ iniciais: "", prontuario: "", queixa: "", origem: "Meios próprios", origem_detalhe: "" });
     setBusy(false); setTimeout(refresh, 400);
   }
   async function triar(p, classificacao, vitais, sugerida) {
@@ -4519,11 +4535,12 @@ function PSPage({ currentUser, canEdit }) {
           iniciais: p.iniciais, prontuario: p.prontuario || null, motivo: p.queixa || null,
           cid: null, dias_previstos: null, data_internacao: null, entrada_em: null,
           solic_em: nowISO(), interdicao_motivo: null,
+          ps_atendimento_id: p.id,          // elo forte: não depende do prontuário como texto
         }, currentUser);
         addAuditLog(currentUser, "PS: reservar leito", `${p.iniciais} → ${leito.identificacao}`, {});
       } else if (setorDestino) {
-        // Sem leito agora → fila de espera do setor
-        await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
+        // Sem leito agora → fila de espera do setor (NIR puxa dali)
+        await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando", ps_atendimento_id: p.id }, currentUser);
       }
     }
     addAuditLog(currentUser, "PS: desfecho", `${p.iniciais} → ${desfecho}${medico ? " · Dr(a). " + medico : ""}${leito ? " · leito " + leito.identificacao : setorDestino ? " (" + setorDestino + ")" : ""}`, {});
@@ -4699,13 +4716,32 @@ function PSPage({ currentUser, canEdit }) {
                 <input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Ex.: M.A.S." style={{ ...inp, width: "100%" }} />
               </div>
               <div>
-                <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Prontuário</label>
-                <input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Nº do prontuário" style={{ ...inp, width: "100%" }} />
+                <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Prontuário *</label>
+                <input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Nº do prontuário (obrigatório)" style={{ ...inp, width: "100%" }} />
               </div>
               <div>
                 <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Queixa principal</label>
                 <input value={novo.queixa} onChange={e => setNovo(p => ({ ...p, queixa: e.target.value }))} onKeyDown={e => e.key === "Enter" && registrarChegada()} placeholder="Ex.: dor torácica" style={{ ...inp, width: "100%" }} />
               </div>
+                <div>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Chegou por *</label>
+                  <select value={novo.origem} onChange={e => setNovo(p => ({ ...p, origem: e.target.value, origem_detalhe: "" }))} style={{ ...inp, width: "100%" }}>
+                    {PS_ORIGENS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                {psPedeDetalhe(novo.origem) && (
+                  <div>
+                    <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Unidade de origem *</label>
+                    {novo.origem === "GERINT (aceite)" ? (
+                      <select value={novo.origem_detalhe} onChange={e => setNovo(p => ({ ...p, origem_detalhe: e.target.value }))} style={{ ...inp, width: "100%" }}>
+                        <option value="">Escolha a unidade…</option>
+                        {PS_ORIGEM_UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    ) : (
+                      <input value={novo.origem_detalhe} onChange={e => setNovo(p => ({ ...p, origem_detalhe: e.target.value }))} placeholder="Descreva a procedência" style={{ ...inp, width: "100%" }} />
+                    )}
+                  </div>
+                )}
               <button onClick={registrarChegada} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginTop: 2 }}>{busy ? "…" : "Registrar chegada →"}</button>
             </div>
           ) : <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Seu perfil é somente leitura.</div>}
@@ -4963,8 +4999,27 @@ function PSPage({ currentUser, canEdit }) {
             {canEdit ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
                 <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Iniciais *</label><input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Ex.: M.A.S." style={{ ...inp, width: "100%" }} /></div>
-                <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Prontuário</label><input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Nº" style={{ ...inp, width: "100%" }} /></div>
+                <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Prontuário *</label><input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Nº" style={{ ...inp, width: "100%" }} /></div>
                 <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Queixa principal</label><input value={novo.queixa} onChange={e => setNovo(p => ({ ...p, queixa: e.target.value }))} onKeyDown={e => e.key === "Enter" && registrarChegada()} placeholder="Ex.: dor torácica" style={{ ...inp, width: "100%" }} /></div>
+                <div>
+                  <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Chegou por *</label>
+                  <select value={novo.origem} onChange={e => setNovo(p => ({ ...p, origem: e.target.value, origem_detalhe: "" }))} style={{ ...inp, width: "100%" }}>
+                    {PS_ORIGENS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                {psPedeDetalhe(novo.origem) && (
+                  <div>
+                    <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Unidade de origem *</label>
+                    {novo.origem === "GERINT (aceite)" ? (
+                      <select value={novo.origem_detalhe} onChange={e => setNovo(p => ({ ...p, origem_detalhe: e.target.value }))} style={{ ...inp, width: "100%" }}>
+                        <option value="">Escolha a unidade…</option>
+                        {PS_ORIGEM_UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    ) : (
+                      <input value={novo.origem_detalhe} onChange={e => setNovo(p => ({ ...p, origem_detalhe: e.target.value }))} placeholder="Descreva a procedência" style={{ ...inp, width: "100%" }} />
+                    )}
+                  </div>
+                )}
                 <button onClick={registrarChegada} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar chegada →"}</button>
               </div>
             ) : <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Seu perfil é somente leitura.</div>}
@@ -4979,6 +5034,7 @@ function PSPage({ currentUser, canEdit }) {
                   <div key={p.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #fbbf24", borderRadius: 8, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
                     {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                    {p.origem && p.origem !== "Meios próprios" && <span title={p.origem_detalhe ? p.origem + " — " + p.origem_detalhe : p.origem} style={{ fontSize: 9, fontWeight: 800, color: VX.azul, border: "1px solid " + VX.azul + "55", borderRadius: 99, padding: "0 6px" }}>{p.origem.replace(" (aceite)", "")}</span>}
                     <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 80 }}>{p.queixa || "—"}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.chegada_em, agora))}</span>
                     {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Classificar</button>}
@@ -5137,6 +5193,57 @@ function PSPage({ currentUser, canEdit }) {
               <Card label="Porta→triagem (média)" valor={portaTriagemMedia != null ? fmtDur(Math.round(portaTriagemMedia)) : "—"} cor="#6366f1" />
               <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
             </div>
+            {/* PROCEDÊNCIA — de onde vieram os pacientes (pactuação regional) */}
+            {(() => {
+              const todos = fila.concat(finalizados);
+              const comOrigem = todos.filter(p => p.origem);
+              if (!comOrigem.length) return null;
+              const porOrigem = {};
+              comOrigem.forEach(p => { const k = p.origem; porOrigem[k] = (porOrigem[k] || 0) + 1; });
+              const ord = Object.entries(porOrigem).sort((a, b) => b[1] - a[1]);
+              const deFora = comOrigem.filter(p => p.origem === "GERINT (aceite)");
+              const porUnidade = {};
+              deFora.forEach(p => { const k = p.origem_detalhe || "Não informada"; porUnidade[k] = (porUnidade[k] || 0) + 1; });
+              return (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={secLbl}>Procedência dos pacientes (hoje)</div>
+                  <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+                    {ord.map(([o, n]) => {
+                      const pct = (n / comOrigem.length) * 100;
+                      const cor = o === "GERINT (aceite)" ? "#6366f1" : o === "SAMU" ? "#f43f5e" : o === "Meios próprios" ? "#34d399" : VX.azul;
+                      return (
+                        <div key={o} style={{ marginBottom: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 3 }}>
+                            <span style={{ width: 9, height: 9, borderRadius: 99, background: cor }} />
+                            <span style={{ color: "var(--text-2)", flex: 1 }}>{o}</span>
+                            <strong style={{ fontFamily: "JetBrains Mono, monospace", color: cor }}>{n}</strong>
+                            <span style={{ color: "var(--text-muted)", fontSize: 10.5, minWidth: 36, textAlign: "right" }}>{pct.toFixed(0)}%</span>
+                          </div>
+                          <div style={{ height: 6, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}>
+                            <div style={{ width: Math.max(pct ? 3 : 0, pct) + "%", height: "100%", background: cor, borderRadius: 99 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {deFora.length > 0 && (
+                      <div style={{ marginTop: 10, paddingTop: 9, borderTop: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#6366f1", marginBottom: 5 }}>Aceites via GERINT por unidade ({deFora.length})</div>
+                        {Object.entries(porUnidade).sort((a, b) => b[1] - a[1]).map(([u, n]) => (
+                          <div key={u} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, marginBottom: 2 }}>
+                            <span style={{ flex: 1, color: "var(--text-2)" }}>{u}</span>
+                            <strong style={{ fontFamily: "JetBrains Mono, monospace", color: "#6366f1" }}>{n}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 9 }}>
+                      Base da pactuação regional: quantos pacientes chegam por conta própria, por serviços de urgência e quantos são aceites da regulação (pacientes de fora do município).
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div style={secLbl}>Distribuição por classificação (hoje)</div>
             {doDia.length === 0 ? (
               <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma classificação hoje ainda.</div>
@@ -5407,7 +5514,8 @@ function PSPage({ currentUser, canEdit }) {
         // ── Aguardando leito ──
         if (sub === "e_aguardando") {
           const internar = finalizados.filter(p => p.desfecho === "internacao");
-          const naFila = internar.filter(p => !leitos.some(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario));
+          const jaNoLeito = p => leitos.some(l => l.ps_atendimento_id === p.id || (l.prontuario && p.prontuario && l.prontuario === p.prontuario));
+          const naFila = internar.filter(p => !jaNoLeito(p));
           return (
             <div style={{ marginBottom: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 12 }}>
@@ -5420,7 +5528,7 @@ function PSPage({ currentUser, canEdit }) {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {internar.map(p => {
-                    const alocado = leitos.find(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario);
+                    const alocado = leitos.find(l => l.ps_atendimento_id === p.id) || leitos.find(l => l.prontuario && p.prontuario && l.prontuario === p.prontuario);
                     return (
                       <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${alocado ? "#34d399" : "#d97706"}` }}>
                         <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
@@ -6953,7 +7061,7 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Dados de saúde — use iniciais e prontuário (LGPD).</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div><label style={farmLbl}>Iniciais *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: M.S.O." style={farmInp} autoFocus /></div>
-          <div><label style={farmLbl}>Prontuário</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="registro" style={farmInp} /></div>
+          <div><label style={farmLbl}>Prontuário *</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="registro" style={farmInp} /></div>
         </div>
         <div style={{ marginBottom: 10 }}>
           <label style={farmLbl}>Setor / leito (opcional)</label>
@@ -7853,7 +7961,7 @@ function FarmNaoPadronizadosView({ currentUser, canEdit }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 10 }}>Receber medicamento não padronizado</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 10 }}>
             <div><label style={lbl}>Iniciais *</label><input value={f.paciente_iniciais} onChange={e => set("paciente_iniciais", e.target.value)} placeholder="M.S.O." style={inp} /></div>
-            <div><label style={lbl}>Prontuário</label><input value={f.paciente_prontuario} onChange={e => set("paciente_prontuario", e.target.value)} style={inp} /></div>
+            <div><label style={lbl}>Prontuário *</label><input value={f.paciente_prontuario} onChange={e => set("paciente_prontuario", e.target.value)} style={inp} /></div>
             <div><label style={lbl}>Setor / leito</label><input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Enfermaria 2" style={inp} /></div>
             <div><label style={lbl}>Trazido por</label><input value={f.origem} onChange={e => set("origem", e.target.value)} placeholder="Familiar" style={inp} /></div>
           </div>
@@ -8074,7 +8182,7 @@ function FarmIntervencaoModal({ prefill, onClose, onSave }) {
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Registrar intervenção farmacêutica</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div><label style={lbl}>Iniciais *</label><input value={f.paciente_iniciais || ""} onChange={e => set("paciente_iniciais", e.target.value)} style={inp} /></div>
-          <div><label style={lbl}>Prontuário</label><input value={f.paciente_prontuario || ""} onChange={e => set("paciente_prontuario", e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>Prontuário *</label><input value={f.paciente_prontuario || ""} onChange={e => set("paciente_prontuario", e.target.value)} style={inp} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
           <div><label style={lbl}>Medicamento</label><input value={f.medicamento_nome || ""} onChange={e => set("medicamento_nome", e.target.value)} placeholder="Medicamento envolvido" style={inp} /></div>

@@ -991,3 +991,14 @@ create policy ps_salas_delete on public.ps_salas
   for delete to authenticated
   using (public.my_role() = 'adm_master');
 
+
+-- ── PS: origem da chegada + elo forte PS → fila/leito ──
+alter table public.ps_atendimentos
+  add column if not exists origem text,
+  add column if not exists origem_detalhe text;
+alter table public.solicitacoes
+  add column if not exists ps_atendimento_id bigint
+    references public.ps_atendimentos(id) on delete set null;
+alter table public.leitos
+  add column if not exists ps_atendimento_id bigint
+    references public.ps_atendimentos(id) on delete set null;
