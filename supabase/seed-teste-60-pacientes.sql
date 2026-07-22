@@ -124,9 +124,13 @@ join lateral (
 where a.usuario = 'seed-teste' and a.id % 2 = 0;
 
 -- 3b) DOSE ACIMA DO MÁXIMO — paracetamol 6000 mg/dia (máx 4000)
+-- O alerta de dose usa os campos NUMÉRICOS (dose_valor × frequencia_dia),
+-- não o texto livre de `dose`. Sem eles a regra não tem como calcular.
 insert into public.ps_prescricao_itens
-  (atendimento_id, medicamento_id, medicamento_nome, unidade, dose, via, quantidade, usuario)
-select a.id, m.id, m.nome, m.unidade, '1000 mg 6x/dia (6000 mg/dia)', 'VO', 6, 'seed-teste'
+  (atendimento_id, medicamento_id, medicamento_nome, unidade, dose, via, quantidade,
+   dose_valor, dose_unidade, frequencia_dia, duracao_dias, usuario)
+select a.id, m.id, m.nome, m.unidade, '1000 mg 6x/dia', 'VO', 6,
+       1000, 'mg', 6, 3, 'seed-teste'
 from public.ps_atendimentos a
 cross join lateral (select id, nome, unidade from public.farm_medicamentos
                     where nome = 'Paracetamol 500 mg comprimido' limit 1) m
@@ -190,6 +194,18 @@ from public.ps_atendimentos a
 cross join lateral (select id, nome, unidade from public.farm_medicamentos
                     where ajuste_renal is not null limit 1) m
 where a.usuario = 'seed-teste' and a.clearance_renal < 30;
+
+
+-- 3i) O REGISTRO ASSINADO da prescrição.
+-- No fluxo real, prescrever cria DUAS coisas: o registro em ps_registros
+-- (que assina, com data/hora e autor) e os itens em ps_prescricao_itens.
+-- Sem o registro, a aba do atendimento mostra "Prescrição (0)" mesmo com
+-- itens na tela — porque a contagem vem dos registros, não dos itens.
+insert into public.ps_registros (atendimento_id, tipo, categoria, texto, status, usuario, criado_em)
+select distinct i.atendimento_id, 'prescricao', 'medica',
+       'Prescrição médica registrada (seed de teste).', 'ativo', 'seed-teste', now()
+from public.ps_prescricao_itens i
+where i.usuario = 'seed-teste';
 
 
 -- ════════════════════════════════════════════════════════════
