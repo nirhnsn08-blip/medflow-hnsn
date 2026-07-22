@@ -4510,13 +4510,35 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   const [ctxBusy, setCtxBusy] = useState(false);
   const [ctxMsg, setCtxMsg] = useState("");
   const catById = {}; catalogo.forEach(m => catById[m.id] = m);
+  // Disponibilidade em estoque na hora de prescrever (não mostra saldo — só o
+  // sinal: sem estoque / estoque baixo — e oferece similares que têm saldo).
+  const [presLotes, setPresLotes] = useState([]);
+  const [verSimilares, setVerSimilares] = useState(null);   // medicamento sem estoque
+  const estoqueSinal = med => {
+    if (!med) return null;
+    const saldo = farmSaldoTotal(med.id, presLotes);
+    const min = Number(med.estoque_minimo || 0);
+    if (saldo <= 0) return { key: "zerado", label: "SEM ESTOQUE", cor: "#f43f5e" };
+    if (min > 0 && saldo <= min) return { key: "baixo", label: "estoque baixo", cor: "#d97706" };
+    return null;                                            // com estoque: sem ruído na tela
+  };
+  // Similares COM saldo: mesmo princípio ativo primeiro, depois mesma classe
+  const similaresComEstoque = med => {
+    if (!med) return [];
+    const pa = normTxt(med.principio_ativo);
+    const temSaldo = m => farmSaldoTotal(m.id, presLotes) > 0;
+    const ativos = catalogo.filter(m => m.ativo !== false && m.id !== med.id && temSaldo(m));
+    const mesmoPA = pa ? ativos.filter(m => normTxt(m.principio_ativo) === pa) : [];
+    const mesmaClasse = ativos.filter(m => (m.classe || "") === (med.classe || "") && !mesmoPA.some(x => x.id === m.id));
+    return [...mesmoPA.map(m => ({ m, motivo: "mesmo princípio ativo" })), ...mesmaClasse.map(m => ({ m, motivo: "mesma classe" }))].slice(0, 12);
+  };
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
   const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(paciente.id).then(setSaidas); };
   useEffect(() => { carregarRegistros(); }, []);
-  useEffect(() => { loadFarmMedicamentos().then(setCatalogo); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); carregarPrescricao(); }, []);
+  useEffect(() => { loadFarmMedicamentos().then(setCatalogo); loadFarmLotes().then(setPresLotes); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); carregarPrescricao(); }, []);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
@@ -4562,6 +4584,13 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
   }
   async function assinarPrescricao() {
     if (!presItens.length && !presObs.trim()) { alert("Adicione ao menos um medicamento à prescrição."); return; }
+    // Aviso (não bloqueio): itens sem saldo não poderão ser dispensados pela farmácia
+    const semEstoque = presItens.filter(it => estoqueSinal(catById[it.medicamento_id])?.key === "zerado");
+    if (semEstoque.length && !confirm(
+      `⚠ SEM ESTOQUE NA FARMÁCIA\n\n${semEstoque.map(it => `• ${it.medicamento_nome}`).join("\n")}\n\n` +
+      `A farmácia não vai conseguir dispensar ${semEstoque.length === 1 ? "este item" : "estes itens"} agora.\n` +
+      `Assinar mesmo assim?`
+    )) return;
     if (!confirm("Assinar esta prescrição? Ela NÃO poderá ser editada nem apagada depois (registro clínico).")) return;
     setBusy(true);
     const linhas = presItens.map(it => `• ${it.medicamento_nome}${it.dose ? " — " + it.dose : ""}${it.via ? " (" + it.via + ")" : ""}${it.quantidade ? " — qtd " + farmFmtQtd(it.quantidade) + (it.unidade ? " " + it.unidade : "") : ""}`);
@@ -4683,10 +4712,24 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
                   <option value="">Escolha…</option>
                   {FARM_CLASSES.filter(c => catalogo.some(m => (m.classe || "Outros") === c && m.ativo !== false)).map(c => (
                     <optgroup key={c} label={c}>
-                      {catalogo.filter(m => (m.classe || "Outros") === c && m.ativo !== false).map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
+                      {catalogo.filter(m => (m.classe || "Outros") === c && m.ativo !== false).map(m => { const sg = estoqueSinal(m); return <option key={m.id} value={m.id}>{m.nome}{sg ? ` — ${sg.label}` : ""}</option>; })}
                     </optgroup>
                   ))}
                 </select>
+                {/* Situação de estoque do item escolhido — sem mostrar o saldo */}
+                {(() => {
+                  const medSel = catById[presForm.medId];
+                  const sg = estoqueSinal(medSel);
+                  if (!medSel || !sg) return null;
+                  const sims = sg.key === "zerado" ? similaresComEstoque(medSel) : [];
+                  return (
+                    <div style={{ marginTop: 6, background: sg.cor + "14", border: `1px solid ${sg.cor}55`, borderRadius: 7, padding: "7px 10px", fontSize: 12, color: "var(--text-2)", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <strong style={{ color: sg.cor }}>{sg.label}</strong>
+                      <span>{sg.key === "zerado" ? "a farmácia não conseguirá dispensar." : "pode faltar antes do fim do tratamento."}</span>
+                      {sg.key === "zerado" && <button onClick={() => setVerSimilares(medSel)} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${VX.azul}66`, color: VX.azul, borderRadius: 6, padding: "4px 10px", fontWeight: 700, cursor: "pointer", fontSize: 11.5 }}>Ver similares{sims.length ? ` (${sims.length})` : ""}</button>}
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
                 <div style={{ flex: "0 1 80px", minWidth: 70 }}>
@@ -4719,7 +4762,10 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
                 <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 10 }}>
                   {presItens.map((it, i) => (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
-                      <span style={{ flex: 1 }}><strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via}{it.quantidade ? ` · qtd ${farmFmtQtd(it.quantidade)} ${it.unidade || ""}` : ""}</span></span>
+                      <span style={{ flex: 1 }}><strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via}{it.quantidade ? ` · qtd ${farmFmtQtd(it.quantidade)} ${it.unidade || ""}` : ""}</span>
+                        {(() => { const sg = estoqueSinal(catById[it.medicamento_id]); return sg ? <span style={{ fontSize: 9.5, fontWeight: 800, color: sg.cor, border: `1px solid ${sg.cor}66`, borderRadius: 99, padding: "0 6px", marginLeft: 6, whiteSpace: "nowrap" }}>{sg.label}</span> : null; })()}
+                      </span>
+                      {estoqueSinal(catById[it.medicamento_id])?.key === "zerado" && <button onClick={() => setVerSimilares(catById[it.medicamento_id])} style={{ background: "transparent", border: `1px solid ${VX.azul}66`, color: VX.azul, borderRadius: 6, padding: "2px 8px", fontWeight: 700, cursor: "pointer", fontSize: 11 }}>similares</button>}
                       <button onClick={() => setPresItens(p => p.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 15, lineHeight: 1 }}>✕</button>
                     </div>
                   ))}
@@ -4729,6 +4775,40 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged }) {
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <button onClick={assinarPrescricao} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Assinar prescrição"}</button>
               </div>
+
+              {/* Similares com estoque — troca na hora */}
+              {verSimilares && (() => {
+                const sims = similaresComEstoque(verSimilares);
+                return (
+                  <div onClick={() => setVerSimilares(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 520, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>Similares com estoque</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>
+                        <strong style={{ color: "#f43f5e" }}>{verSimilares.nome}</strong> está sem estoque. Estes têm saldo na farmácia — clique para usar no lugar. <em>A equivalência terapêutica é decisão sua.</em>
+                      </div>
+                      {sims.length === 0 ? (
+                        <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum similar com estoque (mesmo princípio ativo ou mesma classe). Fale com a farmácia.</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {sims.map(({ m, motivo }) => (
+                            <button key={m.id} onClick={() => { setPresForm(p => ({ ...p, medId: String(m.id) })); setVerSimilares(null); }}
+                              style={{ textAlign: "left", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{m.nome}</div>
+                                <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{motivo}{m.principio_ativo ? ` · ${m.principio_ativo}` : ""}</div>
+                              </div>
+                              <span style={{ fontSize: 11, color: VX.azul, fontWeight: 700, whiteSpace: "nowrap" }}>usar este →</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+                        <button onClick={() => setVerSimilares(null)} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Alertas de farmácia clínica */}
