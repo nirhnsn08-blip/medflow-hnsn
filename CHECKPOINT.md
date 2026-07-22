@@ -1,10 +1,10 @@
-# 📍 Ponto de restauração — checkpoint-v39
+# 📍 Ponto de restauração — checkpoint-v40
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v39` (anteriores: `checkpoint-v38` … `checkpoint-v1`)
-- **Data:** 2026-07-21
+- **Tag Git mais recente:** `checkpoint-v40` (anteriores: `checkpoint-v39` … `checkpoint-v1`)
+- **Data:** 2026-07-22
 - **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
   (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
@@ -118,6 +118,27 @@ dá pra voltar exatamente para este estado.
       registro e rótulo correto na linha do tempo do Paciente 360 — antes tudo
       era rotulado "Evolução médica" mesmo escrito por enfermeiro/técnico.
     - Migração: `supabase/migracao-ps-origem-elo.sql` (rodada no HNSN em 2026-07-21).
+  - **💉 Checagem de medicação administrada (bloco 3 da jornada):** fecha o maior
+    furo de segurança do fluxo — a cadeia do medicamento terminava em *"a farmácia
+    dispensou"*, o que prova que ele **saiu do estoque**, não que **entrou no
+    paciente**. Nova tabela `ps_administracoes` (**append-only**, sem update/delete).
+    - **Aba Checagem** no atendimento do PS, ao lado de Evoluções/Prescrição/Exames:
+      por item prescrito mostra o que a farmácia entregou, **doses administradas ×
+      previstas por dia** (quando a prescrição tem frequência) e o histórico assinado.
+      Registra **administrado** ou **não administrado** — este com **motivo
+      obrigatório** (recusa, jejum, acesso perdido, paciente ausente, suspenso pelo
+      médico, sem estoque, intercorrência), **categoria profissional** (enfermeiro,
+      técnico, médico, outro) e **hora editável**, porque à beira do leito se
+      administra primeiro e se registra depois. Hora futura é recusada.
+    - **Tela Checagem de medicação** na barra lateral EMERGÊNCIA: lista de trabalho
+      da enfermagem com os pacientes cuja medicação foi entregue e **não checada**,
+      ordenada pelo que espera há mais tempo, **vermelha acima de 1h**. O botão abre
+      o paciente já na aba certa. Os cards de *Em atendimento* ganharam o selo
+      **"N medicamento(s) sem checagem"**.
+    - Limite consciente: a lista cobre quem está **em atendimento**; quem já teve
+      desfecho e aguarda leito não aparece (o grupo do bloco 4/NIR).
+    - Migração: `supabase/migracao-ps-checagem-medicacao.sql` (rodada no HNSN em
+      2026-07-22). Modelo escolhido: **checagem simples**, não aprazamento por slots.
 - **💊 Farmácia — Fase A (catálogo + estoque):** módulo próprio com catálogo de
   medicamentos (princípio ativo, classe terapêutica, forma, unidade, estoque mínimo,
   marcação de **Controlado / Portaria 344**), controle de estoque **por lote e
@@ -378,7 +399,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v39
+git reset --hard checkpoint-v40
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -387,7 +408,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v39
+git checkout -b recuperacao checkpoint-v40
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -405,6 +426,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `dfe4d4f` 💉 PS — checagem de medicação administrada (append-only + lista de trabalho da enfermagem)
 - `32374f8` 🔗 PS — categoria profissional na evolução (médica/enfermagem/técnico)
 - `ba1966a` 🔗 PS — origem da chegada + prontuário obrigatório + elo forte PS→fila→leito
 - `0338a54` 🏥 PS — ajustes de layout (cards iguais, encaminhamentos em largura total)
