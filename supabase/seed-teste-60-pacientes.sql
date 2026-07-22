@@ -254,7 +254,7 @@ join public.pacientes p on p.prontuario = 'T9' || lpad(g::text, 3, '0');
 insert into public.atendimentos (data, especialidade, ofertadas, realizadas, primeiras,
                                  retornos, faltas, livres, emergencias, usuario)
 select
-  (current_date - d)::text, e.esp,
+  (current_date - d), e.esp,   -- `data` e do tipo date, nao text
   20 + (d % 12), 15 + (d % 10), 4 + (d % 6), 8 + (d % 7), 1 + (d % 4), (d % 3), (d % 2),
   'seed-teste'
 from generate_series(0, 29) d
