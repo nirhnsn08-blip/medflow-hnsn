@@ -1,9 +1,9 @@
-# 📍 Ponto de restauração — checkpoint-v38
+# 📍 Ponto de restauração — checkpoint-v39
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v38` (anteriores: `checkpoint-v37` … `checkpoint-v1`)
+- **Tag Git mais recente:** `checkpoint-v39` (anteriores: `checkpoint-v38` … `checkpoint-v1`)
 - **Data:** 2026-07-21
 - **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
   (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
@@ -102,6 +102,22 @@ dá pra voltar exatamente para este estado.
     assinar. A baixa continua na dispensação da Farmácia (momento correto).
   - Migrações: `supabase/migracao-ps-salas.sql` e `-ps-salas-censo.sql`
     (rodadas no HNSN em 2026-07-21).
+  - **🔗 Jornada do paciente auditada e costurada (blocos 1 e 2):**
+    - **Origem da chegada** (`ps_atendimentos.origem` / `origem_detalhe`):
+      Meios próprios · SAMU · Transalva · Polícia Militar · Bombeiros ·
+      **GERINT (aceite)** com a unidade (PA Torres, Arroio do Sal, Três
+      Cachoeiras, outra). Selo na fila + seção **Procedência** nos Indicadores
+      (base da pactuação regional).
+    - **Prontuário obrigatório** na recepção — era opcional e quebrava o rastro.
+    - **Elo forte PS → fila → leito** por `ps_atendimento_id` em
+      `solicitacoes` e `leitos`. Antes o vínculo era pelo número do prontuário
+      como TEXTO: se viesse vazio ou digitado diferente, o paciente sumia da
+      tela "Aguardando leito". Prontuário fica só como reserva.
+    - **Categoria profissional na evolução** (`ps_registros.categoria`, sem
+      migração): Médica · Enfermagem · Técnico · Fisio · Outro, com selo no
+      registro e rótulo correto na linha do tempo do Paciente 360 — antes tudo
+      era rotulado "Evolução médica" mesmo escrito por enfermeiro/técnico.
+    - Migração: `supabase/migracao-ps-origem-elo.sql` (rodada no HNSN em 2026-07-21).
 - **💊 Farmácia — Fase A (catálogo + estoque):** módulo próprio com catálogo de
   medicamentos (princípio ativo, classe terapêutica, forma, unidade, estoque mínimo,
   marcação de **Controlado / Portaria 344**), controle de estoque **por lote e
@@ -362,7 +378,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v38
+git reset --hard checkpoint-v39
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -371,7 +387,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v38
+git checkout -b recuperacao checkpoint-v39
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -389,6 +405,8 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `32374f8` 🔗 PS — categoria profissional na evolução (médica/enfermagem/técnico)
+- `ba1966a` 🔗 PS — origem da chegada + prontuário obrigatório + elo forte PS→fila→leito
 - `0338a54` 🏥 PS — ajustes de layout (cards iguais, encaminhamentos em largura total)
 - `198de71` 🏥 PS — KPIs compactos (leitos ocupados, óbitos, tempo médio de permanência)
 - `f6bd24d` 🏥 PS — card de desfechos separando óbito no PS × pós-internação
