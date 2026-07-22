@@ -4472,54 +4472,8 @@ function PSPage({ currentUser, canEdit }) {
           : <><strong style={{ color: "#f43f5e" }}>{foraDoAlvoTotal} paciente(s) fora do tempo-alvo</strong> — {porCor.filter(c => c.fora).map(c => `${c.fora} ${c.label.toLowerCase()}`).join(" · ")}. Priorize na fila abaixo.</>}
       </div>
 
-      {/* 3 colunas: fila · chegada · distribuição */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 16, alignItems: "start" }}>
-
-        {/* Fila de triagem (sem classificação primeiro, depois por prioridade) */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Fila de Triagem ({aguardandoTriagem.length + aguardandoAtend.length})</div>
-          {(aguardandoTriagem.length + aguardandoAtend.length) === 0 ? (
-            <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Fila vazia.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 420, overflowY: "auto" }}>
-              {aguardandoTriagem.map(p => (
-                <div key={p.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #fbbf24", borderRadius: 8, padding: "8px 11px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
-                    {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
-                    <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fbbf24", border: "1px solid #fbbf2455", borderRadius: 99, padding: "0 7px" }}>AGUARDA CLASSIFICAÇÃO</span>
-                    <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.chegada_em, agora))}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                    <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 0 }}>{p.queixa || "sem queixa registrada"}</span>
-                    {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Triar</button>}
-                  </div>
-                </div>
-              ))}
-              {aguardandoAtend.map(p => {
-                const m = MANCHESTER[p.classificacao];
-                const min = diffMin(p.triagem_em, agora), alvo = m?.alvoMin;
-                const estourou = alvo != null && alvo > 0 && min != null && min > alvo;
-                return (
-                  <div key={p.id} style={{ background: "var(--surface-2)", border: `1px solid ${estourou ? "#f43f5e55" : "var(--border)"}`, borderLeft: `4px solid ${m?.cor || "var(--border)"}`, borderRadius: 8, padding: "8px 11px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
-                      {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
-                      <ClasseBadge c={p.classificacao} />
-                      <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 90 }}>{p.queixa || "—"}</span>
-                      {canEdit && <button onClick={() => setReavaliando(p)} style={btnLeito(estourou ? "#f97316" : "var(--text-3)")}>Reavaliar</button>}
-                      {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar</button>}
-                    </div>
-                    {fmtSinaisVitais(p) && <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{fmtSinaisVitais(p)}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+      {/* 2 colunas: classificar · distribuição (a fila fica na aba Fila de Espera) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, marginBottom: 16, alignItems: "start" }}>
 
         {/* Classificar novo paciente (chegada) */}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
