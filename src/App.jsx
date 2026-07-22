@@ -2450,6 +2450,50 @@ const MANCHESTER = {
   verde:    { label: "Pouco urgente",  atend: "Moderado",        cor: "#22c55e", bg: "#0a3d2a", alvoMin: 120, desc: "Condição de menor gravidade. Atendimento MODERADO — em até 120 minutos." },
   azul:     { label: "Não urgente",    atend: "Não prioritário", cor: "#3b82f6", bg: "#132c47", alvoMin: 240, desc: "Queixa simples/crônica. Atendimento NÃO PRIORITÁRIO — em até 240 minutos ou encaminhamento." },
 };
+// Barra lateral interna do módulo Pronto-Socorro (bloco Triagem)
+const PS_NAV = [
+  { key: "painel",      label: "Painel de Triagem",  icon: "dashboard" },
+  { key: "classificar", label: "Classificar Paciente", icon: "activity" },
+  { key: "fila",        label: "Fila de Espera",     icon: "list" },
+  { key: "reavaliacao", label: "Reavaliação",        icon: "clock" },
+  { key: "protocolo",   label: "Protocolo Manchester", icon: "clipboard" },
+  { key: "indicadores", label: "Indicadores",        icon: "chart" },
+];
+// Conteúdo didático do protocolo adaptado — discriminadores e sinais por nível.
+// Base: Manchester Triage Group + faixas usadas pelo apoio à decisão do sistema.
+// Material de referência/treinamento — a classificação final é sempre da triadora.
+const PS_PROTOCOLO = {
+  vermelho: {
+    sinais: ["Parada cardiorrespiratória", "Via aérea comprometida / obstrução", "Inconsciente (AVPU = U)", "Choque: PA sistólica < 80 mmHg", "SpO2 < 85%", "FR < 8 ou > 35 irpm", "FC < 40 ou > 150 bpm", "Convulsão em curso", "Hemorragia exsanguinante"],
+    conduta: "Encaminhar IMEDIATAMENTE à sala de emergência. Não deixar em sala de espera. Comunicar a equipe médica na hora.",
+  },
+  laranja: {
+    sinais: ["Responde só à voz ou à dor (AVPU = V ou D)", "SpO2 86–91%", "FR 8–9 ou 25–35 irpm", "FC 40–49 ou 121–150 bpm", "PA sistólica 80–89 mmHg", "PA sistólica ≥ 220 mmHg (crise hipertensiva)", "Dor intensa (8–10)", "Hemorragia não controlada", "Dor torácica de suspeita cardíaca"],
+    conduta: "Atendimento em até 10 minutos. Manter sob vigilância contínua — pode deteriorar rápido. Reavaliar se houver espera.",
+  },
+  amarelo: {
+    sinais: ["SpO2 92–94%", "FR 21–24 irpm", "FC 50–59 ou 100–120 bpm", "PA sistólica 90–99 mmHg ou ≥ 180 mmHg", "Dor moderada (4–7)", "Temperatura ≥ 39 °C", "Vômitos persistentes", "História de trauma sem sinais de gravidade"],
+    conduta: "Atendimento em até 60 minutos. Reavaliar periodicamente enquanto aguarda — o quadro pode mudar.",
+  },
+  verde: {
+    sinais: ["Sinais vitais dentro da normalidade", "Dor leve (1–3)", "Queixa aguda sem sinais de gravidade", "Ferimentos superficiais", "Sintomas gripais sem desconforto respiratório"],
+    conduta: "Atendimento em até 120 minutos. Orientar sobre o tempo de espera e reavaliar se houver piora relatada.",
+  },
+  azul: {
+    sinais: ["Queixa crônica sem agudização", "Sem dor ou dor mínima", "Procura por receita, atestado ou resultado de exame", "Condição que poderia ser resolvida na atenção básica"],
+    conduta: "Atendimento em até 240 minutos ou encaminhamento à atenção básica/ambulatório, conforme o fluxo da unidade.",
+  },
+};
+// Discriminadores gerais do Manchester — atravessam todos os fluxogramas de queixa
+const PS_DISCRIMINADORES = [
+  { nome: "Risco de vida", desc: "Via aérea, respiração ou circulação comprometidas. Define vermelho independentemente da queixa.", cor: "#ef4444" },
+  { nome: "Dor", desc: "Avaliada de 0 a 10. Dor intensa (8–10) puxa para laranja; moderada (4–7) para amarelo; leve (1–3) para verde.", cor: "#f97316" },
+  { nome: "Hemorragia", desc: "Exsanguinante = vermelho. Não controlada = laranja. Controlada = amarelo/verde conforme volume.", cor: "#e11d48" },
+  { nome: "Nível de consciência", desc: "Escala AVPU. U (inconsciente) = vermelho. V ou D = laranja. A (alerta) segue os demais discriminadores.", cor: "#6366f1" },
+  { nome: "Temperatura", desc: "Febre alta (≥ 39 °C) ou hipotermia elevam a prioridade, sobretudo em extremos de idade.", cor: "#d97706" },
+  { nome: "Agudeza / tempo de evolução", desc: "Início súbito e progressão rápida aumentam a prioridade frente ao mesmo sintoma de curso arrastado.", cor: "#0d9488" },
+];
+
 // Mapa de salas do PS — áreas sugeridas e situações possíveis
 const PS_AREAS = ["Emergência", "Observação", "Sala Vermelha", "Consultório", "Medicação", "Outros"];
 const PS_SALA_STATUS = {
@@ -4161,6 +4205,7 @@ function PSPage({ currentUser, canEdit }) {
   const [leitos, setLeitos] = useState([]);
   const [obitosInternacao, setObitosInternacao] = useState(0);
   const [aba, setAba] = useState("operacao");   // operacao | relatorio
+  const [sub, setSub] = useState("painel");     // ver PS_NAV
   const [novo, setNovo] = useState({ iniciais: "", prontuario: "", queixa: "" });
   const [triando, setTriando] = useState(null);
   const [reavaliando, setReavaliando] = useState(null);
@@ -4343,14 +4388,41 @@ function PSPage({ currentUser, canEdit }) {
     </div>
   );
 
+  const navAtual = PS_NAV.find(n => n.key === sub) || PS_NAV[0];
+  const subTexto = {
+    painel: "Visão do plantão — risco, fila, salas e encaminhamentos.",
+    classificar: "Registrar a chegada e classificar o risco pelo Manchester adaptado.",
+    fila: "Pacientes já classificados, na ordem de prioridade e contra o tempo-alvo.",
+    reavaliacao: "Quem está esperando há mais tempo e precisa ser reavaliado.",
+    protocolo: "Referência do protocolo adaptado do HNSN — níveis, sinais e discriminadores.",
+    indicadores: "Indicadores da triagem do dia.",
+  };
+
   return (
-    <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      {/* BARRA LATERAL DO PRONTO-SOCORRO — bloco Triagem */}
+      <nav style={{ width: 194, minWidth: 194, background: "var(--bg-2)", borderRight: "1px solid var(--border)", padding: "1rem 0", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
+          <Icon name="activity" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>TRIAGEM</span>
+        </div>
+        {PS_NAV.map(it => { const active = sub === it.key; return (
+          <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
+            <Icon name={it.icon} size={16} />{it.label}
+          </button>
+        ); })}
+        <div style={{ height: 1, background: "var(--surface-3)", margin: ".7rem 12px" }} />
+        <div style={{ padding: "0 16px" }}>
+          <button onClick={() => setAba("relatorio")} style={{ width: "100%", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text-3)", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>Relatório mensal</button>
+        </div>
+      </nav>
+
+      {/* CONTEÚDO */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Pronto-Socorro — Triagem e Fluxo</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Classificação de risco (Protocolo de Manchester) e jornada do paciente. Dados de saúde — use iniciais e prontuário (LGPD).</div>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>{subTexto[sub]} Dados de saúde — use iniciais e prontuário (LGPD).</div>
         </div>
-        <button onClick={() => setAba("relatorio")} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Relatório mensal</button>
       </div>
 
       <PsRetiradaBanner currentUser={currentUser} canEdit={canEdit} />
@@ -4368,6 +4440,7 @@ function PSPage({ currentUser, canEdit }) {
         {busca && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{aguardandoTriagem.length + aguardandoAtend.length + emAtendimento.length} paciente(s) no filtro</span>}
       </div>
 
+      {sub === "painel" && (<>
       {/* ══════════════ SEÇÃO 1 — TRIAGEM ══════════════ */}
       <div style={{ borderTop: `3px solid ${VX.turquesa}`, background: "var(--surface)", borderRadius: "10px 10px 0 0", padding: "12px 16px 10px", marginBottom: 12 }}>
         <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>Triagem</div>
@@ -4705,6 +4778,222 @@ function PSPage({ currentUser, canEdit }) {
         </div>
       </div>
 
+      </>)}
+
+      {/* CLASSIFICAR PACIENTE */}
+      {sub === "classificar" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, alignItems: "start", marginBottom: 16 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Registrar chegada</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>Dados mínimos (LGPD): iniciais e prontuário identificam sem expor o nome.</div>
+            {canEdit ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Iniciais *</label><input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Ex.: M.A.S." style={{ ...inp, width: "100%" }} /></div>
+                <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Prontuário</label><input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Nº" style={{ ...inp, width: "100%" }} /></div>
+                <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Queixa principal</label><input value={novo.queixa} onChange={e => setNovo(p => ({ ...p, queixa: e.target.value }))} onKeyDown={e => e.key === "Enter" && registrarChegada()} placeholder="Ex.: dor torácica" style={{ ...inp, width: "100%" }} /></div>
+                <button onClick={registrarChegada} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar chegada →"}</button>
+              </div>
+            ) : <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Seu perfil é somente leitura.</div>}
+          </div>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Aguardando classificação ({aguardandoTriagem.length})</div>
+            {aguardandoTriagem.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Ninguém aguardando triagem.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {aguardandoTriagem.map(p => (
+                  <div key={p.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #fbbf24", borderRadius: 8, padding: "9px 12px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
+                    {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                    <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 80 }}>{p.queixa || "—"}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.chegada_em, agora))}</span>
+                    {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Classificar</button>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* FILA DE ESPERA */}
+      {sub === "fila" && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ background: foraDoAlvoTotal ? "#f43f5e12" : "var(--surface)", border: `1px solid ${foraDoAlvoTotal ? "#f43f5e55" : "var(--border)"}`, borderRadius: 10, padding: "11px 16px", marginBottom: 12, fontSize: 13.5 }}>
+            {foraDoAlvoTotal === 0 ? "✓ Nenhum paciente fora do tempo-alvo." : <><strong style={{ color: "#f43f5e" }}>{foraDoAlvoTotal} fora do tempo-alvo</strong> — priorize os destacados.</>}
+          </div>
+          {aguardandoAtend.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Fila vazia.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {aguardandoAtend.map((p, i) => {
+                const m = MANCHESTER[p.classificacao];
+                const est = estourouAlvo(p);
+                return (
+                  <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${m?.cor || "var(--border)"}`, background: est ? "#f43f5e0e" : "var(--surface-2)" }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", minWidth: 22 }}>{String(i + 1).padStart(2, "0")}</span>
+                    <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+                    {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                    <ClasseBadge c={p.classificacao} />
+                    {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
+                    <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
+                    {canEdit && <button onClick={() => setReavaliando(p)} style={btnLeito(est ? "#f97316" : "var(--text-3)")}>Reavaliar</button>}
+                    {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar atendimento</button>}
+                    {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* REAVALIAÇÃO */}
+      {sub === "reavaliacao" && (() => {
+        const candidatos = [...aguardandoAtend].sort((a, b) => (estourouAlvo(b) - estourouAlvo(a)) || (esperaMin(b) - esperaMin(a)));
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "11px 16px", marginBottom: 12, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+              A reavaliação é obrigatória sempre que o paciente <strong>ultrapassa o tempo-alvo</strong> ou relata piora. Ela gera uma nova aferição no histórico (append-only) e pode <strong>mudar a classificação</strong>.
+            </div>
+            {candidatos.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Ninguém aguardando atendimento — nada a reavaliar.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {candidatos.map(p => {
+                  const est = estourouAlvo(p);
+                  return (
+                    <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${est ? "#f43f5e" : MANCHESTER[p.classificacao]?.cor || "var(--border)"}`, background: est ? "#f43f5e0e" : "var(--surface-2)" }}>
+                      <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
+                      <ClasseBadge c={p.classificacao} />
+                      {est && <span style={{ fontSize: 9.5, fontWeight: 800, color: "#f43f5e", border: "1px solid #f43f5e66", borderRadius: 99, padding: "0 7px" }}>PRIORIDADE — TEMPO ESTOURADO</span>}
+                      {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
+                      <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
+                      {canEdit && <button onClick={() => setReavaliando(p)} style={btnLeito(est ? "#f97316" : "#22d3ee")}>Reavaliar agora</button>}
+                      {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>última aferição: {fmtSinaisVitais(p)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* PROTOCOLO DE MANCHESTER ADAPTADO — material didático */}
+      {sub === "protocolo" && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${VX.turquesa}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
+            <strong>Manchester adaptado — {HOSPITAL_NOME}.</strong> Cinco níveis de prioridade definidos pela queixa de apresentação e pelos discriminadores. Os tempos-alvo abaixo são os oficiais desta unidade.
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>Material de referência e treinamento. A classificação final é sempre da enfermeira triadora, conforme o fluxograma da queixa — o sistema apenas apoia.</div>
+          </div>
+
+          {/* Cards por nível */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 18 }}>
+            {Object.keys(MANCHESTER).map(k => {
+              const m = MANCHESTER[k], pr = PS_PROTOCOLO[k];
+              return (
+                <div key={k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: `4px solid ${m.cor}`, borderRadius: 10, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 3 }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 5, background: m.cor, flexShrink: 0 }} />
+                    <span style={{ fontSize: 15, fontWeight: 800, color: m.cor }}>{m.label}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 9 }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: m.cor, border: `1px solid ${m.cor}55`, borderRadius: 99, padding: "1px 9px" }}>{m.atend.toUpperCase()}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 99, padding: "1px 9px", fontFamily: "JetBrains Mono, monospace" }}>{m.alvoMin === 0 ? "0 min — imediato" : `até ${m.alvoMin} min`}</span>
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.5, marginBottom: 10 }}>{m.desc}</div>
+                  <div style={{ fontSize: 10.5, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 5 }}>Sinais e discriminadores típicos</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
+                    {pr.sinais.map((s, i) => <li key={i} style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.45 }}>{s}</li>)}
+                  </ul>
+                  <div style={{ marginTop: 10, background: m.cor + "12", border: `1px solid ${m.cor}44`, borderRadius: 7, padding: "8px 11px", fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.45 }}>
+                    <strong style={{ color: m.cor }}>Conduta:</strong> {pr.conduta}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Discriminadores gerais */}
+          <div style={{ ...secLbl }}>Discriminadores gerais — atravessam todos os fluxogramas</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10, marginBottom: 18 }}>
+            {PS_DISCRIMINADORES.map(d => (
+              <div key={d.nome} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${d.cor}`, borderRadius: 9, padding: "11px 14px" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: d.cor, marginBottom: 3 }}>{d.nome}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.5 }}>{d.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Escala AVPU */}
+          <div style={{ ...secLbl }}>Escala AVPU — nível de consciência</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 14 }}>
+            {[["A", "Alerta", "Desperto e orientado", "#34d399"],
+              ["V", "Voz", "Responde a estímulo verbal", "#f97316"],
+              ["D", "Dor", "Responde só a estímulo doloroso", "#f97316"],
+              ["U", "Inconsciente", "Não responde a nenhum estímulo", "#ef4444"]].map(([l, t, d, c]) => (
+              <div key={l} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 9, padding: "11px 14px", display: "flex", alignItems: "center", gap: 11 }}>
+                <span style={{ width: 34, height: 34, borderRadius: 8, background: c + "22", border: `1px solid ${c}66`, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flexShrink: 0 }}>{l}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.4 }}>{d}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.6, border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 14px" }}>
+            <strong>Sobre estes materiais:</strong> baseados no Manchester Triage Group e adaptados aos tempos-alvo desta unidade. As faixas de sinais vitais são as mesmas que o sistema usa para <em>sugerir</em> a classificação na tela de triagem — e valem para <strong>adultos</strong>: em menores de 13 anos a sugestão automática é desativada e vale o protocolo pediátrico. Revisar periodicamente com a equipe de enfermagem.
+          </div>
+        </div>
+      )}
+
+      {/* INDICADORES DA TRIAGEM */}
+      {sub === "indicadores" && (() => {
+        const doDia = fila.concat(finalizados).filter(p => p.classificacao);
+        const comEspera = doDia.filter(p => p.triagem_em && (p.atendimento_em || p.status === "aguardando_atendimento"));
+        const dentro = comEspera.filter(p => !estourouAlvo(p)).length;
+        const taxa = comEspera.length ? (dentro / comEspera.length) * 100 : null;
+        return (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              <Card label="Classificados hoje" valor={doDia.length} cor={VX.azul} />
+              <Card label="Dentro do tempo-alvo" valor={taxa != null ? `${taxa.toFixed(0)}%` : "—"} cor={taxa == null ? "var(--border)" : taxa >= 80 ? "#34d399" : taxa >= 60 ? "#fbbf24" : "#f43f5e"} />
+              <Card label="Fora do tempo-alvo agora" valor={foraDoAlvoTotal} cor={foraDoAlvoTotal ? "#f43f5e" : "#34d399"} />
+              <Card label="Porta→triagem (média)" valor={portaTriagemMedia != null ? fmtDur(Math.round(portaTriagemMedia)) : "—"} cor="#6366f1" />
+              <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
+            </div>
+            <div style={secLbl}>Distribuição por classificação (hoje)</div>
+            {doDia.length === 0 ? (
+              <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "2rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhuma classificação hoje ainda.</div>
+            ) : (
+              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+                {Object.keys(MANCHESTER).map(k => {
+                  const lista = doDia.filter(p => p.classificacao === k);
+                  const est = lista.filter(estourouAlvo).length;
+                  const pct = (lista.length / doDia.length) * 100;
+                  const v = MANCHESTER[k];
+                  return (
+                    <div key={k} style={{ marginBottom: 9 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 3 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 99, background: v.cor }} />
+                        <span style={{ color: "var(--text-2)", flex: 1 }}>{v.label} <span style={{ color: "var(--text-muted)", fontSize: 10.5 }}>· {v.atend}, {v.alvoMin === 0 ? "imediato" : `${v.alvoMin} min`}</span></span>
+                        {est > 0 && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#f43f5e" }}>⚠ {est} fora do alvo</span>}
+                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: v.cor, minWidth: 26, textAlign: "right" }}>{lista.length}</strong>
+                        <span style={{ color: "var(--text-muted)", fontSize: 10.5, minWidth: 36, textAlign: "right" }}>{pct.toFixed(0)}%</span>
+                      </div>
+                      <div style={{ height: 7, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{ width: Math.max(pct ? 3 : 0, pct) + "%", height: "100%", background: v.cor, borderRadius: 99 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* FINALIZADOS HOJE */}
       {finalizados.length > 0 && (
         <details style={{ marginBottom: "1.25rem" }}>
@@ -4733,6 +5022,7 @@ function PSPage({ currentUser, canEdit }) {
 
       {/* PAINEL DO ATENDIMENTO (evolução, prescrição, exames) */}
       {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} onClose={() => { setAtendendo(null); refresh(); }} onChanged={() => {}} />}
+      </div>
     </div>
   );
 }
