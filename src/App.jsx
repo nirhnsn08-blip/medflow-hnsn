@@ -3292,7 +3292,10 @@ async function loadPaciente360(prontuario) {
     sbFetch(`ps_atendimentos?prontuario=eq.${p}&select=*&order=chegada_em.desc`),
     sbFetch(`leitos?prontuario=eq.${p}&status=eq.ocupado&select=*`),
     sbFetch(`leitos_saidas?prontuario=eq.${p}&select=*&order=data_alta.desc`).catch(() => []),
-    sbFetch(`scih_casos?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    // `created_at`, não `criado_em`: só pep_evolucoes, ps_registros e
+    // ps_administracoes usam o nome em português. As outras 23 tabelas usam
+    // created_at, e scih_casos é uma delas.
+    sbFetch(`scih_casos?prontuario=eq.${p}&select=*&order=created_at.desc`).catch(() => []),
     sbFetch(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`),
   ]);
   const psRows = Array.isArray(ps) ? ps : [];
