@@ -4357,7 +4357,7 @@ function PSPage({ currentUser, canEdit }) {
       <PsIntervencaoBanner currentUser={currentUser} canEdit={canEdit} />
 
       {/* BUSCA RÁPIDA */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 420 }}>
           <input ref={buscaRef} value={busca} onChange={e => setBusca(e.target.value)}
             placeholder="Buscar paciente por iniciais, prontuário ou queixa…"
@@ -4368,8 +4368,14 @@ function PSPage({ currentUser, canEdit }) {
         {busca && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{aguardandoTriagem.length + aguardandoAtend.length + emAtendimento.length} paciente(s) no filtro</span>}
       </div>
 
-      {/* FILA POR CLASSIFICAÇÃO DE RISCO — os 5 níveis Manchester + fora do tempo-alvo */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 10 }}>
+      {/* ══════════════ SEÇÃO 1 — TRIAGEM ══════════════ */}
+      <div style={{ borderTop: `3px solid ${VX.turquesa}`, background: "var(--surface)", borderRadius: "10px 10px 0 0", padding: "12px 16px 10px", marginBottom: 12 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>Triagem</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Classificação de Risco — Protocolo de Manchester adaptado (HNSN)</div>
+      </div>
+
+      {/* KPIs por cor Manchester */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 10, marginBottom: 10 }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${aguardandoTriagem.length ? "#fbbf24" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
           <div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>Aguardando classificação</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: aguardandoTriagem.length ? "#fbbf24" : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{String(aguardandoTriagem.length).padStart(2, "0")}</div>
@@ -4386,257 +4392,300 @@ function PSPage({ currentUser, canEdit }) {
         ))}
       </div>
 
-      {/* SEGURANÇA: quem estourou o tempo-alvo é o que mais importa */}
-      <div style={{ background: foraDoAlvoTotal ? "#f43f5e12" : "var(--surface)", border: `1px solid ${foraDoAlvoTotal ? "#f43f5e55" : "var(--border)"}`, borderRadius: 10, padding: "11px 16px", marginBottom: 14, fontSize: 13.5, color: "var(--text)" }}>
+      {/* Faixa de segurança */}
+      <div style={{ background: foraDoAlvoTotal ? "#f43f5e12" : "var(--surface)", border: `1px solid ${foraDoAlvoTotal ? "#f43f5e55" : "var(--border)"}`, borderRadius: 10, padding: "11px 16px", marginBottom: 12, fontSize: 13.5, color: "var(--text)" }}>
         {foraDoAlvoTotal === 0
           ? "✓ Nenhum paciente fora do tempo-alvo do Manchester."
           : <><strong style={{ color: "#f43f5e" }}>{foraDoAlvoTotal} paciente(s) fora do tempo-alvo</strong> — {porCor.filter(c => c.fora).map(c => `${c.fora} ${c.label.toLowerCase()}`).join(" · ")}. Priorize na fila abaixo.</>}
       </div>
 
-      {/* OPERAÇÃO DO DIA */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
-        <Card label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" />
-        <Card label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" />
-        <Card label="Porta→triagem (média)" valor={portaTriagemMedia != null ? fmtDur(Math.round(portaTriagemMedia)) : "—"} cor="#6366f1" />
-        <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
-      </div>
+      {/* 3 colunas: fila · chegada · distribuição */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 16, alignItems: "start" }}>
 
-      {/* MAPA DE SALAS DO PS */}
-      {(() => {
-        const ativas = salas.filter(s => s.ativo !== false);
-        const pacById = {}; fila.forEach(p => pacById[p.id] = p);
-        const areas = [...new Set(ativas.map(s => s.area || "Outros"))]
-          .sort((a, b) => { const ia = PS_AREAS.indexOf(a), ib = PS_AREAS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "pt-BR"); });
-        const cont = k => ativas.filter(s => (s.status || "disponivel") === k).length;
-        return (
-          <div style={{ marginBottom: "1.25rem" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-              <div style={{ ...secLbl, marginBottom: 0 }}>Mapa de salas {ativas.length > 0 && `· ${cont("disponivel")} disponível(is) de ${ativas.length}`}</div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginLeft: "auto", alignItems: "center" }}>
-                {Object.entries(PS_SALA_STATUS).map(([k, v]) => (
-                  <span key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "var(--text-muted)" }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 3, background: v.cor }} />{v.label}{ativas.length ? ` (${cont(k)})` : ""}
-                  </span>
-                ))}
-                {canEdit && <button onClick={() => setShowSalas(true)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 12px", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>Gerenciar salas</button>}
-              </div>
-            </div>
-            {ativas.length === 0 ? (
-              <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "14px", textAlign: "center" }}>
-                Nenhuma sala cadastrada. {canEdit ? "Clique em “Gerenciar salas” para cadastrar (ex.: Emergência 01–06, Observação 07–12, Sala Vermelha 13–16)." : "Peça ao administrador para cadastrar."}
-              </div>
-            ) : areas.map(area => (
-              <div key={area} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-3)", marginBottom: 5 }}>{area}</div>
-                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
-                  {ativas.filter(s => (s.area || "Outros") === area).map(s => {
-                    const st = PS_SALA_STATUS[s.status] || PS_SALA_STATUS.disponivel;
-                    const pac = s.atendimento_id ? pacById[s.atendimento_id] : null;
-                    const desde = s.ocupado_em ? diffMin(s.ocupado_em, agora) : null;
-                    return (
-                      <div key={s.id} title={pac ? `${pac.iniciais}${pac.prontuario ? ` · reg. ${pac.prontuario}` : ""}${desde != null ? ` · ${fmtDur(desde)}` : ""}` : st.label}
-                        style={{ background: st.cor + "1e", border: `1px solid ${st.cor}66`, borderTop: `3px solid ${st.cor}`, borderRadius: 8, padding: "7px 10px", minWidth: 92 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: st.cor, fontFamily: "JetBrains Mono, monospace" }}>{s.identificacao}</div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 110 }}>
-                          {pac ? pac.iniciais : st.label}{pac && desde != null ? ` · ${fmtDur(desde)}` : ""}
-                        </div>
-                        {canEdit && (
-                          <div style={{ display: "flex", gap: 4, marginTop: 5, flexWrap: "wrap" }}>
-                            {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnLeito("#22d3ee"), padding: "1px 7px", fontSize: 10 }}>Alocar</button>}
-                            {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnLeito("#d97706"), padding: "1px 7px", fontSize: 10 }}>Liberar</button>}
-                            {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "1px 7px", fontSize: 10 }}>Pronta</button>}
-                            {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "1px 7px", fontSize: 10 }}>Liberar</button>}
-                            {["disponivel", "limpeza"].includes(s.status) && <button onClick={() => mudarStatusSala(s, "manutencao")} style={{ ...btnLeito("#8d99ab"), padding: "1px 7px", fontSize: 10 }}>Manut.</button>}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+        {/* Fila de triagem (sem classificação primeiro, depois por prioridade) */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Fila de Triagem ({aguardandoTriagem.length + aguardandoAtend.length})</div>
+          {(aguardandoTriagem.length + aguardandoAtend.length) === 0 ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Fila vazia.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 420, overflowY: "auto" }}>
+              {aguardandoTriagem.map(p => (
+                <div key={p.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #fbbf24", borderRadius: 8, padding: "8px 11px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
+                    {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                    <span style={{ fontSize: 9.5, fontWeight: 800, color: "#fbbf24", border: "1px solid #fbbf2455", borderRadius: 99, padding: "0 7px" }}>AGUARDA CLASSIFICAÇÃO</span>
+                    <span style={{ marginLeft: "auto", fontSize: 11.5, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.chegada_em, agora))}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                    <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 0 }}>{p.queixa || "sem queixa registrada"}</span>
+                    {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Triar</button>}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
-
-      {/* INDICADORES DE TRIAGEM DO DIA */}
-      {(() => {
-        const doDia = fila.concat(finalizados).filter(p => p.classificacao);
-        if (doDia.length === 0) return null;
-        const dist = Object.keys(MANCHESTER).map(k => {
-          const lista = doDia.filter(p => p.classificacao === k);
-          const estourados = lista.filter(p => {
-            const alvo = MANCHESTER[k].alvoMin;
-            if (!alvo || !p.triagem_em) return false;
-            const fimEspera = p.atendimento_em || (p.status === "aguardando_atendimento" ? agora : null);
-            return fimEspera ? diffMin(p.triagem_em, fimEspera) > alvo : false;
-          }).length;
-          return { k, n: lista.length, estourados };
-        });
-        const total = doDia.length;
-        const totalEst = dist.reduce((a, d) => a + d.estourados, 0);
-        const noAlvo = ((total - totalEst) / total) * 100;
-        const th = { textAlign: "left", padding: "7px 14px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", borderBottom: "1px solid var(--border)" };
-        const td = { padding: "7px 14px", fontSize: 12.5, color: "var(--text-2)", borderBottom: "1px solid var(--border)" };
-        const num = { ...td, fontFamily: "JetBrains Mono, monospace", textAlign: "right", color: "var(--text)" };
-        return (
-          <div style={{ marginBottom: "1.25rem" }}>
-            <div style={secLbl}>Triagem do dia</div>
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr>
-                  <th style={th}>Classificação</th>
-                  <th style={{ ...th, textAlign: "right" }}>Atendimentos</th>
-                  <th style={{ ...th, textAlign: "right" }}>%</th>
-                  <th style={{ ...th, textAlign: "right" }}>Fora do alvo</th>
-                </tr></thead>
-                <tbody>
-                  {dist.map(({ k, n, estourados }) => {
-                    const m = MANCHESTER[k];
-                    return (
-                      <tr key={k}>
-                        <td style={td}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: m.cor, marginRight: 9, verticalAlign: "middle" }} />{m.label}</td>
-                        <td style={num}>{n}</td>
-                        <td style={{ ...num, color: "var(--text-3)" }}>{total > 0 ? Math.round((n / total) * 100) : 0}%</td>
-                        <td style={{ ...num, color: estourados > 0 ? "var(--text)" : "var(--text-muted)" }}>{estourados || "—"}</td>
-                      </tr>
-                    );
-                  })}
-                  <tr>
-                    <td style={{ ...td, borderBottom: "none", fontWeight: 700, color: "var(--text)" }}>Dentro do tempo-alvo</td>
-                    <td style={{ ...num, borderBottom: "none" }}>{total - totalEst}/{total}</td>
-                    <td style={{ ...num, borderBottom: "none", fontWeight: 700 }}>{noAlvo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%</td>
-                    <td style={{ ...num, borderBottom: "none", color: "var(--text-muted)" }}>{totalEst || "—"}</td>
-                  </tr>
-                </tbody>
-              </table>
+              ))}
+              {aguardandoAtend.map(p => {
+                const m = MANCHESTER[p.classificacao];
+                const min = diffMin(p.triagem_em, agora), alvo = m?.alvoMin;
+                const estourou = alvo != null && alvo > 0 && min != null && min > alvo;
+                return (
+                  <div key={p.id} style={{ background: "var(--surface-2)", border: `1px solid ${estourou ? "#f43f5e55" : "var(--border)"}`, borderLeft: `4px solid ${m?.cor || "var(--border)"}`, borderRadius: 8, padding: "8px 11px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
+                      {p.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
+                      <ClasseBadge c={p.classificacao} />
+                      <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 90 }}>{p.queixa || "—"}</span>
+                      {canEdit && <button onClick={() => setReavaliando(p)} style={btnLeito(estourou ? "#f97316" : "var(--text-3)")}>Reavaliar</button>}
+                      {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar</button>}
+                    </div>
+                    {fmtSinaisVitais(p) && <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{fmtSinaisVitais(p)}</div>}
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        );
-      })()}
+          )}
+        </div>
 
-      {/* DESFECHOS DE HOJE */}
-      {finalizados.length > 0 && (() => {
-        const th = { textAlign: "left", padding: "7px 14px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", borderBottom: "1px solid var(--border)" };
-        const td = { padding: "7px 14px", fontSize: 12.5, color: "var(--text-2)", borderBottom: "1px solid var(--border)" };
-        const num = { ...td, fontFamily: "JetBrains Mono, monospace", textAlign: "right", color: "var(--text)" };
-        const cont = Object.keys(PS_DESFECHOS).map(k => ({ k, n: finalizados.filter(p => p.desfecho === k).length }));
-        // evasões agrupadas por médico
-        const evasoes = finalizados.filter(p => p.desfecho === "evasao");
-        const porMedico = {};
-        evasoes.forEach(p => { const m = p.medico || "Sem médico registrado"; porMedico[m] = (porMedico[m] || 0) + 1; });
-        const medicosOrd = Object.entries(porMedico).sort((a, b) => b[1] - a[1]);
-        return (
-          <div style={{ marginBottom: "1.25rem", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-            <div>
-              <div style={secLbl}>Desfechos de hoje</div>
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr><th style={th}>Desfecho</th><th style={{ ...th, textAlign: "right" }}>Qtd.</th></tr></thead>
-                  <tbody>
-                    {cont.map(({ k, n }) => (
-                      <tr key={k}><td style={td}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: PS_DESFECHOS[k].cor, marginRight: 9, verticalAlign: "middle" }} />{PS_DESFECHOS[k].label}{k === "obito" ? " (no PS, antes de internar)" : ""}</td><td style={num}>{n}</td></tr>
-                    ))}
-                    <tr><td style={{ ...td, borderBottom: "none" }}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 99, background: "#f43f5e", marginRight: 9, verticalAlign: "middle" }} />Óbito após internação</td><td style={{ ...num, borderBottom: "none" }}>{obitosInternacao}</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            {medicosOrd.length > 0 && (
+        {/* Classificar novo paciente (chegada) */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>Classificar Novo Paciente</div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12 }}>Registre a chegada — depois classifique pelo Manchester. Dados mínimos (LGPD).</div>
+          {canEdit ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               <div>
-                <div style={secLbl}>Evasões por médico (hoje)</div>
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead><tr><th style={th}>Médico</th><th style={{ ...th, textAlign: "right" }}>Evasões</th></tr></thead>
-                    <tbody>{medicosOrd.map(([m, n]) => <tr key={m}><td style={td}>{m}</td><td style={num}>{n}</td></tr>)}</tbody>
-                  </table>
-                </div>
+                <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Iniciais do paciente *</label>
+                <input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Ex.: M.A.S." style={{ ...inp, width: "100%" }} />
               </div>
-            )}
+              <div>
+                <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Prontuário</label>
+                <input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Nº do prontuário" style={{ ...inp, width: "100%" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Queixa principal</label>
+                <input value={novo.queixa} onChange={e => setNovo(p => ({ ...p, queixa: e.target.value }))} onKeyDown={e => e.key === "Enter" && registrarChegada()} placeholder="Ex.: dor torácica" style={{ ...inp, width: "100%" }} />
+              </div>
+              <button onClick={registrarChegada} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginTop: 2 }}>{busy ? "…" : "Registrar chegada →"}</button>
+            </div>
+          ) : <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Seu perfil é somente leitura.</div>}
+        </div>
+
+        {/* Distribuição Manchester do dia */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Protocolo de Manchester</div>
+          {(() => {
+            const doDia = fila.concat(finalizados).filter(p => p.classificacao);
+            if (!doDia.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Nenhuma classificação hoje ainda.</div>;
+            return (<>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 8 }}>Classificações de hoje · {doDia.length} paciente(s)</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                {Object.keys(MANCHESTER).map(k => {
+                  const n = doDia.filter(p => p.classificacao === k).length;
+                  const pct = doDia.length ? (n / doDia.length) * 100 : 0;
+                  const v = MANCHESTER[k];
+                  return (
+                    <div key={k}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, marginBottom: 2 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: 99, background: v.cor, flexShrink: 0 }} />
+                        <span style={{ color: "var(--text-2)", flex: 1 }}>{v.label}</span>
+                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: v.cor }}>{n}</strong>
+                        <span style={{ color: "var(--text-muted)", fontSize: 10.5, minWidth: 34, textAlign: "right" }}>{pct.toFixed(0)}%</span>
+                      </div>
+                      <div style={{ height: 6, background: "var(--surface-3)", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{ width: Math.max(pct ? 3 : 0, pct) + "%", height: "100%", background: v.cor, borderRadius: 99 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
+                Tempos-alvo: imediato · 10min · 60min · 120min · 240min.
+              </div>
+            </>);
+          })()}
+        </div>
+      </div>
+
+      {/* FAIXA DIVISÓRIA */}
+      <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 14px", marginBottom: 16, fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ color: VX.azul, fontWeight: 800 }}>i</span>
+        Triagem e Pronto-Socorro são fluxos separados para garantir segurança e agilidade no atendimento.
+      </div>
+
+      {/* ══════════════ SEÇÃO 2 — PRONTO-SOCORRO ══════════════ */}
+      <div style={{ borderTop: `3px solid ${VX.azul}`, background: "var(--surface)", borderRadius: "10px 10px 0 0", padding: "12px 16px 10px", marginBottom: 12 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>Pronto-Socorro</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Atendimento e Tratamento</div>
+      </div>
+
+      {/* KPIs do PS */}
+      {(() => {
+        const salasAtivas = salas.filter(s => s.ativo !== false);
+        const ocup = salasAtivas.filter(s => s.status === "ocupado").length;
+        const disp = salasAtivas.filter(s => (s.status || "disponivel") === "disponivel").length;
+        const tot = salasAtivas.length;
+        const pct = n => tot ? Math.round((n / tot) * 100) + "%" : "—";
+        return (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
+            <Card label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" />
+            <Card label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" />
+            <Card label={`Salas ocupadas${tot ? ` (${pct(ocup)})` : ""}`} valor={tot ? `${ocup}/${tot}` : "—"} cor={ocup ? "#f43f5e" : "#34d399"} />
+            <Card label={`Salas disponíveis${tot ? ` (${pct(disp)})` : ""}`} valor={tot ? `${disp}/${tot}` : "—"} cor={disp ? "#34d399" : "#f43f5e"} />
+            <Card label="Permanência média" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" />
+            <Card label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" />
           </div>
         );
       })()}
 
-      {/* Legenda Manchester — autoexplicativa */}
-      <details style={{ marginBottom: "1.25rem" }}>
-        <summary style={{ ...secLbl, cursor: "pointer", marginBottom: 8 }}>Protocolo de Manchester — o que significa cada cor</summary>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
-          {Object.entries(MANCHESTER).map(([k, v]) => (
-            <div key={k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${v.cor}`, borderRadius: 10, padding: "10px 13px" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: v.cor }}>{v.label}</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.5, marginTop: 3 }}>{v.desc}</div>
+      {/* 3 colunas: em atendimento · mapa de salas · encaminhamentos */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 16, alignItems: "start" }}>
+
+        {/* Pacientes em atendimento */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Pacientes em Atendimento ({emAtendimento.length})</div>
+          {emAtendimento.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Nenhum paciente em atendimento.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 420, overflowY: "auto" }}>
+              {emAtendimento.map(p => {
+                const sala = salas.find(s => s.atendimento_id === p.id);
+                return (
+                  <div key={p.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${MANCHESTER[p.classificacao]?.cor || "var(--border)"}`, borderRadius: 8, padding: "8px 11px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 13 }}>{p.iniciais}</strong>
+                      <ClasseBadge c={p.classificacao} />
+                      {sala && <span style={{ fontSize: 10.5, fontWeight: 700, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>Sala {sala.identificacao}</span>}
+                      <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.atendimento_em, agora))}</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 80 }}>{p.queixa || "—"}</span>
+                      {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir</button>}
+                      {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+                    </div>
+                    {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0) && (
+                      <div style={{ display: "flex", gap: 8, fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>
+                        {examesPend[p.id]?.aguardando > 0 && <span style={{ color: "#d97706" }}>{examesPend[p.id].aguardando} exame(s) aguardando</span>}
+                        {examesPend[p.id]?.prontos > 0 && <span style={{ color: "#3b82f6" }}>{examesPend[p.id].prontos} resultado(s) pronto(s)</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ))}
+          )}
         </div>
-      </details>
 
-      {/* CHEGADA */}
-      {canEdit && (
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Registrar chegada</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input value={novo.iniciais} onChange={e => setNovo(p => ({ ...p, iniciais: e.target.value }))} placeholder="Iniciais *" style={{ ...inp, width: 120 }} />
-            <input value={novo.prontuario} onChange={e => setNovo(p => ({ ...p, prontuario: e.target.value }))} placeholder="Prontuário" style={{ ...inp, width: 110 }} />
-            <input value={novo.queixa} onChange={e => setNovo(p => ({ ...p, queixa: e.target.value }))} onKeyDown={e => e.key === "Enter" && registrarChegada()} placeholder="Queixa principal (ex.: dor torácica)" style={{ ...inp, flex: 1, minWidth: 200 }} />
-            <button onClick={registrarChegada} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "+ Chegada"}</button>
-          </div>
-        </div>
-      )}
-
-      {/* FILA DE TRIAGEM */}
-      <div style={secLbl}>Aguardando triagem ({aguardandoTriagem.length})</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.25rem" }}>
-        {aguardandoTriagem.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px", textAlign: "center" }}>Ninguém aguardando triagem.</div>}
-        {aguardandoTriagem.map(p => (
-          <div key={p.id} style={linhaPac}>
-            <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
-            {p.prontuario && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>reg. {p.prontuario}</span>}
-            {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
-            <span style={{ marginLeft: "auto", fontSize: 12, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>chegou há {fmtDur(diffMin(p.chegada_em, agora))}</span>
-            {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Triar</button>}
-          </div>
-        ))}
-      </div>
-
-      {/* FILA DE ATENDIMENTO (por prioridade) */}
-      <div style={secLbl}>Fila de atendimento — por prioridade ({aguardandoAtend.length})</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.25rem" }}>
-        {aguardandoAtend.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px", textAlign: "center" }}>Fila vazia.</div>}
-        {aguardandoAtend.map(p => (
-          <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${MANCHESTER[p.classificacao]?.cor || "var(--border)"}` }}>
-            <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
-            <ClasseBadge c={p.classificacao} />
-            {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
-            <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
-            {canEdit && (() => { const min = diffMin(p.triagem_em, agora); const alvo = MANCHESTER[p.classificacao]?.alvoMin; const estourou = alvo != null && alvo > 0 && min != null && min > alvo;
-              return <button onClick={() => setReavaliando(p)} style={btnLeito(estourou ? "#f97316" : "var(--text-3)")}>{estourou ? "Reavaliar (tempo estourado)" : "Reavaliar"}</button>; })()}
-            {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar atendimento</button>}
-            {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
-          </div>
-        ))}
-      </div>
-
-      {/* EM ATENDIMENTO */}
-      <div style={secLbl}>Em atendimento ({emAtendimento.length})</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: "1.25rem" }}>
-        {emAtendimento.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px", textAlign: "center" }}>Nenhum paciente em atendimento.</div>}
-        {emAtendimento.map(p => (
-          <div key={p.id} style={{ ...linhaPac, borderLeft: `4px solid ${MANCHESTER[p.classificacao]?.cor || "var(--border)"}` }}>
-            <strong style={{ minWidth: 64 }}>{p.iniciais}</strong>
-            <ClasseBadge c={p.classificacao} />
-            {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
-            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>em atendimento há {fmtDur(diffMin(p.atendimento_em, agora))}</span>
-            {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir atendimento</button>}
-            {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
-            {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0) && (
-              <div style={{ width: "100%", display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
-                {examesPend[p.id]?.aguardando > 0 && <span style={{ color: "#d97706" }}>{examesPend[p.id].aguardando} exame(s) aguardando resultado</span>}
-                {examesPend[p.id]?.prontos > 0 && <span style={{ color: "#3b82f6" }}>{examesPend[p.id].prontos} resultado(s) disponível(is)</span>}
+        {/* Mapa de salas */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+          {(() => {
+            const ativas = salas.filter(s => s.ativo !== false);
+            const pacById = {}; fila.forEach(p => pacById[p.id] = p);
+            const areas = [...new Set(ativas.map(s => s.area || "Outros"))]
+              .sort((a, b) => { const ia = PS_AREAS.indexOf(a), ib = PS_AREAS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "pt-BR"); });
+            const cont = k => ativas.filter(s => (s.status || "disponivel") === k).length;
+            return (<>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>Mapa de Salas</div>
+                {canEdit && <button onClick={() => setShowSalas(true)} style={{ marginLeft: "auto", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", color: "var(--text-3)", cursor: "pointer", fontSize: 11 }}>Gerenciar</button>}
               </div>
-            )}
-            {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
-          </div>
-        ))}
+              {ativas.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>
+                  Nenhuma sala cadastrada. {canEdit ? "Clique em “Gerenciar” (ex.: Emergência 01–06, Observação 07–12, Sala Vermelha 13–16)." : ""}
+                </div>
+              ) : (<>
+                <div style={{ maxHeight: 380, overflowY: "auto" }}>
+                  {areas.map(area => (
+                    <div key={area} style={{ marginBottom: 9 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", marginBottom: 4 }}>{area}</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {ativas.filter(s => (s.area || "Outros") === area).map(s => {
+                          const st = PS_SALA_STATUS[s.status] || PS_SALA_STATUS.disponivel;
+                          const pac = s.atendimento_id ? pacById[s.atendimento_id] : null;
+                          const desde = s.ocupado_em ? diffMin(s.ocupado_em, agora) : null;
+                          return (
+                            <div key={s.id} title={pac ? `${pac.iniciais}${desde != null ? ` · ${fmtDur(desde)}` : ""}` : st.label}
+                              style={{ background: st.cor + "1e", border: `1px solid ${st.cor}66`, borderTop: `3px solid ${st.cor}`, borderRadius: 7, padding: "6px 9px", minWidth: 76 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 800, color: st.cor, fontFamily: "JetBrains Mono, monospace" }}>{s.identificacao}</div>
+                              <div style={{ fontSize: 9.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 92 }}>{pac ? pac.iniciais : st.label}</div>
+                              {canEdit && (
+                                <div style={{ display: "flex", gap: 3, marginTop: 4, flexWrap: "wrap" }}>
+                                  {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnLeito("#22d3ee"), padding: "0 6px", fontSize: 9.5 }}>Alocar</button>}
+                                  {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnLeito("#d97706"), padding: "0 6px", fontSize: 9.5 }}>Liberar</button>}
+                                  {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 6px", fontSize: 9.5 }}>Pronta</button>}
+                                  {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 6px", fontSize: 9.5 }}>Liberar</button>}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: "flex", gap: 9, flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                  {Object.entries(PS_SALA_STATUS).map(([k, v]) => (
+                    <span key={k} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-muted)" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: v.cor }} />{v.label} ({cont(k)})
+                    </span>
+                  ))}
+                </div>
+              </>)}
+            </>);
+          })()}
+        </div>
+
+        {/* Encaminhamentos de hoje */}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "13px 15px" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>Encaminhamentos de hoje</div>
+          {(() => {
+            const internados = finalizados.filter(p => p.desfecho === "internacao");
+            const porSetor = {}; internados.forEach(p => { const k = p.setor_destino || "Sem setor"; porSetor[k] = (porSetor[k] || 0) + 1; });
+            const linhas = [
+              ...Object.entries(porSetor).map(([k, n]) => ({ label: k, n, cor: "#3b82f6" })),
+              { label: "Transferência externa", n: finalizados.filter(p => p.desfecho === "transferencia").length, cor: "#6366f1" },
+              { label: "Alta", n: finalizados.filter(p => p.desfecho === "alta").length, cor: "#34d399" },
+              { label: "Evasão", n: finalizados.filter(p => p.desfecho === "evasao").length, cor: "#d97706" },
+              { label: "Óbito", n: finalizados.filter(p => p.desfecho === "obito").length + obitosInternacao, cor: "#f43f5e" },
+            ].filter(x => x.n > 0);
+            if (!linhas.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1rem", border: "1px dashed var(--border)", borderRadius: 8 }}>Nenhum desfecho registrado hoje.</div>;
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {linhas.map((x, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 11px" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 99, background: x.cor, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{x.label}</span>
+                    <strong style={{ fontFamily: "JetBrains Mono, monospace", color: x.cor }}>{x.n}</strong>
+                    <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>paciente(s)</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>Internações vão para a fila/leito do setor de destino. Óbito inclui os ocorridos após internação hoje.</div>
+              </div>
+            );
+          })()}
+
+          {/* Evasões por médico — indicador de responsabilização */}
+          {(() => {
+            const evasoes = finalizados.filter(p => p.desfecho === "evasao");
+            if (!evasoes.length) return null;
+            const porMedico = {};
+            evasoes.forEach(p => { const m = p.medico || "Sem médico registrado"; porMedico[m] = (porMedico[m] || 0) + 1; });
+            const ord = Object.entries(porMedico).sort((a, b) => b[1] - a[1]);
+            return (
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-3)", marginBottom: 6 }}>Evasões por médico (hoje)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {ord.map(([m, n]) => (
+                    <div key={m} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                      <span style={{ flex: 1, color: "var(--text-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m}</span>
+                      <strong style={{ fontFamily: "JetBrains Mono, monospace", color: "#d97706" }}>{n}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* FINALIZADOS HOJE */}
