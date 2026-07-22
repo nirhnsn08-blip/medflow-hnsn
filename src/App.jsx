@@ -4644,38 +4644,35 @@ function PSPage({ currentUser, canEdit }) {
       <PsRetiradaBanner currentUser={currentUser} canEdit={canEdit} />
       <PsIntervencaoBanner currentUser={currentUser} canEdit={canEdit} />
 
-      {/* BUSCA RÁPIDA */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-        <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 420 }}>
-          <input ref={buscaRef} value={busca} onChange={e => setBusca(e.target.value)}
-            placeholder="Buscar paciente por iniciais, prontuário ou queixa…"
-            style={{ ...inp, width: "100%", paddingRight: 62 }} />
-          <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 6px", fontFamily: "JetBrains Mono, monospace", pointerEvents: "none" }}>Ctrl+K</span>
+      {/* BUSCA RÁPIDA — nas telas de lista (no painel ela só ocupava espaço) */}
+      {["classificar", "fila", "reavaliacao", "e_atendimento", "e_aguardando"].includes(sub) && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
+          <div style={{ position: "relative", flex: "1 1 320px", maxWidth: 420 }}>
+            <input ref={buscaRef} value={busca} onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar paciente por iniciais, prontuário ou queixa…"
+              style={{ ...inp, width: "100%", paddingRight: 62 }} />
+            <span style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 6px", fontFamily: "JetBrains Mono, monospace", pointerEvents: "none" }}>Ctrl+K</span>
+          </div>
+          {busca && <button onClick={() => setBusca("")} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 12px", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>Limpar</button>}
+          {busca && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{aguardandoTriagem.length + aguardandoAtend.length + emAtendimento.length} paciente(s) no filtro</span>}
         </div>
-        {busca && <button onClick={() => setBusca("")} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 12px", color: "var(--text-3)", cursor: "pointer", fontSize: 12 }}>Limpar</button>}
-        {busca && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{aguardandoTriagem.length + aguardandoAtend.length + emAtendimento.length} paciente(s) no filtro</span>}
-      </div>
+      )}
 
       {sub === "painel" && (<>
-      {/* ══════════════ SEÇÃO 1 — TRIAGEM ══════════════ */}
-      <div style={{ borderTop: `3px solid ${VX.turquesa}`, background: "var(--surface)", borderRadius: "10px 10px 0 0", padding: "12px 16px 10px", marginBottom: 12 }}>
-        <div style={{ fontSize: 17, fontWeight: 800, color: "var(--text)" }}>Triagem</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Classificação de Risco — Protocolo de Manchester adaptado (HNSN)</div>
-      </div>
-
-      {/* KPIs por cor Manchester */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(148px, 1fr))", gap: 10, marginBottom: 10 }}>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${aguardandoTriagem.length ? "#fbbf24" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 700 }}>Aguardando classificação</div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: aguardandoTriagem.length ? "#fbbf24" : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{String(aguardandoTriagem.length).padStart(2, "0")}</div>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>pacientes sem triagem</div>
+      {/* KPIs por cor Manchester — os 6 numa linha só, compactos */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 8, marginBottom: 10 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${aguardandoTriagem.length ? "#fbbf24" : "#34d399"}`, borderRadius: 9, padding: "9px 10px", minWidth: 0 }}>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700, lineHeight: 1.25, minHeight: 22 }}>Aguardando classificação</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: aguardandoTriagem.length ? "#fbbf24" : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 2, lineHeight: 1.1 }}>{String(aguardandoTriagem.length).padStart(2, "0")}</div>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>sem triagem</div>
         </div>
         {porCor.map(c => (
-          <div key={c.k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${c.cor}`, borderRadius: 10, padding: "12px 14px" }}>
-            <div style={{ fontSize: 10.5, color: c.cor, textTransform: "uppercase", letterSpacing: ".05em", fontWeight: 800 }}>{c.label}</div>
-            <div style={{ fontSize: 26, fontWeight: 800, color: c.n ? c.cor : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{String(c.n).padStart(2, "0")}</div>
-            <div style={{ fontSize: 10.5, marginTop: 2, color: c.fora ? "#f43f5e" : "var(--text-muted)", fontWeight: c.fora ? 800 : 400 }}>
-              {c.fora ? `⚠ ${c.fora} fora do alvo` : `${c.atend} · ${c.alvoMin === 0 ? "0 min" : fmtDur(c.alvoMin)}`}
+          <div key={c.k} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${c.cor}`, borderRadius: 9, padding: "9px 10px", minWidth: 0 }}>
+            <div style={{ fontSize: 9, color: c.cor, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 800, lineHeight: 1.25, minHeight: 22 }}>{c.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: c.n ? c.cor : "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 2, lineHeight: 1.1 }}>{String(c.n).padStart(2, "0")}</div>
+            <div title={c.fora ? `${c.fora} fora do tempo-alvo` : `${c.atend} · alvo ${c.alvoMin} min`}
+              style={{ fontSize: 9, marginTop: 1, color: c.fora ? "#f43f5e" : "var(--text-muted)", fontWeight: c.fora ? 800 : 400, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {c.fora ? `⚠ ${c.fora} fora do alvo` : `${c.atend} · ${c.alvoMin === 0 ? "0min" : fmtDur(c.alvoMin)}`}
             </div>
           </div>
         ))}
