@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 50 tabelas, 731 colunas.
+-- Cobertura atual: 51 tabelas, 738 colunas.
 -- ============================================================
 
 with
@@ -35,6 +35,7 @@ tabelas(nome, origem) as (values
   ('leitos_saidas','schema'),
   ('leitos_turnover','schema'),
   ('pacientes','schema'),
+  ('pep_acessos','pep-acessos'),
   ('pep_administracoes','pep-fase1'),
   ('pep_alergias','pep-fase1'),
   ('pep_anamneses','pep-fase1'),
@@ -288,6 +289,13 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','sexo','schema'),
   ('pacientes','updated_at','schema'),
   ('pacientes','usuario','schema'),
+  ('pep_acessos','contexto','pep-acessos'),
+  ('pep_acessos','criado_em','pep-acessos'),
+  ('pep_acessos','id','pep-acessos'),
+  ('pep_acessos','origem','pep-acessos'),
+  ('pep_acessos','papel','pep-acessos'),
+  ('pep_acessos','prontuario','pep-acessos'),
+  ('pep_acessos','usuario','pep-acessos'),
   ('pep_administracoes','administrado_em','pep-fase1'),
   ('pep_administracoes','aprazamento_id','pep-fase1'),
   ('pep_administracoes','categoria','pep-fase1'),
