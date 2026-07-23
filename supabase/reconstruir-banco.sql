@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 28 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 29 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (28 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (29 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/28 — schema.sql
+-- │ 01/29 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/28 — migracao-farmacia-faseA.sql
+-- │ 02/29 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1240,7 +1240,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/28 — migracao-farmacia-seed.sql
+-- │ 03/29 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1450,7 +1450,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/28 — migracao-farmacia-faseB.sql
+-- │ 04/29 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1491,7 +1491,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/28 — migracao-farmacia-clinica-fase1.sql
+-- │ 05/29 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1616,7 +1616,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/28 — migracao-farmacia-clinica-fase2.sql
+-- │ 06/29 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1738,7 +1738,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/28 — migracao-farmacia-clinica-fase3.sql
+-- │ 07/29 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1806,7 +1806,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/28 — migracao-farmacia-preparo.sql
+-- │ 08/29 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1840,7 +1840,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/28 — migracao-farmacia-custos.sql
+-- │ 09/29 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1853,7 +1853,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/28 — migracao-farmacia-nao-padronizados.sql
+-- │ 10/29 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1892,7 +1892,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/28 — migracao-farmacia-intervencoes.sql
+-- │ 11/29 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -1931,7 +1931,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/28 — migracao-leitos-kanban-metas.sql
+-- │ 12/29 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -1960,7 +1960,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/28 — migracao-leitos-saida-setor.sql
+-- │ 13/29 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -1986,7 +1986,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/28 — migracao-suprimentos-faseA.sql
+-- │ 14/29 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2124,7 +2124,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/28 — migracao-suprimentos-faseB.sql
+-- │ 15/29 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2176,7 +2176,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/28 — migracao-suprimentos-seed.sql
+-- │ 16/29 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2332,7 +2332,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/28 — migracao-suprimentos-faseC.sql
+-- │ 17/29 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2389,7 +2389,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/28 — migracao-suprimentos-inventario.sql
+-- │ 18/29 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2451,7 +2451,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/28 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 19/29 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2468,7 +2468,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/28 — migracao-suprimentos-cotacao.sql
+-- │ 20/29 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2516,7 +2516,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/28 — migracao-ps-salas.sql
+-- │ 21/29 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2565,7 +2565,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/28 — migracao-ps-salas-censo.sql
+-- │ 22/29 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2645,7 +2645,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/28 — migracao-ps-origem-elo.sql
+-- │ 23/29 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2685,7 +2685,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/28 — migracao-ps-checagem-medicacao.sql
+-- │ 24/29 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2738,7 +2738,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/28 — migracao-pep-fase1.sql
+-- │ 25/29 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3536,7 +3536,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/28 — migracao-pep-acessos.sql
+-- │ 26/29 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3602,7 +3602,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/28 — migracao-pep-sinais-spo2.sql
+-- │ 27/29 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3634,7 +3634,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/28 — migracao-pep-categoria-profissional.sql
+-- │ 28/29 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3685,6 +3685,45 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 -- update public.profiles
 --    set categoria = 'enfermeiro', conselho = 'COREN', registro_conselho = '000000', uf_conselho = 'RS'
 --  where username = 'usuario';
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 29/29 — migracao-pep-perfis-update.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- PERFIS — permitir que o administrador classifique a equipe
+--
+-- Aditiva e idempotente.
+--
+-- POR QUE
+-- `profiles` tinha só política de SELECT. Ou seja: não existe caminho no
+-- aplicativo para definir a categoria profissional de ninguém — só direto
+-- no painel do Supabase. Com a categoria valendo como regra clínica
+-- (COFEN 736/2024), isso deixaria a equipe inteira travada como
+-- "administrativo", sem conseguir registrar nada.
+--
+-- O QUE ESTA POLÍTICA PERMITE — E O QUE ELA NÃO PERMITE
+-- Só `adm_master` altera perfil. E há um limite importante: a política de
+-- UPDATE em RLS avalia `using` (quem pode tentar) e `with check` (como o
+-- resultado pode ficar). Aqui as duas exigem adm_master, então um usuário
+-- comum não consegue nem tentar se promover.
+--
+-- O que ela NÃO impede é um adm_master rebaixar a si mesmo e ficar sem
+-- administradores. Isso é decisão de negócio, não de banco — a tela avisa.
+--
+-- Continua sem DELETE: perfil não se apaga, se desativa. Histórico clínico
+-- assinado por alguém precisa continuar apontando para um perfil existente.
+-- ═══════════════════════════════════════════════════════════
+
+drop policy if exists profiles_update_admin on public.profiles;
+create policy profiles_update_admin on public.profiles
+  for update to authenticated
+  using (public.my_role() = 'adm_master')
+  with check (public.my_role() = 'adm_master');
+
+-- Conferência:
+-- select username, nome, role, categoria, conselho, registro_conselho
+--   from public.profiles order by categoria, username;
 
 
 -- ════════════════════════════════════════════════════════════

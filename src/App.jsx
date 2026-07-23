@@ -18,6 +18,8 @@ import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js
 // Prontuário do paciente internado — em arquivo próprio para o módulo
 // evoluir sem disputar espaço neste arquivo, que já tem 14 mil linhas.
 import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
+// Categorias profissionais — usadas na tela que classifica a equipe.
+import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -344,7 +346,11 @@ async function signIn(username, password) {
   AUTH_TOKEN = auth.access_token;
   let profile = null;
   try {
-    const p = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.user.id}&select=username,nome,role`, {
+    // `categoria` e o registro do conselho vêm junto: sem eles, todo
+    // usuário seria tratado como administrativo e nenhum ato clínico
+    // passaria. `select=*` para não repetir este esquecimento a cada
+    // coluna nova no perfil.
+    const p = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${auth.user.id}&select=*`, {
       headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${auth.access_token}` },
     });
     if (p.ok) profile = (await p.json())[0];
@@ -354,6 +360,12 @@ async function signIn(username, password) {
     name: profile?.nome || username,
     username: profile?.username || username.trim().toLowerCase(),
     role: profile?.role || "visualizador",
+    // Eixo clínico, separado do papel de acesso. Ausente = administrativo,
+    // que não pratica ato clínico (nega por omissão).
+    categoria: profile?.categoria || "administrativo",
+    conselho: profile?.conselho || null,
+    registro_conselho: profile?.registro_conselho || null,
+    uf_conselho: profile?.uf_conselho || null,
   };
   saveSession({ access_token: auth.access_token, refresh_token: auth.refresh_token, user });
   return { ok: true, user };
@@ -373,10 +385,125 @@ async function changeMyPassword(newPassword) {
   } catch { return { ok: false, error: "Sem conexão." }; }
 }
 
-// Lista os perfis/usuários (somente leitura) para a tela de Usuários.
+// Painel de classificação clínica da equipe.
+//
+// Existe porque o sistema passou a ter DOIS eixos de permissão: o papel de
+// acesso (o que mexe no sistema) e a categoria profissional (o que pode
+// fazer clinicamente). Sem esta tela, a categoria só se define no painel
+// do Supabase — e a equipe inteira fica travada como administrativa, sem
+// conseguir registrar nada e sem entender o motivo.
+function CategoriasProfissionais({ profiles, onSalvo, currentUser }) {
+  const [edit, setEdit] = useState(null);      // username em edição
+  const [f, setF] = useState({});
+  const [salvando, setSalvando] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  function abrir(p) {
+    setEdit(p.username);
+    setF({ categoria: p.categoria || "administrativo", conselho: p.conselho || "",
+           registro_conselho: p.registro_conselho || "", uf_conselho: p.uf_conselho || "" });
+    setMsg("");
+  }
+  async function salvar(p) {
+    setSalvando(true);
+    const r = await salvarCategoriaProfissional(p.username, f);
+    setSalvando(false);
+    // O PostgREST devolve 204 mesmo quando o RLS bloqueia e zero linhas
+    // mudam. Por isso conferimos o RETORNO, não o status: sem linha de
+    // volta, nada foi alterado.
+    if (!r || (Array.isArray(r) && !r.length)) {
+      setMsg("⚠️ Nada foi alterado. Confirme que a migração de perfis foi aplicada neste banco.");
+      return;
+    }
+    addAuditLog(currentUser, "classificar profissional", p.username, { categoria: f.categoria });
+    setEdit(null); setMsg("");
+    onSalvo?.();
+  }
+
+  const cel = { padding: "7px 10px", fontSize: 12.5, borderBottom: "1px solid var(--border)" };
+  const mini = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", color: "var(--text)", fontSize: 12, width: "100%", boxSizing: "border-box" };
+
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 3 }}>Categoria profissional da equipe</div>
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.55 }}>
+        Define o que cada pessoa pode registrar clinicamente — separado do perfil de acesso ao sistema.
+        Diagnóstico e prescrição de enfermagem são privativos do enfermeiro (COFEN 736/2024).
+        Quem fica como <strong>administrativo</strong> não registra ato clínico, mesmo sendo adm_master.
+      </div>
+      {msg && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 10 }}>{msg}</div>}
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+          <thead><tr style={{ textAlign: "left", color: "var(--text-muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".05em" }}>
+            <th style={cel}>Usuário</th><th style={cel}>Acesso</th><th style={cel}>Categoria</th><th style={cel}>Conselho</th><th style={cel}></th>
+          </tr></thead>
+          <tbody>
+            {profiles.map(p => edit === p.username ? (
+              <tr key={p.username}>
+                <td style={cel}><strong>{p.nome || p.username}</strong></td>
+                <td style={cel}>{p.role}</td>
+                <td style={cel}>
+                  <select value={f.categoria} onChange={e => setF(x => ({ ...x, categoria: e.target.value, conselho: CATEGORIAS_CLINICAS[e.target.value]?.conselho || "" }))} style={mini}>
+                    {Object.entries(CATEGORIAS_CLINICAS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </td>
+                <td style={cel}>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <input value={f.conselho} onChange={e => setF(x => ({ ...x, conselho: e.target.value }))} placeholder="CRM" style={{ ...mini, width: 62 }} />
+                    <input value={f.registro_conselho} onChange={e => setF(x => ({ ...x, registro_conselho: e.target.value }))} placeholder="nº" style={mini} />
+                    <input value={f.uf_conselho} onChange={e => setF(x => ({ ...x, uf_conselho: e.target.value }))} placeholder="UF" style={{ ...mini, width: 48 }} />
+                  </div>
+                </td>
+                <td style={{ ...cel, whiteSpace: "nowrap" }}>
+                  <button onClick={() => salvar(p)} disabled={salvando} style={{ background: "#2dd4bf22", color: "#2dd4bf", border: "1px solid #2dd4bf66", borderRadius: 5, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{salvando ? "…" : "Salvar"}</button>
+                  <button onClick={() => setEdit(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 11.5, marginLeft: 6 }}>Cancelar</button>
+                </td>
+              </tr>
+            ) : (
+              <tr key={p.username}>
+                <td style={cel}><strong>{p.nome || p.username}</strong> <span style={{ color: "var(--text-muted)" }}>· {p.username}</span></td>
+                <td style={{ ...cel, color: "var(--text-3)" }}>{p.role}</td>
+                <td style={cel}>
+                  <span style={{ fontWeight: 700, color: (p.categoria && p.categoria !== "administrativo") ? "#2dd4bf" : "#d97706" }}>
+                    {CATEGORIAS_CLINICAS[p.categoria]?.label || "Administrativo"}
+                  </span>
+                </td>
+                <td style={{ ...cel, fontFamily: "JetBrains Mono, monospace", fontSize: 11.5, color: "var(--text-3)" }}>
+                  {p.registro_conselho ? `${p.conselho || ""} ${p.registro_conselho}${p.uf_conselho ? "/" + p.uf_conselho : ""}` : "—"}
+                </td>
+                <td style={cel}><button onClick={() => abrir(p)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "4px 10px", fontSize: 11.5, color: "var(--text-2)", cursor: "pointer" }}>Classificar</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Lista os perfis/usuários para a tela de Usuários.
+// `select=*` traz também categoria e registro de conselho — sem eles a tela
+// não consegue mostrar nem classificar quem é o quê clinicamente.
 async function loadProfiles() {
-  const rows = await sbFetch("profiles?select=username,nome,role&order=role");
+  const rows = await sbFetch("profiles?select=*&order=role");
   return Array.isArray(rows) ? rows : [];
+}
+
+// Classifica a categoria profissional e o conselho. Só adm_master consegue —
+// a política de RLS `profiles_update_admin` recusa os demais no banco, não
+// só na tela.
+async function salvarCategoriaProfissional(username, dados) {
+  return sbFetch(`profiles?username=eq.${encodeURIComponent(username)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      categoria: dados.categoria || "administrativo",
+      conselho: dados.conselho || null,
+      registro_conselho: dados.registro_conselho || null,
+      uf_conselho: dados.uf_conselho || null,
+    }),
+  });
 }
 
 // Administração de usuários (só adm_master). Chama a Edge Function protegida
@@ -13768,7 +13895,11 @@ function UsersPage({ currentUser }) {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const isMaster = currentUser?.role === "adm_master";
-  useEffect(() => { if (!isMaster) loadProfiles().then(setProfiles); }, [isMaster]);
+  // A lista carrega para TODO mundo: o adm_master precisa dela para
+  // classificar a equipe (antes só carregava para quem NÃO era master, o
+  // que deixava justamente o administrador sem a tela).
+  useEffect(() => { loadProfiles().then(setProfiles); }, [isMaster]);
+  const recarregarProfiles = () => loadProfiles().then(setProfiles);
   async function handleChangePw() {
     if (busy) return;
     if (np1.length < 6) { setMsg("⚠️ A nova senha precisa de ao menos 6 caracteres."); return; }
@@ -13784,6 +13915,8 @@ function UsersPage({ currentUser }) {
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Usuários e Acesso</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
+
+      {isMaster && <CategoriasProfissionais profiles={profiles} onSalvo={recarregarProfiles} currentUser={currentUser} />}
 
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 460 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Trocar minha senha</div>
@@ -14040,6 +14173,33 @@ export default function App() {
   const handleSave = useCallback(newDb => {
     setDb(prev => ({ ...newDb }));
   }, []);
+
+  // A sessão fica no localStorage. Quem já estava logado quando a categoria
+  // profissional passou a existir tem um usuário salvo SEM ela — e seria
+  // tratado como administrativo, sem conseguir registrar nada, sem
+  // entender o porquê. Este efeito recompleta o perfil uma vez, em vez de
+  // exigir que todo mundo saia e entre de novo.
+  useEffect(() => {
+    if (!USE_SUPABASE || !currentUser?.id || currentUser.categoria) return;
+    let vivo = true;
+    sbFetch(`profiles?id=eq.${currentUser.id}&select=*`).then(rows => {
+      const p = Array.isArray(rows) ? rows[0] : null;
+      if (!vivo || !p) return;
+      const atualizado = {
+        ...currentUser,
+        categoria: p.categoria || "administrativo",
+        conselho: p.conselho || null,
+        registro_conselho: p.registro_conselho || null,
+        uf_conselho: p.uf_conselho || null,
+      };
+      try {
+        const s = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}");
+        saveSession({ ...s, user: atualizado });
+      } catch {}
+      setCurrentUser(atualizado);
+    }).catch(() => {});
+    return () => { vivo = false; };
+  }, [currentUser]);
 
   // Busca os dados no Supabase (fonte compartilhada entre os computadores) e
   // FUNDE com o que já existe localmente — sem apagar nada. O Supabase tem
