@@ -19,10 +19,13 @@ import {
 } from "../clinico/prontuario.js";
 import { situacaoAlergica, textoAlergiasParaAlerta } from "../clinico/alergias.js";
 import { analisarPrescricaoClinica, FARM_GRAV } from "../clinico/alertas.js";
+import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js";
 import {
   carregarProntuario, registrarSinais, registrarAnotacao,
   eventoDoItem, registrarAdministracao, registrarAcesso,
 } from "./dados.js";
+import NovaPrescricao from "./NovaPrescricao.jsx";
+import Anamnese from "./Anamnese.jsx";
 
 const cor = { borda: "var(--border)", sup: "var(--surface)", sup2: "var(--surface-2)", txt3: "var(--text-3)", mut: "var(--text-muted)" };
 const cartao = { background: cor.sup, border: `1px solid ${cor.borda}`, borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -38,6 +41,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
   const [carregando, setCarregando] = useState(true);
   const [aba, setAba] = useState("visao");
   const [erro, setErro] = useState("");
+  const [prescrevendo, setPrescrevendo] = useState(false);
 
   const recarregar = useCallback(async () => {
     setCarregando(true);
@@ -93,6 +97,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
 
   const abas = [
     ["visao", "Visão geral"],
+    ["admissao", `Admissão (${d.anamneses?.length || 0})`],
     ["prescricao", `Prescrição (${itens.length})`],
     ["sinais", `Sinais vitais (${serie.length})`],
     ["timeline", "Linha do tempo"],
@@ -143,7 +148,18 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
       </div>
 
       {aba === "visao"      && <Visao d={d} ep={ep} itens={itens} alertas={alertas} ultimo={ultimo} canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar} />}
-      {aba === "prescricao" && <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep} canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar} />}
+      {aba === "admissao"   && <Anamnese sb={sb} episodio={ep} currentUser={currentUser} anamneses={d.anamneses} onPronto={recarregar} />}
+      {aba === "prescricao" && (
+        prescrevendo
+          ? <NovaPrescricao sb={sb} episodio={ep} currentUser={currentUser}
+              medById={medById} meds={Object.values(medById)} interacoes={interacoes} incompatY={incompatY}
+              alergias={d.alergias} condicoes={d.condicoes} prescricaoAnterior={presc}
+              onPronto={() => { setPrescrevendo(false); recarregar(); }}
+              onCancelar={() => setPrescrevendo(false)} />
+          : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep}
+              canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar}
+              onNova={() => setPrescrevendo(true)} />
+      )}
       {aba === "sinais"     && <Sinais serie={serie} ep={ep} canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar} />}
       {aba === "timeline"   && <Timeline d={d} />}
     </div>
@@ -250,8 +266,20 @@ function Visao({ d, ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
 }
 
 // ── PRESCRIÇÃO ──────────────────────────────────────────────
-function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk }) {
-  if (!presc) return <div style={{ ...cartao, fontSize: 12.5, color: cor.mut }}>Nenhuma prescrição assinada para esta internação.</div>;
+function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk, onNova }) {
+  const podePrescrever = podeClinico(user, "prescricao_medica") || podeClinico(user, "prescricao_enfermagem");
+  const botaoNova = canEdit && (
+    podePrescrever
+      ? <button onClick={onNova} style={{ ...btn("#2dd4bf"), marginBottom: 14 }}>+ Nova prescrição</button>
+      : <div style={{ ...cartao, fontSize: 12, color: "#d97706", background: "#d9770612" }}>{motivoDaRecusa(user, "prescricao_medica")}</div>
+  );
+
+  if (!presc) return (
+    <div>
+      {botaoNova}
+      <div style={{ ...cartao, fontSize: 12.5, color: cor.mut }}>Nenhuma prescrição assinada para esta internação.</div>
+    </div>
+  );
 
   const hoje = new Date();
   async function suspender(item) {
@@ -276,6 +304,7 @@ function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk }
 
   return (
     <div>
+      {botaoNova}
       <div style={{ ...cartao, display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13.5 }}>Prescrição {presc.tipo} de {presc.data_referencia}</strong>
         <span style={{ fontSize: 12, color: cor.txt3 }}>assinada por {presc.prescritor_nome || presc.usuario} em {dataHora(presc.assinada_em)}</span>
