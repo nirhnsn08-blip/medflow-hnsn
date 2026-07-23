@@ -56,13 +56,23 @@ const ORDEM = [
   "migracao-ps-salas-censo.sql",
   "migracao-ps-origem-elo.sql",
   "migracao-ps-checagem-medicacao.sql",
+  "migracao-pep-fase1.sql",
+  "migracao-pep-acessos.sql",
+  "migracao-pep-sinais-spo2.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM
 // ficaria de fora silenciosamente — o mesmo erro que já cegou a auditoria
 // duas vezes. Aqui isso para o gerador.
+// `seed-teste-*` fica de fora de propósito: é DADO fictício de teste, não
+// estrutura. Entrar aqui plantaria 60 pacientes inventados no banco de um
+// hospital novo — exatamente o oposto do que reconstruir-banco.sql serve.
+// Esses arquivos têm trava própria e são rodados à mão, só no banco demo.
 const noDisco = fs.readdirSync(dir)
-  .filter(f => f.endsWith(".sql") && !f.startsWith("auditoria-") && f !== "reconstruir-banco.sql");
+  .filter(f => f.endsWith(".sql")
+            && !f.startsWith("auditoria-")
+            && !f.startsWith("seed-teste-")
+            && f !== "reconstruir-banco.sql");
 const esquecidos = noDisco.filter(f => !ORDEM.includes(f));
 if (esquecidos.length) {
   console.error(`\n❌ Migração fora da lista ORDEM: ${esquecidos.join(", ")}`);

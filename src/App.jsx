@@ -12,6 +12,12 @@ import {
   farmFmtQtd, normTxt, parseAlergias, checarAlergia,
   analisarPrescricaoClinica, scoreItemClinico, scorePrescricao,
 } from "./clinico/alertas.js";
+// Alergia como atributo do paciente (fonte única pep_alergias, com o campo
+// legado do atendimento fundido durante a transição).
+import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js";
+// Prontuário do paciente internado — em arquivo próprio para o módulo
+// evoluir sem disputar espaço neste arquivo, que já tem 14 mil linhas.
+import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -3174,7 +3180,7 @@ const TIPOS_EVOLUCAO = {
 };
 async function loadPaciente360(prontuario) {
   const p = encodeURIComponent(prontuario);
-  const [cad, ps, leitoAtual, saidas, scih, evolucoes] = await Promise.all([
+  const [cad, ps, leitoAtual, saidas, scih, evolucoes, alergias] = await Promise.all([
     sbFetch(`pacientes?prontuario=eq.${p}&select=*`),
     sbFetch(`ps_atendimentos?prontuario=eq.${p}&select=*&order=chegada_em.desc`),
     sbFetch(`leitos?prontuario=eq.${p}&status=eq.ocupado&select=*`),
@@ -3184,6 +3190,9 @@ async function loadPaciente360(prontuario) {
     // created_at, e scih_casos é uma delas.
     sbFetch(`scih_casos?prontuario=eq.${p}&select=*&order=created_at.desc`).catch(() => []),
     sbFetch(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`),
+    // Alergia é do PACIENTE (pep_alergias), não do atendimento. `.catch`
+    // preserva o app em bancos onde a migração do PEP ainda não rodou.
+    sbFetch(`pep_alergias?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
   ]);
   const psRows = Array.isArray(ps) ? ps : [];
   let registrosPS = [];
@@ -3197,6 +3206,7 @@ async function loadPaciente360(prontuario) {
     ps: psRows, leitoAtual: Array.isArray(leitoAtual) ? leitoAtual : [],
     saidas: Array.isArray(saidas) ? saidas : [], scih: Array.isArray(scih) ? scih : [],
     evolucoes: Array.isArray(evolucoes) ? evolucoes : [],
+    alergias: Array.isArray(alergias) ? alergias : [],
     registrosPS,
   };
 }
@@ -3323,6 +3333,22 @@ function PacientePage({ currentUser, canEdit }) {
   const [carregando, setCarregando] = useState(false);
   const [cadForm, setCadForm] = useState(null); // form de cadastro mínimo quando não existe
   const [resumoIA, setResumoIA] = useState(null);
+  // "resumo" = linha do tempo de todos os módulos (o que já existia).
+  // "internacao" = prontuário do episódio em curso.
+  const [visao, setVisao] = useState("resumo");
+  // Catálogo clínico: o motor de alertas precisa dele para analisar a
+  // prescrição da internação. Carregado uma vez, não por paciente.
+  const [meds, setMeds] = useState([]);
+  const [farmInteracoes, setFarmInteracoes] = useState([]);
+  const [farmIncompatY, setFarmIncompatY] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([loadFarmMedicamentos(), loadFarmInteracoes(), loadFarmIncompatY()])
+      .then(([m, i, y]) => { if (!vivo) return; setMeds(m || []); setFarmInteracoes(i || []); setFarmIncompatY(y || []); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const medById = {}; meds.forEach(m => { medById[m.id] = m; });
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 12px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
   const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
 
@@ -3353,6 +3379,11 @@ function PacientePage({ currentUser, canEdit }) {
   const idade = dados?.cadastro?.ano_nascimento ? new Date().getFullYear() - dados.cadastro.ano_nascimento : null;
   const timeline = dados ? montarTimeline(dados) : [];
   const alertas = dados ? sentinelaPaciente(dados) : [];
+  // Alergia funde a fonte nova (pep_alergias) com o texto legado que ainda
+  // vive no último atendimento de PS, até o front migrar a escrita.
+  const alergiaLegado = dados?.ps?.[0]?.alergias || "";
+  const alergia = dados ? situacaoAlergica(dados.alergias, alergiaLegado) : { estado: "sem_registro", itens: [] };
+  const internadoAgora = (dados?.leitoAtual?.length || 0) > 0;
   const iniciaisConhecidas = dados?.cadastro?.iniciais
     || dados?.leitoAtual[0]?.iniciais || dados?.ps[0]?.iniciais || dados?.saidas[0]?.iniciais || dados?.scih[0]?.iniciais || null;
 
@@ -3397,6 +3428,36 @@ function PacientePage({ currentUser, canEdit }) {
             </div>
           </div>
 
+          {/* ALERGIAS — faixa de segurança clínica.
+              Três estados deliberadamente distintos: "sem_registro"
+              (ninguém perguntou) é AMARELO, não verde — não afirmar
+              ausência que ninguém verificou. */}
+          {alergia.estado === "com_alergia" && (
+            <div style={{ background: "#f43f5e18", border: "1px solid #f43f5e66", borderLeft: "4px solid #f43f5e", borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#f43f5e", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>⚠ Alergias / reações</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {alergia.itens.map(a => (
+                  <span key={a.chave} title={[a.manifestacao, a.quem && `registrado por ${a.quem}`, a.fonte === "legado" ? "do atendimento (não confirmado)" : null].filter(Boolean).join(" · ")}
+                    style={{ background: a.criticidade === "alta" ? "#f43f5e22" : "var(--bg-2)", border: `1px solid ${a.criticidade === "alta" ? "#f43f5e66" : "var(--border)"}`, borderRadius: 99, padding: "3px 11px", fontSize: 12.5, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {a.rotulo}
+                    {a.gravidade && <span style={{ fontSize: 10, opacity: .8, fontWeight: 500 }}>({a.gravidade})</span>}
+                    {a.fonte === "legado" && <span style={{ fontSize: 9, color: "#d97706", fontWeight: 800 }} title="Veio do texto do atendimento — reconfirme e registre">•</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {alergia.estado === "nenhuma" && (
+            <div style={{ background: "#34d39912", border: "1px solid #34d39944", borderRadius: 10, padding: "9px 16px", marginBottom: 16, fontSize: 12.5, color: "#34d399", fontWeight: 600 }}>
+              ✓ Paciente nega alergias conhecidas
+            </div>
+          )}
+          {alergia.estado === "sem_registro" && (
+            <div style={{ background: "#d9770612", border: "1px solid #d9770644", borderRadius: 10, padding: "9px 16px", marginBottom: 16, fontSize: 12.5, color: "#d97706", fontWeight: 600 }}>
+              Alergias não avaliadas — pergunte ao paciente e registre. Campo em branco não é o mesmo que "não tem".
+            </div>
+          )}
+
           {/* RESUMO POR IA */}
           {resumoIA && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${VX.turquesa}`, borderRadius: 10, padding: "14px 18px", marginBottom: 16 }}>
@@ -3429,6 +3490,28 @@ function PacientePage({ currentUser, canEdit }) {
             </div>
           )}
 
+          {/* Alterna entre o resumo (linha do tempo de todos os módulos) e o
+              prontuário da internação em curso. Some quando o paciente não
+              está internado — não faz sentido oferecer aba vazia. */}
+          {internadoAgora && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {[["resumo", "Resumo do paciente"], ["internacao", "Prontuário da internação"]].map(([k, t]) => (
+                <button key={k} onClick={() => setVisao(k)}
+                  style={{ background: visao === k ? "var(--bg-2)" : "transparent", color: visao === k ? "var(--text)" : "var(--text-muted)",
+                           border: `1px solid ${visao === k ? "var(--border)" : "transparent"}`, borderRadius: 7,
+                           padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t}</button>
+              ))}
+            </div>
+          )}
+
+          {internadoAgora && visao === "internacao" && (
+            <ProntuarioInternado
+              sb={sbFetch} prontuario={prontuario} currentUser={currentUser} canEdit={canEdit}
+              medById={medById} interacoes={farmInteracoes} incompatY={farmIncompatY}
+            />
+          )}
+
+          {(!internadoAgora || visao === "resumo") && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }}>
             {/* TIMELINE */}
             <div>
@@ -3458,6 +3541,7 @@ function PacientePage({ currentUser, canEdit }) {
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px" }}>Seu perfil é somente leitura.</div>}
             </div>
           </div>
+          )}
         </>
       )}
     </div>
