@@ -6,13 +6,33 @@
 // entre admissões. Queixa e história ficam livres (é onde a narrativa
 // clínica mora); o resto vira campo.
 //
-// Multiprofissional: médico faz anamnese; enfermeiro faz o histórico de
-// enfermagem, primeira etapa do Processo de Enfermagem (COFEN 736/2024).
-// São documentos diferentes, no mesmo lugar.
+// Multiprofissional: médico faz anamnese; enfermeiro faz a Avaliação de
+// Enfermagem, primeira etapa do Processo de Enfermagem (COFEN 736/2024 —
+// que aposentou os termos "SAE" e "Histórico de Enfermagem").
+// São documentos diferentes, no mesmo lugar: muda a `categoria`.
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
 import { podeClinico, motivoDaRecusa, assinaturaDe, categoriaDe } from "../clinico/papeis.js";
+import { registrarAnamnese } from "./dados.js";
+
+// Categoria profissional de quem registra → `pep_anamneses.categoria`.
+// São vocabulários distintos: `medico` é a pessoa, `medica` é a natureza do
+// documento. Onde não há correspondência, cai em "medica" só se for médico;
+// o resto assume a própria área.
+const CATEGORIA_DO_DOC = {
+  medico: "medica", enfermeiro: "enfermagem", fisioterapeuta: "fisioterapia",
+  nutricionista: "nutricao", assistente_social: "servico_social", farmaceutico: "farmacia",
+};
+
+// Como cada documento se chama na tela. "Avaliação de Enfermagem" e não
+// "Histórico de Enfermagem": a COFEN 736/2024 substituiu o termo (e extinguiu
+// "SAE"). Registro com vocabulário revogado envelhece mal em auditoria.
+const ROTULO_DOC = {
+  medica: "Anamnese médica", enfermagem: "Avaliação de Enfermagem",
+  fisioterapia: "Avaliação de fisioterapia", nutricao: "Avaliação nutricional",
+  servico_social: "Avaliação do serviço social", farmacia: "Avaliação farmacêutica",
+};
 
 const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
 const lbl = { fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 };
@@ -37,26 +57,23 @@ export default function Anamnese({ sb, episodio, currentUser, anamneses = [], on
   const cat = categoriaDe(currentUser);
   const pode = podeClinico(currentUser, "admissao_anamnese");
   const assinatura = assinaturaDe(currentUser);
-  const tipo = cat === "enfermeiro" ? "historico_enfermagem" : "anamnese_medica";
-  const titulo = cat === "enfermeiro" ? "Histórico de Enfermagem" : "Anamnese e exame físico";
+  const categoriaDoc = CATEGORIA_DO_DOC[cat] || "medica";
+  const titulo = cat === "enfermeiro" ? "Avaliação de Enfermagem" : "Anamnese e exame físico";
 
   async function salvar() {
     if (!f.queixa.trim()) return;
     if (!confirm("O registro é assinado com data/hora e NÃO pode ser editado nem apagado. Confirma?")) return;
     setSalvando(true);
-    await sb("pep_anamneses", {
-      method: "POST",
-      body: JSON.stringify({
-        prontuario: episodio.prontuario, episodio_id: episodio.id, tipo,
-        queixa_principal: f.queixa.trim(), historia_doenca: f.historia || null,
-        antecedentes: f.antecedentes || null, medicacoes_uso: f.medicacoes_uso || null,
-        habitos: f.habitos || null,
-        sistemas: Object.keys(f.exame).length ? f.exame : null,
-        profissional_nome: assinatura.profissional_nome,
-        conselho: assinatura.conselho, registro_conselho: assinatura.registro_conselho,
-        usuario: assinatura.profissional_nome,
-      }),
-    });
+    await registrarAnamnese(sb, episodio, {
+      categoria: categoriaDoc,
+      queixa_principal: f.queixa.trim(),
+      historia_doenca_atual: f.historia,
+      antecedentes_pessoais: f.antecedentes,
+      medicamentos_em_uso: f.medicacoes_uso,
+      habitos: f.habitos,
+      // `sistemas` é `not null default '{}'` — mandar null quebraria o INSERT
+      sistemas: f.exame,
+    }, currentUser);
     setSalvando(false); setEditando(false);
     setF({ queixa: "", historia: "", antecedentes: "", medicacoes_uso: "", habitos: "", exame: {} });
     onPronto?.();
@@ -67,9 +84,7 @@ export default function Anamnese({ sb, episodio, currentUser, anamneses = [], on
       {anamneses.length > 0 && anamneses.map(a => (
         <div key={a.id} style={cartao}>
           <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8 }}>
-            <strong style={{ fontSize: 13.5 }}>
-              {a.tipo === "historico_enfermagem" ? "Histórico de Enfermagem" : "Anamnese médica"}
-            </strong>
+            <strong style={{ fontSize: 13.5 }}>{ROTULO_DOC[a.categoria] || "Anamnese médica"}</strong>
             <span style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>
               {new Date(a.criado_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
               {" · "}{a.profissional_nome}
@@ -77,11 +92,11 @@ export default function Anamnese({ sb, episodio, currentUser, anamneses = [], on
             </span>
           </div>
           {a.queixa_principal && <Campo t="Queixa principal" v={a.queixa_principal} />}
-          {a.historia_doenca && <Campo t="História da doença atual" v={a.historia_doenca} />}
-          {a.antecedentes && <Campo t="Antecedentes" v={a.antecedentes} />}
-          {a.medicacoes_uso && <Campo t="Medicações em uso" v={a.medicacoes_uso} />}
+          {a.historia_doenca_atual && <Campo t="História da doença atual" v={a.historia_doenca_atual} />}
+          {a.antecedentes_pessoais && <Campo t="Antecedentes" v={a.antecedentes_pessoais} />}
+          {a.medicamentos_em_uso && <Campo t="Medicações em uso" v={a.medicamentos_em_uso} />}
           {a.habitos && <Campo t="Hábitos" v={a.habitos} />}
-          {a.sistemas && (
+          {a.sistemas && Object.keys(a.sistemas).length > 0 && (
             <>
               <div style={sec}>Exame físico</div>
               {Object.entries(a.sistemas).map(([k, v]) => v ? (

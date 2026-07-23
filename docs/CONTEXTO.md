@@ -1,18 +1,25 @@
 # 📄 Contexto do Projeto — Valentrax / MedFlow HNSN
 
 > Resumo de referência para onboarding rápido de novos colaboradores (humanos ou IA).
-> Atualizado em 2026-07-21 (checkpoint-v37 + PRs #1 e #2).
+> Atualizado em 2026-07-23 (PEP fases 1 a 3).
 
 ## O que é
 
-Plataforma web de gestão operacional hospitalar (HIS enxuto) em produção real no
+Plataforma web de gestão operacional hospitalar (HIS enxuto) construída para o
 **Hospital Nossa Senhora de Navegantes**. Centraliza: ambulatório, giro/ocupação de
 leitos, pronto-socorro (triagem Manchester), bloco cirúrgico, SCIH (controle de
-infecção), farmácia clínica, **estoque & compras** e prontuário-resumo do paciente,
-com BI e indicadores.
+infecção), farmácia clínica, **estoque & compras** e o **prontuário eletrônico do
+paciente (PEP)**, com BI e indicadores.
+
+**⚠️ Ainda NÃO há paciente real no sistema.** O banco principal está povoado com
+dados de teste e de configuração; nenhum atendimento real foi registrado até
+2026-07-23. Isso importa para calibrar risco: escrita acidental hoje é sujeira de
+dado, não incidente com dado de paciente. A partir do primeiro paciente real, as
+regras mudam — ver "Dívidas".
 
 **Multi-hospital:** 1 banco Supabase por hospital (isolamento físico, adequado à
-LGPD). Hoje há dois deploys: `medflow-hnsn` e `medflow-demo`.
+LGPD). Hoje há dois bancos: o principal (`riuvyxppixeclxudsgpv`) e o de teste
+(`ufxqdvxhruaswuzhmxyf`, usado por `npm run dev:demo`).
 
 ## Quem faz o quê
 
@@ -28,18 +35,40 @@ GitHub valida o build · Edge Function opcional de resumo clínico com Claude.
 
 ## Arquitetura
 
-- **Todo o front num único `src/App.jsx` (~12.300 linhas).**
+- **A maior parte do front ainda num único `src/App.jsx` (~14.400 linhas)**, mas a
+  modularização começou e o PEP inteiro já nasceu fora dele:
+
+  | Camada | Onde | O que é |
+  |---|---|---|
+  | Lógica clínica pura | `src/clinico/*.js` | alertas de farmácia, alergias, prontuário, papéis, **reconciliação**, **alta**. Sem React, sem rede — é onde moram os testes |
+  | Acesso ao banco | `src/prontuario/dados.js` | todo INSERT do PEP passa por aqui |
+  | Telas do PEP | `src/prontuario/*.jsx` | prontuário do internado, prescrição, anamnese, reconciliação, alta |
+
+- **187 testes automatizados** (`npm test`, Vitest). O CI roda
+  `validar-sql.mjs` + testes + build antes de qualquer merge.
+- **`contrato-banco.test.js`** confere cada coluna gravada pelo PEP contra
+  `supabase/auditoria-banco.sql`. Existe porque duas telas gravavam em colunas
+  inexistentes e o PostgREST recusava o INSERT em silêncio — o profissional
+  clicava em salvar e nada era gravado.
 - Acesso ao Supabase via `fetch` REST direto (apikey anon + JWT do usuário logado).
 - Fallback para `localStorage` quando offline — mas **o login exige Supabase**.
-- 36 tabelas, **todas com RLS ativo e com política** — nenhuma acessível sem
-  login (auditado em 2026-07-21). Mas o controle por papel (`adm_master`,
-  `adm_silver`, `analista`, `visualizador`, via `my_role()`) vale **só para a
-  escrita**: as políticas de `SELECT` são `using (true)`, então **qualquer
-  usuário autenticado lê qualquer tabela**, inclusive um `visualizador`.
+- **55 tabelas** (auditoria gerada por `gerar-auditoria.mjs`), **todas com RLS ativo
+  e com política** — nenhuma acessível sem login. Mas o controle por papel
+  (`adm_master`, `adm_silver`, `analista`, `visualizador`, via `my_role()`) vale
+  **só para a escrita**: as políticas de `SELECT` são `using (true)`, então
+  **qualquer usuário autenticado lê qualquer tabela**, inclusive um `visualizador`.
   Ver "Decisões em aberto".
-- Registros clínicos **append-only** (evoluções, prescrições, kardex, auditoria).
-  A imutabilidade foi validada em teste: nem um `adm_master` apaga pela API.
-- 21 arquivos SQL em `supabase/` (schema base + migrações incrementais).
+- **Dois eixos de permissão** (conceito central do PEP): `role` = o que a pessoa
+  mexe no sistema; `categoria` profissional = o que ela pode fazer clinicamente.
+  Poder administrativo **não** concede competência assistencial — um adm_master
+  administrativo não assina evolução médica nem dá alta. Diagnóstico e prescrição de
+  enfermagem são privativos do enfermeiro (COFEN 736/2024). Ver `src/clinico/papeis.js`.
+- Registros clínicos **append-only** (evoluções, prescrições, kardex, auditoria, e
+  todo o PEP). Correção = novo registro com `corrige_id`/`substitui_id`; o original
+  permanece. A imutabilidade foi validada em teste: nem um `adm_master` apaga pela API.
+- **34 arquivos SQL** em `supabase/` (schema base + migrações incrementais). Nunca
+  editar `auditoria-banco.sql` nem `reconstruir-banco.sql` à mão — são **gerados**
+  (`gerar-auditoria.mjs`, `gerar-reconstrucao.mjs`); regenerar após cada migração.
 
 ## Como rodar localmente
 
@@ -54,15 +83,24 @@ npm run dev        # http://localhost:5173
 
 Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**.
 
-## Estado atual (2026-07-21)
+## Estado atual (2026-07-23)
 
-- Último checkpoint: **v37**. PRs **#1** (correções de bugs) e **#2** (fluxo de
-  equipe) mergeados na `main`.
+- **PEP (prontuário eletrônico) — fases 1 a 3 concluídas.**
+  - **Fase 1:** modelo de dados do PEP (episódio, anamnese, prescrição de internado
+    com aprazamento e checagem, sinais vitais seriados com NEWS, alergia como atributo
+    do paciente, condições/problemas). PRs #13.
+  - **Fase 2:** categoria profissional, criar prescrição e anamnese, perfis clínicos
+    configuráveis. PR #14.
+  - **Fase 3:** **reconciliação medicamentosa** (admissão e alta) e **sumário de
+    alta** estruturado, com fechamento do episódio. Migração
+    `migracao-pep-fase3.sql` (4 tabelas novas). Requisitos legais levantados em
+    [`REQUISITOS-PEP.md`](REQUISITOS-PEP.md).
 - Documentação: [`GUIA-GIT.md`](GUIA-GIT.md) (trabalho em equipe),
-  [`RELATORIO-TESTE.md`](RELATORIO-TESTE.md) + `.pdf` (bugs encontrados).
-- **Teste de carga executado** com 60 pacientes fictícios em ~40 telas (todos os
-  módulos e sub-abas): **nenhum crash, nenhum erro de console**. Dados de teste já
-  removidos do banco.
+  [`RELATORIO-TESTE.md`](RELATORIO-TESTE.md) + `.pdf` (bugs encontrados no teste de
+  carga anterior).
+- **Teste de carga executado** (antes do PEP) com 60 pacientes fictícios em ~40
+  telas: nenhum crash. As telas do PEP foram testadas no banco demo com o paciente
+  fictício T9035.
 
 ### Bugs corrigidos no PR #1
 - **Crítico:** `todayStr()` usava UTC — no Brasil (UTC-3), após ~21h o app achava
@@ -90,16 +128,23 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
 
 ## Dívidas e próximos passos (ordem de prioridade)
 
-1. **Modularizar o `App.jsx`** — ver item abaixo; virou a prioridade nº 1.
-   acordado, não só documentado.
-2. **Modularizar o `App.jsx`** — cresceu de 9k para 12,3k linhas em dois dias. A
-   dívida está composta e é o que mais trava o trabalho em paralelo.
-3. **Testes automatizados** — não existe nenhum, num sistema que decide alertas de
-   medicação (dose máxima, interação medicamentosa, alergia).
-4. **Banco de desenvolvimento separado** — hoje se testa em produção. Precisa existir
-   **antes do primeiro paciente real**, sob risco de virar incidente de LGPD.
-5. Migração dos registros gravados com data +1 antes da correção de fuso.
-6. Vulnerabilidade Vite/esbuild (apenas ambiente de dev) — upgrade controlado, sem
+1. **`sbFetch` engolia todos os erros** — corrigido no PR #9, mas continua sendo o
+   ponto onde falha de banco pode virar tela vazia. Manter atenção ao adicionar
+   telas novas.
+2. **Modularizar o `App.jsx`** — cresceu para ~14,4k linhas. A dívida está composta
+   e é o que mais trava o trabalho em paralelo. O PEP mostrou o padrão que funciona:
+   extrair funções puras para `src/clinico/`, capturar o comportamento antes,
+   comparar depois, então escrever testes.
+3. **Feito:** testes automatizados (187, cobrindo os alertas de medicação, a
+   reconciliação e a alta) e o **banco de teste separado** (`dev:demo`). Já não se
+   testa escrita só em produção.
+4. **Sumário de alta ↔ RNDS** — a estrutura já é compatível (campos separados, não
+   texto corrido). Integração propriamente dita fica para quando a obrigatoriedade
+   se confirmar (ver REQUISITOS-PEP.md, seção 3).
+5. **Assinatura digital (ICP-Brasil)** — só quando o hospital decidir eliminar o
+   papel. Até lá, o sumário sai impresso para assinatura física (COFEN 754/2024).
+6. Migração dos registros gravados com data +1 antes da correção de fuso.
+7. Vulnerabilidade Vite/esbuild (apenas ambiente de dev) — upgrade controlado, sem
    `npm audit fix --force`.
 
 ## Decisões em aberto
@@ -116,9 +161,12 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
 
 ## Perguntas em aberto
 
-1. Existe ambiente de staging/banco de teste, ou todo teste de escrita é feito em
-   produção?
-2. O `App.jsx` monolítico é restrição a manter ou pode ser modularizado?
-3. Como garantir que schema e código não saiam de sincronia entre os hospitais?
-4. LGPD: existe registro de tratamento de dados, DPA com os hospitais e política para
-   o uso da IA (resumo-paciente) com dados clínicos?
+1. Como garantir que schema e código não saiam de sincronia entre os hospitais?
+   (Hoje: `validar-sql.mjs` + `contrato-banco.test.js` + auditoria gerada; falta
+   automatizar a aplicação da migração — ainda é manual no painel do Supabase.)
+2. LGPD: existe registro de tratamento de dados, DPA com os hospitais e política para
+   o uso da IA (resumo-paciente) com dados clínicos? A resolver **antes** do primeiro
+   paciente real.
+3. Reconciliação medicamentosa: quem conduz na prática neste hospital — farmacêutico
+   clínico, enfermeiro na admissão, ou o médico? O código permite os três; o fluxo
+   real é decisão da equipe.

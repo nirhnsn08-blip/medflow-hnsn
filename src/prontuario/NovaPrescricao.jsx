@@ -88,10 +88,11 @@ export default function NovaPrescricao({ sb, episodio, currentUser, medById, med
     if (!confirm("A prescrição é assinada com data/hora e NÃO pode ser editada nem apagada. Confirma?")) return;
 
     setSalvando(true);
+    // `currentUser` inteiro, não só o nome: a camada de dados congela
+    // conselho e registro dentro da prescrição (CFM 2.299/2021, art. 2º).
     await assinarPrescricao(sb, episodio, {
-      itens: itens.map(i => ({ ...i, ...(assinatura.registro_conselho ? {} : {}) })),
-      tipo, observacao: obs, substituiId: prescricaoAnterior?.id || null,
-    }, { name: assinatura.profissional_nome });
+      itens, tipo, observacao: obs, substituiId: prescricaoAnterior?.id || null,
+    }, currentUser);
     setSalvando(false);
     onPronto?.();
   }
