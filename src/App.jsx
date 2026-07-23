@@ -14174,32 +14174,44 @@ export default function App() {
     setDb(prev => ({ ...newDb }));
   }, []);
 
-  // A sessão fica no localStorage. Quem já estava logado quando a categoria
-  // profissional passou a existir tem um usuário salvo SEM ela — e seria
-  // tratado como administrativo, sem conseguir registrar nada, sem
-  // entender o porquê. Este efeito recompleta o perfil uma vez, em vez de
-  // exigir que todo mundo saia e entre de novo.
+  // O perfil é relido a cada carga do app, não apenas quando falta algum
+  // campo. São duas razões:
+  //   1. Quem já estava logado quando a categoria profissional passou a
+  //      existir tem um usuário salvo sem ela;
+  //   2. Quando o administrador reclassifica alguém, a mudança precisa
+  //      valer no próximo carregamento — e não só depois de a pessoa sair
+  //      e entrar de novo. Papel e categoria decidem o que ela pode
+  //      registrar clinicamente; guardar isso indefinidamente no
+  //      localStorage é guardar uma permissão vencida.
+  // Roda uma vez por carga (depende só do id), então não fica em laço.
   useEffect(() => {
-    if (!USE_SUPABASE || !currentUser?.id || currentUser.categoria) return;
+    if (!USE_SUPABASE || !currentUser?.id) return;
     let vivo = true;
     sbFetch(`profiles?id=eq.${currentUser.id}&select=*`).then(rows => {
       const p = Array.isArray(rows) ? rows[0] : null;
       if (!vivo || !p) return;
-      const atualizado = {
-        ...currentUser,
-        categoria: p.categoria || "administrativo",
-        conselho: p.conselho || null,
-        registro_conselho: p.registro_conselho || null,
-        uf_conselho: p.uf_conselho || null,
-      };
-      try {
-        const s = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}");
-        saveSession({ ...s, user: atualizado });
-      } catch {}
-      setCurrentUser(atualizado);
+      setCurrentUser(atual => {
+        const novo = {
+          ...atual,
+          role: p.role || atual.role,
+          categoria: p.categoria || "administrativo",
+          conselho: p.conselho || null,
+          registro_conselho: p.registro_conselho || null,
+          uf_conselho: p.uf_conselho || null,
+        };
+        // nada mudou: devolve o mesmo objeto para não re-renderizar à toa
+        const igual = ["role", "categoria", "conselho", "registro_conselho", "uf_conselho"]
+          .every(k => atual[k] === novo[k]);
+        if (igual) return atual;
+        try {
+          const s = JSON.parse(localStorage.getItem(SESSION_KEY) || "{}");
+          saveSession({ ...s, user: novo });
+        } catch {}
+        return novo;
+      });
     }).catch(() => {});
     return () => { vivo = false; };
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Busca os dados no Supabase (fonte compartilhada entre os computadores) e
   // FUNDE com o que já existe localmente — sem apagar nada. O Supabase tem
