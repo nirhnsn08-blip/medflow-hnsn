@@ -15,6 +15,9 @@ import {
 // Alergia como atributo do paciente (fonte única pep_alergias, com o campo
 // legado do atendimento fundido durante a transição).
 import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js";
+// Prontuário do paciente internado — em arquivo próprio para o módulo
+// evoluir sem disputar espaço neste arquivo, que já tem 14 mil linhas.
+import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -3330,6 +3333,22 @@ function PacientePage({ currentUser, canEdit }) {
   const [carregando, setCarregando] = useState(false);
   const [cadForm, setCadForm] = useState(null); // form de cadastro mínimo quando não existe
   const [resumoIA, setResumoIA] = useState(null);
+  // "resumo" = linha do tempo de todos os módulos (o que já existia).
+  // "internacao" = prontuário do episódio em curso.
+  const [visao, setVisao] = useState("resumo");
+  // Catálogo clínico: o motor de alertas precisa dele para analisar a
+  // prescrição da internação. Carregado uma vez, não por paciente.
+  const [meds, setMeds] = useState([]);
+  const [farmInteracoes, setFarmInteracoes] = useState([]);
+  const [farmIncompatY, setFarmIncompatY] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([loadFarmMedicamentos(), loadFarmInteracoes(), loadFarmIncompatY()])
+      .then(([m, i, y]) => { if (!vivo) return; setMeds(m || []); setFarmInteracoes(i || []); setFarmIncompatY(y || []); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, []);
+  const medById = {}; meds.forEach(m => { medById[m.id] = m; });
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 12px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
   const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
 
@@ -3364,6 +3383,7 @@ function PacientePage({ currentUser, canEdit }) {
   // vive no último atendimento de PS, até o front migrar a escrita.
   const alergiaLegado = dados?.ps?.[0]?.alergias || "";
   const alergia = dados ? situacaoAlergica(dados.alergias, alergiaLegado) : { estado: "sem_registro", itens: [] };
+  const internadoAgora = (dados?.leitoAtual?.length || 0) > 0;
   const iniciaisConhecidas = dados?.cadastro?.iniciais
     || dados?.leitoAtual[0]?.iniciais || dados?.ps[0]?.iniciais || dados?.saidas[0]?.iniciais || dados?.scih[0]?.iniciais || null;
 
@@ -3470,6 +3490,28 @@ function PacientePage({ currentUser, canEdit }) {
             </div>
           )}
 
+          {/* Alterna entre o resumo (linha do tempo de todos os módulos) e o
+              prontuário da internação em curso. Some quando o paciente não
+              está internado — não faz sentido oferecer aba vazia. */}
+          {internadoAgora && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {[["resumo", "Resumo do paciente"], ["internacao", "Prontuário da internação"]].map(([k, t]) => (
+                <button key={k} onClick={() => setVisao(k)}
+                  style={{ background: visao === k ? "var(--bg-2)" : "transparent", color: visao === k ? "var(--text)" : "var(--text-muted)",
+                           border: `1px solid ${visao === k ? "var(--border)" : "transparent"}`, borderRadius: 7,
+                           padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{t}</button>
+              ))}
+            </div>
+          )}
+
+          {internadoAgora && visao === "internacao" && (
+            <ProntuarioInternado
+              sb={sbFetch} prontuario={prontuario} currentUser={currentUser} canEdit={canEdit}
+              medById={medById} interacoes={farmInteracoes} incompatY={farmIncompatY}
+            />
+          )}
+
+          {(!internadoAgora || visao === "resumo") && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16, alignItems: "start" }}>
             {/* TIMELINE */}
             <div>
@@ -3499,6 +3541,7 @@ function PacientePage({ currentUser, canEdit }) {
                 <div style={{ fontSize: 12.5, color: "var(--text-muted)", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 8, padding: "12px" }}>Seu perfil é somente leitura.</div>}
             </div>
           </div>
+          )}
         </>
       )}
     </div>

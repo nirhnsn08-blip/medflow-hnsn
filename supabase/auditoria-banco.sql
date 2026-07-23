@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 51 tabelas, 738 colunas.
+-- Cobertura atual: 51 tabelas, 741 colunas.
 -- ============================================================
 
 with
@@ -524,6 +524,9 @@ colunas(tabela, coluna, origem) as (values
   ('pep_sinais_vitais','glicemia','pep-fase1'),
   ('pep_sinais_vitais','id','pep-fase1'),
   ('pep_sinais_vitais','motivo_correcao','pep-fase1'),
+  ('pep_sinais_vitais','o2_dispositivo','pep-sinais-spo2'),
+  ('pep_sinais_vitais','o2_fluxo','pep-sinais-spo2'),
+  ('pep_sinais_vitais','o2_suplementar','pep-sinais-spo2'),
   ('pep_sinais_vitais','observacao','pep-fase1'),
   ('pep_sinais_vitais','pa_diast','pep-fase1'),
   ('pep_sinais_vitais','pa_sist','pep-fase1'),
