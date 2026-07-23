@@ -27,11 +27,11 @@ export async function carregarProntuario(sb, prontuario) {
   const ativo = eps.find(e => (e.status || "aberto") === "aberto" && !e.alta_em) || null;
   if (!ativo) {
     return { episodios: eps, episodio: null, alergias: alergias || [], condicoes: condicoes || [],
-             prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [], anotacoes: [] };
+             prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [], anotacoes: [], anamneses: [] };
   }
 
   const e = ativo.id;
-  const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes] = await Promise.all([
+  const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_prescricao_eventos?episodio_id=eq.${e}&select=*&order=criado_em`).catch(() => []),
@@ -39,6 +39,7 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`pep_sinais_vitais?episodio_id=eq.${e}&select=*&order=aferido_em`).catch(() => []),
     sb(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_anotacoes_enfermagem?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    sb(`pep_anamneses?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
   ]);
 
   const arr = x => (Array.isArray(x) ? x : []);
@@ -47,7 +48,7 @@ export async function carregarProntuario(sb, prontuario) {
     alergias: arr(alergias), condicoes: arr(condicoes),
     prescricoes: arr(prescricoes), itens: arr(itens), eventos: arr(eventos),
     administracoes: arr(administracoes), sinais: arr(sinais),
-    evolucoes: arr(evolucoes), anotacoes: arr(anotacoes),
+    evolucoes: arr(evolucoes), anotacoes: arr(anotacoes), anamneses: arr(anamneses),
   };
 }
 

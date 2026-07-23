@@ -59,6 +59,7 @@ const ORDEM = [
   "migracao-pep-fase1.sql",
   "migracao-pep-acessos.sql",
   "migracao-pep-sinais-spo2.sql",
+  "migracao-pep-categoria-profissional.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM

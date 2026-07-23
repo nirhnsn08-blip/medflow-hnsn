@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 51 tabelas, 741 colunas.
+-- Cobertura atual: 51 tabelas, 745 colunas.
 -- ============================================================
 
 with
@@ -540,10 +540,14 @@ colunas(tabela, coluna, origem) as (values
   ('pep_sinais_vitais','suporte_o2','pep-fase1'),
   ('pep_sinais_vitais','temp','pep-fase1'),
   ('pep_sinais_vitais','usuario','pep-fase1'),
+  ('profiles','categoria','pep-categoria-profissional'),
+  ('profiles','conselho','pep-categoria-profissional'),
   ('profiles','created_at','schema'),
   ('profiles','id','schema'),
   ('profiles','nome','schema'),
+  ('profiles','registro_conselho','pep-categoria-profissional'),
   ('profiles','role','schema'),
+  ('profiles','uf_conselho','pep-categoria-profissional'),
   ('profiles','username','schema'),
   ('ps_administracoes','administrado_em','ps-checagem-medicacao'),
   ('ps_administracoes','atendimento_id','ps-checagem-medicacao'),
