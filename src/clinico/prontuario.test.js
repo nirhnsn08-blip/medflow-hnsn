@@ -148,6 +148,36 @@ describe("aprazamento", () => {
     expect(r.filter(x => x.administrado)).toHaveLength(1);
   });
 
+  it("dose dada com atraso CUMPRE o horário — não conta como pulada", () => {
+    // a dose das 06h administrada às 09h continua sendo a dose das 06h.
+    // Marcá-la como não-administrada afirmaria que foi PULADA, que é uma
+    // afirmação clínica diferente e mais grave.
+    const h = [new Date("2026-07-22T06:00:00"), new Date("2026-07-22T12:00:00")];
+    const r = checarAprazamento(h, [{ administrado_em: "2026-07-22T09:00:00", status: "administrado" }],
+                                new Date("2026-07-22T10:00:00"));
+    expect(r[0].administrado).toBe(true);
+    expect(r[0].administradoComAtraso).toBe(true);
+    expect(r[0].atrasado).toBe(false);     // já não está pendente de atraso: foi dada
+    expect(r[1].administrado).toBe(false); // a das 12h continua por fazer
+  });
+
+  it("dose no horário não é marcada como atrasada", () => {
+    const h = [new Date("2026-07-22T06:00:00")];
+    const r = checarAprazamento(h, [{ administrado_em: "2026-07-22T06:15:00", status: "administrado" }],
+                                new Date("2026-07-22T08:00:00"));
+    expect(r[0].administradoComAtraso).toBe(false);
+  });
+
+  it("duas doses atrasadas cumprem os dois horários vencidos, na ordem", () => {
+    const h = [new Date("2026-07-22T06:00:00"), new Date("2026-07-22T12:00:00")];
+    const r = checarAprazamento(h, [
+      { administrado_em: "2026-07-22T09:00:00", status: "administrado" },
+      { administrado_em: "2026-07-22T14:00:00", status: "administrado" },
+    ], new Date("2026-07-22T15:00:00"));
+    expect(r[0].administrado).toBe(true);
+    expect(r[1].administrado).toBe(true);
+  });
+
   it("dose registrada como NÃO administrada não conta como feita", () => {
     const h = [new Date("2026-07-22T06:00:00")];
     const r = checarAprazamento(h, [{ administrado_em: "2026-07-22T06:05:00", status: "nao_administrado" }],

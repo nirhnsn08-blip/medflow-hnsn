@@ -127,21 +127,39 @@ export function checarAprazamento(horarios, administracoes, agora = new Date(), 
     .map(a => new Date(a.administrado_em || a.criado_em).getTime())
     .sort((a, b) => a - b);
   const usadas = new Set();
+  const slots = [...(horarios || [])].sort((a, b) => a - b);
 
-  return (horarios || []).map(h => {
+  // Casa cada administração com o horário previsto que ela cumpre.
+  //
+  // A regra NÃO é "a mais próxima dentro da tolerância". Uma dose das 06h
+  // administrada às 09h continua sendo a dose das 06h — dada com atraso,
+  // mas dada. Tratá-la como não-casada faria a tela dizer que a dose foi
+  // PULADA, que é uma afirmação clínica diferente e mais grave.
+  //
+  // Então: cada administração cumpre o último horário previsto igual ou
+  // anterior a ela que ainda não foi cumprido. O atraso vira um atributo
+  // do cumprimento, não a sua negação.
+  const cumprido = new Map();   // índice do slot -> instante em que foi dado
+  for (const f of feitas) {
+    let alvo = -1;
+    for (let k = 0; k < slots.length; k++) {
+      if (usadas.has(k)) continue;
+      if (slots[k].getTime() <= f + toleranciaMin * 60000) alvo = k;   // o último que já venceu
+      else break;
+    }
+    if (alvo >= 0) { usadas.add(alvo); cumprido.set(alvo, f); }
+  }
+
+  return slots.map((h, k) => {
     const alvo = h.getTime();
-    // casa a administração mais próxima ainda não usada, dentro da tolerância
-    let idx = -1, melhor = Infinity;
-    feitas.forEach((f, k) => {
-      if (usadas.has(k)) return;
-      const d = Math.abs(f - alvo);
-      if (d <= toleranciaMin * 60000 && d < melhor) { melhor = d; idx = k; }
-    });
-    if (idx >= 0) usadas.add(idx);
-    const administrado = idx >= 0;
+    const quando = cumprido.get(k);
+    const administrado = quando != null;
     return {
       horario: h,
       administrado,
+      // administrado, porém fora da janela: o registro tem que preservar
+      // essa informação — é dado de qualidade assistencial.
+      administradoComAtraso: administrado && quando > alvo + toleranciaMin * 60000,
       atrasado: !administrado && agora.getTime() > alvo + toleranciaMin * 60000,
       pendente: !administrado && agora.getTime() <= alvo + toleranciaMin * 60000,
     };

@@ -84,7 +84,12 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
     clearance_renal: ultimo?.clearance_renal ?? null,
     funcao_hepatica: null,
   };
-  const alertas = itens.length ? analisarPrescricaoClinica(itens, ctx, medById, interacoes, incompatY) : [];
+  // O motor de alertas nasceu no PS, onde a coluna se chama
+  // `medicamento_nome`. No PEP ela é `descricao`. Sem esta ponte os alertas
+  // disparam certo mas exibem "undefined" no lugar do medicamento — e
+  // alerta que não diz QUAL remédio é alerta inútil.
+  const itensParaAlerta = itens.map(i => ({ ...i, medicamento_nome: i.medicamento_nome || i.descricao }));
+  const alertas = itens.length ? analisarPrescricaoClinica(itensParaAlerta, ctx, medById, interacoes, incompatY) : [];
 
   const abas = [
     ["visao", "Visão geral"],
@@ -257,9 +262,14 @@ function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk }
   }
   async function administrar(item) {
     if (!confirm(`Registrar administração de "${item.descricao}" agora?`)) return;
+    // Nomes conforme `pep_administracoes`: `item_id` e `descricao`.
+    // (No módulo do PS as colunas equivalentes chamam-se
+    // `prescricao_item_id` e `medicamento_nome` — as duas tabelas nasceram
+    // em momentos diferentes e não convergiram.)
     await registrarAdministracao(sb, ep, {
-      prescricao_item_id: item.id, medicamento_id: item.medicamento_id || null,
-      medicamento_nome: item.descricao, dose: item.dose, via: item.via, status: "administrado",
+      item_id: item.id, prescricao_id: item.prescricao_id,
+      medicamento_id: item.medicamento_id || null,
+      descricao: item.descricao, dose: item.dose, via: item.via, status: "administrado",
     }, user);
     onOk();
   }
@@ -273,7 +283,7 @@ function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk }
 
       {itens.map(item => {
         const horarios = horariosDoDia(item, hoje);
-        const doItem = adms.filter(a => a.prescricao_item_id === item.id);
+        const doItem = adms.filter(a => a.item_id === item.id);
         const grade = checarAprazamento(horarios, doItem, hoje);
         return (
           <div key={item.id} style={cartao}>
@@ -290,16 +300,24 @@ function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk }
             </div>
             {grade.length > 0 && (
               <div style={{ display: "flex", gap: 6, marginTop: 9, flexWrap: "wrap" }}>
-                {grade.map((g, k) => (
-                  <span key={k} title={g.administrado ? "administrado" : g.atrasado ? "ATRASADO" : "pendente"}
-                    style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "JetBrains Mono, monospace",
-                             padding: "3px 9px", borderRadius: 99,
-                             background: g.administrado ? "#34d39922" : g.atrasado ? "#f43f5e22" : "var(--bg-2)",
-                             border: `1px solid ${g.administrado ? "#34d39966" : g.atrasado ? "#f43f5e66" : cor.borda}`,
-                             color: g.administrado ? "#34d399" : g.atrasado ? "#f43f5e" : cor.txt3 }}>
-                    {hora(g.horario)}{g.administrado ? " ✓" : g.atrasado ? " ⚠" : ""}
-                  </span>
-                ))}
+                {grade.map((g, k) => {
+                  // Três situações, não duas. "Dada com atraso" não pode
+                  // parecer nem com "no horário" nem com "não dada".
+                  const c = g.administradoComAtraso ? "#d97706" : g.administrado ? "#34d399" : g.atrasado ? "#f43f5e" : null;
+                  const t = g.administradoComAtraso ? "administrada COM ATRASO"
+                          : g.administrado ? "administrada no horário"
+                          : g.atrasado ? "ATRASADA — ainda não administrada" : "pendente";
+                  return (
+                    <span key={k} title={t}
+                      style={{ fontSize: 11.5, fontWeight: 700, fontFamily: "JetBrains Mono, monospace",
+                               padding: "3px 9px", borderRadius: 99,
+                               background: c ? c + "22" : "var(--bg-2)",
+                               border: `1px solid ${c ? c + "66" : cor.borda}`,
+                               color: c || cor.txt3 }}>
+                      {hora(g.horario)}{g.administradoComAtraso ? " ✓⏱" : g.administrado ? " ✓" : g.atrasado ? " ⚠" : ""}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
