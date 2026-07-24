@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 55 tabelas, 846 colunas.
+-- Cobertura atual: 58 tabelas, 872 colunas.
 -- ============================================================
 
 with
@@ -52,6 +52,8 @@ tabelas(nome, origem) as (values
   ('pep_reconciliacoes','pep-fase3'),
   ('pep_sinais_vitais','pep-fase1'),
   ('pep_sumarios_alta','pep-fase3'),
+  ('perfis_acesso','perfis-acesso'),
+  ('perfis_permissoes','perfis-acesso'),
   ('profiles','schema'),
   ('ps_administracoes','ps-checagem-medicacao'),
   ('ps_atendimentos','schema'),
@@ -72,7 +74,8 @@ tabelas(nome, origem) as (values
   ('sup_lotes','suprimentos-faseA'),
   ('sup_movimentos','suprimentos-faseA'),
   ('sup_pedidos','suprimentos-faseC'),
-  ('sup_requisicoes','suprimentos-faseB')
+  ('sup_requisicoes','suprimentos-faseB'),
+  ('usuarios_permissoes','perfis-acesso')
 ),
 colunas(tabela, coluna, origem) as (values
   ('atendimentos','created_at','schema'),
@@ -645,13 +648,32 @@ colunas(tabela, coluna, origem) as (values
   ('pep_sumarios_alta','substitui_id','pep-fase3'),
   ('pep_sumarios_alta','texto_impressao','pep-fase3'),
   ('pep_sumarios_alta','usuario','pep-fase3'),
+  ('perfis_acesso','ativo','perfis-acesso'),
+  ('perfis_acesso','atualizado_em','perfis-acesso'),
+  ('perfis_acesso','categoria_sugerida','perfis-acesso'),
+  ('perfis_acesso','chave','perfis-acesso'),
+  ('perfis_acesso','criado_em','perfis-acesso'),
+  ('perfis_acesso','descricao','perfis-acesso'),
+  ('perfis_acesso','nome','perfis-acesso'),
+  ('perfis_acesso','role_sugerido','perfis-acesso'),
+  ('perfis_acesso','sistema','perfis-acesso'),
+  ('perfis_acesso','usuario','perfis-acesso'),
+  ('perfis_permissoes','modulo','perfis-acesso'),
+  ('perfis_permissoes','nivel','perfis-acesso'),
+  ('perfis_permissoes','perfil_chave','perfis-acesso'),
+  ('profiles','admitido_em','perfis-acesso'),
   ('profiles','categoria','pep-categoria-profissional'),
   ('profiles','conselho','pep-categoria-profissional'),
+  ('profiles','conselho_validade','perfis-acesso'),
   ('profiles','created_at','schema'),
+  ('profiles','desligado_em','perfis-acesso'),
   ('profiles','id','schema'),
+  ('profiles','matricula','perfis-acesso'),
   ('profiles','nome','schema'),
+  ('profiles','perfil','perfis-acesso'),
   ('profiles','registro_conselho','pep-categoria-profissional'),
   ('profiles','role','schema'),
+  ('profiles','setor','perfis-acesso'),
   ('profiles','uf_conselho','pep-categoria-profissional'),
   ('profiles','username','schema'),
   ('ps_administracoes','administrado_em','ps-checagem-medicacao'),
@@ -920,7 +942,14 @@ colunas(tabela, coluna, origem) as (values
   ('sup_requisicoes','solicitado_por','suprimentos-faseB'),
   ('sup_requisicoes','status','suprimentos-faseB'),
   ('sup_requisicoes','updated_at','suprimentos-faseB'),
-  ('sup_requisicoes','usuario','suprimentos-faseB')
+  ('sup_requisicoes','usuario','suprimentos-faseB'),
+  ('usuarios_permissoes','concedido_por','perfis-acesso'),
+  ('usuarios_permissoes','criado_em','perfis-acesso'),
+  ('usuarios_permissoes','id','perfis-acesso'),
+  ('usuarios_permissoes','modulo','perfis-acesso'),
+  ('usuarios_permissoes','motivo','perfis-acesso'),
+  ('usuarios_permissoes','nivel','perfis-acesso'),
+  ('usuarios_permissoes','user_id','perfis-acesso')
 ),
 funcoes(nome) as (values ('my_role'), ('handle_new_user')),
 

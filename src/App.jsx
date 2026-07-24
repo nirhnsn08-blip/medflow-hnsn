@@ -20,6 +20,8 @@ import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js
 import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 // Categorias profissionais — usadas na tela que classifica a equipe.
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
+import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
+import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -70,9 +72,26 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
   const escrita = metodo !== "GET";
   const estrutural = [400, 401, 403, 404, 409, 500].includes(status);
   if (!escrita && !estrutural) return;
+  // Migração ainda não aplicada: previsto, não é defeito. Ver TABELAS_OPCIONAIS.
+  if (status === 404 && TABELAS_OPCIONAIS.has(alvo)) return;
   const falha = { alvo, metodo, status, detalhe, escrita, em: Date.now() };
   ouvintesFalhaSb.forEach(fn => { try { fn(falha); } catch {} });
 }
+
+// Tabelas cuja AUSÊNCIA é esperada enquanto a migração correspondente não
+// for aplicada. O código sempre roda na Vercel antes de alguém abrir o
+// painel do Supabase — é a ordem inevitável, já que a migração é manual.
+//
+// Sem esta lista, o intervalo entre o merge e o SQL rodado enche a tela de
+// TODO MUNDO com um alerta vermelho sobre uma tabela que ninguém ainda
+// deveria ter. Alerta que aparece quando não há nada de errado é o que
+// ensina a equipe a fechar alerta sem ler — e aí o próximo, que é de
+// verdade, também passa batido.
+//
+// A falha continua indo para o console. É só o alarme na tela que se cala,
+// e só para 404 (tabela inexistente) — 401/403 continuam gritando, porque
+// aí é permissão, não migração pendente.
+const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes"]);
 
 async function sbFetch(path, opts = {}) {
   if (!USE_SUPABASE) return null;
@@ -13744,12 +13763,65 @@ function AdminUsuarios({ currentUser }) {
   const [nRole, setNRole] = useState("visualizador");
   const [nSenha, setNSenha] = useState("");
   const [cMsg, setCMsg] = useState("");
+  // Perfil do cargo. É por aqui que o fluxo real começa: o gestor pede
+  // "acesso para a enfermeira nova", a TI escolhe "Enfermeiro(a)" e o resto
+  // (papel de sistema, categoria clínica, módulos) vem junto.
+  const [nPerfil, setNPerfil] = useState("");
+  const [nConselho, setNConselho] = useState("");
+  const [nRegistro, setNRegistro] = useState("");
+  const [nUf, setNUf] = useState("RS");
+  const [perfisDisp, setPerfisDisp] = useState([]);
+
+  useEffect(() => {
+    sbFetch("perfis_acesso?select=*&ativo=eq.true&order=nome")
+      .then(r => setPerfisDisp(Array.isArray(r) ? r : []))
+      .catch(() => setPerfisDisp([]));
+  }, []);
+
+  // Escolher o perfil pré-preenche papel e categoria — sugestão, não trava:
+  // a TI ainda confirma, porque o hospital tem exceções que o catálogo não
+  // conhece.
+  function escolherPerfil(chave) {
+    setNPerfil(chave);
+    const p = perfisDisp.find(x => x.chave === chave);
+    if (!p) return;
+    if (p.role_sugerido) setNRole(p.role_sugerido);
+    const cat = CATEGORIAS_CLINICAS[p.categoria_sugerida];
+    setNConselho(cat?.conselho || "");
+  }
 
   async function recarregar() {
     setErro("");
-    const r = await adminUsuarios("list");
+    // A Edge Function devolve o que vem do Auth (situação de ativo, e-mail);
+    // `profiles` guarda perfil, categoria e conselho. Nenhuma das duas tem o
+    // quadro inteiro, então juntamos aqui.
+    const [r, profs] = await Promise.all([
+      adminUsuarios("list"),
+      sbFetch("profiles?select=id,perfil,categoria,registro_conselho,setor").catch(() => []),
+    ]);
     if (r.error) { setErro(r.error); setRows([]); return; }
-    setRows(r.usuarios || []);
+    const porId = Object.fromEntries((Array.isArray(profs) ? profs : []).map(p => [p.id, p]));
+    setRows((r.usuarios || []).map(u => ({ ...u, ...(porId[u.id] || {}) })));
+  }
+
+  // Troca o cargo de alguém. Vai direto em `profiles` (RLS
+  // `profiles_update_admin`), porque a Edge Function ainda não conhece
+  // perfil nem categoria.
+  async function mudarPerfil(user, chave) {
+    if (chave === (user.perfil || "") || busy) return;
+    const p = perfisDisp.find(x => x.chave === chave);
+    if (!confirm(`Mudar "${user.username}" para o cargo "${p?.nome || chave}"?\n\nIsso muda os módulos que ele enxerga na próxima vez que abrir o sistema.`)) { recarregar(); return; }
+    setBusy(true);
+    const r = await sbFetch(`profiles?id=eq.${user.id}`, {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ perfil: chave, categoria: p?.categoria_sugerida || "administrativo" }),
+    }).catch(() => null);
+    setBusy(false);
+    // O PostgREST devolve 204 mesmo quando o RLS bloqueia e nada muda — por
+    // isso conferimos o retorno, não o status.
+    if (!r || (Array.isArray(r) && !r.length)) { alert("⚠️ Nada foi alterado. A migração de perfis foi aplicada neste banco?"); recarregar(); return; }
+    addAuditLog(currentUser, "mudar cargo", `${user.username} → ${chave}`, {});
+    recarregar();
   }
   useEffect(() => { recarregar(); }, []);
 
@@ -13758,13 +13830,41 @@ function AdminUsuarios({ currentUser }) {
     const u = nUser.trim().toLowerCase();
     if (!/^[a-z0-9._-]{3,32}$/.test(u)) { setCMsg("⚠️ Usuário: 3–32 caracteres (letras, números, . _ -)."); return; }
     if (nSenha.length < 6) { setCMsg("⚠️ A senha precisa de ao menos 6 caracteres."); return; }
+    if (!nPerfil) { setCMsg("⚠️ Escolha o perfil do cargo — é ele que define o que a pessoa enxerga."); return; }
     setBusy(true); setCMsg("");
     const r = await adminUsuarios("create", { username: u, nome: nNome.trim(), role: nRole, senha: nSenha });
+    if (r.error) { setBusy(false); setCMsg("⚠️ " + r.error); return; }
+
+    // Segundo passo: perfil, categoria clínica e conselho. A Edge Function
+    // ainda não conhece esses campos, então gravamos direto em `profiles`
+    // (o RLS `profiles_update_admin` só deixa adm_master fazer isso).
+    //
+    // Não é atômico com a criação — e por isso o erro é REPORTADO em vez de
+    // engolido: um usuário criado sem perfil não enxerga nada e a TI
+    // precisa saber disso na hora, não pelo chamado do funcionário no dia
+    // seguinte. Unificar os dois passos na Edge Function é melhoria futura.
+    const perfilEscolhido = perfisDisp.find(x => x.chave === nPerfil);
+    const classificado = await sbFetch(`profiles?username=eq.${encodeURIComponent(u)}`, {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        perfil: nPerfil,
+        categoria: perfilEscolhido?.categoria_sugerida || "administrativo",
+        conselho: nConselho || null,
+        registro_conselho: nRegistro || null,
+        uf_conselho: nRegistro ? (nUf || null) : null,
+      }),
+    }).catch(() => null);
     setBusy(false);
-    if (r.error) { setCMsg("⚠️ " + r.error); return; }
-    addAuditLog(currentUser, "criar usuário", `${u} (${nRole})`, {});
-    setCMsg("✓ Usuário criado!"); setNNome(""); setNUser(""); setNSenha(""); setNRole("visualizador");
-    recarregar(); setTimeout(() => setCMsg(""), 3500);
+
+    addAuditLog(currentUser, "criar usuário", `${u} (${nRole} · perfil ${nPerfil})`, {});
+    if (!classificado || (Array.isArray(classificado) && !classificado.length)) {
+      setCMsg("⚠️ Usuário criado, mas o PERFIL não foi aplicado — ele entrará sem enxergar nada. Ajuste na lista abaixo. (A migração de perfis foi aplicada neste banco?)");
+      recarregar(); return;
+    }
+    setCMsg(`✓ Usuário criado como ${perfilEscolhido?.nome || nPerfil}.`);
+    setNNome(""); setNUser(""); setNSenha(""); setNRole("visualizador");
+    setNPerfil(""); setNConselho(""); setNRegistro("");
+    recarregar(); setTimeout(() => setCMsg(""), 6000);
   }
 
   async function mudarPapel(user, role) {
@@ -13813,14 +13913,43 @@ function AdminUsuarios({ currentUser }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Nome completo</label><input value={nNome} onChange={e => { setNNome(e.target.value); setCMsg(""); }} placeholder="Ex.: Maria Silva" style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
           <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Usuário (login)</label><input value={nUser} onChange={e => { setNUser(e.target.value); setCMsg(""); }} placeholder="ex.: maria" autoComplete="off" style={{ ...inp, width: "100%", marginTop: 4, fontFamily: "JetBrains Mono, monospace" }} /></div>
-          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Perfil</label>
-            <select value={nRole} onChange={e => setNRole(e.target.value)} style={{ ...inp, width: "100%", marginTop: 4 }}>
-              {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
+          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Cargo / perfil de acesso *</label>
+            <select value={nPerfil} onChange={e => { escolherPerfil(e.target.value); setCMsg(""); }} style={{ ...inp, width: "100%", marginTop: 4 }}>
+              <option value="">Escolha o cargo…</option>
+              {perfisDisp.map(p => <option key={p.chave} value={p.chave}>{p.nome}</option>)}
             </select>
           </div>
           <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Senha inicial (mín. 6)</label><input type="text" value={nSenha} onChange={e => { setNSenha(e.target.value); setCMsg(""); }} placeholder="senha temporária" autoComplete="off" style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
         </div>
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>{ROLES[nRole]?.desc}</div>
+
+        {/* O registro de conselho só aparece para quem tem conselho. Pedir
+            CRM da recepcionista é o tipo de campo obrigatório que ensina a
+            equipe a preencher qualquer coisa para o formulário parar de
+            reclamar — e aí o dado inteiro perde o valor. */}
+        {nConselho && (
+          <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 80px", gap: 10, marginTop: 10 }}>
+            <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Conselho</label>
+              <input value={nConselho} onChange={e => setNConselho(e.target.value)} style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
+            <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Número de inscrição</label>
+              <input value={nRegistro} onChange={e => setNRegistro(e.target.value)} placeholder="sem o registro, os documentos saem incompletos para a norma" style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
+            <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>UF</label>
+              <input value={nUf} onChange={e => setNUf(e.target.value)} style={{ ...inp, width: "100%", marginTop: 4 }} /></div>
+          </div>
+        )}
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end", marginTop: 10 }}>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.55 }}>
+            {nPerfil
+              ? <>{perfisDisp.find(p => p.chave === nPerfil)?.descricao}<br />
+                  <strong>Sistema:</strong> {ROLES[nRole]?.label} — {ROLES[nRole]?.desc}</>
+              : "O cargo define quais módulos a pessoa enxerga, e sugere o papel de sistema e a categoria clínica."}
+          </div>
+          <div><label style={{ fontSize: 11, color: "var(--text-muted)" }}>Papel de sistema</label>
+            <select value={nRole} onChange={e => setNRole(e.target.value)} style={{ ...inp, marginTop: 4, minWidth: 170 }}>
+              {Object.entries(ROLES).map(([k, r]) => <option key={k} value={k}>{r.label}</option>)}
+            </select>
+          </div>
+        </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 14 }}>
           <button onClick={criar} disabled={busy} style={{ background: busy ? "#334155" : "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: busy ? "default" : "pointer", fontSize: 13 }}>{busy ? "Salvando…" : "Criar usuário"}</button>
           {cMsg && <span style={{ fontSize: 13, color: cMsg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600 }}>{cMsg}</span>}
@@ -13841,7 +13970,7 @@ function AdminUsuarios({ currentUser }) {
         ) : (
           <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr>{["Nome", "Usuário", "Perfil", "Situação", "Ações"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Nome", "Usuário", "Cargo (o que enxerga)", "Sistema", "Situação", "Ações"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {rows.map(u => {
                 const isMe = u.id === currentUser.id;
@@ -13850,6 +13979,19 @@ function AdminUsuarios({ currentUser }) {
                   <tr key={u.id} style={{ background: isMe ? "var(--bg-2)" : "transparent", opacity: u.ativo ? 1 : 0.55 }}>
                     <td style={{ ...td, color: "var(--text)", fontWeight: 600 }}>{u.nome} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
                     <td style={{ ...td, fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)" }}>{u.username}</td>
+                    <td style={td}>
+                      <select value={u.perfil || ""} disabled={busy} onChange={e => mudarPerfil(u, e.target.value)}
+                        title="O cargo define quais módulos aparecem para esta pessoa"
+                        style={{ background: "var(--input-bg)", color: u.perfil ? "var(--text)" : "#d97706",
+                                 border: `1px solid ${u.perfil ? "var(--border)" : "#d9770688"}`, borderRadius: 6,
+                                 padding: "4px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer", maxWidth: 190 }}>
+                        <option value="">— sem cargo —</option>
+                        {perfisDisp.map(p => <option key={p.chave} value={p.chave}>{p.nome}</option>)}
+                      </select>
+                      {u.categoria && u.categoria !== "administrativo" && !u.registro_conselho && (
+                        <div style={{ fontSize: 10, color: "#d97706", marginTop: 3 }}>sem registro de conselho</div>
+                      )}
+                    </td>
                     <td style={td}>
                       <select value={u.role} disabled={busy} onChange={e => mudarPapel(u, e.target.value)}
                         title={isMe ? "Você não pode rebaixar o seu próprio papel" : rc.desc}
@@ -13916,6 +14058,8 @@ function UsersPage({ currentUser }) {
     <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Usuários e Acesso</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
+
+      {isMaster && <PerfisAcesso sb={sbFetch} currentUser={currentUser} usuarios={profiles} onMudou={recarregarProfiles} />}
 
       {isMaster && <CategoriasProfissionais profiles={profiles} onSalvo={recarregarProfiles} currentUser={currentUser} />}
 
@@ -14199,9 +14343,11 @@ export default function App() {
           conselho: p.conselho || null,
           registro_conselho: p.registro_conselho || null,
           uf_conselho: p.uf_conselho || null,
+          perfil: p.perfil || null,
+          setor: p.setor || null,
         };
         // nada mudou: devolve o mesmo objeto para não re-renderizar à toa
-        const igual = ["role", "categoria", "conselho", "registro_conselho", "uf_conselho"]
+        const igual = ["role", "categoria", "conselho", "registro_conselho", "uf_conselho", "perfil", "setor"]
           .every(k => atual[k] === novo[k]);
         if (igual) return atual;
         try {
@@ -14213,6 +14359,49 @@ export default function App() {
     }).catch(() => {});
     return () => { vivo = false; };
   }, [currentUser?.id]);
+
+  // ── PERMISSÕES DE MÓDULO ──────────────────────────────────
+  // Carrega o perfil da pessoa e as exceções dela. Enquanto não carregar,
+  // `permsCarregadas` fica false e o menu mostra tudo — é a escolha certa
+  // aqui: perder acesso por meio segundo no meio de um plantão é pior do que
+  // ver por meio segundo um módulo que não é seu. A barreira real é o RLS
+  // (fase 3), não o menu.
+  const [perms, setPerms] = useState(null);
+  useEffect(() => {
+    if (!USE_SUPABASE || !currentUser?.id) return;
+    let vivo = true;
+    (async () => {
+      const chave = currentUser.perfil;
+      const [gs, exc] = await Promise.all([
+        chave ? sbFetch(`perfis_permissoes?perfil_chave=eq.${encodeURIComponent(chave)}&select=modulo,nivel`).catch(() => null) : null,
+        sbFetch(`usuarios_permissoes?user_id=eq.${currentUser.id}&select=modulo,nivel`).catch(() => null),
+      ]);
+      if (!vivo) return;
+      // Sem tabela de perfis no banco (migração ainda não aplicada), `gs` é
+      // null e não `[]` — e as duas coisas significam o oposto uma da outra:
+      // null = "não sei", [] = "sei que não tem nada". Tratar null como
+      // vazio esconderia o sistema inteiro de todo mundo.
+      if (gs == null && exc == null) { setPerms(null); return; }
+      const grants = {};
+      for (const g of (gs || [])) grants[g.modulo] = g.nivel;
+      setPerms(permissoesEfetivas(currentUser, { grants }, exc || []));
+    })();
+    return () => { vivo = false; };
+  }, [currentUser?.id, currentUser?.perfil, currentUser?.role]);
+
+  // Se a pessoa estava num módulo que o perfil dela não alcança, a tela
+  // ficaria em branco sem explicar nada. Traz de volta para a Visão Geral —
+  // ou, se nem essa ela tiver, para Usuários (adm_master) / a primeira que
+  // sobrar. Tela em branco faz o usuário achar que o sistema quebrou.
+  useEffect(() => {
+    if (!perms || active === "users") return;
+    const especialidade = SPECS.some(s => s.id === active);
+    const alvo = especialidade ? "ambulatorio" : active;
+    if (podeVer(perms, alvo)) return;
+    const primeiro = ["overview", "ps", "leitos", "paciente", "farmacia", "suprimentos", "ambulatorio", "bloco", "scih"]
+      .find(k => podeVer(perms, k));
+    setActive(primeiro || (currentUser?.role === "adm_master" ? "users" : "overview"));
+  }, [perms, active, currentUser?.role]);
 
   // Busca os dados no Supabase (fonte compartilhada entre os computadores) e
   // FUNDE com o que já existe localmente — sem apagar nada. O Supabase tem
@@ -14291,22 +14480,30 @@ export default function App() {
 
   const now = new Date();
   const role = ROLES[currentUser.role];
+
+  // O menu passa a respeitar o perfil de acesso. `perms === null` significa
+  // que o banco ainda não tem os perfis (migração não aplicada) ou que a
+  // consulta ainda não voltou — nos dois casos mostramos tudo, como antes.
+  // Falhar ABERTO aqui é deliberado: o menu não é a barreira de segurança, e
+  // esconder módulo por engano trava o trabalho de alguém no plantão.
+  const verModulo = (chave, padrao = true) => (perms ? podeVer(perms, chave) : padrao);
+
   const sidebarItems = [
-    { id: "overview",  icon: "dashboard", label: "Visão Geral" },
+    ...(verModulo("overview")    ? [{ id: "overview",  icon: "dashboard", label: "Visão Geral" }] : []),
     { id: "d1" },
-    { id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
+    ...(verModulo("ambulatorio") ? [{ id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) }] : []),
     { id: "d2" },
-    { id: "ps",       icon: "activity", label: "Pronto-Socorro" },
-    { id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" },
-    { id: "leitos",   icon: "bed", label: "Giro de Leitos" },
-    { id: "scih",     icon: "shield", label: "SCIH" },
-    { id: "farmacia", icon: "pill", label: "Farmácia" },
-    { id: "suprimentos", icon: "cart", label: "Estoque & Compras" },
-    { id: "paciente", icon: "record", label: "Paciente 360" },
-    ...(canPrint    ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
-    ...(canAudit    ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
-    ...(canImport   ? [{ id: "import",    icon: "upload",    label: "Importar Dados" }]      : []),
-    ...(canSupabase ? [{ id: "supabase",  icon: "cloud",     label: "Banco de Dados" }]      : []),
+    ...(verModulo("ps")          ? [{ id: "ps",       icon: "activity", label: "Pronto-Socorro" }]    : []),
+    ...(verModulo("bloco")       ? [{ id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" }]   : []),
+    ...(verModulo("leitos")      ? [{ id: "leitos",   icon: "bed", label: "Giro de Leitos" }]         : []),
+    ...(verModulo("scih")        ? [{ id: "scih",     icon: "shield", label: "SCIH" }]                : []),
+    ...(verModulo("farmacia")    ? [{ id: "farmacia", icon: "pill", label: "Farmácia" }]              : []),
+    ...(verModulo("suprimentos") ? [{ id: "suprimentos", icon: "cart", label: "Estoque & Compras" }]  : []),
+    ...(verModulo("paciente")    ? [{ id: "paciente", icon: "record", label: "Paciente 360" }]        : []),
+    ...(canPrint    && verModulo("print")     ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
+    ...(canAudit    && verModulo("auditoria") ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
+    ...(canImport   && verModulo("import")    ? [{ id: "import",    icon: "upload",    label: "Importar Dados" }]      : []),
+    ...(canSupabase && verModulo("supabase")  ? [{ id: "supabase",  icon: "cloud",     label: "Banco de Dados" }]      : []),
     ...(canUsers    ? [{ id: "users",     icon: "users",     label: "Usuários" }]            : []),
   ];
   const currentSpec = SPECS.find(s => s.id === active);
