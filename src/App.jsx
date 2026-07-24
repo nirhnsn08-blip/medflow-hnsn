@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Legend, ComposedChart, Area
@@ -22,6 +22,17 @@ import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
+// Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
+// São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
+// diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
+// porque é onde o projeto já teve o bug de fuso mais caro.
+import {
+  todayStr, nowISO, diffMin, fmtDur, horaFmt, isoToLocal, localToIso,
+  fmtDataBR, compDe, compLabel, horaMin,
+} from "./util/datas.js";
+import { fmt, fmtBRL, fmtReais, taxa } from "./util/formato.js";
+// Previsão de alta e sinaleira de permanência do Giro de Leitos (puras).
+import { sugerirCid, calcAlta, sinalLeito, diasDesde } from "./clinico/leitos.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -217,12 +228,6 @@ const K = "hnsn_v5";
 // ═══════════════════════════════════════════════════════════
 const loadDB  = () => { try { return JSON.parse(localStorage.getItem(K) || "{}"); } catch { return {}; } };
 const saveDB  = d  => localStorage.setItem(K, JSON.stringify(d));
-// Data civil LOCAL no formato YYYY-MM-DD. NÃO usar toISOString() aqui: ele devolve
-// a data em UTC e, no Brasil (UTC-3), após ~21h já aponta para o dia seguinte —
-// isso fazia o app gravar/filtrar dados no dia errado.
-const todayStr = (d = new Date()) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
 // Lê TODOS os atendimentos do Supabase e reconstrói o formato db[data][especialidade].
 // É o que faz os números aparecerem em qualquer computador (não só onde foram digitados).
 async function loadFromSupabase() {
@@ -404,103 +409,6 @@ async function changeMyPassword(newPassword) {
   } catch { return { ok: false, error: "Sem conexão." }; }
 }
 
-// Painel de classificação clínica da equipe.
-//
-// Existe porque o sistema passou a ter DOIS eixos de permissão: o papel de
-// acesso (o que mexe no sistema) e a categoria profissional (o que pode
-// fazer clinicamente). Sem esta tela, a categoria só se define no painel
-// do Supabase — e a equipe inteira fica travada como administrativa, sem
-// conseguir registrar nada e sem entender o motivo.
-function CategoriasProfissionais({ profiles, onSalvo, currentUser }) {
-  const [edit, setEdit] = useState(null);      // username em edição
-  const [f, setF] = useState({});
-  const [salvando, setSalvando] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  function abrir(p) {
-    setEdit(p.username);
-    setF({ categoria: p.categoria || "administrativo", conselho: p.conselho || "",
-           registro_conselho: p.registro_conselho || "", uf_conselho: p.uf_conselho || "" });
-    setMsg("");
-  }
-  async function salvar(p) {
-    setSalvando(true);
-    const r = await salvarCategoriaProfissional(p.username, f);
-    setSalvando(false);
-    // O PostgREST devolve 204 mesmo quando o RLS bloqueia e zero linhas
-    // mudam. Por isso conferimos o RETORNO, não o status: sem linha de
-    // volta, nada foi alterado.
-    if (!r || (Array.isArray(r) && !r.length)) {
-      setMsg("⚠️ Nada foi alterado. Confirme que a migração de perfis foi aplicada neste banco.");
-      return;
-    }
-    addAuditLog(currentUser, "classificar profissional", p.username, { categoria: f.categoria });
-    setEdit(null); setMsg("");
-    onSalvo?.();
-  }
-
-  const cel = { padding: "7px 10px", fontSize: 12.5, borderBottom: "1px solid var(--border)" };
-  const mini = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 5, padding: "5px 7px", color: "var(--text)", fontSize: 12, width: "100%", boxSizing: "border-box" };
-
-  return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem" }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 3 }}>Categoria profissional da equipe</div>
-      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.55 }}>
-        Define o que cada pessoa pode registrar clinicamente — separado do perfil de acesso ao sistema.
-        Diagnóstico e prescrição de enfermagem são privativos do enfermeiro (COFEN 736/2024).
-        Quem fica como <strong>administrativo</strong> não registra ato clínico, mesmo sendo adm_master.
-      </div>
-      {msg && <div style={{ fontSize: 12, color: "#d97706", marginBottom: 10 }}>{msg}</div>}
-
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
-          <thead><tr style={{ textAlign: "left", color: "var(--text-muted)", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".05em" }}>
-            <th style={cel}>Usuário</th><th style={cel}>Acesso</th><th style={cel}>Categoria</th><th style={cel}>Conselho</th><th style={cel}></th>
-          </tr></thead>
-          <tbody>
-            {profiles.map(p => edit === p.username ? (
-              <tr key={p.username}>
-                <td style={cel}><strong>{p.nome || p.username}</strong></td>
-                <td style={cel}>{p.role}</td>
-                <td style={cel}>
-                  <select value={f.categoria} onChange={e => setF(x => ({ ...x, categoria: e.target.value, conselho: CATEGORIAS_CLINICAS[e.target.value]?.conselho || "" }))} style={mini}>
-                    {Object.entries(CATEGORIAS_CLINICAS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                  </select>
-                </td>
-                <td style={cel}>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    <input value={f.conselho} onChange={e => setF(x => ({ ...x, conselho: e.target.value }))} placeholder="CRM" style={{ ...mini, width: 62 }} />
-                    <input value={f.registro_conselho} onChange={e => setF(x => ({ ...x, registro_conselho: e.target.value }))} placeholder="nº" style={mini} />
-                    <input value={f.uf_conselho} onChange={e => setF(x => ({ ...x, uf_conselho: e.target.value }))} placeholder="UF" style={{ ...mini, width: 48 }} />
-                  </div>
-                </td>
-                <td style={{ ...cel, whiteSpace: "nowrap" }}>
-                  <button onClick={() => salvar(p)} disabled={salvando} style={{ background: "#2dd4bf22", color: "#2dd4bf", border: "1px solid #2dd4bf66", borderRadius: 5, padding: "4px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{salvando ? "…" : "Salvar"}</button>
-                  <button onClick={() => setEdit(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 11.5, marginLeft: 6 }}>Cancelar</button>
-                </td>
-              </tr>
-            ) : (
-              <tr key={p.username}>
-                <td style={cel}><strong>{p.nome || p.username}</strong> <span style={{ color: "var(--text-muted)" }}>· {p.username}</span></td>
-                <td style={{ ...cel, color: "var(--text-3)" }}>{p.role}</td>
-                <td style={cel}>
-                  <span style={{ fontWeight: 700, color: (p.categoria && p.categoria !== "administrativo") ? "#2dd4bf" : "#d97706" }}>
-                    {CATEGORIAS_CLINICAS[p.categoria]?.label || "Administrativo"}
-                  </span>
-                </td>
-                <td style={{ ...cel, fontFamily: "JetBrains Mono, monospace", fontSize: 11.5, color: "var(--text-3)" }}>
-                  {p.registro_conselho ? `${p.conselho || ""} ${p.registro_conselho}${p.uf_conselho ? "/" + p.uf_conselho : ""}` : "—"}
-                </td>
-                <td style={cel}><button onClick={() => abrir(p)} style={{ background: "none", border: "1px solid var(--border)", borderRadius: 5, padding: "4px 10px", fontSize: 11.5, color: "var(--text-2)", cursor: "pointer" }}>Classificar</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // Lista os perfis/usuários para a tela de Usuários.
 // `select=*` traz também categoria e registro de conselho — sem eles a tela
 // não consegue mostrar nem classificar quem é o quê clinicamente.
@@ -590,8 +498,6 @@ function calcAlertas(db) {
 // ═══════════════════════════════════════════════════════════
 // HELPERS VISUAIS
 // ═══════════════════════════════════════════════════════════
-const fmt = n => (n ?? 0).toLocaleString("pt-BR");
-
 function RingGauge({ value, max, color, label, sub, size = 120 }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   const r = 44, cx = 60, cy = 60, circ = 2 * Math.PI * r;
@@ -1720,35 +1626,6 @@ async function deleteCidRefRemote(cid) {
   await sbFetch(`cid_referencia?cid=eq.${encodeURIComponent(cid)}`, { method: "DELETE" });
 }
 // Acha a referência para um CID digitado: código exato → prefixo → descrição
-function sugerirCid(cidDigitado, refs) {
-  if (!cidDigitado || !refs || !refs.length) return null;
-  const c = cidDigitado.trim().toUpperCase();
-  if (c.length < 2) return null;
-  let m = refs.find(r => (r.cid || "").toUpperCase() === c);
-  if (!m) m = refs.find(r => { const rc = (r.cid || "").toUpperCase(); return rc && (c.startsWith(rc) || rc.startsWith(c)); });
-  if (!m && c.length >= 3) m = refs.find(r => (r.descricao || "").toUpperCase().includes(c));
-  return m || null;
-}
-
-// Previsão de alta = data de internação + dias previstos
-function calcAlta(dataInternacao, diasPrevistos) {
-  if (!dataInternacao || !diasPrevistos) return null;
-  const d = new Date(dataInternacao + "T00:00:00");
-  d.setDate(d.getDate() + Number(diasPrevistos));
-  return d;
-}
-// Sinaleira: verde (2+ dias), amarelo (falta ≤1 dia / alta hoje), vermelho (passou)
-function sinalLeito(dataInternacao, diasPrevistos) {
-  const alta = calcAlta(dataInternacao, diasPrevistos);
-  if (!alta) return { cor: "var(--text-muted)", texto: "sem previsão", restam: null };
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const restam = Math.round((alta - hoje) / 86400000);
-  const dataFmt = alta.toLocaleDateString("pt-BR");
-  if (restam < 0)  return { cor: "#f43f5e", texto: `${Math.abs(restam)}d após a alta (${dataFmt})`, restam };
-  if (restam <= 1) return { cor: "#fbbf24", texto: restam === 0 ? `alta prevista hoje (${dataFmt})` : `falta 1 dia (${dataFmt})`, restam };
-  return { cor: "#34d399", texto: `faltam ${restam} dias (${dataFmt})`, restam };
-}
-
 // ── Fase 2: histórico de turnover + utilidades de tempo ──
 async function registrarTurnoverRemote(turn, user) {
   if (!USE_SUPABASE) return;
@@ -1762,26 +1639,6 @@ async function loadTurnover() {
   const rows = await sbFetch("leitos_turnover?select=*");
   return Array.isArray(rows) ? rows : [];
 }
-const nowISO = () => new Date().toISOString();
-// minutos entre dois instantes ISO (b - a)
-function diffMin(a, b) {
-  if (!a || !b) return null;
-  const d = Math.round((new Date(b) - new Date(a)) / 60000);
-  return isNaN(d) ? null : d;
-}
-// formata duração em minutos -> "2h 30min" / "45min"
-function fmtDur(min) {
-  if (min == null || isNaN(min)) return "—";
-  if (min < 0) min = 0;
-  const t = Math.round(min), h = Math.floor(t / 60), m = t % 60;
-  return h > 0 ? `${h}h ${m}min` : `${m}min`;
-}
-// data/hora curta a partir de ISO
-const horaFmt = iso => iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
-// ISO -> valor de <input type=datetime-local> (local) e vice-versa
-const isoToLocal = iso => { if (!iso) return ""; const d = new Date(iso); const off = d.getTimezoneOffset(); return new Date(d - off * 60000).toISOString().slice(0, 16); };
-const localToIso = v => v ? new Date(v).toISOString() : null;
-
 const STATUS_LEITO = {
   livre:        { label: "Livre",             cor: "#34d399", bg: "#0a3d2a" },
   ocupado:      { label: "Ocupado",           cor: "#22d3ee", bg: "#0e2f3d" },
@@ -2129,11 +1986,6 @@ async function updateFarmIntervencaoRemote(id, campos) {
   await sbFetch(`farm_intervencoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
 async function deleteFarmIntervencaoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_intervencoes?id=eq.${id}`, { method: "DELETE" }); }
-// Formata uma data ISO (YYYY-MM-DD) para dd/mm/aaaa, sem escorregar de fuso
-function fmtDataBR(iso) {
-  if (!iso) return "—";
-  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
-}
 // Situação de validade de um lote em relação a hoje
 function farmValidadeInfo(validade) {
   if (!validade) return { status: "sem", dias: null };
@@ -2486,7 +2338,6 @@ function supPedidoTotal(ped) {
   const its = Array.isArray(ped.itens) ? ped.itens : [];
   return its.reduce((s, x) => s + Number(x.qtd || 0) * Number(x.custo_unit || 0), 0);
 }
-const fmtBRL = v => Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 // ═══════════════════════════════════════════════════════════
 // PRONTO-SOCORRO — triagem Manchester + jornada do paciente
@@ -3098,12 +2949,6 @@ async function upsertScihIndicadorRemote(ind, user) {
     body: JSON.stringify({ ...ind, usuario: user?.name || null, updated_at: nowISO() }),
   });
 }
-const compDe = (ano, mes) => `${ano}-${String(mes + 1).padStart(2, "0")}`;  // mes 0-11
-// taxa = num/den * fator (null se denominador ausente/zero)
-function taxa(num, den, fator = 100) {
-  if (num == null || den == null || den === 0) return null;
-  return (Number(num) / Number(den)) * fator;
-}
 // Calcula todos os indicadores derivados de uma linha
 function calcIndic(r) {
   r = r || {};
@@ -3116,14 +2961,6 @@ function calcIndic(r) {
     iscOftalmo: taxa(r.isc_oftalmo, r.cir_oftalmo, 100),
     iscArtroplastia: taxa(r.isc_artroplastia, r.cir_artroplastia, 100),
   };
-}
-
-// dias entre uma data (yyyy-mm-dd) e hoje
-function diasDesde(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr + "T00:00:00");
-  if (isNaN(d)) return null;
-  return Math.max(0, Math.round((new Date(todayStr() + "T00:00:00") - d) / 86400000));
 }
 
 // Modal de internação / edição de paciente no leito
@@ -3827,8 +3664,6 @@ async function updateCcCirurgiaRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`cc_cirurgias?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
-// minutos desde meia-noite a partir de "HH:MM" (p/ detectar conflito de sala)
-const horaMin = h => { if (!h) return null; const [hh, mm] = h.split(":").map(Number); return hh * 60 + (mm || 0); };
 // Cirurgias da mesma sala cujo intervalo previsto se sobrepõe ao informado
 function conflitosDeSala(cirurgias, sala, hora, duracaoMin, ignorarId) {
   if (!sala || !hora) return [];
@@ -6672,7 +6507,6 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
 // ═══════════════════════════════════════════════════════════
 // farmFmtQtd vem de ./clinico/alertas.js (o motor de alertas usa a mesma
 // formatação nas mensagens de dose — uma implementação só, sem divergir).
-const fmtReais = v => "R$ " + Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const custoUnit = med => Number(med?.custo_unitario || 0);
 const farmInp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
 const farmLbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
@@ -9192,7 +9026,6 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
 }
 
 // ── SCIH Fase C: indicadores mensais + dashboard + relatório ──
-const compLabel = comp => { if (!comp) return ""; const [a, m] = comp.split("-"); return `${MONTHS[Number(m) - 1] || m}/${a.slice(2)}`; };
 function IndicadoresScih({ currentUser, canEdit }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
@@ -13771,6 +13604,29 @@ function AdminUsuarios({ currentUser }) {
   const [nRegistro, setNRegistro] = useState("");
   const [nUf, setNUf] = useState("RS");
   const [perfisDisp, setPerfisDisp] = useState([]);
+  // Classificação clínica (categoria + conselho) de uma linha. Era uma tabela
+  // à parte; virou linha expansível aqui, porque as duas listavam a mesma
+  // gente e o cargo já sugere a categoria — ver duas tabelas iguais confundia.
+  const [classificando, setClassificando] = useState(null);   // id em edição
+  const [catForm, setCatForm] = useState({});
+
+  function abrirClassificar(u) {
+    setClassificando(u.id);
+    setCatForm({
+      categoria: u.categoria || "administrativo", conselho: u.conselho || "",
+      registro_conselho: u.registro_conselho || "", uf_conselho: u.uf_conselho || "RS",
+    });
+  }
+  async function salvarCategoria(u) {
+    setBusy(true);
+    const r = await salvarCategoriaProfissional(u.username, catForm);
+    setBusy(false);
+    // PostgREST devolve 204 mesmo quando o RLS bloqueia e nada muda; por isso
+    // conferimos o RETORNO, não o status.
+    if (!r || (Array.isArray(r) && !r.length)) { alert("⚠️ Nada foi alterado. A migração de perfis foi aplicada neste banco?"); return; }
+    addAuditLog(currentUser, "classificar profissional", u.username, { categoria: catForm.categoria });
+    setClassificando(null); recarregar();
+  }
 
   useEffect(() => {
     sbFetch("perfis_acesso?select=*&ativo=eq.true&order=nome")
@@ -13797,7 +13653,7 @@ function AdminUsuarios({ currentUser }) {
     // quadro inteiro, então juntamos aqui.
     const [r, profs] = await Promise.all([
       adminUsuarios("list"),
-      sbFetch("profiles?select=id,perfil,categoria,registro_conselho,setor").catch(() => []),
+      sbFetch("profiles?select=id,perfil,categoria,conselho,registro_conselho,uf_conselho,setor").catch(() => []),
     ]);
     if (r.error) { setErro(r.error); setRows([]); return; }
     const porId = Object.fromEntries((Array.isArray(profs) ? profs : []).map(p => [p.id, p]));
@@ -13970,13 +13826,16 @@ function AdminUsuarios({ currentUser }) {
         ) : (
           <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead><tr>{["Nome", "Usuário", "Cargo (o que enxerga)", "Sistema", "Situação", "Ações"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <thead><tr>{["Nome", "Usuário", "Cargo (o que enxerga)", "Categoria (o que registra)", "Sistema", "Situação", "Ações"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
             <tbody>
               {rows.map(u => {
                 const isMe = u.id === currentUser.id;
                 const rc = ROLES[u.role] || ROLES.visualizador;
+                const cat = CATEGORIAS_CLINICAS[u.categoria];
+                const ehAssistencial = u.categoria && u.categoria !== "administrativo";
                 return (
-                  <tr key={u.id} style={{ background: isMe ? "var(--bg-2)" : "transparent", opacity: u.ativo ? 1 : 0.55 }}>
+                  <Fragment key={u.id}>
+                  <tr style={{ background: isMe ? "var(--bg-2)" : "transparent", opacity: u.ativo ? 1 : 0.55 }}>
                     <td style={{ ...td, color: "var(--text)", fontWeight: 600 }}>{u.nome} {isMe && <span style={{ fontSize: 10, background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "1px 6px", marginLeft: 6 }}>você</span>}</td>
                     <td style={{ ...td, fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)" }}>{u.username}</td>
                     <td style={td}>
@@ -13988,8 +13847,18 @@ function AdminUsuarios({ currentUser }) {
                         <option value="">— sem cargo —</option>
                         {perfisDisp.map(p => <option key={p.chave} value={p.chave}>{p.nome}</option>)}
                       </select>
-                      {u.categoria && u.categoria !== "administrativo" && !u.registro_conselho && (
-                        <div style={{ fontSize: 10, color: "#d97706", marginTop: 3 }}>sem registro de conselho</div>
+                    </td>
+                    {/* Categoria clínica: o que a pessoa pode fazer no prontuário
+                        (COFEN/CFM), distinto do que ela ENXERGA (cargo). Fica
+                        junto porque é a mesma pessoa — antes era outra tabela. */}
+                    <td style={td}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: ehAssistencial ? "#2dd4bf" : "var(--text-3)" }}>
+                        {cat?.label || "Administrativo"}
+                      </span>
+                      {ehAssistencial && (
+                        u.registro_conselho
+                          ? <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{u.conselho || cat?.conselho} {u.registro_conselho}{u.uf_conselho ? "/" + u.uf_conselho : ""}</div>
+                          : <div style={{ fontSize: 10, color: "#d97706", marginTop: 2 }}>sem registro de conselho</div>
                       )}
                     </td>
                     <td style={td}>
@@ -14006,6 +13875,7 @@ function AdminUsuarios({ currentUser }) {
                     </td>
                     <td style={td}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button onClick={() => classificando === u.id ? setClassificando(null) : abrirClassificar(u)} disabled={busy} style={miniBtn("#2dd4bf")}>Categoria</button>
                         <button onClick={() => redefinirSenha(u)} disabled={busy} style={miniBtn("#22d3ee")}>Redefinir senha</button>
                         {!isMe && (u.ativo
                           ? <button onClick={() => alternarAtivo(u)} disabled={busy} style={miniBtn("#fb7185")}>Desativar</button>
@@ -14013,6 +13883,41 @@ function AdminUsuarios({ currentUser }) {
                       </div>
                     </td>
                   </tr>
+                  {classificando === u.id && (
+                    <tr style={{ background: "var(--bg-2)" }}>
+                      <td colSpan={7} style={{ ...td, borderBottom: "2px solid var(--border)" }}>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.5 }}>
+                          <strong>Categoria profissional de {u.nome}</strong> — o que ela pode registrar clinicamente.
+                          Diagnóstico e prescrição de enfermagem são privativos do enfermeiro (COFEN 736/2024);
+                          quem fica <strong>administrativo</strong> não registra ato clínico, mesmo sendo ADM Master.
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Categoria</label>
+                            <select value={catForm.categoria} onChange={e => setCatForm(x => ({ ...x, categoria: e.target.value, conselho: CATEGORIAS_CLINICAS[e.target.value]?.conselho || "" }))}
+                              style={{ ...inp, minWidth: 180 }}>
+                              {Object.entries(CATEGORIAS_CLINICAS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Conselho</label>
+                            <input value={catForm.conselho} onChange={e => setCatForm(x => ({ ...x, conselho: e.target.value }))} placeholder="CRM" style={{ ...inp, width: 70 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Nº de inscrição</label>
+                            <input value={catForm.registro_conselho} onChange={e => setCatForm(x => ({ ...x, registro_conselho: e.target.value }))} placeholder="000000" style={{ ...inp, width: 110 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>UF</label>
+                            <input value={catForm.uf_conselho} onChange={e => setCatForm(x => ({ ...x, uf_conselho: e.target.value }))} placeholder="RS" style={{ ...inp, width: 54 }} />
+                          </div>
+                          <button onClick={() => salvarCategoria(u)} disabled={busy} style={{ background: "#2dd4bf22", color: "#2dd4bf", border: "1px solid #2dd4bf66", borderRadius: 6, padding: "8px 16px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{busy ? "…" : "Salvar categoria"}</button>
+                          <button onClick={() => setClassificando(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 12.5 }}>Cancelar</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -14060,8 +13965,6 @@ function UsersPage({ currentUser }) {
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Login protegido pelo Supabase Auth</div>
 
       {isMaster && <PerfisAcesso sb={sbFetch} currentUser={currentUser} usuarios={profiles} onMudou={recarregarProfiles} />}
-
-      {isMaster && <CategoriasProfissionais profiles={profiles} onSalvo={recarregarProfiles} currentUser={currentUser} />}
 
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem", maxWidth: 460 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 14 }}>Trocar minha senha</div>
