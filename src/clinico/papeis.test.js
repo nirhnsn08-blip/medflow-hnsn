@@ -98,6 +98,28 @@ describe("seletor de evolução da tela", () => {
   });
 });
 
+describe("reconciliação medicamentosa e alta", () => {
+  it("médico, enfermeiro e farmacêutico reconciliam", () => {
+    for (const c of ["medico", "enfermeiro", "farmaceutico"])
+      expect(podeClinico(perfil(c), "reconciliacao_medicamentosa"), c).toBe(true);
+  });
+
+  it("técnico de enfermagem NÃO reconcilia — ali se decide suspender medicamento", () => {
+    expect(podeClinico(perfil("tecnico_enfermagem"), "reconciliacao_medicamentosa")).toBe(false);
+  });
+
+  it("alta hospitalar é do médico", () => {
+    expect(podeClinico(perfil("medico"), "alta_hospitalar")).toBe(true);
+    expect(podeClinico(perfil("enfermeiro"), "alta_hospitalar")).toBe(false);
+  });
+
+  it("adm_master administrativo não dá alta nem reconcilia", () => {
+    const admin = { categoria: "administrativo", role: "adm_master", nome: "Fulano" };
+    expect(podeClinico(admin, "alta_hospitalar")).toBe(false);
+    expect(podeClinico(admin, "reconciliacao_medicamentosa")).toBe(false);
+  });
+});
+
 describe("assinatura com registro de conselho", () => {
   it("monta a assinatura completa quando há registro", () => {
     const a = assinaturaDe(perfil("enfermeiro", { conselho: "COREN", registro_conselho: "123456" }));

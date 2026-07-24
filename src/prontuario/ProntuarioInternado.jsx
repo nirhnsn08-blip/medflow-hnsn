@@ -24,8 +24,11 @@ import {
   carregarProntuario, registrarSinais, registrarAnotacao,
   eventoDoItem, registrarAdministracao, registrarAcesso,
 } from "./dados.js";
+import { resumoReconciliacao, analisarReconciliacao, vigentesDeUso, situacaoUsoDomiciliar, chaveMedicamento } from "../clinico/reconciliacao.js";
 import NovaPrescricao from "./NovaPrescricao.jsx";
 import Anamnese from "./Anamnese.jsx";
+import Reconciliacao from "./Reconciliacao.jsx";
+import AltaHospitalar from "./AltaHospitalar.jsx";
 
 const cor = { borda: "var(--border)", sup: "var(--surface)", sup2: "var(--surface-2)", txt3: "var(--text-3)", mut: "var(--text-muted)" };
 const cartao = { background: cor.sup, border: `1px solid ${cor.borda}`, borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -36,7 +39,7 @@ const btn = (c) => ({ background: "transparent", color: c, border: `1px solid ${
 const hora = d => new Date(d).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 const dataHora = d => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-export default function ProntuarioInternado({ sb, prontuario, currentUser, canEdit, medById = {}, interacoes = [], incompatY = [] }) {
+export default function ProntuarioInternado({ sb, prontuario, currentUser, canEdit, medById = {}, interacoes = [], incompatY = [], hospital = null }) {
   const [d, setD] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [aba, setAba] = useState("visao");
@@ -95,12 +98,24 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
   const itensParaAlerta = itens.map(i => ({ ...i, medicamento_nome: i.medicamento_nome || i.descricao }));
   const alertas = itens.length ? analisarPrescricaoClinica(itensParaAlerta, ctx, medById, interacoes, incompatY) : [];
 
+  // Reconciliação de ADMISSÃO: o placar aparece na aba para que a pendência
+  // seja visível sem entrar nela. Discrepância que só existe dentro da tela
+  // certa é discrepância que ninguém vê.
+  const recAdmissao = resumoReconciliacao(analisarReconciliacao({
+    domiciliares: vigentesDeUso(d.medicamentosUso),
+    hospitalares: itens,
+    decisoes: decisoesAssinadas(d, "admissao"),
+    momento: "admissao",
+  }), { usoDomiciliarLevantado: situacaoUsoDomiciliar(d.medicamentosUso).estado !== "sem_registro" });
+
   const abas = [
     ["visao", "Visão geral"],
     ["admissao", `Admissão (${d.anamneses?.length || 0})`],
     ["prescricao", `Prescrição (${itens.length})`],
+    ["reconciliacao", `Reconciliação${recAdmissao.pendentes ? ` (${recAdmissao.pendentes}!)` : ""}`],
     ["sinais", `Sinais vitais (${serie.length})`],
     ["timeline", "Linha do tempo"],
+    ["alta", "Alta"],
   ];
 
   return (
@@ -160,10 +175,45 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
               canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar}
               onNova={() => setPrescrevendo(true)} />
       )}
+      {aba === "reconciliacao" && (
+        <Reconciliacao sb={sb} episodio={ep} currentUser={currentUser} momento="admissao"
+          medicamentosUso={d.medicamentosUso} hospitalares={itens}
+          reconciliacoes={d.reconciliacoes} reconciliacaoItens={d.reconciliacaoItens}
+          onPronto={recarregar} />
+      )}
       {aba === "sinais"     && <Sinais serie={serie} ep={ep} canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar} />}
       {aba === "timeline"   && <Timeline d={d} />}
+      {aba === "alta"       && (
+        <>
+          {/* A reconciliação de ALTA vive aqui, e não na aba anterior: ela é
+              parte do ato de dar alta, e separá-la faria o médico assinar o
+              sumário sem ter passado por ela. */}
+          <Reconciliacao sb={sb} episodio={ep} currentUser={currentUser} momento="alta"
+            medicamentosUso={d.medicamentosUso} hospitalares={itens}
+            reconciliacoes={d.reconciliacoes} reconciliacaoItens={d.reconciliacaoItens}
+            onPronto={recarregar} />
+          <AltaHospitalar sb={sb} d={d} episodio={ep} currentUser={currentUser}
+            paciente={{ iniciais: ep.iniciais }} hospital={hospital} onPronto={recarregar} />
+        </>
+      )}
     </div>
   );
+}
+
+/** As decisões já assinadas na última reconciliação daquele momento. */
+function decisoesAssinadas(d, momento) {
+  const doMomento = (d.reconciliacoes || []).filter(r => r.momento === momento);
+  const substituidas = new Set(doMomento.map(r => r.substitui_id).filter(Boolean));
+  const vigente = doMomento.filter(r => !substituidas.has(r.id))
+    .sort((a, b) => new Date(b.concluida_em || b.criado_em) - new Date(a.concluida_em || a.criado_em))[0];
+  if (!vigente) return {};
+  const mapa = {};
+  for (const it of (d.reconciliacaoItens || [])) {
+    if (it.reconciliacao_id !== vigente.id || !it.decisao) continue;
+    const c = chaveMedicamento(it);
+    if (c) mapa[c] = { decisao: it.decisao, justificativa: it.justificativa };
+  }
+  return mapa;
 }
 
 // ── ALERGIA ─────────────────────────────────────────────────
@@ -191,15 +241,33 @@ function AvisoAlergia({ alergia }) {
 }
 
 // ── VISÃO GERAL ─────────────────────────────────────────────
+// Categorias de `pep_anotacoes_enfermagem`. Categorizar não é burocracia:
+// é o que permite achar depois "todas as quedas do mês" sem ler texto livre.
+const CAT_ANOTACAO = [
+  ["eliminacoes", "Eliminações"], ["dieta", "Dieta"], ["dor", "Dor"],
+  ["higiene", "Higiene"], ["mobilizacao", "Mobilização"], ["acesso_venoso", "Acesso venoso"],
+  ["curativo", "Curativo"], ["dispositivo", "Dispositivo"], ["queda", "Queda"],
+  ["orientacao", "Orientação"], ["intercorrencia", "Intercorrência"], ["outro", "Outro"],
+];
+
 function Visao({ d, ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
   const [texto, setTexto] = useState("");
+  const [categoria, setCategoria] = useState("outro");
   const [salvando, setSalvando] = useState(false);
+
+  const podeAnotar = podeClinico(user, "anotacao_enfermagem");
 
   async function salvar() {
     if (!texto.trim()) return;
     if (!confirm("A anotação é assinada com data/hora e NÃO pode ser editada nem apagada depois. Confirma?")) return;
     setSalvando(true);
-    await registrarAnotacao(sb, ep, { tipo: "anotacao", texto: texto.trim() }, user);
+    // Queda e intercorrência marcam a flag que destaca o registro no
+    // Paciente 360 — o que precisa saltar aos olhos não pode depender de
+    // alguém lembrar de marcar uma caixa.
+    await registrarAnotacao(sb, ep, {
+      categoria, texto: texto.trim(),
+      intercorrencia: categoria === "intercorrencia" || categoria === "queda",
+    }, user);
     setTexto(""); setSalvando(false); onOk();
   }
 
@@ -249,16 +317,26 @@ function Visao({ d, ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
       {canEdit && (
         <div style={{ ...cartao, position: "sticky", top: 10 }}>
           <div style={rotulo}>Anotação de enfermagem</div>
-          <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5}
-            placeholder="Fato pontual: evacuou, queda, recusa de dieta, intercorrência…"
-            style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} />
-          <button onClick={salvar} disabled={salvando || !texto.trim()}
-            style={{ ...btn("#2dd4bf"), width: "100%", marginTop: 8, opacity: salvando || !texto.trim() ? .5 : 1 }}>
-            {salvando ? "Salvando…" : "Salvar anotação"}
-          </button>
-          <div style={{ fontSize: 10.5, color: cor.mut, marginTop: 7 }}>
-            Assinada como <strong>{user?.name}</strong> com data/hora. Registro imutável — confira antes de salvar.
-          </div>
+          {podeAnotar ? (
+            <>
+              <select value={categoria} onChange={e => setCategoria(e.target.value)} style={{ ...inp, marginBottom: 8 }}>
+                {CAT_ANOTACAO.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+              </select>
+              <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5}
+                placeholder="Fato pontual: evacuou, queda, recusa de dieta, intercorrência…"
+                style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} />
+              <button onClick={salvar} disabled={salvando || !texto.trim()}
+                style={{ ...btn("#2dd4bf"), width: "100%", marginTop: 8, opacity: salvando || !texto.trim() ? .5 : 1 }}>
+                {salvando ? "Salvando…" : "Salvar anotação"}
+              </button>
+              <div style={{ fontSize: 10.5, color: cor.mut, marginTop: 7 }}>
+                Assinada como <strong>{assinaturaDe(user).profissional_nome}</strong> com data/hora.
+                Registro imutável — confira antes de salvar.
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: "#d97706" }}>{motivoDaRecusa(user, "anotacao_enfermagem")}</div>
+          )}
         </div>
       )}
     </div>

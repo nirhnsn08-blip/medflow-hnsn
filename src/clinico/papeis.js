@@ -66,6 +66,12 @@ const QUEM_PODE = {
   // ── Multiprofissional ─────────────────────────────────────
   evolucao_multi:         ["fisioterapeuta", "nutricionista", "farmaceutico", "assistente_social"],
   intervencao_farmaceutica: ["farmaceutico"],
+  // Reconciliação medicamentosa: na literatura de segurança do paciente é
+  // conduzida tipicamente pelo farmacêutico clínico, com validação médica.
+  // Enfermeiro entra porque é quem levanta a lista de uso domiciliar na
+  // admissão. Quem NÃO entra é o técnico: aqui se decide suspender e
+  // manter medicamento, e isso não é anotação.
+  reconciliacao_medicamentosa: ["medico", "enfermeiro", "farmaceutico"],
   registrar_alergia:      ["medico", "enfermeiro", "farmaceutico"],
   admissao_anamnese:      ["medico", "enfermeiro"],
 };

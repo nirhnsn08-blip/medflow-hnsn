@@ -3635,6 +3635,7 @@ function PacientePage({ currentUser, canEdit }) {
             <ProntuarioInternado
               sb={sbFetch} prontuario={prontuario} currentUser={currentUser} canEdit={canEdit}
               medById={medById} interacoes={farmInteracoes} incompatY={farmIncompatY}
+              hospital={{ nome: HOSPITAL_NOME, sigla: HOSPITAL_SIGLA }}
             />
           )}
 
