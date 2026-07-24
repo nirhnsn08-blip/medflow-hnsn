@@ -43,8 +43,9 @@ GitHub valida o build · Edge Function opcional de resumo clínico com Claude.
   | Lógica clínica pura | `src/clinico/*.js` | alertas de farmácia, alergias, prontuário, papéis, **reconciliação**, **alta**. Sem React, sem rede — é onde moram os testes |
   | Acesso ao banco | `src/prontuario/dados.js` | todo INSERT do PEP passa por aqui |
   | Telas do PEP | `src/prontuario/*.jsx` | prontuário do internado, prescrição, anamnese, reconciliação, alta |
+  | Perfis de acesso | `src/acesso/*.js` + `.jsx` | catálogo de módulos, resolução de permissão, matriz de perfis |
 
-- **187 testes automatizados** (`npm test`, Vitest). O CI roda
+- **254 testes automatizados** (`npm test`, Vitest). O CI roda
   `validar-sql.mjs` + testes + build antes de qualquer merge.
 - **`contrato-banco.test.js`** confere cada coluna gravada pelo PEP contra
   `supabase/auditoria-banco.sql`. Existe porque duas telas gravavam em colunas
@@ -52,23 +53,68 @@ GitHub valida o build · Edge Function opcional de resumo clínico com Claude.
   clicava em salvar e nada era gravado.
 - Acesso ao Supabase via `fetch` REST direto (apikey anon + JWT do usuário logado).
 - Fallback para `localStorage` quando offline — mas **o login exige Supabase**.
-- **55 tabelas** (auditoria gerada por `gerar-auditoria.mjs`), **todas com RLS ativo
+- **58 tabelas / 872 colunas** (auditoria gerada por `gerar-auditoria.mjs`), **todas com RLS ativo
   e com política** — nenhuma acessível sem login. Mas o controle por papel
   (`adm_master`, `adm_silver`, `analista`, `visualizador`, via `my_role()`) vale
   **só para a escrita**: as políticas de `SELECT` são `using (true)`, então
   **qualquer usuário autenticado lê qualquer tabela**, inclusive um `visualizador`.
   Ver "Decisões em aberto".
-- **Dois eixos de permissão** (conceito central do PEP): `role` = o que a pessoa
-  mexe no sistema; `categoria` profissional = o que ela pode fazer clinicamente.
-  Poder administrativo **não** concede competência assistencial — um adm_master
+
+### Os três eixos de permissão
+
+Confundi-los é o erro caro deste sistema. São perguntas diferentes:
+
+| Eixo | Responde | Onde vive |
+|---|---|---|
+| `role` | quanto a pessoa mexe no **sistema** | `profiles.role` |
+| `categoria` | o que ela pode fazer **clinicamente** | `profiles.categoria` + `src/clinico/papeis.js` |
+| `perfil` | **quais módulos** ela enxerga | `profiles.perfil` + `perfis_permissoes` |
+
+- **Poder administrativo não concede competência assistencial.** Um adm_master
   administrativo não assina evolução médica nem dá alta. Diagnóstico e prescrição de
-  enfermagem são privativos do enfermeiro (COFEN 736/2024). Ver `src/clinico/papeis.js`.
+  enfermagem são privativos do enfermeiro (COFEN 736/2024).
+- **Perfil de acesso também não concede competência clínica** — ele só decide o que
+  aparece no menu. Quem manda no ato assistencial continua sendo `papeis.js`.
 - Registros clínicos **append-only** (evoluções, prescrições, kardex, auditoria, e
   todo o PEP). Correção = novo registro com `corrige_id`/`substitui_id`; o original
   permanece. A imutabilidade foi validada em teste: nem um `adm_master` apaga pela API.
-- **34 arquivos SQL** em `supabase/` (schema base + migrações incrementais). Nunca
+- **36 arquivos SQL** em `supabase/` (schema base + migrações incrementais). Nunca
   editar `auditoria-banco.sql` nem `reconstruir-banco.sql` à mão — são **gerados**
   (`gerar-auditoria.mjs`, `gerar-reconstrucao.mjs`); regenerar após cada migração.
+
+## Perfis de acesso (quem enxerga o quê)
+
+O gestor pede *"acesso para a enfermeira nova"*, a TI escolhe o cargo
+**"Enfermeiro(a)"** em **Usuários**, e a pessoa entra configurada — módulos, papel de
+sistema e categoria clínica. Padrão MV/Tasy: **o perfil é um template, não a
+identidade da pessoa**.
+
+- **15 cargos prontos:** médico · enfermeiro · enfermeiro SCIH · técnico de enfermagem ·
+  fisioterapeuta · nutricionista · assistente social · farmacêutico · auxiliar de
+  farmácia · recepção · faturamento · almoxarifado · gestão · diretor técnico · TI.
+- **Por referência, não por cópia:** corrigir um perfil corrige todos que o usam — a
+  tela avisa quantas pessoas serão afetadas antes de salvar.
+- **Exceção individual** (`usuarios_permissoes`), com motivo e autor, em vez de criar
+  um perfil novo para cada desvio. É o que evita chegar a 40 perfis que ninguém entende.
+- **Recortes normativos já embutidos:** recepção, faturamento, almoxarifado, auxiliar de
+  farmácia e gestão **não alcançam o prontuário** (COFEN 754/2024, art. 6º); o **Livro
+  de Controlados** é módulo à parte, com escrituração no farmacêutico (Portaria 344/98).
+- **Travas que nenhum perfil derruba:** `adm_master` nunca perde a tela de Usuários
+  (anti-trancamento); `visualizador` nunca escreve.
+
+> ### ⚠️ Isto controla o MENU, não o dado — ainda
+> As políticas de `SELECT` continuam abertas a qualquer usuário autenticado. Quem
+> souber usar a API alcança o que o menu esconde. **Não apresentar ao hospital como
+> "acesso segregado".** A barreira real é apertar o RLS por tabela, e ela exige antes:
+> (1) **modo sombra** — observar por ~2 semanas quem acessa o quê, sem bloquear nada, e
+> (2) **quebra-vidro** no ar — botão de acesso de emergência com justificativa e
+> revisão. Sem o quebra-vidro, travar o acesso faz a equipe compartilhar senha, e aí a
+> trilha de auditoria inteira perde valor (COFEN 754/2024, art. 2º, §2º).
+
+**O perfil "Provisório":** a migração colocou nele todo mundo que já existia, para
+ninguém perder acesso da noite para o dia (quem era `adm_master` virou **TI**). Ele
+mantém o alcance antigo. **Reclassifique a equipe cargo por cargo e só então desative
+o Provisório** — enquanto ele existir, o desenho de acesso não está valendo.
 
 ## Como rodar localmente
 
@@ -95,6 +141,11 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
     alta** estruturado, com fechamento do episódio. Migração
     `migracao-pep-fase3.sql` (4 tabelas novas). Requisitos legais levantados em
     [`REQUISITOS-PEP.md`](REQUISITOS-PEP.md).
+- **Perfis de acesso por cargo** (PR #16) — ver a seção acima. Migração
+  `migracao-perfis-acesso.sql` (3 tabelas + 5 colunas em `profiles`), aplicada nos
+  dois bancos.
+- **Os dois bancos estão idênticos** (conferido em 2026-07-23 via REST: mesmas tabelas,
+  mesmas colunas). O de teste é usado por `npm run dev:demo`.
 - Documentação: [`GUIA-GIT.md`](GUIA-GIT.md) (trabalho em equipe),
   [`RELATORIO-TESTE.md`](RELATORIO-TESTE.md) + `.pdf` (bugs encontrados no teste de
   carga anterior).

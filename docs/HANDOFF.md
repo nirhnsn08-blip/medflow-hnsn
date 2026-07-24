@@ -1,102 +1,128 @@
-# 🤝 Handoff — Valentrax (progresso até checkpoint-v28)
+# 🤝 Handoff — como retomar o trabalho
 
-Documento de passagem para retomar o trabalho num **novo chat**. Resumo de onde
-estamos, como continuar e o que falta. Detalhes completos em
-[CHECKPOINT.md](../CHECKPOINT.md).
+Documento curto de passagem, para quem volta ao projeto (pessoa ou IA) depois de
+um tempo, ou começa num chat novo.
 
-## Onde estamos
-- **Marca:** Valentrax Healthcare Operations (repo/URLs continuam `medflow-*`).
-- **App:** React + Vite, arquivo único `src/App.jsx` (JS/JSX, sem TypeScript).
-- **Back-end:** Supabase (Auth + Postgres + REST). Deploy Vercel a partir do `git push` em `main`.
-- **Ponto seguro atual:** **`checkpoint-v28`** — publicado e funcionando em `medflow-hnsn.vercel.app`.
-- **Banco DEMO congelado** desde 2026-07-16: trabalhar só no **HNSN**.
+> **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
+> reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-## Ciclo de trabalho (importante)
-1. Editar `src/App.jsx` (e `supabase/schema.sql`).
-2. Se a mudança usa **coluna/tabela nova**, entregar o **SQL de migração** → o usuário
-   roda no **Supabase do HNSN** (SQL Editor) → confirma → **só então** `git push`.
-3. `git push origin main` → Vercel publica → verificar ao vivo (o build valida o código;
-   se falhar, o deploy anterior continua no ar).
-4. Ao concluir uma etapa: oferecer atualizar o **checkpoint** (tag git + CHECKPOINT.md).
-- **Testar escrita** de features novas: no HNSN, no uso real (o usuário faz). Nunca dar
-  alta/baixa em leitos reais por seletor de UI.
+**Atualizado em:** 2026-07-23 · `main` em `e5c6789` · zero PRs abertos.
 
-## Módulos prontos
-- **Pronto-Socorro** (triagem Manchester + jornada do paciente + prescrição estruturada).
-  ⚠️ Desfecho "Internação" com leito escolhido agora **reserva** o leito (não ocupa);
-  a chegada é confirmada no Mapa de leitos ("✓ Chegou — internar").
-- **Bloco Cirúrgico** (agenda, checklist OMS, indicadores).
-- **SCIH** (A/B/C), **Paciente 360**, **Centro de Monitoramento**.
-- **👤 Usuários (gestão pelo ADM Master):** na aba **Usuários**, o `adm_master` cria
-  usuário, edita o perfil (papel) inline, redefine a senha de qualquer um e
-  ativa/desativa o acesso (ban reversível). Via **Edge Function `admin-usuarios`**
-  (service_role no servidor, valida o JWT e o papel adm_master; nenhuma chave admin
-  no navegador). **Sem migração de banco.** Deploy: `supabase functions deploy
-  admin-usuarios` — ou dois cliques em `deploy-funcao.bat` (após `npx.cmd --yes
-  supabase login` uma vez). ⚠️ Se o front for ao ar antes do deploy da função, a tela
-  só mostra um aviso — nada quebra.
-- **🛏️ GIRO DE LEITOS — reformulado (v26), sem migração de banco:** barra lateral própria
-  (Dashboard · Mapa de leitos · Fila de internação · Pacientes · Altas · Transferências
-  ext. · Internações · Relatórios & BI · Alertas inteligentes · IA Assistente).
-  Destaques: KPIs com giro vs mês anterior e fator de utilização; mapa com chips por
-  setor na **ordem fixa** (Emergência, AVC, Posto 1–3, Psiquiatria, UTI) e cards
-  corporativos; **6 status** (+ reservado/manutenção/bloqueado externo); transferência
-  externa (desfecho=transferencia, destino no motivo — sem coluna nova); BI com Δ mensal
-  e PDF; alertas locais; assistente local; **previsão de vagas 24/48h**; **média real de
-  permanência por CID** (aprende do histórico); **reserva automática do PS**; **Modo TV**
-  (painel de parede, refresh 60s, Esc sai); **Kanban de alta segura** (checklist de
-  pendências + turno, colunas automáticas); **Metas por setor** (farol no BI);
-  **Motivo da espera na fila** (gargalos). Migração: `migracao-leitos-kanban-metas.sql`.
-- **FARMÁCIA — completa**, com barra lateral própria (cores Valentrax):
-  - **Dashboard** · **Prescrições** (análise clínica + score) · **Solicitações** (fluxo de
-    preparo com bipe/notificação) · **Dispensações** (fila priorizada + filtros NoHarm) ·
-    **Intervenção** farmacêutica · **Estoque** (lote/validade FEFO + **previsão de demanda
-    7 dias**) · **Interações** · **Controlados** (livro Portaria 344) · **Não padronizados**
-    (trazidos pela família) · **Relatórios & BI** (ABC, top 5, prescrição por status, custos,
-    PDF) · **Assistente AI** (local/grátis, por palavras-chave).
-  - **Farmácia Clínica = motor de 9 alertas** (dose máx, interação, incompatibilidade em Y,
-    alergia + reatividade cruzada, duplicidade, tempo de tratamento, ajuste renal/hepático,
-    idoso Beers, criança, sonda) + **score de prescrição 0–3** (local).
-  - **Refino (v25):** a intervenção do farmacêutico **avisa o prescritor no PS** (banner com
-    problema/conduta; médico responde aceita/não aceita, fecha o ciclo, com bipe). Assistente
-    AI ampliado (panorama, zerados, consumo por classe, dispensações mês/hoje, catálogo,
-    validade detalhada). **Sem tabela nova.**
+---
 
-## Migrações já rodadas no HNSN (referência p/ recriar do zero)
-Na pasta `supabase/` (rodar na ordem se precisar montar um banco novo):
-`schema.sql` (base) → `migracao-farmacia-faseA.sql` → `migracao-farmacia-seed.sql` →
-`migracao-farmacia-faseB.sql` → `migracao-farmacia-clinica-fase1.sql` →
-`migracao-farmacia-clinica-fase2.sql` → `migracao-farmacia-clinica-fase3.sql` →
-`migracao-farmacia-preparo.sql` → `migracao-farmacia-custos.sql` →
-`migracao-farmacia-nao-padronizados.sql` → `migracao-farmacia-intervencoes.sql` →
-`migracao-leitos-kanban-metas.sql` (Kanban de alta + metas por setor + motivo da espera) →
-`migracao-leitos-saida-setor.sql` (setor na saída → permanência/giro por setor).
-(O `schema.sql` já contém tudo consolidado para uma instalação nova, EXCETO as colunas
-de `migracao-leitos-kanban-metas.sql` e `migracao-leitos-saida-setor.sql` — rodar essas
-duas migrações à parte por enquanto.)
-Para conferir o estado do banco a qualquer momento: rode `supabase/auditoria-banco.sql`
-(somente leitura) no SQL Editor — ele relata tabelas, colunas, RLS, funções e trigger.
+## Os 4 passos antes de tocar em qualquer coisa
 
-## Decisões que valem manter
-- **Custo zero:** priorizar soluções locais/gratuitas; IA paga só como opcional com custo
-  estimado (o usuário escolheu **assistente local**, sem LLM).
-- **Visual BI corporativo discreto** (sem fundos coloridos; cor em pontos/bordas/acentos);
-  cores Valentrax turquesa/azul/cinza; sem emojis decorativos (só funcionais).
-- **Registros clínicos imutáveis** (evoluções, prescrições, kardex, intervenções são
-  append-only / não editáveis).
-
-## Próximas frentes (mapa do HIS, ainda não feitas)
-- **Painel do PS no Monitoramento** (Visão Geral) — menor esforço, sem tabela nova.
-- **Faturamento (AIH/SUS)** — módulo grande.
-- **Modo autodidático** (ajuda/onboarding contextual).
-- Refinos possíveis na Farmácia: custo por lote/compra (em vez de custo unitário).
-  (Feitos em v25: notificar o prescritor da intervenção no PS · assistente com mais intents.)
-- Alinhar o **Centro de Monitoramento** aos status novos de leito (manutenção/bloqueado
-  hoje não descontam da ocupação lá — só no módulo Giro de Leitos).
-
-## Como restaurar este ponto
 ```bash
-git fetch --tags
-git reset --hard checkpoint-v28
-git push --force-with-lease origin main
+git checkout main
+git pull                 # 1. a outra pessoa quase sempre avançou
+npm install              # 2. pode ter dependência nova
+npm test                 # 3. tem que dar verde ANTES de você mexer
+git checkout -b minha-feature
 ```
+
+**4.** Confira se o banco está como o código espera:
+
+```bash
+node supabase/validar-sql.mjs
+```
+
+O passo 1 não é formalidade. Já aconteceu de a `main` avançar **39 commits, 4
+migrações e +2.000 linhas** de um dia para o outro.
+
+---
+
+## As regras que não podem ser esquecidas
+
+1. **Só o merge publica.** Branch, commit, push e PR são seguros — pode errar à
+   vontade. O merge republica na Vercel para o hospital.
+2. **O banco é compartilhado** entre preview e produção. Testar salvando no preview
+   grava no banco de verdade. Para testar escrita, use `npm run dev:demo` (banco de
+   teste separado).
+3. **Migração é sempre aditiva** (`create table if not exists`, `add column if not
+   exists` — nunca `drop`), rodada **à mão no painel do Supabase ANTES do merge** do
+   código, e avisada à outra pessoa. Não há automação de migração.
+4. **Rollback de código é fácil** (Vercel → *Promote* no deploy anterior).
+   **Rollback de banco não existe** — daí a regra 3.
+5. **Registro clínico é imutável.** Nada de `UPDATE` destrutivo ou `DELETE` em
+   evolução, prescrição, anotação ou sumário. Correção = registro novo apontando
+   para o anterior (`corrige_id` / `substitui_id`).
+
+---
+
+## Onde fica cada coisa
+
+| Precisa mexer em… | Vá para |
+|---|---|
+| Regra clínica (alerta, NEWS, reconciliação, alta) | `src/clinico/*.js` — funções puras, **é onde ficam os testes** |
+| Gravação do prontuário | `src/prontuario/dados.js` — todo INSERT do PEP passa por aqui |
+| Telas do prontuário | `src/prontuario/*.jsx` |
+| Quem enxerga quais módulos | `src/acesso/*` |
+| Qualquer outro módulo | `src/App.jsx` (~14.400 linhas — combine o território antes) |
+
+**Padrão que funcionou e vale repetir** ao tirar código do `App.jsx`: escolher um
+bloco de funções **puras** (sem React, sem DOM, sem rede) → capturar o comportamento
+atual → extrair sem mudar lógica → comparar → então escrever os testes.
+
+---
+
+## Arquivos que você NÃO edita à mão
+
+São gerados. Editar à mão cria divergência silenciosa:
+
+| Arquivo | Regenerar com |
+|---|---|
+| `supabase/auditoria-banco.sql` | `node supabase/gerar-auditoria.mjs` |
+| `supabase/reconstruir-banco.sql` | `node supabase/gerar-reconstrucao.mjs` |
+
+**Rode os dois depois de criar qualquer migração nova.** A auditoria mantida à mão já
+ficou cega ao módulo mais recente duas vezes — e auditoria cega é pior que nenhuma,
+porque dá falsa confiança.
+
+---
+
+## Testes — o que eles protegem
+
+`npm test` roda **254 testes**. Três merecem atenção especial:
+
+- **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
+  banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
+  recusava o INSERT **em silêncio**, o profissional clicava em salvar e nada era
+  gravado. Se você criar tela que grava, acrescente o caso aqui.
+- **`seed-perfis.test.js`** — confere que os perfis de acesso do código e do SQL não
+  divergiram, grant por grant.
+- **`papeis.test.js`** — as regras de competência profissional (COFEN/CFM). Se
+  afrouxarem por descuido, ninguém percebe até virar problema com o conselho.
+
+---
+
+## Estado atual, em uma frase
+
+O **PEP está completo** (admissão → prescrição com aprazamento e checagem → sinais
+vitais com NEWS → evolução → reconciliação medicamentosa → alta com sumário), e os
+**perfis de acesso por cargo** estão no ar.
+
+**Ainda não há paciente real no sistema.**
+
+### O que está pendente
+
+1. **Reclassificar a equipe** nos cargos certos — hoje quase todos estão no perfil
+   "Provisório", que mantém o acesso antigo. Só depois disso desativar o Provisório.
+2. **Modo sombra + quebra-vidro**, que são pré-requisitos para apertar o RLS de
+   verdade (ver o aviso em [CONTEXTO.md](CONTEXTO.md) — hoje o controle de acesso
+   organiza o menu, **não** restringe o dado).
+3. **Modularizar o `App.jsx`** — dívida estrutural que trava o trabalho em paralelo.
+
+---
+
+## Como voltar a um ponto seguro
+
+```bash
+git log --oneline -20            # ache o commit bom
+git revert -m 1 <hash-do-merge>  # desfaz um merge SEM reescrever histórico
+```
+
+Para o site, o caminho mais rápido é a Vercel: *Deployments* → deploy anterior →
+**Promote to Production**. Volta em segundos.
+
+⚠️ **Não use `git reset --hard` + `push --force` na `main`.** Com duas pessoas
+trabalhando, isso apaga o trabalho da outra.

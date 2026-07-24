@@ -1,6 +1,9 @@
-# MedFlow HNSN
-### Plataforma de Gestão de Atendimentos Ambulatoriais
+# Valentrax — MedFlow HNSN
+### Plataforma de gestão hospitalar com prontuário eletrônico (PEP)
 Hospital Nossa Senhora de Navegantes
+
+Ambulatório · Pronto-Socorro · Bloco Cirúrgico · Giro de Leitos · SCIH ·
+Farmácia Clínica · Estoque & Compras · **Prontuário Eletrônico do Paciente**
 
 App em **React + Vite**. Dados no **Supabase**, deploy automático na **Vercel**,
 código versionado no **GitHub**.
@@ -59,22 +62,33 @@ Em ~1 min após o merge a Vercel publica em https://medflow-hnsn.vercel.app
 ```
 medflow-hnsn/
 ├── index.html              ← Página principal (casca HTML + tema)
-├── package.json            ← Dependências
+├── package.json            ← Dependências e scripts (dev, dev:demo, test, build)
 ├── vite.config.js          ← Build (Vite)
 ├── vercel.json             ← Config da Vercel
-├── .gitignore / .gitattributes
-├── .env.example            ← Modelo de credenciais (uso local opcional)
+├── .env.example            ← Modelo de credenciais (uso local)
 ├── docs/
-│   ├── GUIA-GIT.md         ← Como trabalhar em equipe sem quebrar nada
-│   ├── CONTEXTO.md         ← Raio-x do projeto (onboarding rápido)
+│   ├── CONTEXTO.md         ← Raio-x do projeto — comece por aqui
+│   ├── HANDOFF.md          ← Como retomar o trabalho sem quebrar nada
+│   ├── GUIA-GIT.md         ← Trabalho em equipe (branch, PR, merge)
+│   ├── REQUISITOS-PEP.md   ← Requisitos legais do prontuário (CFM, COFEN, LGPD)
 │   └── RELATORIO-TESTE.md  ← Bugs encontrados em teste de carga
 ├── src/
 │   ├── main.jsx            ← Ponto de entrada React
-│   └── App.jsx             ← Aplicação completa
+│   ├── App.jsx             ← A maior parte das telas (arquivo grande)
+│   ├── clinico/            ← Regra clínica pura + testes (alertas, NEWS,
+│   │                          alergias, papéis, reconciliação, alta)
+│   ├── prontuario/         ← PEP: telas + `dados.js` (todo INSERT passa lá)
+│   └── acesso/             ← Perfis de acesso: quem enxerga quais módulos
 ├── supabase/
-│   └── schema.sql          ← Tabelas do banco (referência)
+│   ├── schema.sql          ← Base
+│   ├── migracao-*.sql      ← Migrações incrementais (rodar à mão, na ordem)
+│   ├── auditoria-banco.sql      ← GERADO — não editar à mão
+│   ├── reconstruir-banco.sql    ← GERADO — não editar à mão
+│   ├── gerar-auditoria.mjs      ← Regenera a auditoria
+│   ├── gerar-reconstrucao.mjs   ← Regenera o script de reconstrução
+│   └── validar-sql.mjs          ← Pega coluna órfã / parêntese desbalanceado
 └── .github/workflows/
-    └── ci.yml              ← Valida o build a cada push (opcional)
+    └── ci.yml              ← Roda validar-sql + testes + build a cada push
 ```
 
 ---
@@ -82,9 +96,15 @@ medflow-hnsn/
 ## 💻 Rodar localmente
 ```bash
 npm install
-npm run dev      # abre em http://localhost:5173
-npm run build    # gera a versão de produção em /dist
+npm run dev        # banco do HOSPITAL   → http://localhost:5173
+npm run dev:demo   # banco de TESTE      → http://localhost:5174
+npm test           # 254 testes (Vitest)
+npm run build      # gera a versão de produção em /dist
 ```
+
+> ⚠️ **Para testar gravação, use `npm run dev:demo`.** O `npm run dev` aponta para o
+> banco do hospital — salvar ali grava de verdade. Uma faixa no topo da tela mostra
+> em qual banco você está.
 > **Credenciais:** o app lê as chaves das variáveis de ambiente
 > `VITE_SUPABASE_URL` e `VITE_SUPABASE_KEY`.
 > - **Local:** copie `.env.example` para `.env` e preencha (o `.env` está no
@@ -99,28 +119,59 @@ npm run build    # gera a versão de produção em /dist
 ---
 
 ## 🗄️ Banco de dados (Supabase)
-O schema das tabelas (`atendimentos`, `auditoria`) está em
-[`supabase/schema.sql`](supabase/schema.sql) — serve de referência/backup.
-Rode no **SQL Editor** do Supabase apenas se precisar recriar as tabelas.
+
+**58 tabelas.** O `schema.sql` é a base; cada mudança posterior é uma
+`migracao-*.sql`, rodada **à mão** no SQL Editor. Não existe automação de migração —
+alguém roda, sempre **antes** do merge do código.
+
+Depois de criar uma migração nova, regenere os dois arquivos derivados:
+
+```bash
+node supabase/gerar-auditoria.mjs && node supabase/gerar-reconstrucao.mjs
+```
+
+Para conferir o banco a qualquer momento, rode `supabase/auditoria-banco.sql`
+(somente leitura) no SQL Editor.
 
 ---
 
-## 👥 Credenciais padrão do app
+## 👥 Usuários e acesso
 
-O login usa **Supabase Auth** (senhas nunca ficam no código nem no navegador).
-Usuários iniciais: `laura` (ADM Master) e `diretor` (ADM Silver) — troque a senha
-no primeiro acesso pela aba **👥 Usuários → 🔑 Trocar minha senha**.
+O login usa **Supabase Auth** (senha nunca fica no código nem no navegador).
 
-**Adicionar / remover usuários:** painel do Supabase → *Authentication → Users*.
-Crie com e-mail no formato `usuario@hnsn.local` e defina o papel em *User Metadata*,
-ex.: `{ "role": "adm_silver" }`. Papéis: `adm_master`, `adm_silver`, `analista`,
-`visualizador`.
+**Criar usuário:** aba **Usuários** do app, com perfil `adm_master`. Escolha o
+**cargo** (Enfermeiro, Almoxarifado, Recepção…) e o resto vem configurado: os módulos
+que a pessoa enxerga, o papel de sistema e a categoria profissional.
 
-## 🔒 Segurança
-- Acesso ao banco exige usuário autenticado (RLS por papel) — a chave publishable
-  sozinha não lê nem grava nada.
-- Auditoria é imutável (não pode ser editada/apagada pelo app).
+Não crie usuário pelo painel do Supabase — ele nasceria sem cargo e sem categoria,
+e não enxergaria nada.
+
+**Três eixos de permissão**, que respondem perguntas diferentes:
+
+| Eixo | Responde |
+|---|---|
+| **Papel** (`adm_master`…`visualizador`) | quanto mexe no sistema |
+| **Categoria** (médico, enfermeiro, técnico…) | o que pode fazer clinicamente (COFEN/CFM) |
+| **Cargo/perfil** | quais módulos enxerga |
+
+Poder administrativo **não** concede competência clínica: um adm_master administrativo
+não assina evolução médica.
 
 ---
 
-Desenvolvido com ❤️ para o Ambulatório HNSN
+## 🔒 Segurança — o que é verdade hoje
+
+- **Login obrigatório.** Todas as tabelas têm RLS ativo e política; a chave
+  publishable sozinha não lê nada.
+- **Escrita é controlada por papel** (`my_role()`).
+- **Registro clínico é imutável** — evolução, prescrição, anotação e sumário não podem
+  ser editados nem apagados pelo app. Correção vira registro novo.
+- **⚠️ Leitura ainda NÃO é segregada.** As políticas de `SELECT` são abertas a
+  qualquer usuário autenticado: os perfis de acesso escondem módulos do **menu**, mas
+  quem souber usar a API alcança dado que o menu esconde. **Não descreva o sistema
+  como "acesso segregado"** — fechar isso é a próxima etapa. Detalhes e o plano em
+  [docs/CONTEXTO.md](docs/CONTEXTO.md).
+
+---
+
+Desenvolvido com ❤️ para o Hospital Nossa Senhora de Navegantes
