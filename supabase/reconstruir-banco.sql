@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 30 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 31 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (30 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (31 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/30 — schema.sql
+-- │ 01/31 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/30 — migracao-farmacia-faseA.sql
+-- │ 02/31 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1240,7 +1240,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/30 — migracao-farmacia-seed.sql
+-- │ 03/31 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1450,7 +1450,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/30 — migracao-farmacia-faseB.sql
+-- │ 04/31 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1491,7 +1491,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/30 — migracao-farmacia-clinica-fase1.sql
+-- │ 05/31 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1616,7 +1616,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/30 — migracao-farmacia-clinica-fase2.sql
+-- │ 06/31 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1738,7 +1738,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/30 — migracao-farmacia-clinica-fase3.sql
+-- │ 07/31 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1806,7 +1806,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/30 — migracao-farmacia-preparo.sql
+-- │ 08/31 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1840,7 +1840,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/30 — migracao-farmacia-custos.sql
+-- │ 09/31 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1853,7 +1853,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/30 — migracao-farmacia-nao-padronizados.sql
+-- │ 10/31 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1892,7 +1892,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/30 — migracao-farmacia-intervencoes.sql
+-- │ 11/31 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -1931,7 +1931,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/30 — migracao-leitos-kanban-metas.sql
+-- │ 12/31 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -1960,7 +1960,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/30 — migracao-leitos-saida-setor.sql
+-- │ 13/31 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -1986,7 +1986,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/30 — migracao-suprimentos-faseA.sql
+-- │ 14/31 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2124,7 +2124,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/30 — migracao-suprimentos-faseB.sql
+-- │ 15/31 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2176,7 +2176,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/30 — migracao-suprimentos-seed.sql
+-- │ 16/31 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2332,7 +2332,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/30 — migracao-suprimentos-faseC.sql
+-- │ 17/31 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2389,7 +2389,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/30 — migracao-suprimentos-inventario.sql
+-- │ 18/31 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2451,7 +2451,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/30 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 19/31 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2468,7 +2468,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/30 — migracao-suprimentos-cotacao.sql
+-- │ 20/31 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2516,7 +2516,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/30 — migracao-ps-salas.sql
+-- │ 21/31 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2565,7 +2565,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/30 — migracao-ps-salas-censo.sql
+-- │ 22/31 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2645,7 +2645,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/30 — migracao-ps-origem-elo.sql
+-- │ 23/31 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2685,7 +2685,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/30 — migracao-ps-checagem-medicacao.sql
+-- │ 24/31 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2738,7 +2738,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/30 — migracao-pep-fase1.sql
+-- │ 25/31 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3536,7 +3536,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/30 — migracao-pep-acessos.sql
+-- │ 26/31 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3602,7 +3602,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/30 — migracao-pep-sinais-spo2.sql
+-- │ 27/31 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3634,7 +3634,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/30 — migracao-pep-categoria-profissional.sql
+-- │ 28/31 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3688,7 +3688,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/30 — migracao-pep-perfis-update.sql
+-- │ 29/31 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3727,7 +3727,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/30 — migracao-pep-fase3.sql
+-- │ 30/31 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4034,6 +4034,293 @@ where n.nspname = 'public'
   and c.relname in ('pep_medicamentos_uso','pep_reconciliacoes',
                     'pep_reconciliacao_itens','pep_sumarios_alta')
 order by c.relname;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 31/31 — migracao-perfis-acesso.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- PERFIS DE ACESSO — o cargo vira um pacote de permissões
+--
+-- O QUE RESOLVE
+-- Hoje a TI cria um usuário e escolhe entre quatro papéis de sistema
+-- (adm_master … visualizador). Isso responde "quanto essa pessoa mexe no
+-- sistema", mas não responde "em QUAIS módulos" — e por isso todos os dez
+-- módulos assistenciais aparecem para todo mundo. O almoxarifado enxerga o
+-- Bloco Cirúrgico e o Pronto-Socorro; a recepção enxerga o prontuário.
+--
+-- Passa a existir o PERFIL: um pacote nomeado de permissões por módulo
+-- ("Enfermeiro", "Almoxarifado"). O gestor pede, a TI escolhe o perfil, e a
+-- pessoa entra configurada. É como MV e Tasy organizam.
+--
+-- POR REFERÊNCIA, NÃO POR CÓPIA
+-- O usuário aponta para o perfil. Corrigir o perfil corrige todo mundo que
+-- o usa — cópia envelhece e em seis meses ninguém sabe mais quem tem o quê.
+-- O custo é real: mexer no perfil mexe em todos de uma vez. Por isso a tela
+-- avisa quantas pessoas serão afetadas ANTES de salvar.
+--
+-- ⚠️ O QUE ESTA MIGRAÇÃO **NÃO** FAZ — E É IMPORTANTE NÃO SE ENGANAR
+-- Ela NÃO restringe o acesso ao DADO. As políticas de SELECT das tabelas
+-- clínicas continuam `using (true)`: qualquer usuário autenticado ainda
+-- alcança qualquer tabela pela API REST, por fora da tela. Esconder o menu
+-- organiza o trabalho e reduz exposição acidental — não é barreira.
+--
+-- A barreira é a fase 3 (apertar o RLS por tabela), e ela exige medir antes
+-- quem realmente acessa o quê. Apertar SELECT no escuro tira acesso de quem
+-- tem direito no meio do plantão. Até lá, NÃO apresentar isto ao hospital
+-- como "os dados estão segregados".
+--
+-- Aditiva e idempotente: só `create table if not exists` / `add column if
+-- not exists` / `on conflict do nothing`. Pode rodar duas vezes.
+-- ═══════════════════════════════════════════════════════════
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 1) OS PERFIS
+-- ═══════════════════════════════════════════════════════════
+create table if not exists public.perfis_acesso (
+  chave text primary key,                 -- 'enfermeiro', 'almoxarifado'
+  nome text not null,                     -- como o gestor chama o cargo
+  descricao text,
+
+  -- SUGESTÕES que a tela de criação pré-preenche. Não são a regra:
+  --   `categoria` quem manda é `profiles.categoria` + src/clinico/papeis.js
+  --      (COFEN 736/2024) — perfil de acesso não concede competência clínica;
+  --   `role` a TI confirma na criação.
+  categoria_sugerida text,
+  role_sugerido text,
+
+  -- Perfil de sistema não pode ser apagado: é a porta de volta se alguém
+  -- configurar tudo errado.
+  sistema boolean not null default false,
+  ativo boolean not null default true,
+
+  criado_em timestamptz not null default now(),
+  atualizado_em timestamptz not null default now(),
+  usuario text
+);
+alter table public.perfis_acesso enable row level security;
+drop policy if exists perfis_select on public.perfis_acesso;
+drop policy if exists perfis_write on public.perfis_acesso;
+-- Todo mundo LÊ os perfis: a própria tela precisa saber o que o usuário
+-- logado alcança para montar o menu dele.
+create policy perfis_select on public.perfis_acesso
+  for select to authenticated using (true);
+create policy perfis_write on public.perfis_acesso
+  for all to authenticated
+  using (public.my_role() = 'adm_master')
+  with check (public.my_role() = 'adm_master');
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 2) AS PERMISSÕES DE CADA PERFIL
+--
+-- Uma linha por módulo concedido. O que não está aqui é "sem acesso" —
+-- gravar quinze `nenhum` por perfil encheria a tabela de nada e esconderia
+-- o que importa.
+-- ═══════════════════════════════════════════════════════════
+create table if not exists public.perfis_permissoes (
+  perfil_chave text not null references public.perfis_acesso(chave) on delete cascade,
+  modulo text not null,                   -- 'ps', 'paciente', 'suprimentos' …
+  nivel text not null default 'leitura',  -- leitura | escrita
+  primary key (perfil_chave, modulo)
+);
+create index if not exists perfis_perm_perfil_idx on public.perfis_permissoes (perfil_chave);
+alter table public.perfis_permissoes enable row level security;
+drop policy if exists perfis_perm_select on public.perfis_permissoes;
+drop policy if exists perfis_perm_write on public.perfis_permissoes;
+create policy perfis_perm_select on public.perfis_permissoes
+  for select to authenticated using (true);
+create policy perfis_perm_write on public.perfis_permissoes
+  for all to authenticated
+  using (public.my_role() = 'adm_master')
+  with check (public.my_role() = 'adm_master');
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 3) EXCEÇÕES POR USUÁRIO
+--
+-- "Esta técnica também cobre o PS." Sem isto, cada desvio individual vira
+-- um perfil novo, e em dois anos são quarenta perfis que ninguém entende.
+--
+-- Guarda MOTIVO e QUEM CONCEDEU porque exceção sem justificativa é como o
+-- controle de acesso vira colcha de retalhos — e porque a trilha do NGS1
+-- pede autoria em mudança de permissão.
+--
+-- Serve para reduzir também: `nivel = 'nenhum'` suspende o acesso de alguém
+-- afastado sem precisar mexer no perfil do cargo inteiro.
+-- ═══════════════════════════════════════════════════════════
+create table if not exists public.usuarios_permissoes (
+  id bigserial primary key,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  modulo text not null,
+  nivel text not null,                    -- nenhum | leitura | escrita
+  motivo text,
+  concedido_por text,
+  criado_em timestamptz not null default now(),
+  unique (user_id, modulo)
+);
+create index if not exists usuarios_perm_user_idx on public.usuarios_permissoes (user_id);
+alter table public.usuarios_permissoes enable row level security;
+drop policy if exists usuarios_perm_select on public.usuarios_permissoes;
+drop policy if exists usuarios_perm_write on public.usuarios_permissoes;
+create policy usuarios_perm_select on public.usuarios_permissoes
+  for select to authenticated using (true);
+create policy usuarios_perm_write on public.usuarios_permissoes
+  for all to authenticated
+  using (public.my_role() = 'adm_master')
+  with check (public.my_role() = 'adm_master');
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 4) O USUÁRIO APONTA PARA O PERFIL
+--
+-- `on delete set null`: apagar um perfil não pode apagar gente. Quem ficar
+-- sem perfil aparece na tela como "sem perfil" e não alcança nada — falha
+-- fechada, que é o comportamento certo para permissão.
+-- ═══════════════════════════════════════════════════════════
+alter table public.profiles
+  add column if not exists perfil text references public.perfis_acesso(chave) on delete set null,
+  -- Lotação: hoje é informativa (aparece na tela, ajuda a TI a saber quem é
+  -- quem). NÃO restringe — enfermeiro que cobre outra ala não pode ficar
+  -- travado no meio do plantão. Vira filtro padrão de tela, não barreira.
+  add column if not exists setor text,
+  add column if not exists matricula text,
+  -- Registro de conselho vence e pode ser suspenso. Guardar a validade
+  -- permite avisar antes; sem a data, ninguém percebe que venceu.
+  add column if not exists conselho_validade date,
+  add column if not exists admitido_em date,
+  add column if not exists desligado_em date;
+
+create index if not exists profiles_perfil_idx on public.profiles (perfil);
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 5) SEED DOS PERFIS INICIAIS
+--
+-- Espelha `src/acesso/modulos.js`. Os dois precisam continuar batendo:
+-- `permissoes.test.js` confere o lado do código, e a tela lê daqui.
+--
+-- `on conflict do nothing` de propósito: se o hospital já ajustou um perfil,
+-- rodar de novo NÃO desfaz o ajuste dele.
+-- ═══════════════════════════════════════════════════════════
+insert into public.perfis_acesso (chave, nome, descricao, categoria_sugerida, role_sugerido, sistema) values
+  ('medico',             'Médico(a)',                  'Assistência médica: prescreve, evolui, dá alta.', 'medico', 'adm_silver', false),
+  ('enfermeiro',         'Enfermeiro(a)',              'Processo de Enfermagem completo, gestão de leitos e do cuidado.', 'enfermeiro', 'adm_silver', false),
+  ('enfermeiro_scih',    'Enfermeiro(a) — SCIH',       'Controle de infecção: vigilância, culturas, indicadores.', 'enfermeiro', 'adm_silver', false),
+  ('tecnico_enfermagem', 'Técnico(a) de Enfermagem',   'Anotação de enfermagem, checagem de medicação e sinais vitais.', 'tecnico_enfermagem', 'adm_silver', false),
+  ('fisioterapeuta',     'Fisioterapeuta',             'Evolução de fisioterapia no prontuário.', 'fisioterapeuta', 'adm_silver', false),
+  ('nutricionista',      'Nutricionista',              'Avaliação e evolução nutricional.', 'nutricionista', 'adm_silver', false),
+  ('assistente_social',  'Assistente Social',          'Avaliação social, apoio à alta.', 'assistente_social', 'adm_silver', false),
+  ('farmaceutico',       'Farmacêutico(a)',            'Farmácia clínica, dispensação, controlados e intervenção farmacêutica.', 'farmaceutico', 'adm_silver', false),
+  ('aux_farmacia',       'Auxiliar de Farmácia',       'Dispensação e estoque da farmácia. Não acessa prontuário.', 'administrativo', 'adm_silver', false),
+  ('recepcao',           'Recepção / Admissão',        'Cadastro, chegada e agendamento. Não acessa prontuário (COFEN 754/2024, art. 6º).', 'administrativo', 'adm_silver', false),
+  ('faturamento',        'Faturamento',                'Produção e movimento para faturamento. Não acessa prontuário.', 'administrativo', 'analista', false),
+  ('almoxarifado',       'Almoxarifado / Suprimentos', 'Materiais, estoque, compras e inventário. Sem acesso assistencial.', 'administrativo', 'adm_silver', false),
+  ('gestao',             'Gestão / Diretoria',         'Indicadores e BI de todos os módulos. Sem prontuário individual.', 'administrativo', 'analista', false),
+  ('diretor_tecnico',    'Diretor(a) Técnico(a)',      'Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º).', 'medico', 'adm_silver', false),
+  ('ti',                 'TI / Analista de Sistemas',  'Administra o sistema: usuários, perfis, importação e banco. Sem competência clínica.', 'administrativo', 'adm_master', true)
+on conflict (chave) do nothing;
+
+insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
+  -- Médico
+  ('medico','overview','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
+  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),
+  ('medico','paciente','escrita'),('medico','farmacia','leitura'),('medico','print','leitura'),
+  -- Enfermeiro
+  ('enfermeiro','overview','leitura'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
+  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),
+  ('enfermeiro','paciente','escrita'),('enfermeiro','farmacia','leitura'),('enfermeiro','suprimentos','leitura'),
+  ('enfermeiro','print','leitura'),
+  -- Enfermeiro SCIH
+  ('enfermeiro_scih','overview','leitura'),('enfermeiro_scih','ps','leitura'),('enfermeiro_scih','bloco','leitura'),
+  ('enfermeiro_scih','leitos','leitura'),('enfermeiro_scih','scih','escrita'),('enfermeiro_scih','paciente','escrita'),
+  ('enfermeiro_scih','farmacia','leitura'),('enfermeiro_scih','print','leitura'),
+  -- Técnico de enfermagem
+  ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
+  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),
+  ('tecnico_enfermagem','scih','leitura'),('tecnico_enfermagem','paciente','escrita'),
+  -- Fisioterapeuta
+  ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),
+  ('fisioterapeuta','leitos','leitura'),('fisioterapeuta','paciente','escrita'),
+  -- Nutricionista
+  ('nutricionista','overview','leitura'),('nutricionista','leitos','leitura'),('nutricionista','paciente','escrita'),
+  -- Assistente social
+  ('assistente_social','overview','leitura'),('assistente_social','ambulatorio','leitura'),
+  ('assistente_social','leitos','leitura'),('assistente_social','paciente','escrita'),
+  -- Farmacêutico
+  ('farmaceutico','overview','leitura'),('farmaceutico','ps','leitura'),('farmaceutico','leitos','leitura'),
+  ('farmaceutico','scih','leitura'),('farmaceutico','farmacia','escrita'),('farmaceutico','controlados','escrita'),
+  ('farmaceutico','suprimentos','leitura'),('farmaceutico','paciente','leitura'),('farmaceutico','print','leitura'),
+  -- Auxiliar de farmácia
+  ('aux_farmacia','farmacia','escrita'),('aux_farmacia','controlados','leitura'),('aux_farmacia','suprimentos','leitura'),
+  -- Recepção
+  ('recepcao','overview','leitura'),('recepcao','ambulatorio','escrita'),('recepcao','ps','escrita'),
+  ('recepcao','leitos','leitura'),
+  -- Faturamento
+  ('faturamento','overview','leitura'),('faturamento','ambulatorio','leitura'),
+  ('faturamento','leitos','leitura'),('faturamento','print','leitura'),
+  -- Almoxarifado
+  ('almoxarifado','suprimentos','escrita'),
+  -- Gestão
+  ('gestao','overview','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
+  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),
+  ('gestao','farmacia','leitura'),('gestao','suprimentos','leitura'),('gestao','print','leitura'),
+  ('gestao','auditoria','leitura'),
+  -- Diretor técnico
+  ('diretor_tecnico','overview','leitura'),('diretor_tecnico','ambulatorio','leitura'),
+  ('diretor_tecnico','ps','escrita'),('diretor_tecnico','bloco','leitura'),('diretor_tecnico','leitos','leitura'),
+  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
+  ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
+  ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
+  -- TI
+  ('ti','overview','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
+  ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
+  ('ti','controlados','escrita'),('ti','suprimentos','escrita'),('ti','print','escrita'),
+  ('ti','auditoria','escrita'),('ti','import','escrita'),('ti','supabase','escrita'),('ti','users','escrita')
+on conflict (perfil_chave, modulo) do nothing;
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 6) QUEM JÁ EXISTE NÃO PODE FICAR SEM ACESSO
+--
+-- Ninguém tem perfil ainda. Se a tela passasse a exigir perfil sem isto, a
+-- equipe inteira abriria o sistema vazio no dia seguinte — o tipo de coisa
+-- que se descobre em pleno plantão.
+--
+-- Então: quem é adm_master herda o perfil de TI; o resto entra num perfil
+-- provisório com o alcance de hoje (tudo), para que a migração seja
+-- invisível. A TI então reclassifica pessoa por pessoa, sem pressa, e
+-- **depois** desativa o provisório.
+-- ═══════════════════════════════════════════════════════════
+insert into public.perfis_acesso (chave, nome, descricao, categoria_sugerida, role_sugerido, sistema) values
+  ('provisorio', 'Provisório — a classificar',
+   'Mantém o acesso que a equipe já tinha antes dos perfis. Reclassifique cada pessoa e depois desative este perfil.',
+   'administrativo', 'adm_silver', true)
+on conflict (chave) do nothing;
+
+insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
+  ('provisorio','overview','escrita'),('provisorio','ambulatorio','escrita'),('provisorio','ps','escrita'),
+  ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),
+  ('provisorio','paciente','escrita'),('provisorio','farmacia','escrita'),('provisorio','controlados','escrita'),
+  ('provisorio','suprimentos','escrita'),('provisorio','print','escrita'),('provisorio','auditoria','escrita'),
+  ('provisorio','import','escrita'),('provisorio','supabase','escrita')
+on conflict (perfil_chave, modulo) do nothing;
+
+update public.profiles set perfil = 'ti'         where perfil is null and role = 'adm_master';
+update public.profiles set perfil = 'provisorio' where perfil is null;
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 7) CONFERÊNCIA
+-- Rode depois de aplicar.
+-- ═══════════════════════════════════════════════════════════
+select p.chave, p.nome, count(pp.modulo) as modulos,
+       (select count(*) from public.profiles pr where pr.perfil = p.chave) as usuarios
+  from public.perfis_acesso p
+  left join public.perfis_permissoes pp on pp.perfil_chave = p.chave
+ group by p.chave, p.nome
+ order by p.chave;
 
 
 -- ════════════════════════════════════════════════════════════
