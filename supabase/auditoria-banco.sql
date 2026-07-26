@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 58 tabelas, 875 colunas.
+-- Cobertura atual: 58 tabelas, 879 colunas.
 -- ============================================================
 
 with
@@ -917,13 +917,17 @@ colunas(tabela, coluna, origem) as (values
   ('sup_movimentos','tipo','suprimentos-faseA'),
   ('sup_movimentos','usuario','suprimentos-faseA'),
   ('sup_movimentos','validade','suprimentos-faseA'),
+  ('sup_pedidos','aprovacao_em','suprimentos-aprovacao'),
   ('sup_pedidos','created_at','suprimentos-faseC'),
+  ('sup_pedidos','decidido_em','suprimentos-aprovacao'),
+  ('sup_pedidos','decidido_por','suprimentos-aprovacao'),
   ('sup_pedidos','enviado_em','suprimentos-faseC'),
   ('sup_pedidos','enviado_por','suprimentos-faseC'),
   ('sup_pedidos','fornecedor_id','suprimentos-faseC'),
   ('sup_pedidos','fornecedor_nome','suprimentos-faseC'),
   ('sup_pedidos','id','suprimentos-faseC'),
   ('sup_pedidos','itens','suprimentos-faseC'),
+  ('sup_pedidos','negado_motivo','suprimentos-aprovacao'),
   ('sup_pedidos','observacao','suprimentos-faseC'),
   ('sup_pedidos','previsao_entrega','suprimentos-faseC'),
   ('sup_pedidos','recebido_em','suprimentos-faseC'),

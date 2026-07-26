@@ -185,6 +185,15 @@ export const PERFIS_MODELO = [
     grants: p({ suprimentos: "escrita" }),
   },
   {
+    // Autorização da matriz sobre os pedidos de compra: aprova ou nega. Vê o
+    // Estoque em consulta (para abrir a aba Aprovações); a ação de aprovar/negar
+    // é liberada pelo perfil, não pelo nível do módulo. Não compra nem mexe em
+    // estoque, não acessa prontuário.
+    chave: "matriz", nome: "Matriz — Aprovação de Compras", categoria: "administrativo", role: "adm_silver",
+    descricao: "Aprova ou nega os pedidos de compra do estoque (autorização da matriz). Não acessa prontuário.",
+    grants: p({ overview: "leitura", suprimentos: "leitura" }),
+  },
+  {
     chave: "gestao", nome: "Gestão / Diretoria", categoria: "administrativo", role: "analista",
     descricao: "Indicadores e BI de todos os módulos. Gestão trabalha com número agregado — não precisa de prontuário individual.",
     grants: p({ overview: "leitura", ambulatorio: "leitura", ps: "leitura", bloco: "leitura",

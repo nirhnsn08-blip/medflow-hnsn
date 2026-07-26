@@ -177,6 +177,7 @@ insert into public.perfis_acesso (chave, nome, descricao, categoria_sugerida, ro
   ('recepcao',           'Recepção / Admissão',        'Cadastro, chegada e agendamento. Não acessa prontuário (COFEN 754/2024, art. 6º).', 'administrativo', 'adm_silver', false),
   ('faturamento',        'Faturamento',                'Produção e movimento para faturamento. Não acessa prontuário.', 'administrativo', 'analista', false),
   ('almoxarifado',       'Almoxarifado / Suprimentos', 'Materiais, estoque, compras e inventário. Sem acesso assistencial.', 'administrativo', 'adm_silver', false),
+  ('matriz',             'Matriz — Aprovação de Compras', 'Aprova ou nega os pedidos de compra do estoque (autorização da matriz). Não acessa prontuário.', 'administrativo', 'adm_silver', false),
   ('gestao',             'Gestão / Diretoria',         'Indicadores e BI de todos os módulos. Sem prontuário individual.', 'administrativo', 'analista', false),
   ('diretor_tecnico',    'Diretor(a) Técnico(a)',      'Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º).', 'medico', 'adm_silver', false),
   ('ti',                 'TI / Analista de Sistemas',  'Administra o sistema: usuários, perfis, importação e banco. Sem competência clínica.', 'administrativo', 'adm_master', true)
@@ -225,6 +226,8 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('faturamento','leitos','leitura'),('faturamento','print','leitura'),
   -- Almoxarifado
   ('almoxarifado','suprimentos','escrita'),
+  -- Matriz / Aprovação de compras
+  ('matriz','overview','leitura'),('matriz','suprimentos','leitura'),
   -- Gestão
   ('gestao','overview','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
   ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),
