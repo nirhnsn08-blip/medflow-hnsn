@@ -1,16 +1,27 @@
-# 📍 Ponto de restauração — checkpoint-v41
+# 📍 Ponto de restauração — checkpoint-v42
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v41` (anteriores: `checkpoint-v40` … `checkpoint-v1`)
-- **Data:** 2026-07-26 · `main` em `b2c22f2`
+- **Tag Git mais recente:** `checkpoint-v42` (anteriores: `checkpoint-v41` … `checkpoint-v1`)
+- **Data:** 2026-07-26 · `main` em `24ba410`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v40 para cá: **PRs #21–#22** (portas fixas + BI de exames).
+  vai ao ar). Da v41 para cá: **PR #24** (aprovação de pedidos de compra).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v42 (desde a v41 — PR #24)
+
+- **✅ Aprovação de pedidos de compra pela matriz:** o pedido não vai mais direto
+  ao fornecedor. O comprador monta (elaboração) → **"Enviar para aprovação"** → a
+  **matriz** (perfil próprio) ou o ADM Master **aprova** ou **nega com motivo** →
+  só o aprovado segue ao fornecedor; negado volta em **"Revisar"**. Nova aba
+  **Aprovações** no Estoque (kanban Aguardando aprovação · Aprovado · Negado), card
+  no dashboard e trilha da decisão (quem/quando/motivo). Perfil de acesso **"Matriz
+  — Aprovação de Compras"**. Migração `migracao-suprimentos-aprovacao.sql` (colunas
+  em `sup_pedidos`) + perfil em `migracao-perfis-acesso.sql`, já rodadas no HNSN.
 
 ## 🆕 Novidades da v41 (desde a v40 — PRs #21–#22)
 
@@ -426,7 +437,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v41
+git reset --hard checkpoint-v42
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -435,7 +446,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v41
+git checkout -b recuperacao checkpoint-v42
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -455,6 +466,7 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `24ba410` ✅ Aprovação de pedidos de compra pela matriz (aba Aprovações + perfil matriz)
 - `b2c22f2` 🧪 Bloco 5 — BI de exames (lab × imagem) no relatório do PS + aviso de exame pendente no desfecho
 - `83a864d` ⚙️ Portas fixas por ambiente no dev (5173 hospital / 5174 demo, strictPort)
 - `cf0c0db` 🛏️ Bloco 4 — avisar o NIR (fila com urgência, "Estou regulando", perfil NIR)

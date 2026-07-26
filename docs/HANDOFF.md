@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-07-26 · `main` em `b2c22f2` (checkpoint-v41) · zero PRs abertos.
+**Atualizado em:** 2026-07-26 · `main` em `24ba410` (checkpoint-v42) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **318 testes**. Três merecem atenção especial:
+`npm test` roda **320 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -102,7 +102,8 @@ vitais com NEWS → evolução → reconciliação medicamentosa → alta com su
 **perfis de acesso por cargo** estão no ar, e a **jornada do paciente no PS está
 completa (blocos 1–5)**: chegada → triagem → atendimento → medicação/checagem →
 exames (BI laboratorial × imagem) → desfecho (com aviso de exame pendente) →
-regulação de leito (NIR).
+regulação de leito (NIR). No **Estoque**, os pedidos de compra agora passam por
+**aprovação da matriz** (aguardando → aprovado/negado) antes de ir ao fornecedor.
 
 **Ainda não há paciente real no sistema.**
 
