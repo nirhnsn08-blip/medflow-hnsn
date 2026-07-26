@@ -6,7 +6,7 @@
 // do relógio da máquina.
 
 import { describe, it, expect } from "vitest";
-import { sugerirCid, calcAlta, sinalLeito, diasDesde } from "./leitos.js";
+import { sugerirCid, calcAlta, sinalLeito, diasDesde, corEsperaFila, FILA_LEITO_ATENCAO_MIN, FILA_LEITO_CRITICO_MIN } from "./leitos.js";
 
 const REFS = [
   { cid: "J18", descricao: "Pneumonia", dias: 7 },
@@ -82,6 +82,31 @@ describe("sinalLeito — as três cores", () => {
     const s = sinalLeito(null, null, hoje);
     expect(s.restam).toBe(null);
     expect(s.texto).toBe("sem previsão");
+  });
+});
+
+describe("corEsperaFila — urgência da espera por leito", () => {
+  it("NO PRAZO (verde) abaixo de 2h", () => {
+    expect(corEsperaFila(0).chave).toBe("ok");
+    expect(corEsperaFila(119).chave).toBe("ok");
+    expect(corEsperaFila(119).cor).toBe("#34d399");
+  });
+
+  it("ATENÇÃO (amarelo) de 2h a menos de 4h", () => {
+    expect(corEsperaFila(FILA_LEITO_ATENCAO_MIN).chave).toBe("atencao");   // exatamente 2h já conta
+    expect(corEsperaFila(239).chave).toBe("atencao");
+    expect(corEsperaFila(180).cor).toBe("#d97706");
+  });
+
+  it("CRÍTICO (vermelho) a partir de 4h", () => {
+    expect(corEsperaFila(FILA_LEITO_CRITICO_MIN).chave).toBe("critico");   // exatamente 4h já conta
+    expect(corEsperaFila(600).chave).toBe("critico");
+    expect(corEsperaFila(600).cor).toBe("#f43f5e");
+  });
+
+  it("cinza 'sem tempo' quando min é null ou NaN", () => {
+    expect(corEsperaFila(null).chave).toBe("sem");
+    expect(corEsperaFila(NaN).chave).toBe("sem");
   });
 });
 

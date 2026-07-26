@@ -68,3 +68,23 @@ export function diasDesde(dateStr, hoje = todayStr()) {
   if (isNaN(d)) return null;
   return Math.max(0, Math.round((new Date(hoje + "T00:00:00") - d) / 86400000));
 }
+
+// ── Fila de leito: urgência pela espera (regulação / NIR) ───
+// A espera por um leito é uma lista de trabalho, como a checagem de medicação:
+// quanto mais tempo o paciente aguarda depois de internado, mais o caso cobra
+// o NIR. Amarela a partir de 2h, vermelha a partir de 4h — limiar combinado
+// com a enfermagem do HNSN. Uma fonte só de cor para a fila do Giro de Leitos
+// e o selo do menu nunca divergirem (o mesmo motivo de manter as cores aqui).
+export const FILA_LEITO_ATENCAO_MIN = 120;   // 2h → amarelo
+export const FILA_LEITO_CRITICO_MIN = 240;   // 4h → vermelho
+
+/**
+ * Cor da espera na fila de leito a partir dos minutos aguardando.
+ * Devolve { chave, cor, label }. `min` null/NaN → cinza "sem tempo".
+ */
+export function corEsperaFila(min) {
+  if (min == null || isNaN(min)) return { chave: "sem",     cor: "var(--text-muted)", label: "sem tempo" };
+  if (min >= FILA_LEITO_CRITICO_MIN) return { chave: "critico", cor: "#f43f5e",           label: "crítico" };
+  if (min >= FILA_LEITO_ATENCAO_MIN) return { chave: "atencao", cor: "#d97706",           label: "atenção" };
+  return { chave: "ok", cor: "#34d399", label: "no prazo" };
+}

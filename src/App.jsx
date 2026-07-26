@@ -32,7 +32,7 @@ import {
 } from "./util/datas.js";
 import { fmt, fmtBRL, fmtReais, taxa } from "./util/formato.js";
 // Previsão de alta e sinaleira de permanência do Giro de Leitos (puras).
-import { sugerirCid, calcAlta, sinalLeito, diasDesde } from "./clinico/leitos.js";
+import { sugerirCid, calcAlta, sinalLeito, diasDesde, corEsperaFila } from "./clinico/leitos.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -1031,7 +1031,7 @@ function Overview({ db, currentUser, canEdit }) {
     setTimeout(refresh, 400);
   }
   async function resolverSolic(s, status) {
-    await updateSolicitacaoRemote(s.id, { status });
+    await updateSolicitacaoRemote(s.id, { status, resolvido_em: nowISO() });
     addAuditLog(currentUser, status === "atendido" ? "leito atendido" : "solicitação cancelada", s.setor_destino, {});
     setTimeout(refresh, 300);
   }
@@ -1115,12 +1115,14 @@ function Overview({ db, currentUser, canEdit }) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {solic.map(s => {
-              const espera = fmtDur(diffMin(s.hora_pedido, nowISO()));
+              const esperaMin = diffMin(s.hora_pedido, nowISO());
+              const urg = corEsperaFila(esperaMin);
               return (
                 <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 700, minWidth: 70 }}>{s.iniciais}</span>
                   <span style={{ fontSize: 12, color: "var(--text-3)" }}>{s.setor_origem || "?"} <span style={{ color: "var(--text-muted)" }}>→</span> <strong style={{ color: "var(--text)" }}>{s.setor_destino}</strong></span>
-                  <span style={{ fontSize: 12, color: "#fbbf24", fontWeight: 700, marginLeft: "auto" }}>⏳ {espera}</span>
+                  {s.visto_em && <span title={s.visto_por ? `em regulação por ${s.visto_por}` : "em regulação"} style={{ fontSize: 10.5, fontWeight: 700, color: "#34d399", border: "1px solid #34d39955", borderRadius: 99, padding: "0 7px" }}>em regulação</span>}
+                  <span style={{ fontSize: 12, color: urg.cor, fontWeight: 700, marginLeft: "auto", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(esperaMin)}</span>
                   {canEdit && <>
                     <button onClick={() => resolverSolic(s, "atendido")} style={btnLeito("#34d399")}>✓ Atendido</button>
                     <button onClick={() => resolverSolic(s, "cancelado")} style={btnLeito("var(--text-muted)")}>✕</button>
@@ -4569,9 +4571,11 @@ function PSPage({ currentUser, canEdit }) {
           ps_atendimento_id: p.id,          // elo forte: não depende do prontuário como texto
         }, currentUser);
         addAuditLog(currentUser, "PS: reservar leito", `${p.iniciais} → ${leito.identificacao}`, {});
-      } else if (setorDestino) {
-        // Sem leito agora → fila de espera do setor (NIR puxa dali)
-        await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino, hora_pedido: nowISO(), status: "aguardando", ps_atendimento_id: p.id }, currentUser);
+      } else {
+        // Sem leito agora → fila de espera (NIR puxa dali). Sempre entra na
+        // fila, mesmo sem setor definido, para nenhuma internação sem leito
+        // ficar fora do aviso do NIR.
+        await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino || null, hora_pedido: nowISO(), status: "aguardando", ps_atendimento_id: p.id }, currentUser);
       }
     }
     addAuditLog(currentUser, "PS: desfecho", `${p.iniciais} → ${desfecho}${medico ? " · Dr(a). " + medico : ""}${leito ? " · leito " + leito.identificacao : setorDestino ? " (" + setorDestino + ")" : ""}`, {});
@@ -9895,9 +9899,20 @@ function LeitosPage({ currentUser, canEdit }) {
 
   async function cancelarSolic(s) {
     if (!confirm(`Remover ${s.iniciais || "paciente"} da fila de internação?`)) return;
-    await updateSolicitacaoRemote(s.id, { status: "cancelada" });
+    await updateSolicitacaoRemote(s.id, { status: "cancelada", resolvido_em: nowISO() });
     setSolic(prev => prev.filter(x => x.id !== s.id));
     addAuditLog(currentUser, "cancelar solicitação de leito", s.iniciais || "", {});
+  }
+  // "Estou regulando": o NIR assume o caso — carimba quem/quando (visto_em/
+  // visto_por) para separar o pedido novo do que já está sendo regulado e medir
+  // o tempo até alguém pegar. Alternável: clicar de novo solta o caso.
+  async function marcarRegulando(s) {
+    const campos = s.visto_em
+      ? { visto_em: null, visto_por: null }
+      : { visto_em: nowISO(), visto_por: currentUser?.name || null };
+    setSolic(prev => prev.map(x => x.id === s.id ? { ...x, ...campos } : x));
+    await updateSolicitacaoRemote(s.id, campos);
+    addAuditLog(currentUser, s.visto_em ? "soltar regulação de leito" : "assumir regulação de leito", s.iniciais || "", {});
   }
   async function setMotivoEspera(s, motivo) {
     setSolic(prev => prev.map(x => x.id === s.id ? { ...x, motivo_espera: motivo || null } : x));
@@ -10355,15 +10370,22 @@ function LeitosPage({ currentUser, canEdit }) {
                 {gargalos.map(g => <span key={g.k} style={{ fontSize: 11.5, fontWeight: 700, color: g.v.cor, background: g.v.cor + "18", border: `1px solid ${g.v.cor}44`, borderRadius: 99, padding: "2px 9px" }}>{g.v.label}: {g.n}</span>)}
               </div>
             )}
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10 }}>
+              {filaOrd.length} aguardando · {filaOrd.filter(x => !x.visto_em).length} sem ninguém regulando
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {filaOrd.map(s => {
                 const espera = diffMin(s.hora_pedido, nowISO());
+                const urg = corEsperaFila(espera);
                 const livres = s.setor_destino ? filaLivresPorSetor(s.setor_destino) : 0;
                 const mv = s.motivo_espera ? MOTIVO_ESPERA[s.motivo_espera] : null;
                 return (
-                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${espera > 240 ? "#f43f5e" : "#d97706"}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 12, background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${urg.cor}`, borderRadius: 9, padding: "10px 14px", flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 200 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{s.iniciais || "—"}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 7 }}>
+                        {s.iniciais || "—"}
+                        {s.ps_atendimento_id && <span style={{ fontSize: 10, fontWeight: 700, color: VX.azul, background: VX.azul + "18", border: `1px solid ${VX.azul}44`, borderRadius: 99, padding: "1px 7px" }}>veio do PS</span>}
+                      </div>
                       <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{s.setor_origem || "—"} → <strong style={{ color: "var(--text-2)" }}>{s.setor_destino || "—"}</strong>{s.setor_destino ? ` · ${livres} livre(s) agora · ${prevHojeSetor(s.setor_destino)} vaga(s) prevista(s) hoje` : ""}</div>
                       <div style={{ marginTop: 6 }}>
                         {canEdit ? (
@@ -10375,9 +10397,14 @@ function LeitosPage({ currentUser, canEdit }) {
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: espera > 240 ? "#f43f5e" : "#d97706" }}>{fmtDur(espera)}</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: urg.cor }}>{fmtDur(espera)}</div>
                       <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>espera desde {horaFmt(s.hora_pedido)}</div>
                     </div>
+                    {s.visto_em ? (
+                      <span onClick={() => canEdit && marcarRegulando(s)} title={canEdit ? "Em regulação — clique para soltar o caso" : undefined} style={{ fontSize: 11, fontWeight: 700, color: "#34d399", background: "#34d39918", border: "1px solid #34d39955", borderRadius: 99, padding: "3px 10px", cursor: canEdit ? "pointer" : "default", whiteSpace: "nowrap" }}>em regulação{s.visto_por ? ` · ${s.visto_por}` : ""}</span>
+                    ) : canEdit ? (
+                      <button onClick={() => marcarRegulando(s)} style={btnLeito(VX.azul)}>Estou regulando</button>
+                    ) : null}
                     {canEdit && <button onClick={() => cancelarSolic(s)} style={btnLeito("var(--text-muted)")}>Remover</button>}
                   </div>
                 );
@@ -14292,6 +14319,28 @@ export default function App() {
     return () => { vivo = false; };
   }, [currentUser?.id, currentUser?.perfil, currentUser?.role]);
 
+  // ── AVISO DA FILA DE LEITO (NIR) ──────────────────────────
+  // Selo de contagem no menu Giro de Leitos, para o NIR não depender de lembrar
+  // de abrir o módulo. Busca leve (só id/hora/visto), a cada 60s e ao focar a
+  // aba; a cor segue o mesmo corEsperaFila da fila (mais antigo manda).
+  const [filaAviso, setFilaAviso] = useState({ n: 0, cor: null, maiorMin: 0 });
+  useEffect(() => {
+    if (!USE_SUPABASE || !currentUser?.id) return;
+    let vivo = true;
+    const puxar = async () => {
+      const rows = await sbFetch("solicitacoes?status=eq.aguardando&select=id,hora_pedido,visto_em").catch(() => null);
+      if (!vivo || !Array.isArray(rows)) return;
+      const agora = nowISO();
+      const maiorMin = rows.reduce((m, s) => { const d = diffMin(s.hora_pedido, agora); return d != null && d > m ? d : m; }, 0);
+      setFilaAviso({ n: rows.length, cor: rows.length ? corEsperaFila(maiorMin).cor : null, maiorMin });
+    };
+    puxar();
+    const iv = setInterval(puxar, 60000);
+    const onF = () => puxar();
+    window.addEventListener("focus", onF);
+    return () => { vivo = false; clearInterval(iv); window.removeEventListener("focus", onF); };
+  }, [currentUser?.id]);
+
   // Se a pessoa estava num módulo que o perfil dela não alcança, a tela
   // ficaria em branco sem explicar nada. Traz de volta para a Visão Geral —
   // ou, se nem essa ela tiver, para Usuários (adm_master) / a primeira que
@@ -14398,7 +14447,7 @@ export default function App() {
     { id: "d2" },
     ...(verModulo("ps")          ? [{ id: "ps",       icon: "activity", label: "Pronto-Socorro" }]    : []),
     ...(verModulo("bloco")       ? [{ id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" }]   : []),
-    ...(verModulo("leitos")      ? [{ id: "leitos",   icon: "bed", label: "Giro de Leitos" }]         : []),
+    ...(verModulo("leitos")      ? [{ id: "leitos",   icon: "bed", label: "Giro de Leitos", aviso: filaAviso.n ? filaAviso : null }] : []),
     ...(verModulo("scih")        ? [{ id: "scih",     icon: "shield", label: "SCIH" }]                : []),
     ...(verModulo("farmacia")    ? [{ id: "farmacia", icon: "pill", label: "Farmácia" }]              : []),
     ...(verModulo("suprimentos") ? [{ id: "suprimentos", icon: "cart", label: "Estoque & Compras" }]  : []),
@@ -14480,6 +14529,7 @@ export default function App() {
             return (
               <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
                 <Icon name={item.icon} />{item.label}
+                {item.aviso && <span title={`${item.aviso.n} aguardando leito${item.aviso.maiorMin ? ` · mais antigo há ${fmtDur(item.aviso.maiorMin)}` : ""}`} style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#fff", background: item.aviso.cor || "var(--text-muted)", borderRadius: 99, minWidth: 18, textAlign: "center", padding: "0 6px", lineHeight: "17px" }}>{item.aviso.n}</span>}
               </button>
             );
           })}
