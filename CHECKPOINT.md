@@ -1,16 +1,50 @@
-# 📍 Ponto de restauração — checkpoint-v39
+# 📍 Ponto de restauração — checkpoint-v40
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v39` (anteriores: `checkpoint-v38` … `checkpoint-v1`)
-- **Data:** 2026-07-21
-- **Equipe:** projeto agora com 2 devs; publicação por **branch + Pull Request**
-  (merge na `main` = vai ao ar). Inclui as PRs de QA e docs do Adauam Feistler.
+- **Tag Git mais recente:** `checkpoint-v40` (anteriores: `checkpoint-v39` … `checkpoint-v1`)
+- **Data:** 2026-07-26 · `main` em `cf0c0db`
+- **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
+  vai ao ar). Da v39 para cá entraram as **PRs #10–#19**.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
-- ⚠️ **Banco do demo congelado** (decisão de 2026-07-16): trabalhamos só no HNSN.
-  O site demo recebe o código novo, mas sem as migrações de banco — salvar nas
-  telas novas dá erro lá (esperado).
+- ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
+  para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
+  roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v40 (desde a v39 — PRs #10–#19)
+
+- **🏥 PS — Checagem de medicação administrada (bloco 3 da jornada):** fecha o furo
+  "dispensado ≠ administrado". Tabela `ps_administracoes` (append-only): doses dadas ×
+  previstas, "não administrado" com motivo, categoria profissional, hora retroativa.
+  Aba **Checagem** no atendimento + tela **Checagem de medicação** na barra EMERGÊNCIA
+  (lista de trabalho da enfermagem, vermelho >1h) + selo nos cards.
+  Migração `migracao-ps-checagem-medicacao.sql`.
+- **🧪 Modo demo + banco de teste:** `npm run dev:demo` (banco separado
+  `ufxqdvxhruaswuzhmxyf`), **faixa laranja** de ambiente e **seed de 60 pacientes**
+  desenhados para disparar alertas clínicos. Motor de alertas extraído para módulo
+  testável (`src/clinico/alertas.js`).
+- **📋 PEP — Prontuário Eletrônico completo (fases 1–3):** admissão/episódio, anamnese,
+  **prescrição com aprazamento e checagem**, **sinais vitais com NEWS**, **alergia como
+  atributo** do paciente + log de acesso ao prontuário, **reconciliação medicamentosa** e
+  **sumário de alta**. Prontuário do paciente internado. O código já nasce **fora do
+  App.jsx** (`src/clinico/`, `src/prontuario/`, `src/acesso/`) com testes. Migrações
+  `migracao-pep-*`.
+- **🔐 Perfis de acesso por cargo:** 15 perfis-modelo (médico, enfermeiro, técnico,
+  farmacêutico, recepção, almoxarifado, gestão, TI…) — o cargo vira um pacote de
+  permissões por módulo, **por referência**. Catálogo em `src/acesso/modulos.js`,
+  resolução pura em `permissoes.js`, exceções por usuário. **Organiza o menu; ainda
+  NÃO é barreira de dado** (RLS por tabela é fase futura). Migração
+  `migracao-perfis-acesso.sql`.
+- **🔧 Refatoração:** utils puros extraídos do App.jsx (+50 testes) e as duas tabelas
+  de Usuários fundidas.
+- **🛏️ Bloco 4 — Avisar o NIR (regulação de leitos):** **selo de contagem no menu Giro
+  de Leitos** (aparece de qualquer tela, colorido pela maior espera); fila de internação
+  com **urgência em 3 níveis** (verde <2h · amarelo ≥2h · vermelho ≥4h), selo **"veio do
+  PS"** e motivo da espera; botão **"Estou regulando"** (`visto_em`/`visto_por`) que
+  separa "ninguém viu" de "em regulação"; `resolvido_em` ao sair da fila; e **perfil de
+  acesso NIR**. `corEsperaFila` testável em `src/clinico/leitos.js`. Migração
+  `migracao-leitos-nir-regulacao.sql`. **Todas as migrações da v40 já rodadas no HNSN.**
 
 ## O que já está pronto neste ponto
 - **Login seguro** (Supabase Auth) + permissões por papel + auditoria. Banco trancado por RLS.
@@ -378,7 +412,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v39
+git reset --hard checkpoint-v40
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -387,7 +421,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v39
+git checkout -b recuperacao checkpoint-v40
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -397,14 +431,26 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
 
 ## Pendências conhecidas (não urgentes)
 - Equipe médica revisar os 8 textos de tratamento por CID (editáveis no 📚).
-- **DEMO congelado**: banco sem as migrações da Fase 3 pt2 e do tratamento por CID.
-  Se um dia voltarmos a usar o demo, rodar as migrações acumuladas antes.
+- **Reclassificar a equipe** nos perfis de acesso (hoje quase todos no perfil
+  "Provisório", que mantém o acesso antigo); só então desativar o Provisório.
+- **O controle de acesso organiza o menu, ainda NÃO restringe o dado** — apertar o
+  RLS por tabela (com modo sombra + quebra-vidro) é fase futura. Ver docs/CONTEXTO.md.
 - ✅ **Resolvido (2026-07-21):** registros de teste do AQUARIO removidos do HNSN
   (3 em `leitos_saidas`, 2 em `leitos_turnover` e o leito ocupado fake em `leitos`).
   Investigação do bug de fuso do Adauam confirmou **nenhum dado real corrompido**
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `cf0c0db` 🛏️ Bloco 4 — avisar o NIR (fila com urgência, "Estou regulando", perfil NIR)
+- `b0f03ca` 🔧 refactor — utils puros extraídos do App.jsx (+50 testes) + fusão das tabelas de Usuários
+- `7387471` 🔐 Perfis de acesso por cargo — 15 perfis-modelo (menu por perfil)
+- `0b3ca06` 📋 PEP fase 3 — reconciliação medicamentosa + sumário de alta
+- `50c45fb` 📋 PEP fase 2 — categoria profissional, criar prescrição e anamnese
+- `a185896` 📋 PEP fase 1 — prontuário do internado, alergia como atributo, log de acesso
+- `c53eae6` 🧪 Modo demo (npm run dev:demo) + faixa de ambiente + seed de 60 pacientes
+- `ef41ea6` 🧪 Motor de alertas clínicos extraído para módulo testável (+29 testes)
+- `2a3945c` 🗄️ Script de reconstrução do banco + gerador da auditoria versionado
+- `7dbbde1` 🏥 PS — checagem de medicação administrada (bloco 3 da jornada)
 - `32374f8` 🔗 PS — categoria profissional na evolução (médica/enfermagem/técnico)
 - `ba1966a` 🔗 PS — origem da chegada + prontuário obrigatório + elo forte PS→fila→leito
 - `0338a54` 🏥 PS — ajustes de layout (cards iguais, encaminhamentos em largura total)
