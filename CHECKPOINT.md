@@ -1,16 +1,30 @@
-# 📍 Ponto de restauração — checkpoint-v40
+# 📍 Ponto de restauração — checkpoint-v41
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v40` (anteriores: `checkpoint-v39` … `checkpoint-v1`)
-- **Data:** 2026-07-26 · `main` em `cf0c0db`
+- **Tag Git mais recente:** `checkpoint-v41` (anteriores: `checkpoint-v40` … `checkpoint-v1`)
+- **Data:** 2026-07-26 · `main` em `b2c22f2`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v39 para cá entraram as **PRs #10–#19**.
+  vai ao ar). Da v40 para cá: **PRs #21–#22** (portas fixas + BI de exames).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v41 (desde a v40 — PRs #21–#22)
+
+- **🧪 BI de exames no PS (bloco 5 — jornada completa):** o relatório mensal do
+  Pronto-Socorro passou a separar os exames em **Laboratorial × Imagem × Outro**
+  (solicitados, % com resultado e **tempo médio até o resultado**), com KPI de
+  **exames por atendimento** — na tela e no PDF. E o **desfecho avisa** quando o
+  paciente tem exame aguardando resultado (banner + confirmação, não bloqueia).
+  Regra pura testável `src/clinico/exames.js` (+8 testes). **Sem migração** — a
+  categoria já era gravada em `ps_registros`. Com isso a **jornada do paciente
+  (blocos 1–5)** está completa.
+- **⚙️ Portas fixas no dev:** `npm run dev` = 5173 (hospital) e `npm run dev:demo`
+  = 5174 (demo), com `strictPort` — o Vite recusa subir na porta errada em vez de
+  escorregar em silêncio. Afeta só o ambiente de desenvolvimento.
 
 ## 🆕 Novidades da v40 (desde a v39 — PRs #10–#19)
 
@@ -412,7 +426,7 @@ dá pra voltar exatamente para este estado.
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v40
+git reset --hard checkpoint-v41
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -421,7 +435,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v40
+git checkout -b recuperacao checkpoint-v41
 ```
 
 ## ⚠️ Importante: código ≠ dados
@@ -441,6 +455,8 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `b2c22f2` 🧪 Bloco 5 — BI de exames (lab × imagem) no relatório do PS + aviso de exame pendente no desfecho
+- `83a864d` ⚙️ Portas fixas por ambiente no dev (5173 hospital / 5174 demo, strictPort)
 - `cf0c0db` 🛏️ Bloco 4 — avisar o NIR (fila com urgência, "Estou regulando", perfil NIR)
 - `b0f03ca` 🔧 refactor — utils puros extraídos do App.jsx (+50 testes) + fusão das tabelas de Usuários
 - `7387471` 🔐 Perfis de acesso por cargo — 15 perfis-modelo (menu por perfil)
