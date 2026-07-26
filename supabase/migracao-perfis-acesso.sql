@@ -171,6 +171,7 @@ insert into public.perfis_acesso (chave, nome, descricao, categoria_sugerida, ro
   ('fisioterapeuta',     'Fisioterapeuta',             'Evolução de fisioterapia no prontuário.', 'fisioterapeuta', 'adm_silver', false),
   ('nutricionista',      'Nutricionista',              'Avaliação e evolução nutricional.', 'nutricionista', 'adm_silver', false),
   ('assistente_social',  'Assistente Social',          'Avaliação social, apoio à alta.', 'assistente_social', 'adm_silver', false),
+  ('nir',                'NIR / Regulação de Leitos',  'Regulação interna: fila de internação, vagas e alocação de leitos. Não acessa prontuário.', 'enfermeiro', 'adm_silver', false),
   ('farmaceutico',       'Farmacêutico(a)',            'Farmácia clínica, dispensação, controlados e intervenção farmacêutica.', 'farmaceutico', 'adm_silver', false),
   ('aux_farmacia',       'Auxiliar de Farmácia',       'Dispensação e estoque da farmácia. Não acessa prontuário.', 'administrativo', 'adm_silver', false),
   ('recepcao',           'Recepção / Admissão',        'Cadastro, chegada e agendamento. Não acessa prontuário (COFEN 754/2024, art. 6º).', 'administrativo', 'adm_silver', false),
@@ -207,6 +208,9 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Assistente social
   ('assistente_social','overview','leitura'),('assistente_social','ambulatorio','leitura'),
   ('assistente_social','leitos','leitura'),('assistente_social','paciente','escrita'),
+  -- NIR / Regulação de Leitos
+  ('nir','overview','leitura'),('nir','ps','leitura'),('nir','bloco','leitura'),
+  ('nir','leitos','escrita'),('nir','print','leitura'),
   -- Farmacêutico
   ('farmaceutico','overview','leitura'),('farmaceutico','ps','leitura'),('farmaceutico','leitos','leitura'),
   ('farmaceutico','scih','leitura'),('farmaceutico','farmacia','escrita'),('farmaceutico','controlados','escrita'),

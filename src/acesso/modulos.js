@@ -143,6 +143,14 @@ export const PERFIS_MODELO = [
     descricao: "Avaliação social, apoio à alta.",
     grants: p({ overview: "leitura", ambulatorio: "leitura", leitos: "leitura", paciente: "escrita" }),
   },
+  {
+    // Regulação interna: trabalha a fila de leito e aloca. Vê o PS e o Bloco só
+    // para consulta (de onde vêm os pedidos e a classificação), lança no Giro de
+    // Leitos, e NÃO abre prontuário — regular leito não é ato assistencial.
+    chave: "nir", nome: "NIR / Regulação de Leitos", categoria: "enfermeiro", role: "adm_silver",
+    descricao: "Regulação interna: fila de internação, vagas e alocação de leitos. Não acessa prontuário.",
+    grants: p({ overview: "leitura", ps: "leitura", bloco: "leitura", leitos: "escrita", print: "leitura" }),
+  },
 
   // ── Farmácia ─────────────────────────────────────────────
   {
