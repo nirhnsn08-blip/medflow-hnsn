@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 58 tabelas, 872 colunas.
+-- Cobertura atual: 58 tabelas, 875 colunas.
 -- ============================================================
 
 with
@@ -847,10 +847,13 @@ colunas(tabela, coluna, origem) as (values
   ('solicitacoes','iniciais','schema'),
   ('solicitacoes','motivo_espera','leitos-kanban-metas'),
   ('solicitacoes','ps_atendimento_id','ps-origem-elo'),
+  ('solicitacoes','resolvido_em','leitos-nir-regulacao'),
   ('solicitacoes','setor_destino','schema'),
   ('solicitacoes','setor_origem','schema'),
   ('solicitacoes','status','schema'),
   ('solicitacoes','usuario','schema'),
+  ('solicitacoes','visto_em','leitos-nir-regulacao'),
+  ('solicitacoes','visto_por','leitos-nir-regulacao'),
   ('sup_cotacoes','created_at','suprimentos-cotacao'),
   ('sup_cotacoes','descricao','suprimentos-cotacao'),
   ('sup_cotacoes','fornecedores','suprimentos-cotacao'),
