@@ -2087,6 +2087,7 @@ const SUP_NAV = [
   { key: "requisicoes",  label: "Requisições",  icon: "list" },
   { key: "cotacoes",     label: "Cotações",     icon: "flask" },
   { key: "compras",      label: "Compras",      icon: "cart" },
+  { key: "aprovacoes",   label: "Aprovações",   icon: "shield" },
   { key: "estoque",      label: "Estoque",      icon: "box" },
   { key: "inventario",   label: "Inventário",   icon: "clipboard" },
   { key: "preditivo",    label: "Estoque preditivo", icon: "activity" },
@@ -2107,11 +2108,14 @@ const supPrazoReposicao = (itemId, leadMap = {}) => (Number(leadMap[itemId]) || 
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
 // Pedido de compra — estados e cores
 const SUP_PED_STATUS = {
-  aberto:    { label: "Em elaboração",       cor: "#8d99ab" },
-  enviado:   { label: "Enviado ao fornecedor", cor: "#3b82f6" },
-  parcial:   { label: "Recebido parcial",    cor: "#d97706" },
-  recebido:  { label: "Recebido",            cor: "#34d399" },
-  cancelado: { label: "Cancelado",           cor: "#f43f5e" },
+  aberto:               { label: "Em elaboração",         cor: "#8d99ab" },
+  aguardando_aprovacao: { label: "Aguardando aprovação",  cor: "#d97706" },
+  aprovado:             { label: "Aprovado",              cor: "#22d3ee" },
+  negado:               { label: "Negado",                cor: "#f43f5e" },
+  enviado:              { label: "Enviado ao fornecedor", cor: "#3b82f6" },
+  parcial:              { label: "Recebido parcial",      cor: "#d97706" },
+  recebido:             { label: "Recebido",              cor: "#34d399" },
+  cancelado:            { label: "Cancelado",             cor: "#8d99ab" },
 };
 // Fluxo da requisição — estados e cores (mesma régua do preparo da Farmácia)
 const SUP_REQ_STATUS = {
@@ -10962,6 +10966,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     requisicoes: "Pedidos de material dos setores: receber → separar (baixa automática no estoque) → pronto → confirmar entrega.",
     cotacoes: "Compare preços de vários fornecedores antes de comprar — o vencedor de cada item vira um pedido com um clique.",
     compras: "Pedidos de compra por fornecedor — materiais e medicamentos. O recebimento dá entrada automática no estoque.",
+    aprovacoes: "Autorização da matriz sobre os pedidos de compra: aguardando aprovação · aprovado · negado.",
     inventario: "Inventário cíclico — contagem cega rotativa (curva ABC), ajuste no kardex e acuracidade do estoque.",
     preditivo: "Previsão item a item: no ritmo atual de consumo, quando acaba cada material e medicamento.",
     vencimentos: "Vencimentos inteligentes — o que vence, quanto vale e o que NÃO será consumido a tempo no ritmo atual.",
@@ -11016,7 +11021,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12 }}>
               <Card label="Requisições aguardando" valor={reqs.filter(r => r.status === "aguardando").length} cor={VX.azul} sub="setores esperando" nav="requisicoes" />
               <Card label="Em separação / prontas" valor={reqs.filter(r => ["separacao", "pronto"].includes(r.status)).length} cor="#d97706" sub="no balcão do almoxarifado" nav="requisicoes" />
-              <Card label="Pedidos de compra abertos" valor={pedidos.filter(p => ["aberto", "enviado", "parcial"].includes(p.status)).length} cor={VX.turquesa} sub="aguardando envio / entrega" nav="compras" />
+              <Card label="Aguardando aprovação" valor={pedidos.filter(p => p.status === "aguardando_aprovacao").length} cor={pedidos.filter(p => p.status === "aguardando_aprovacao").length ? "#d97706" : "#34d399"} sub="pedidos p/ a matriz" nav="aprovacoes" />
+              <Card label="Pedidos de compra abertos" valor={pedidos.filter(p => ["aberto", "aprovado", "enviado", "parcial"].includes(p.status)).length} cor={VX.turquesa} sub="em elaboração / envio / entrega" nav="compras" />
               <Card label="Materiais ativos" valor={ativos.length} cor={VX.azul} sub={`${itens.length} cadastrados`} nav="estoque" />
               <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
               <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
@@ -11033,6 +11039,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "cotacoes" && <SupCotacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} forns={forns.filter(f => f.ativo !== false)} cotacoes={cotacoes} onChanged={refresh} />}
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
+      {sub === "aprovacoes" && <SupAprovacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} pedidos={pedidos} onChanged={refresh} />}
 
       {sub === "acoes" && <SupAcoesView itens={itens} lotes={lotes} saidasHist={saidasHist} reqs={reqs} pedidos={pedidos} invs={invs} leadMap={leadMap} onNav={setSub} />}
       {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
@@ -11813,10 +11820,24 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
     setShowNovo(false);
     onChanged && onChanged();
   }
+  async function enviarParaAprovacao(p) {
+    setBusyId(p.id);
+    await atualizarSupPedidoRemote(p.id, { status: "aguardando_aprovacao", aprovacao_em: nowISO() });
+    addAuditLog(currentUser, "enviar pedido para aprovação", `PED-${p.id}`, {});
+    setBusyId(null);
+    onChanged && onChanged();
+  }
   async function enviar(p) {
     setBusyId(p.id);
     await atualizarSupPedidoRemote(p.id, { status: "enviado", enviado_em: nowISO(), enviado_por: currentUser?.name || null });
-    addAuditLog(currentUser, "enviar pedido de compra", `PED-${p.id}`, {});
+    addAuditLog(currentUser, "enviar pedido ao fornecedor", `PED-${p.id}`, {});
+    setBusyId(null);
+    onChanged && onChanged();
+  }
+  async function revisar(p) {
+    setBusyId(p.id);
+    await atualizarSupPedidoRemote(p.id, { status: "aberto", aprovacao_em: null, decidido_por: null, decidido_em: null, negado_motivo: null });
+    addAuditLog(currentUser, "revisar pedido negado", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
   }
@@ -11883,7 +11904,7 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
     onChanged && onChanged();
   }
 
-  const ativos = pedidos.filter(p => ["aberto", "enviado", "parcial"].includes(p.status));
+  const ativos = pedidos.filter(p => ["aberto", "aguardando_aprovacao", "aprovado", "negado", "enviado", "parcial"].includes(p.status));
   const historico = pedidos.filter(p => ["recebido", "cancelado"].includes(p.status));
   const lista = verHistorico ? historico : ativos;
 
@@ -11920,9 +11941,14 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
           <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: "auto" }}>{p.created_at ? new Date(p.created_at).toLocaleDateString("pt-BR") : ""}{p.usuario ? ` · ${p.usuario}` : ""}</span>
         </div>
         {p.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{p.observacao}</div>}
+        {p.status === "aguardando_aprovacao" && <div style={{ fontSize: 11, color: "#d97706", marginBottom: 7 }}>Aguardando aprovação da matriz.</div>}
+        {p.status === "aprovado" && <div style={{ fontSize: 11, color: "#0891b2", marginBottom: 7 }}>Aprovado{p.decidido_por ? ` por ${p.decidido_por}` : ""}{p.decidido_em ? ` · ${new Date(p.decidido_em).toLocaleDateString("pt-BR")}` : ""} — pronto para enviar ao fornecedor.</div>}
+        {p.status === "negado" && <div style={{ fontSize: 11.5, color: "#f43f5e", background: "#f43f5e14", border: "1px solid #f43f5e44", borderRadius: 6, padding: "6px 9px", marginBottom: 7 }}><strong>Negado{p.decidido_por ? ` por ${p.decidido_por}` : ""}:</strong> {p.negado_motivo || "sem motivo informado"}</div>}
         {canEdit && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {p.status === "aberto" && <button disabled={busy} onClick={() => enviar(p)} style={btnLeito("#3b82f6")}>Marcar como enviado</button>}
+            {p.status === "aberto" && <button disabled={busy} onClick={() => enviarParaAprovacao(p)} style={btnLeito("#d97706")}>Enviar para aprovação</button>}
+            {p.status === "aprovado" && <button disabled={busy} onClick={() => enviar(p)} style={btnLeito("#3b82f6")}>Enviar ao fornecedor</button>}
+            {p.status === "negado" && <button disabled={busy} onClick={() => revisar(p)} style={btnLeito("#d97706")}>Revisar</button>}
             {["enviado", "parcial"].includes(p.status) && <button disabled={busy} onClick={() => setReceb(p)} style={btnLeito("#34d399")}>{busy ? "…" : "Receber (entrada)"}</button>}
             {!["recebido", "cancelado"].includes(p.status) && <button disabled={busy} onClick={() => cancelar(p)} style={btnLeito("#f43f5e")}>Cancelar</button>}
           </div>
@@ -11955,6 +11981,100 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
 
       {showNovo && <SupNovoPedidoModal forns={forns} materiais={materiais} meds={meds.filter(m => m.ativo !== false)} sugMat={sugMat} sugMed={sugMed} onClose={() => setShowNovo(false)} onSave={criarPedido} />}
       {receb && <SupRecebModal pedido={receb} busy={busyId === receb.id} onClose={() => setReceb(null)} onConfirm={confirmarRecebimento} />}
+    </div>
+  );
+}
+
+// Aprovação de pedidos de compra pela matriz. Kanban de 3 colunas:
+// Aguardando aprovação | Aprovado | Negado. A ação (aprovar/negar) só aparece
+// para o perfil "matriz" ou o ADM Master; os demais acompanham em leitura.
+function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, onChanged }) {
+  const [busyId, setBusyId] = useState(null);
+  const podeAprovar = (isMaster || currentUser?.perfil === "matriz") && canEdit;
+  const colunas = ["aguardando_aprovacao", "aprovado", "negado"];
+  const daColuna = st => pedidos.filter(p => p.status === st)
+    .sort((a, b) => new Date(b.aprovacao_em || b.created_at || 0) - new Date(a.aprovacao_em || a.created_at || 0));
+
+  async function aprovar(p) {
+    setBusyId(p.id);
+    await atualizarSupPedidoRemote(p.id, { status: "aprovado", decidido_por: currentUser?.name || null, decidido_em: nowISO(), negado_motivo: null });
+    addAuditLog(currentUser, "aprovar pedido de compra", `PED-${p.id}`, {});
+    setBusyId(null);
+    onChanged && onChanged();
+  }
+  async function negar(p) {
+    const motivo = prompt(`Motivo da negação do PED-${p.id}${p.fornecedor_nome ? ` (${p.fornecedor_nome})` : ""}:`);
+    if (motivo == null) return;                       // cancelou o prompt
+    if (!motivo.trim()) { alert("Informe o motivo da negação."); return; }
+    setBusyId(p.id);
+    await atualizarSupPedidoRemote(p.id, { status: "negado", decidido_por: currentUser?.name || null, decidido_em: nowISO(), negado_motivo: motivo.trim() });
+    addAuditLog(currentUser, "negar pedido de compra", `PED-${p.id}`, {});
+    setBusyId(null);
+    onChanged && onChanged();
+  }
+
+  const AprovCard = ({ p }) => {
+    const st = SUP_PED_STATUS[p.status] || SUP_PED_STATUS.aguardando_aprovacao;
+    const its = Array.isArray(p.itens) ? p.itens : [];
+    const total = supPedidoTotal(p);
+    const busy = busyId === p.id;
+    return (
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 10, padding: "10px 12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 800, fontSize: 13 }}>{p.fornecedor_nome || "Sem fornecedor"}</span>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>PED-{p.id}</span>
+        </div>
+        <div style={{ margin: "7px 0", display: "flex", flexDirection: "column", gap: 2 }}>
+          {its.slice(0, 6).map((x, i) => (
+            <div key={i} style={{ fontSize: 12, color: "var(--text-2)", display: "flex", gap: 6 }}>
+              <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 700, minWidth: 46, textAlign: "right" }}>{farmFmtQtd(x.qtd)}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{x.nome}{x.unidade ? ` (${x.unidade})` : ""}</span>
+              {Number(x.custo_unit) > 0 && <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtBRL(Number(x.qtd) * Number(x.custo_unit))}</span>}
+            </div>
+          ))}
+          {its.length > 6 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{its.length - 6} itens</span>}
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 7 }}>
+          {total > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: VX.turquesa, fontFamily: "JetBrains Mono, monospace" }}>{fmtBRL(total)}</span>}
+          <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: "auto" }}>{p.usuario ? `por ${p.usuario}` : ""}{p.aprovacao_em ? ` · enviado ${new Date(p.aprovacao_em).toLocaleDateString("pt-BR")}` : ""}</span>
+        </div>
+        {p.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{p.observacao}</div>}
+        {p.status === "negado" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 6 }}><strong>Motivo:</strong> {p.negado_motivo || "—"}</div>}
+        {["aprovado", "negado"].includes(p.status) && p.decidido_por && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>{p.status === "aprovado" ? "aprovado" : "negado"} por {p.decidido_por}{p.decidido_em ? ` · ${new Date(p.decidido_em).toLocaleDateString("pt-BR")}` : ""}</div>}
+        {podeAprovar && p.status === "aguardando_aprovacao" && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button disabled={busy} onClick={() => aprovar(p)} style={btnLeito("#34d399")}>Aprovar</button>
+            <button disabled={busy} onClick={() => negar(p)} style={btnLeito("#f43f5e")}>Negar</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const totalAg = daColuna("aguardando_aprovacao").length;
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", marginBottom: 14, lineHeight: 1.5 }}>
+        {podeAprovar
+          ? <>Você pode <strong>aprovar</strong> ou <strong>negar</strong> os pedidos. {totalAg > 0 ? `${totalAg} aguardando sua decisão.` : "Nenhum pedido aguardando decisão."}</>
+          : <>Acompanhamento das aprovações. A decisão (aprovar/negar) é da <strong>matriz</strong> (perfil próprio) ou do ADM Master.</>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
+        {colunas.map(col => {
+          const lista = daColuna(col);
+          return (
+            <div key={col}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: SUP_PED_STATUS[col].cor, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>
+                {SUP_PED_STATUS[col].label} · {lista.length}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {lista.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "12px 0", border: "1px dashed var(--border)", borderRadius: 8 }}>—</div>}
+                {lista.slice(0, 40).map(p => <AprovCard key={p.id} p={p} />)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
