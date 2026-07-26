@@ -33,6 +33,7 @@ import {
 import { fmt, fmtBRL, fmtReais, taxa } from "./util/formato.js";
 // Previsão de alta e sinaleira de permanência do Giro de Leitos (puras).
 import { sugerirCid, calcAlta, sinalLeito, diasDesde, corEsperaFila } from "./clinico/leitos.js";
+import { resumoExamesPorCategoria } from "./clinico/exames.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -2742,6 +2743,15 @@ async function loadPsAtendimentosPeriodo(ano, mes) {
   const rows = await sbFetch(`ps_atendimentos?chegada_em=gte.${ini.toISOString()}&chegada_em=lt.${fim.toISOString()}&select=*&order=chegada_em.asc`);
   return Array.isArray(rows) ? rows : [];
 }
+// Exames do PS de um mês civil (para o BI do relatório mensal). SOMENTE LEITURA.
+// Mesmas bordas de mês local -> UTC dos atendimentos. A categoria (laboratorial/
+// imagem/outro) já vem gravada em ps_registros; aqui só se lê para agrupar.
+async function loadPsExamesPeriodo(ano, mes) {
+  const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
+  const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
+  const rows = await sbFetch(`ps_registros?tipo=eq.exame&criado_em=gte.${ini.toISOString()}&criado_em=lt.${fim.toISOString()}&select=categoria,status,criado_em,resultado_em&order=criado_em.asc`);
+  return Array.isArray(rows) ? rows : [];
+}
 async function addPsAtendimentoRemote(at, user) {
   if (!USE_SUPABASE) return null;
   return await sbFetch("ps_atendimentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...at, usuario: user?.name || null }) });
@@ -4190,14 +4200,16 @@ function PsRelatorioView() {
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
   const [rows, setRows] = useState([]);
+  const [exames, setExames] = useState([]);
   const [carregando, setCarregando] = useState(false);
   const [preview, setPreview] = useState(false);
 
   useEffect(() => {
-    if (!USE_SUPABASE) { setRows([]); return; }
+    if (!USE_SUPABASE) { setRows([]); setExames([]); return; }
     let cancelado = false;
     setCarregando(true);
     loadPsAtendimentosPeriodo(ano, mes).then(r => { if (!cancelado) { setRows(r); setCarregando(false); } });
+    loadPsExamesPeriodo(ano, mes).then(r => { if (!cancelado) setExames(r); });
     return () => { cancelado = true; };
   }, [mes, ano]);
 
@@ -4251,6 +4263,11 @@ function PsRelatorioView() {
     return { dia: String(dia).padStart(2, "0"), n };
   });
   const picoDia = porDia.reduce((a, b) => (b.n > a.n ? b : a), { dia: "—", n: 0 });
+
+  // BI de exames do período — separa laboratorial x imagem x outro. A categoria
+  // já é gravada em ps_registros; o relatório é que não separava.
+  const resumoEx = resumoExamesPorCategoria(exames);
+  const examesPorAtend = total > 0 ? resumoEx.n / total : null;
 
   const printStyles = `@media print { body * { visibility: hidden !important; } #ps-print, #ps-print * { visibility: visible !important; } #ps-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
 
@@ -4347,6 +4364,36 @@ function PsRelatorioView() {
         ))}
       </div>
 
+      {/* EXAMES — Laboratorial x Imagem x Outro */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Exames por categoria{examesPorAtend != null ? ` · ${fmt1(examesPorAtend)} por atendimento` : ""}</div>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem", marginBottom: "1.5rem", overflowX: "auto" }}>
+        {resumoEx.n === 0 ? (
+          <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum exame solicitado no período.</div>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>{["Categoria", "Solicitados", "Com resultado", "% com resultado", "Tempo médio até resultado"].map(h => <th key={h} style={{ textAlign: "left", padding: "6px 8px", color: "var(--text-3)", borderBottom: "1px solid var(--border)", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {resumoEx.porCategoria.map(c => (
+                <tr key={c.chave}>
+                  <td style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)" }}>{c.label}</td>
+                  <td style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{fmt(c.n)}</td>
+                  <td style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{fmt(c.comResultado)}</td>
+                  <td style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{c.pctResultado != null ? `${fmt1(c.pctResultado)}%` : "—"}</td>
+                  <td style={{ padding: "6px 8px", borderBottom: "1px solid var(--border)", fontFamily: "JetBrains Mono, monospace", color: "var(--text-2)" }}>{c.tempoMedioMin != null ? fmtDur(c.tempoMedioMin) : "—"}</td>
+                </tr>
+              ))}
+              <tr>
+                <td style={{ padding: "6px 8px", fontWeight: 700 }}>Total</td>
+                <td style={{ padding: "6px 8px", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(resumoEx.n)}</td>
+                <td style={{ padding: "6px 8px", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(resumoEx.comResultado)}</td>
+                <td style={{ padding: "6px 8px", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{resumoEx.pctResultado != null ? `${fmt1(resumoEx.pctResultado)}%` : "—"}</td>
+                <td style={{ padding: "6px 8px", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{resumoEx.tempoMedioMin != null ? fmtDur(resumoEx.tempoMedioMin) : "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* RELATÓRIO IMPRIMÍVEL */}
       {preview && (
         <div id="ps-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
@@ -4401,6 +4448,22 @@ function PsRelatorioView() {
                   <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 600, color: "#0f172a" }}>{d.label}</td>
                   <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{fmt(d.n)}</td>
                   <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#0369a1", fontWeight: 600 }}>{pct(d.n, finalizados.length) != null ? `${fmt1(pct(d.n, finalizados.length))}%` : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#334155", marginBottom: 6 }}>Exames por categoria{examesPorAtend != null ? ` — ${fmt1(examesPorAtend)} por atendimento` : ""}</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 16 }}>
+            <thead><tr>{["Categoria", "Solicitados", "Com resultado", "%", "Tempo médio"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {resumoEx.porCategoria.map(c => (
+                <tr key={c.chave}>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 600, color: "#0f172a" }}>{c.label}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{fmt(c.n)}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{fmt(c.comResultado)}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{c.pctResultado != null ? `${fmt1(c.pctResultado)}%` : "—"}</td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#334155" }}>{c.tempoMedioMin != null ? fmtDur(c.tempoMedioMin) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -5686,7 +5749,7 @@ function PSPage({ currentUser, canEdit }) {
       {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug) => reavaliar(reavaliando, cls, vitais, sug)} />}
 
       {/* MODAL DESFECHO */}
-      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
+      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
 
       {/* PAINEL DO ATENDIMENTO (evolução, prescrição, exames) */}
       {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} abaInicial={atendendoAba} onClose={() => { setAtendendo(null); setAtendendoAba(null); refresh(); }} onChanged={() => {}} />}
@@ -5696,7 +5759,9 @@ function PSPage({ currentUser, canEdit }) {
 }
 
 // Modal de desfecho do PS (alta/internação/transferência/evasão/óbito)
-function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
+function PsDesfechoModal({ paciente, setores, leitos = [], examesPend, onClose, onSave }) {
+  const exAguardando = examesPend?.aguardando || 0;   // exame sem resultado ainda
+  const exProntos = examesPend?.prontos || 0;         // resultado saiu, médico não marcou visto
   const [desfecho, setDesfecho] = useState("");
   const [setorDestino, setSetorDestino] = useState("");
   const [medico, setMedico] = useState("");
@@ -5713,6 +5778,7 @@ function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
   async function salvar() {
     if (!desfecho) { alert("Escolha o desfecho."); return; }
     if (desfecho === "internacao" && !setorDestino) { alert("Escolha o setor de destino da internação."); return; }
+    if (exAguardando > 0 && !confirm(`${paciente.iniciais} tem ${exAguardando} exame(s) aguardando resultado. Dar o desfecho mesmo assim?`)) return;
     const leitoObj = desfecho === "internacao" && leitoSel !== "fila" ? livres.find(l => l.identificacao === leitoSel) : null;
     if (desfecho === "internacao" && leitoObj) {
       if (!confirm(`Reservar o leito ${leitoObj.identificacao}${leitoObj.setor ? ` (${leitoObj.setor})` : ""} para ${paciente.iniciais}? O leito fica RESERVADO até o paciente chegar (confirme a chegada no Mapa de leitos).`)) return;
@@ -5725,6 +5791,11 @@ function PsDesfechoModal({ paciente, setores, leitos = [], onClose, onSave }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 500, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Desfecho — {paciente.iniciais}</div>
+        {(exAguardando > 0 || exProntos > 0) && (
+          <div style={{ background: "#d9770618", border: "1px solid #d9770655", borderRadius: 8, padding: "9px 12px", marginBottom: 14, fontSize: 12.5, color: "#d97706", lineHeight: 1.5 }}>
+            <strong>Atenção:</strong>{exAguardando > 0 ? ` ${exAguardando} exame(s) aguardando resultado.` : ""}{exProntos > 0 ? ` ${exProntos} resultado(s) ainda não visto(s).` : ""} Confira antes de finalizar.
+          </div>
+        )}
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
           {Object.entries(PS_DESFECHOS).map(([k, v]) => (
             <button key={k} onClick={() => setDesfecho(k)} style={{ background: desfecho === k ? "var(--surface-3)" : "transparent", color: desfecho === k ? v.cor : "var(--text-3)", border: `1px solid ${desfecho === k ? v.cor : "var(--border-2)"}`, borderRadius: 7, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{v.label}</button>
