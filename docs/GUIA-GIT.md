@@ -111,9 +111,18 @@ você está na produção.** Nunca confie só na URL.
 #### Testar localmente contra o demo
 
 ```bash
-npm run dev:demo     # usa o .env.demo — faixa laranja aparece
-npm run dev          # usa o .env — PRODUÇÃO, sem faixa
+npm run dev:demo     # porta 5174 — usa o .env.demo, faixa laranja aparece
+npm run dev          # porta 5173 — usa o .env, PRODUÇÃO, sem faixa
 ```
+
+Cada modo tem **porta fixa**, e o Vite **recusa subir** se ela estiver ocupada
+(`strictPort`) em vez de escorregar para a próxima livre. Antes os dois disputavam
+a 5173: com o demo já rodando, um `npm run dev` distraído colocava o **hospital**
+na 5174 — a porta que a equipe trata como segura. Se aparecer
+`Port 5174 is already in use`, é o demo já no ar; use a aba que existe.
+
+⚠️ Porta é o primeiro aviso, não o último: **quem confirma o banco é a faixa
+laranja** com a referência do projeto.
 
 Para criar o `.env.demo`, veja as instruções no `.env.example`.
 
