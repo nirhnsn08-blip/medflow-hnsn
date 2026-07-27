@@ -197,6 +197,19 @@ describe("contexto do paciente", () => {
     expect(de(analisarPrescricaoClinica([item(5)], { funcao_hepatica: "moderada" }, MED), "ajuste_hepatico").gravidade).toBe("media");
     expect(tipos(analisarPrescricaoClinica([item(5)], { funcao_hepatica: "normal" }, MED))).not.toContain("ajuste_hepatico");
   });
+
+  it("comorbidade estima a função renal quando não há ClCr", () => {
+    expect(de(analisarPrescricaoClinica([item(8)], { comorbidades: ["drc_dialise"] }, MED), "ajuste_renal").gravidade).toBe("alta");
+    expect(de(analisarPrescricaoClinica([item(8)], { comorbidades: ["drc"] }, MED), "ajuste_renal").gravidade).toBe("media");
+  });
+
+  it("ClCr explícito manda sobre a comorbidade", () => {
+    expect(tipos(analisarPrescricaoClinica([item(8)], { clearance_renal: 90, comorbidades: ["drc_dialise"] }, MED))).not.toContain("ajuste_renal");
+  });
+
+  it("comorbidade hepatopatia dispara o ajuste hepático", () => {
+    expect(de(analisarPrescricaoClinica([item(5)], { comorbidades: ["hepatopatia"] }, MED), "ajuste_hepatico").gravidade).toBe("alta");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════
