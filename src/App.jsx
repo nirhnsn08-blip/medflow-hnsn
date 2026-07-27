@@ -24,6 +24,8 @@ import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar } from "./acesso/sessao.js";
+// Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
+import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "./clinico/pediatria.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -106,7 +108,7 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
 // A falha continua indo para o console. É só o alarme na tela que se cala,
 // e só para 404 (tabela inexistente) — 401/403 continuam gritando, porque
 // aí é permissão, não migração pendente.
-const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes"]);
+const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas"]);
 
 async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;
@@ -4553,6 +4555,119 @@ function PsRelatorioView() {
   );
 }
 
+// ── Faixas pediátricas de referência (Triagem Fase 3) ───────────────────
+// A tabela ps_faixas_pediatricas guarda, por faixa de idade, os limites de
+// FC e FR que definem as zonas (verde/amarelo/laranja/vermelho). Só ADM Master
+// edita. O motor (src/clinico/pediatria.js) lê daqui.
+const FAIXAS_PED_KEY = "hnsn_faixas_ped";
+const loadFaixasPedLocal = () => { try { return JSON.parse(localStorage.getItem(FAIXAS_PED_KEY) || "[]"); } catch { return []; } };
+async function loadFaixasPediatricas() {
+  const rows = await sbFetch("ps_faixas_pediatricas?select=*&order=ordem");
+  if (Array.isArray(rows)) { try { localStorage.setItem(FAIXAS_PED_KEY, JSON.stringify(rows)); } catch {} return rows; }
+  return loadFaixasPedLocal();
+}
+async function saveFaixaPediatrica(faixa, user) {
+  await sbFetch("ps_faixas_pediatricas?on_conflict=faixa", {
+    method: "POST", headers: { "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify({ ...faixa, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+
+// Editor das faixas — SÓ ADM Master. Mudar um valor marca a faixa como NÃO
+// validada (exige revalidar): alterar limiar clínico não pode passar batido.
+function FaixasPediatricasModal({ faixas, currentUser, onClose, onSaved }) {
+  const vazio = { faixa: "", rotulo: "", ordem: "", idade_min_meses: "", idade_max_meses: "",
+    fc_grave_min: "", fc_moderado_min: "", fc_normal_min: "", fc_normal_max: "", fc_moderado_max: "", fc_grave_max: "",
+    fr_grave_min: "", fr_moderado_min: "", fr_normal_min: "", fr_normal_max: "", fr_moderado_max: "", fr_grave_max: "" };
+  const [f, setF] = useState(vazio);
+  const [busy, setBusy] = useState(false);
+  const set = (k, val) => setF(p => ({ ...p, [k]: val }));
+  const isMaster = currentUser?.role === "adm_master";
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 7px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 12, outline: "none", width: "100%", boxSizing: "border-box" };
+  const hl = { fontSize: 9.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3, textAlign: "center" };
+  const numOrNull = v => v === "" || v == null ? null : Number(v);
+  const ordenadas = [...(faixas || [])].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+  const campos = suf => [["grave_min", "Grave ↓"], ["moderado_min", "Moder. ↓"], ["normal_min", "Normal ↓"], ["normal_max", "Normal ↑"], ["moderado_max", "Moder. ↑"], ["grave_max", "Grave ↑"]].map(([k, l]) => [suf + "_" + k, l]);
+  const editar = row => setF(Object.keys(vazio).reduce((o, k) => ({ ...o, [k]: row[k] ?? "" }), {}));
+  async function salvar(validar) {
+    if (!isMaster) return;
+    const slug = (f.faixa || "").trim();
+    if (!slug || !f.rotulo.trim()) { alert("Informe o identificador e o rótulo da faixa."); return; }
+    setBusy(true);
+    const payload = { faixa: slug, rotulo: f.rotulo.trim(), ordem: numOrNull(f.ordem) ?? 0, ativo: true, validado: !!validar };
+    ["idade_min_meses", "idade_max_meses", "fc_grave_min", "fc_moderado_min", "fc_normal_min", "fc_normal_max", "fc_moderado_max", "fc_grave_max", "fr_grave_min", "fr_moderado_min", "fr_normal_min", "fr_normal_max", "fr_moderado_max", "fr_grave_max"].forEach(k => { payload[k] = numOrNull(f[k]); });
+    if (payload.idade_min_meses == null) payload.idade_min_meses = 0;
+    await saveFaixaPediatrica(payload, currentUser);
+    setBusy(false); setF(vazio); onSaved && onSaved();
+  }
+  async function marcarValidada(row, val) {
+    if (!isMaster) return;
+    await saveFaixaPediatrica({ ...row, validado: val }, currentUser); onSaved && onSaved();
+  }
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 760, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Faixas pediátricas de referência</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, marginTop: 2, lineHeight: 1.5 }}>Limites de FC e FR por idade que a triagem pediátrica usa para <em>sugerir</em> a classificação (a enfermeira decide). Ordem crescente: abaixo de <strong>Grave ↓</strong> = vermelho; até <strong>Moder. ↓</strong> = laranja; até <strong>Normal ↓</strong> = amarelo; <strong>Normal ↓–↑</strong> = verde; e simétrico para cima. PA não entra na pediatria. {!isMaster && <strong style={{ color: "#f59e0b" }}>Somente o ADM Master edita.</strong>}</div>
+
+        {isMaster && (
+          <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginBottom: 14, background: "var(--surface-2)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 70px 90px 90px", gap: 8, marginBottom: 10 }}>
+              <div><label style={{ ...hl, textAlign: "left" }}>Identificador</label><input value={f.faixa} onChange={e => set("faixa", e.target.value)} placeholder="ex.: 1a2" style={inp} /></div>
+              <div><label style={{ ...hl, textAlign: "left" }}>Rótulo</label><input value={f.rotulo} onChange={e => set("rotulo", e.target.value)} placeholder="1–2 anos" style={inp} /></div>
+              <div><label style={{ ...hl, textAlign: "left" }}>Ordem</label><input type="number" value={f.ordem} onChange={e => set("ordem", e.target.value)} style={inp} /></div>
+              <div><label style={{ ...hl, textAlign: "left" }}>Idade mín (m)</label><input type="number" value={f.idade_min_meses} onChange={e => set("idade_min_meses", e.target.value)} placeholder="0" style={inp} /></div>
+              <div><label style={{ ...hl, textAlign: "left" }}>Idade máx (m)</label><input type="number" value={f.idade_max_meses} onChange={e => set("idade_max_meses", e.target.value)} placeholder="aberto" style={inp} /></div>
+            </div>
+            {[["FC (bpm)", "fc"], ["FR (irpm)", "fr"]].map(([titulo, suf]) => (
+              <div key={suf} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", marginBottom: 4 }}>{titulo}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                  {campos(suf).map(([k, l]) => (
+                    <div key={k}><label style={hl}>{l}</label><input type="number" value={f[k]} onChange={e => set(k, e.target.value)} style={inp} /></div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 8 }}>
+              <button onClick={() => setF(vazio)} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>Limpar</button>
+              <button onClick={() => salvar(false)} disabled={busy} style={{ background: "var(--surface-3)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{busy ? "…" : "Salvar (em validação)"}</button>
+              <button onClick={() => salvar(true)} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Salvar e validar</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+            <thead><tr>{["Faixa", "Idade (m)", "FC normal", "FR normal", "Status", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {ordenadas.length === 0 && <tr><td colSpan={6} style={{ padding: 18, textAlign: "center", color: "var(--text-muted)" }}>Nenhuma faixa cadastrada — rode a migração <code>migracao-ps-faixas-pediatricas.sql</code>.</td></tr>}
+              {ordenadas.map(s => (
+                <tr key={s.faixa}>
+                  <td style={{ padding: "7px 10px", fontWeight: 700 }}>{s.rotulo}</td>
+                  <td style={{ padding: "7px 10px", color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{s.idade_min_meses ?? 0}–{s.idade_max_meses ?? "∞"}</td>
+                  <td style={{ padding: "7px 10px", color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{s.fc_normal_min}–{s.fc_normal_max}</td>
+                  <td style={{ padding: "7px 10px", color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{s.fr_normal_min}–{s.fr_normal_max}</td>
+                  <td style={{ padding: "7px 10px" }}>{s.validado ? <span style={{ color: "#34d399", fontWeight: 700 }}>✓ validada</span> : <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ em validação</span>}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    {isMaster && <>
+                      <button onClick={() => editar(s)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 11.5, marginRight: 6 }}>Editar</button>
+                      <button onClick={() => marcarValidada(s, !s.validado)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: s.validado ? "#f59e0b" : "#34d399", cursor: "pointer", fontSize: 11.5 }}>{s.validado ? "Revogar" : "Validar"}</button>
+                    </>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PSPage({ currentUser, canEdit }) {
   const [fila, setFila] = useState([]);
   const [finalizados, setFinalizados] = useState([]);
@@ -4574,6 +4689,8 @@ function PSPage({ currentUser, canEdit }) {
   const [salas, setSalas] = useState([]);
   const [showSalas, setShowSalas] = useState(false);   // gestão do cadastro de salas
   const [showProtocolos, setShowProtocolos] = useState(false);
+  const [faixasPed, setFaixasPed] = useState([]);            // faixas pediátricas (Fase 3)
+  const [showFaixasPed, setShowFaixasPed] = useState(false); // editor (só ADM Master)
   const [alocando, setAlocando] = useState(null);      // sala recebendo paciente
   const buscaRef = useRef(null);
   const [, setTick] = useState(0);
@@ -4586,6 +4703,8 @@ function PSPage({ currentUser, canEdit }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // Faixas pediátricas: carrega uma vez (o motor da triagem peds lê delas).
+  useEffect(() => { if (USE_SUPABASE) loadFaixasPediatricas().then(setFaixasPed); }, []);
 
   function refresh() {
     if (!USE_SUPABASE) return;
@@ -5304,6 +5423,9 @@ function PSPage({ currentUser, canEdit }) {
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${VX.turquesa}`, borderRadius: 10, padding: "12px 16px", marginBottom: 14, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
             <strong>Manchester adaptado — {HOSPITAL_NOME}.</strong> Cinco níveis de prioridade definidos pela queixa de apresentação e pelos discriminadores. Os tempos-alvo abaixo são os oficiais desta unidade.
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>Material de referência e treinamento. A classificação final é sempre da enfermeira triadora, conforme o fluxograma da queixa — o sistema apenas apoia.</div>
+            {currentUser?.role === "adm_master" && (
+              <button onClick={() => setShowFaixasPed(true)} style={{ marginTop: 10, background: "transparent", border: `1px solid ${VX.turquesa}`, color: VX.turquesa, borderRadius: 6, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Editar faixas pediátricas (FC/FR por idade)</button>
+            )}
           </div>
 
           {/* Cards por nível */}
@@ -5361,7 +5483,7 @@ function PSPage({ currentUser, canEdit }) {
             ))}
           </div>
           <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.6, border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 14px" }}>
-            <strong>Sobre estes materiais:</strong> baseados no Manchester Triage Group e adaptados aos tempos-alvo desta unidade. As faixas de sinais vitais são as mesmas que o sistema usa para <em>sugerir</em> a classificação na tela de triagem — e valem para <strong>adultos</strong>: em menores de 13 anos a sugestão automática é desativada e vale o protocolo pediátrico. Revisar periodicamente com a equipe de enfermagem.
+            <strong>Sobre estes materiais:</strong> baseados no Manchester Triage Group e adaptados aos tempos-alvo desta unidade. As faixas de sinais vitais que o sistema usa para <em>sugerir</em> a classificação valem para <strong>adultos</strong>; na triagem <strong>pediátrica</strong> valem faixas de FC/FR <strong>por idade</strong> (editáveis pelo ADM Master em "Editar faixas pediátricas"), e a <strong>obstétrica</strong> é classificada pelo protocolo próprio. Revisar periodicamente com a equipe de enfermagem.
           </div>
         </div>
       )}
@@ -5832,10 +5954,11 @@ function PSPage({ currentUser, canEdit }) {
       </div>
 
       {showProtocolos && <PsProtocolosModal currentUser={currentUser} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowProtocolos(false)} />}
+      {showFaixasPed && <FaixasPediatricasModal faixas={faixasPed} currentUser={currentUser} onClose={() => setShowFaixasPed(false)} onSaved={() => loadFaixasPediatricas().then(setFaixasPed)} />}
       {showSalas && <PsSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={salvarSala} onDelete={excluirSala} isMaster={currentUser?.role === "adm_master"} />}
       {alocando && <PsAlocarSalaModal sala={alocando} pacientes={fila.filter(p => ["aguardando_atendimento", "em_atendimento"].includes(p.status) && !salas.some(s => s.atendimento_id === p.id))} onClose={() => setAlocando(null)} onSave={ocuparSala} />}
-      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb, extras) => triar(triando, cls, vitais, sug, comorb, extras)} />}
-      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb, extras) => reavaliar(reavaliando, cls, vitais, sug, comorb, extras)} />}
+      {triando && <TriagemModal paciente={triando} faixasPediatricas={faixasPed} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb, extras) => triar(triando, cls, vitais, sug, comorb, extras)} />}
+      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao faixasPediatricas={faixasPed} onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb, extras) => reavaliar(reavaliando, cls, vitais, sug, comorb, extras)} />}
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
@@ -6557,7 +6680,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
 }
 
 // Modal de triagem/reavaliação: sinais vitais → sugestão de Manchester → decisão da triadora
-function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
+function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasPediatricas = [] }) {
   const [v, setV] = useState({ pa_sist: "", pa_diast: "", fc: "", fr: "", spo2: "", temp: "", dor: "", consciencia: "A", glicemia: "" });
   const [busy, setBusy] = useState(false);
   const [idade, setIdade] = useState(null);       // idade pelo cadastro do Paciente 360
@@ -6581,8 +6704,20 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   const naoAdulto = tipo !== "adulto";
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 };
-  const av = (pediatrico || naoAdulto) ? { sugestao: null, motivos: [] } : avaliarSinaisVitais(v);
+  // Idade em meses para a faixa pediátrica: campo da triagem peds; se vazio,
+  // cai para a idade em anos do cadastro (× 12).
+  const idadeMeses = ped.idade_meses != null && ped.idade_meses !== "" ? Number(ped.idade_meses) : (idade != null ? idade * 12 : null);
+  // Obstétrica: sugestão automática segue desativada (fase posterior).
+  // Pediátrica: motor por faixa de idade (Fase 3). Adulto: motor padrão.
+  const av = tipo === "obstetrica"
+    ? { sugestao: null, motivos: [], faixa: null }
+    : pediatrico
+      ? avaliarSinaisVitaisPediatrico(v, idadeMeses, faixasPediatricas)
+      : avaliarSinaisVitais(v);
   const sug = av.sugestao ? MANCHESTER[av.sugestao] : null;
+  const faixasPedProntas = faixasValidadas(faixasPediatricas);
+  const semIdadeMeses = pediatrico && idadeMeses == null;
+  const semFaixaPeds = pediatrico && idadeMeses != null && !av.faixa;
 
   function vitaisPayload() {
     const n = x => (x === "" || x == null ? null : Number(x));
@@ -6620,8 +6755,13 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
         {/* AVISO PEDIÁTRICO */}
         {pediatrico && (
           <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #ef4444", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: "#ef4444" }}>Paciente pediátrico ({idade} anos)</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>As faixas de referência do apoio à decisão são para ADULTOS e não se aplicam. Registre os sinais vitais e classifique pelo protocolo pediátrico — a sugestão automática foi desativada para este paciente.</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#ef4444" }}>Paciente pediátrico{idade != null ? ` (${idade} anos)` : ""}</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
+              O apoio à decisão usa faixas de FC/FR <strong>por idade</strong> (não as de adulto). A PA não é usada na triagem pediátrica. A sugestão é apoio — a classificação final é da enfermeira, pelo protocolo pediátrico.
+              {semIdadeMeses && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Informe a idade em meses</strong> (campo abaixo) para a sugestão por faixa etária.</>}
+              {semFaixaPeds && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Sem faixa cadastrada para esta idade</strong> — FC/FR não entram na sugestão.</>}
+              {!faixasPedProntas && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Faixas pediátricas em validação</strong> — ainda não validadas pelo ADM Master; use como apoio provisório.</>}
+            </div>
           </div>
         )}
         {!pediatrico && idade == null && paciente.prontuario && (
@@ -6668,15 +6808,17 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
               <div><label style={lbl}>Peso (kg)</label><input type="number" min="0" step="any" value={ped.peso ?? ""} onChange={e => setP("peso", e.target.value)} placeholder="—" style={inp} /></div>
               <div><label style={lbl}>Idade (meses)</label><input type="number" min="0" value={ped.idade_meses ?? ""} onChange={e => setP("idade_meses", e.target.value)} placeholder="—" style={inp} /></div>
             </div>
-            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>O peso alimenta a checagem de dose pediátrica. As faixas de sinais vitais do apoio à decisão são de adulto e estão desativadas — classifique pelo protocolo pediátrico.</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>O peso alimenta a checagem de dose. A <strong>idade em meses</strong> define a faixa de FC/FR do apoio à decisão (a PA não é medida na triagem pediátrica).</div>
           </div>
         )}
 
         {/* SINAIS VITAIS */}
         <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Sinais vitais</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 8 }}>
-          <div><label style={lbl}>PA sist. (mmHg)</label><input type="number" value={v.pa_sist} onChange={e => set("pa_sist", e.target.value)} placeholder="120" style={inp} /></div>
-          <div><label style={lbl}>PA diast.</label><input type="number" value={v.pa_diast} onChange={e => set("pa_diast", e.target.value)} placeholder="80" style={inp} /></div>
+          {!pediatrico && <>
+            <div><label style={lbl}>PA sist. (mmHg)</label><input type="number" value={v.pa_sist} onChange={e => set("pa_sist", e.target.value)} placeholder="120" style={inp} /></div>
+            <div><label style={lbl}>PA diast.</label><input type="number" value={v.pa_diast} onChange={e => set("pa_diast", e.target.value)} placeholder="80" style={inp} /></div>
+          </>}
           <div><label style={lbl}>FC (bpm)</label><input type="number" value={v.fc} onChange={e => set("fc", e.target.value)} placeholder="80" style={inp} /></div>
           <div><label style={lbl}>FR (irpm)</label><input type="number" value={v.fr} onChange={e => set("fr", e.target.value)} placeholder="16" style={inp} /></div>
           <div><label style={lbl}>SpO2 (%)</label><input type="number" value={v.spo2} onChange={e => set("spo2", e.target.value)} placeholder="98" style={inp} /></div>
@@ -6703,7 +6845,7 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 12 }}>Marque o que o paciente tem. "DRC em diálise" e "Hepatopatia" já avisam a farmácia sobre ajuste de dose — sem precisar digitar ClCr.</div>
 
         {/* SUGESTÃO AO VIVO */}
-        {!pediatrico && (sug ? (
+        {tipo !== "obstetrica" && (sug ? (
           <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${sug.cor}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: sug.cor }}>Sugestão pelos sinais vitais: {sug.label.toUpperCase()}</div>
             {av.motivos.length > 0 ? (

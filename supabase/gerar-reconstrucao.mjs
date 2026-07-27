@@ -67,6 +67,7 @@ const ORDEM = [
   "migracao-suprimentos-aprovacao.sql",
   "migracao-ps-comorbidades.sql",
   "migracao-ps-triagem-tipo.sql",
+  "migracao-ps-faixas-pediatricas.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM
