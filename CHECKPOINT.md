@@ -1,17 +1,34 @@
-# 📍 Ponto de restauração — checkpoint-v44
+# 📍 Ponto de restauração — checkpoint-v45
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v44` (anteriores: `checkpoint-v43` … `checkpoint-v1`)
-- **Data:** 2026-07-27 · `main` em `74bfef3`
+- **Tag Git mais recente:** `checkpoint-v45` (anteriores: `checkpoint-v44` … `checkpoint-v1`)
+- **Data:** 2026-07-27 · `main` em `900a04b`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v43 para cá: **PR #29** (renovação automática da sessão — fim da
-  enxurrada de "JWT expired").
+  vai ao ar). Da v44 para cá: **PR #31** (Fase 3 — triagem pediátrica sugere por
+  faixa de idade).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v45 (desde a v44 — PR #31): triagem pediátrica por idade
+
+- **👶 Fase 3 (pediátrica) — sugestão de Manchester por faixa de idade:** na triagem
+  **Pediátrica**, a sugestão automática (selo SUGERIDA) volta a funcionar, agora com
+  faixas de **FC e FR por idade** (as de adulto não servem — FC 140 é normal em bebê
+  e alarme em adulto). Continua sendo apoio: a enfermeira classifica. **PA fica de
+  fora** (a unidade não mede PA em criança) e some do formulário pediátrico. Motor
+  puro e testável `src/clinico/pediatria.js` (+22 testes).
+- **⚙️ Tabela editável `ps_faixas_pediatricas` (só ADM Master):** os limites de FC/FR
+  por faixa vivem numa tabela que **só o ADM Master** edita (botão "Editar faixas
+  pediátricas" na tela Protocolo Manchester). Semeada com um rascunho tipo PALS/APLS;
+  cada faixa nasce **"em validação"** — a triagem avisa isso até o ADM Master validar.
+  Os números são corrigíveis na tela, sem depender de deploy. Migração
+  `migracao-ps-faixas-pediatricas.sql` (tabela nova + seed), já rodada nos 2 bancos.
+- **Ainda pendente:** Fase 3 **obstétrica** (discriminadores de risco) — exige
+  validação clínica; segue com a sugestão automática desativada.
 
 ## 🆕 Novidades da v44 (desde a v43 — PR #29): renovação automática de sessão
 
