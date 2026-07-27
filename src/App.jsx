@@ -22,6 +22,8 @@ import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
+// Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
+import { precisaRenovar, deveTentarRenovar } from "./acesso/sessao.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -106,10 +108,11 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
 // aí é permissão, não migração pendente.
 const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes"]);
 
-async function sbFetch(path, opts = {}) {
+async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;
   const metodo = opts.method || "GET";
   const alvo = String(path).split("?")[0];      // nome da tabela, sem os filtros
+  const tinhaToken = !!AUTH_TOKEN;              // chamada feita como usuário logado?
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...opts,
@@ -123,15 +126,23 @@ async function sbFetch(path, opts = {}) {
     });
     if (!res.ok) {
       // O PostgREST devolve o motivo em JSON (message/hint/details). É essa
-      // mensagem que diz "column X does not exist" ou "permission denied".
+      // mensagem que diz "column X does not exist", "permission denied" ou
+      // "JWT expired".
+      let corpo = "";
+      try { corpo = await res.text(); } catch {}
+      // Crachá vencido: renova uma vez e repete a chamada, transparente. Se o
+      // refresh também morreu, um aviso limpo e de volta ao login — nunca mais
+      // a enxurrada de um erro por tabela.
+      if (deveTentarRenovar(res.status, tinhaToken, _jaRenovou, corpo)) {
+        if (await renovarSessao()) return sbFetch(path, opts, true);
+        avisarSessaoExpirada();
+        return null;
+      }
       let detalhe = "";
       try {
-        const corpo = await res.text();
-        try {
-          const j = JSON.parse(corpo);
-          detalhe = [j.message, j.details, j.hint].filter(Boolean).join(" — ");
-        } catch { detalhe = corpo.slice(0, 200); }
-      } catch {}
+        const j = JSON.parse(corpo);
+        detalhe = [j.message, j.details, j.hint].filter(Boolean).join(" — ");
+      } catch { detalhe = corpo.slice(0, 200); }
       registrarFalhaSb({ alvo, metodo, status: res.status, detalhe });
       return null;
     }
@@ -355,6 +366,59 @@ const loadSession = () => {
 const saveSession = s => { AUTH_TOKEN = s?.access_token || null; localStorage.setItem(SESSION_KEY, JSON.stringify(s)); };
 const clearSession = () => { AUTH_TOKEN = null; localStorage.removeItem(SESSION_KEY); };
 
+// ── Renovação automática do crachá (JWT) ────────────────────────────────
+// O access_token do Supabase vive ~1h. Sem renovar, depois de 1h de tela
+// aberta TODA chamada volta 401 "JWT expired". Aqui o crachá é renovado
+// sozinho, usando o refresh_token (de vida longa) que já fica na sessão.
+
+// Quem quer saber que a sessão morreu DE VEZ (refresh também expirado) se
+// inscreve aqui — o App usa isto para voltar ao login com UM aviso, no lugar
+// da enxurrada de erros por tabela. Mesmo padrão de `ouvintesFalhaSb`.
+const ouvintesSessao = new Set();
+const assinarSessaoExpirada = fn => { ouvintesSessao.add(fn); return () => ouvintesSessao.delete(fn); };
+let sessaoJaAvisada = false;
+function avisarSessaoExpirada() {
+  clearSession();
+  if (sessaoJaAvisada) return;            // um aviso só, não um por tabela
+  sessaoJaAvisada = true;
+  ouvintesSessao.forEach(fn => { try { fn(); } catch {} });
+}
+
+const lerSessao = () => { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch { return null; } };
+
+// Single-flight: várias tabelas carregando juntas disparam só UMA renovação;
+// todas aguardam a mesma promessa e depois repetem com o crachá novo.
+let promessaRenovacao = null;
+async function renovarSessao() {
+  if (!USE_SUPABASE) return false;
+  if (promessaRenovacao) return promessaRenovacao;
+  promessaRenovacao = (async () => {
+    const atual = lerSessao();
+    const refresh = atual?.refresh_token;
+    if (!refresh) return false;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: "POST",
+        headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refresh }),
+      });
+      if (!res.ok) return false;                       // refresh também expirou/invalidado
+      const auth = await res.json().catch(() => null);
+      if (!auth?.access_token) return false;
+      saveSession({
+        access_token: auth.access_token,
+        refresh_token: auth.refresh_token || refresh,  // pode vir rotacionado
+        expires_at: auth.expires_at || Math.floor(Date.now() / 1000) + (auth.expires_in || 3600),
+        user: atual?.user || null,
+      });
+      sessaoJaAvisada = false;                         // sessão viva de novo
+      return true;
+    } catch { return false; }
+  })();
+  try { return await promessaRenovacao; }
+  finally { promessaRenovacao = null; }
+}
+
 // Login REAL via Supabase Auth. Retorna { ok, user } ou { ok:false, error }.
 async function signIn(username, password) {
   if (!USE_SUPABASE) return { ok: false, error: "Login indisponível (banco não configurado)." };
@@ -393,7 +457,13 @@ async function signIn(username, password) {
     registro_conselho: profile?.registro_conselho || null,
     uf_conselho: profile?.uf_conselho || null,
   };
-  saveSession({ access_token: auth.access_token, refresh_token: auth.refresh_token, user });
+  saveSession({
+    access_token: auth.access_token,
+    refresh_token: auth.refresh_token,
+    expires_at: auth.expires_at || Math.floor(Date.now() / 1000) + (auth.expires_in || 3600),
+    user,
+  });
+  sessaoJaAvisada = false;                    // login novo zera o aviso de expiração
   return { ok: true, user };
 }
 
@@ -14389,7 +14459,7 @@ create policy "allow all" on auditoria for all using (true) with check (true);`}
 // ═══════════════════════════════════════════════════════════
 // LOGIN
 // ═══════════════════════════════════════════════════════════
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, avisoSessao }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -14415,6 +14485,11 @@ function LoginScreen({ onLogin }) {
           <div style={{ fontSize: 10, color: VX.turquesa, marginTop: 4, letterSpacing: ".2em", fontWeight: 600 }}>HEALTHCARE OPERATIONS</div>
           <div style={{ fontSize: 12, color: "#c6d2e2", marginTop: 8 }}>Inteligência para o fluxo hospitalar.</div>
         </div>
+        {avisoSessao && (
+          <div style={{ background: "#0e2a33", border: `1px solid ${VX.turquesa}`, borderRadius: 8, padding: "9px 12px", fontSize: 12.5, color: "#bdeee6", marginBottom: 16, lineHeight: 1.45 }}>
+            Sua sessão expirou por inatividade. Entre novamente para continuar — nenhum dado foi perdido.
+          </div>
+        )}
         <div style={{ marginBottom: 14 }}>
           <label style={{ fontSize: 12, fontWeight: 700, color: "#9db1cd", display: "block", marginBottom: 6 }}>USUÁRIO</label>
           <input type="text" value={username} placeholder="Digite seu usuário" onChange={e => { setUsername(e.target.value); setError(""); }} onKeyDown={e => e.key === "Enter" && handleLogin()} onFocus={e => e.target.style.borderColor = VX.turquesa} onBlur={e => e.target.style.borderColor = "#2a4166"} style={inp} autoComplete="username" />
@@ -14516,12 +14591,40 @@ function AvisoFalhaBanco() {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => loadSession());
+  // Sessão expirada de vez (refresh também venceu): mostra UM aviso no login,
+  // em vez da enxurrada de "JWT expired" por tabela.
+  const [sessaoExpirou, setSessaoExpirou] = useState(false);
   const [db, setDb] = useState(() => loadDB());
   const [active, setActive] = useState("overview");
   const [ambOpen, setAmbOpen] = useState(true);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("hnsn_theme") || "dark"; } catch { return "dark"; } });
   useEffect(() => { document.title = `Valentrax · ${HOSPITAL_SIGLA}`; }, []);
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); try { localStorage.setItem("hnsn_theme", theme); } catch {} }, [theme]);
+
+  // Sessão morreu de vez (refresh expirado): volta ao login com um aviso só.
+  useEffect(() => assinarSessaoExpirada(() => {
+    setSessaoExpirou(true);
+    setCurrentUser(null);
+    setActive("overview");
+  }), []);
+
+  // Renovação proativa: ao voltar para a aba (ou focar a janela), se o crachá
+  // está perto de vencer, renova ANTES de a próxima ação bater no banco. Cobre
+  // o caso clássico de deixar a tela aberta o plantão (ou a noite) inteiro.
+  useEffect(() => {
+    if (!USE_SUPABASE || !currentUser) return;
+    const aoVoltar = () => {
+      if (document.visibilityState === "hidden") return;
+      const s = lerSessao();
+      if (s?.expires_at && precisaRenovar(s.expires_at, Date.now())) renovarSessao();
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("focus", aoVoltar);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("focus", aoVoltar);
+    };
+  }, [currentUser]);
   
   const handleSave = useCallback(newDb => {
     setDb(prev => ({ ...newDb }));
@@ -14704,7 +14807,7 @@ export default function App() {
     <>
       <FaixaAmbiente />
       <AvisoFalhaBanco />
-      <LoginScreen onLogin={u => setCurrentUser(u)} />
+      <LoginScreen avisoSessao={sessaoExpirou} onLogin={u => { setSessaoExpirou(false); setCurrentUser(u); }} />
     </>
   );
 
