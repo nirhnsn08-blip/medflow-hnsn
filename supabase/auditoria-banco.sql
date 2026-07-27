@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 58 tabelas, 880 colunas.
+-- Cobertura atual: 58 tabelas, 883 colunas.
 -- ============================================================
 
 with
@@ -711,10 +711,12 @@ colunas(tabela, coluna, origem) as (values
   ('ps_atendimentos','iniciais','schema'),
   ('ps_atendimentos','medico','schema'),
   ('ps_atendimentos','observacao','schema'),
+  ('ps_atendimentos','obstetricia','ps-triagem-tipo'),
   ('ps_atendimentos','origem','ps-origem-elo'),
   ('ps_atendimentos','origem_detalhe','ps-origem-elo'),
   ('ps_atendimentos','pa_diast','schema'),
   ('ps_atendimentos','pa_sist','schema'),
+  ('ps_atendimentos','pediatria','ps-triagem-tipo'),
   ('ps_atendimentos','peso','farmacia-clinica-fase1'),
   ('ps_atendimentos','prontuario','schema'),
   ('ps_atendimentos','queixa','schema'),
@@ -723,6 +725,7 @@ colunas(tabela, coluna, origem) as (values
   ('ps_atendimentos','status','schema'),
   ('ps_atendimentos','temp','schema'),
   ('ps_atendimentos','triagem_em','schema'),
+  ('ps_atendimentos','triagem_tipo','ps-triagem-tipo'),
   ('ps_atendimentos','updated_at','schema'),
   ('ps_atendimentos','usuario','schema'),
   ('ps_prescricao_itens','atendimento_id','farmacia-faseB'),

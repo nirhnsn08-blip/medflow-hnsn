@@ -4583,14 +4583,28 @@ function PSPage({ currentUser, canEdit }) {
     setNovo({ iniciais: "", prontuario: "", queixa: "", origem: "Meios próprios", origem_detalhe: "" });
     setBusy(false); setTimeout(refresh, 400);
   }
-  async function triar(p, classificacao, vitais, sugerida, comorbidades) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}) });
+  // Converte o extra da triagem (tipo + campos obst/ped) nos campos do banco.
+  // Obstétrica marca gestante; pediátrica leva o peso para a coluna peso (que
+  // alimenta a checagem de dose). Os detalhes ficam nos blobs jsonb.
+  function triagemExtrasPayload(extras) {
+    if (!extras) return {};
+    const { tipo, obst, ped } = extras;
+    const out = { triagem_tipo: tipo || "adulto" };
+    if (tipo === "obstetrica") { out.obstetricia = obst || {}; out.gestante = true; }
+    if (tipo === "pediatrica") {
+      out.pediatria = ped || {};
+      if (ped && ped.peso !== "" && ped.peso != null && !isNaN(Number(ped.peso))) out.peso = Number(ped.peso);
+    }
+    return out;
+  }
+  async function triar(p, classificacao, vitais, sugerida, comorbidades, extras) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
     await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
   }
-  async function reavaliar(p, classificacao, vitais, sugerida, comorbidades) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}) });
+  async function reavaliar(p, classificacao, vitais, sugerida, comorbidades, extras) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
     await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
     setReavaliando(null); setTimeout(refresh, 300);
@@ -5750,8 +5764,8 @@ function PSPage({ currentUser, canEdit }) {
       {showProtocolos && <PsProtocolosModal currentUser={currentUser} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowProtocolos(false)} />}
       {showSalas && <PsSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={salvarSala} onDelete={excluirSala} isMaster={currentUser?.role === "adm_master"} />}
       {alocando && <PsAlocarSalaModal sala={alocando} pacientes={fila.filter(p => ["aguardando_atendimento", "em_atendimento"].includes(p.status) && !salas.some(s => s.atendimento_id === p.id))} onClose={() => setAlocando(null)} onSave={ocuparSala} />}
-      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb) => triar(triando, cls, vitais, sug, comorb)} />}
-      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb) => reavaliar(reavaliando, cls, vitais, sug, comorb)} />}
+      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb, extras) => triar(triando, cls, vitais, sug, comorb, extras)} />}
+      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb, extras) => reavaliar(reavaliando, cls, vitais, sug, comorb, extras)} />}
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
@@ -6481,6 +6495,11 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   const [comorb, setComorb] = useState(Array.isArray(paciente.comorbidades) ? paciente.comorbidades : []);
   const set = (k, val) => setV(p => ({ ...p, [k]: val }));
   const toggleComorb = k => setComorb(cs => cs.includes(k) ? cs.filter(x => x !== k) : [...cs, k]);
+  const [tipo, setTipo] = useState(paciente.triagem_tipo || "adulto");
+  const [obst, setObst] = useState(paciente.obstetricia && typeof paciente.obstetricia === "object" ? paciente.obstetricia : {});
+  const [ped, setPed] = useState(paciente.pediatria && typeof paciente.pediatria === "object" ? paciente.pediatria : {});
+  const setO = (k, val) => setObst(p => ({ ...p, [k]: val }));
+  const setP = (k, val) => setPed(p => ({ ...p, [k]: val }));
   useEffect(() => {
     if (paciente.prontuario && USE_SUPABASE) {
       sbFetch(`pacientes?prontuario=eq.${encodeURIComponent(paciente.prontuario)}&select=ano_nascimento`)
@@ -6488,10 +6507,11 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
     }
     if (reavaliacao) loadPsSinais(paciente.id).then(setHistorico);
   }, []);
-  const pediatrico = idade != null && idade < 13;
+  const pediatrico = tipo === "pediatrica" || (idade != null && idade < 13);
+  const naoAdulto = tipo !== "adulto";
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 };
-  const av = pediatrico ? { sugestao: null, motivos: [] } : avaliarSinaisVitais(v);
+  const av = (pediatrico || naoAdulto) ? { sugestao: null, motivos: [] } : avaliarSinaisVitais(v);
   const sug = av.sugestao ? MANCHESTER[av.sugestao] : null;
 
   function vitaisPayload() {
@@ -6504,13 +6524,28 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   }
   async function classificar(k) {
     setBusy(true);
-    await onTriar(k, vitaisPayload(), av.sugestao || null, comorb);
+    await onTriar(k, vitaisPayload(), av.sugestao || null, comorb, { tipo, obst, ped });
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>{reavaliacao ? "Reavaliação" : "Triagem"} — {paciente.iniciais}{idade != null ? ` (${idade} anos)` : ""}</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>{paciente.queixa || "Sem queixa registrada"} · chegou há {fmtDur(diffMin(paciente.chegada_em, nowISO()))}{reavaliacao && paciente.classificacao ? ` · classificação atual: ${MANCHESTER[paciente.classificacao]?.label || paciente.classificacao}` : ""}</div>
+
+        {/* TIPO DE TRIAGEM */}
+        <div style={{ display: "flex", gap: 7, marginBottom: 14, flexWrap: "wrap" }}>
+          {[["adulto", "Adulto"], ["obstetrica", "Obstétrica"], ["pediatrica", "Pediátrica"]].map(([k, label]) => (
+            <button key={k} type="button" onClick={() => setTipo(k)} style={{ flex: 1, minWidth: 90, background: tipo === k ? VX.turquesa : "transparent", color: tipo === k ? "#062a26" : "var(--text-3)", border: `1px solid ${tipo === k ? VX.turquesa : "var(--border-2)"}`, borderRadius: 8, padding: "8px 10px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{label}</button>
+          ))}
+        </div>
+
+        {/* AVISO OBSTÉTRICO */}
+        {tipo === "obstetrica" && (
+          <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #e11d48", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#e11d48" }}>Triagem obstétrica</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>A sugestão automática (faixas de adulto) está desativada. Classifique pelo protocolo de acolhimento e classificação de risco em obstetrícia — atenção a sangramento, perda de líquido, PA alta com cefaleia/epigastralgia e ausência de movimento fetal.</div>
+          </div>
+        )}
 
         {/* AVISO PEDIÁTRICO */}
         {pediatrico && (
@@ -6532,6 +6567,38 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
                 {horaFmt(h.aferido_em)} — {fmtSinaisVitais(h) || "sem registro"}{h.classificacao_escolhida && MANCHESTER[h.classificacao_escolhida] ? ` → ${MANCHESTER[h.classificacao_escolhida].label}` : ""}
               </div>
             ))}
+          </div>
+        )}
+
+        {/* CAMPOS OBSTÉTRICOS */}
+        {tipo === "obstetrica" && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Dados obstétricos</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 8 }}>
+              <div><label style={lbl}>IG (semanas)</label><input type="number" min="0" max="45" value={obst.ig_semanas ?? ""} onChange={e => setO("ig_semanas", e.target.value)} placeholder="—" style={inp} /></div>
+              <div><label style={lbl}>Gestações (G)</label><input type="number" min="0" value={obst.gesta ?? ""} onChange={e => setO("gesta", e.target.value)} placeholder="0" style={inp} /></div>
+              <div><label style={lbl}>Abortos</label><input type="number" min="0" value={obst.aborto ?? ""} onChange={e => setO("aborto", e.target.value)} placeholder="0" style={inp} /></div>
+              <div><label style={lbl}>Partos normais</label><input type="number" min="0" value={obst.partos_normais ?? ""} onChange={e => setO("partos_normais", e.target.value)} placeholder="0" style={inp} /></div>
+              <div><label style={lbl}>Cesáreas</label><input type="number" min="0" value={obst.cesareas ?? ""} onChange={e => setO("cesareas", e.target.value)} placeholder="0" style={inp} /></div>
+              <div><label style={lbl}>Mov. fetal</label><select value={obst.mov_fetal ?? ""} onChange={e => setO("mov_fetal", e.target.value)} style={inp}><option value="">—</option><option value="presente">Presente</option><option value="reduzido">Reduzido</option><option value="ausente">Ausente</option></select></div>
+            </div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.sangramento} onChange={e => setO("sangramento", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Sangramento vaginal</label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.perda_liquido} onChange={e => setO("perda_liquido", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Perda de líquido / bolsa rota</label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.contracoes} onChange={e => setO("contracoes", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Contrações</label>
+            </div>
+          </div>
+        )}
+
+        {/* CAMPOS PEDIÁTRICOS */}
+        {tipo === "pediatrica" && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Dados pediátricos</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+              <div><label style={lbl}>Peso (kg)</label><input type="number" min="0" step="any" value={ped.peso ?? ""} onChange={e => setP("peso", e.target.value)} placeholder="—" style={inp} /></div>
+              <div><label style={lbl}>Idade (meses)</label><input type="number" min="0" value={ped.idade_meses ?? ""} onChange={e => setP("idade_meses", e.target.value)} placeholder="—" style={inp} /></div>
+            </div>
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>O peso alimenta a checagem de dose pediátrica. As faixas de sinais vitais do apoio à decisão são de adulto e estão desativadas — classifique pelo protocolo pediátrico.</div>
           </div>
         )}
 
