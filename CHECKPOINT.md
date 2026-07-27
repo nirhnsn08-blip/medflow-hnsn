@@ -1,16 +1,47 @@
-# 📍 Ponto de restauração — checkpoint-v42
+# 📍 Ponto de restauração — checkpoint-v43
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v42` (anteriores: `checkpoint-v41` … `checkpoint-v1`)
-- **Data:** 2026-07-26 · `main` em `24ba410`
+- **Tag Git mais recente:** `checkpoint-v43` (anteriores: `checkpoint-v42` … `checkpoint-v1`)
+- **Data:** 2026-07-27 · `main` em `36aeade`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v41 para cá: **PR #24** (aprovação de pedidos de compra).
+  vai ao ar). Da v42 para cá: **PR #26** (comorbidades na triagem) e **PR #27**
+  (tipo de triagem: Adulto/Obstétrica/Pediátrica).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v43 (desde a v42 — PRs #26–#27): triagem por tipo + comorbidades
+
+Duas fases da **reforma da triagem do PS** pedida pela enfermagem: trocar a digitação
+de valores por seleção, e criar triagem específica para gestante e criança.
+
+- **🩺 Fase 1 — Comorbidades na triagem (PR #26):** em vez de **digitar** valores de
+  função renal/hepática, a triadora **marca comorbidades** de um catálogo curado
+  (`src/clinico/comorbidades.js`). **DRC em diálise → função renal reduzida** e
+  **hepatopatia → função hepática comprometida** passam a alimentar os **alertas de
+  ajuste de dose** da farmácia **sem exigir o ClCr** (o motor `src/clinico/alertas.js`
+  usa a comorbidade; o ClCr, agora **opcional**, ainda manda quando informado). As
+  comorbidades aparecem na **TriagemModal** e no **Contexto clínico da Prescrição**.
+  Migração `migracao-ps-comorbidades.sql` (coluna `comorbidades` jsonb em
+  `ps_atendimentos`), já rodada no demo e no HNSN.
+- **👶 Fase 2 — Tipo de triagem: Adulto / Obstétrica / Pediátrica (PR #27):** seletor
+  no topo da TriagemModal. **Obstétrica** coleta IG, G/partos/cesáreas/abortos,
+  movimentação fetal, sangramento, perda de líquido e contrações. **Pediátrica**
+  coleta **peso** (vai para a coluna `peso` e **alimenta o cálculo de dose**) e idade
+  em meses. **Decisão de segurança:** nos tipos obstétrica e pediátrica a **sugestão
+  automática de Manchester (faixas de adulto) fica DESATIVADA** e a **enfermeira
+  classifica** pelo protocolo específico — o software só **captura os dados**, não
+  inventa risco obstétrico/pediátrico. Migração `migracao-ps-triagem-tipo.sql`
+  (`triagem_tipo` + `obstetricia` + `pediatria` jsonb em `ps_atendimentos`), já rodada
+  no demo e no HNSN.
+
+**Pendente (Fase 3, opcional):** faixas/sugestões de risco **adaptadas** para gestante
+e criança (PA de gestante; FC/FR normais por idade pediátrica) — só depois que a equipe
+validar os critérios contra o protocolo do HNSN. Retoque leve deferido: **selo do tipo
+de triagem** nas listas de trabalho ("Em atendimento"/fila).
 
 ## 🆕 Novidades da v42 (desde a v41 — PR #24)
 
