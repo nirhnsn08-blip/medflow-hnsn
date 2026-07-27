@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 58 tabelas, 883 colunas.
+-- Cobertura atual: 59 tabelas, 904 colunas.
 -- ============================================================
 
 with
@@ -57,6 +57,7 @@ tabelas(nome, origem) as (values
   ('profiles','schema'),
   ('ps_administracoes','ps-checagem-medicacao'),
   ('ps_atendimentos','schema'),
+  ('ps_faixas_pediatricas','ps-faixas-pediatricas'),
   ('ps_prescricao_itens','farmacia-faseB'),
   ('ps_protocolos','ps-salas-censo'),
   ('ps_registros','schema'),
@@ -728,6 +729,27 @@ colunas(tabela, coluna, origem) as (values
   ('ps_atendimentos','triagem_tipo','ps-triagem-tipo'),
   ('ps_atendimentos','updated_at','schema'),
   ('ps_atendimentos','usuario','schema'),
+  ('ps_faixas_pediatricas','ativo','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','faixa','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fc_grave_max','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fc_grave_min','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fc_moderado_max','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fc_moderado_min','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fc_normal_max','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fc_normal_min','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fr_grave_max','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fr_grave_min','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fr_moderado_max','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fr_moderado_min','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fr_normal_max','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','fr_normal_min','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','idade_max_meses','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','idade_min_meses','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','ordem','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','rotulo','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','updated_at','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','usuario','ps-faixas-pediatricas'),
+  ('ps_faixas_pediatricas','validado','ps-faixas-pediatricas'),
   ('ps_prescricao_itens','atendimento_id','farmacia-faseB'),
   ('ps_prescricao_itens','created_at','farmacia-faseB'),
   ('ps_prescricao_itens','dose','farmacia-faseB'),
