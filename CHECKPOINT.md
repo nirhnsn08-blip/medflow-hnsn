@@ -1,17 +1,31 @@
-# 📍 Ponto de restauração — checkpoint-v43
+# 📍 Ponto de restauração — checkpoint-v44
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v43` (anteriores: `checkpoint-v42` … `checkpoint-v1`)
-- **Data:** 2026-07-27 · `main` em `36aeade`
+- **Tag Git mais recente:** `checkpoint-v44` (anteriores: `checkpoint-v43` … `checkpoint-v1`)
+- **Data:** 2026-07-27 · `main` em `74bfef3`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v42 para cá: **PR #26** (comorbidades na triagem) e **PR #27**
-  (tipo de triagem: Adulto/Obstétrica/Pediátrica).
+  vai ao ar). Da v43 para cá: **PR #29** (renovação automática da sessão — fim da
+  enxurrada de "JWT expired").
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v44 (desde a v43 — PR #29): renovação automática de sessão
+
+- **🔑 Fim da enxurrada de "JWT expired":** o crachá de acesso do Supabase
+  (`access_token`) vive ~1h e antes **nunca era renovado** — depois de uma tela
+  aberta por mais de uma hora, TODA leitura do banco voltava 401 "JWT expired" e
+  enchia a tela de alertas (um por tabela). Agora o `sbFetch`, ao receber esse 401,
+  **renova o crachá sozinho** usando o `refresh_token` (que já ficava guardado) e
+  **repete a chamada**, transparente. Várias tabelas carregando juntas disparam
+  **uma só** renovação (single-flight). Se o renovador também expirou, aparece **um
+  aviso limpo** na tela de login ("sua sessão expirou… nenhum dado foi perdido"), no
+  lugar da enxurrada. Também renova de forma **proativa ao reabrir a aba** (cobre
+  deixar a tela aberta o plantão — ou a noite — inteiros). Decisão pura e testável em
+  `src/acesso/sessao.js` (+14 testes). **Sem migração** — é 100% no cliente.
 
 ## 🆕 Novidades da v43 (desde a v42 — PRs #26–#27): triagem por tipo + comorbidades
 
