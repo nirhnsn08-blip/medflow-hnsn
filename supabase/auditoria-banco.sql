@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 59 tabelas, 904 colunas.
+-- Cobertura atual: 60 tabelas, 915 colunas.
 -- ============================================================
 
 with
@@ -57,6 +57,7 @@ tabelas(nome, origem) as (values
   ('profiles','schema'),
   ('ps_administracoes','ps-checagem-medicacao'),
   ('ps_atendimentos','schema'),
+  ('ps_faixas_obstetricas','ps-faixas-obstetricas'),
   ('ps_faixas_pediatricas','ps-faixas-pediatricas'),
   ('ps_prescricao_itens','farmacia-faseB'),
   ('ps_protocolos','ps-salas-censo'),
@@ -729,6 +730,17 @@ colunas(tabela, coluna, origem) as (values
   ('ps_atendimentos','triagem_tipo','ps-triagem-tipo'),
   ('ps_atendimentos','updated_at','schema'),
   ('ps_atendimentos','usuario','schema'),
+  ('ps_faixas_obstetricas','ativo','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','chave','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','nivel','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','ordem','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','pad_min','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','pas_min','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','requer_sintoma','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','rotulo','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','updated_at','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','usuario','ps-faixas-obstetricas'),
+  ('ps_faixas_obstetricas','validado','ps-faixas-obstetricas'),
   ('ps_faixas_pediatricas','ativo','ps-faixas-pediatricas'),
   ('ps_faixas_pediatricas','faixa','ps-faixas-pediatricas'),
   ('ps_faixas_pediatricas','fc_grave_max','ps-faixas-pediatricas'),

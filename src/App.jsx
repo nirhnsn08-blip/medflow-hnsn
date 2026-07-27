@@ -26,6 +26,8 @@ import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 import { precisaRenovar, deveTentarRenovar } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
 import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "./clinico/pediatria.js";
+// Triagem obstétrica — sugestão por discriminadores + PA (pré-eclâmpsia).
+import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -108,7 +110,7 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
 // A falha continua indo para o console. É só o alarme na tela que se cala,
 // e só para 404 (tabela inexistente) — 401/403 continuam gritando, porque
 // aí é permissão, não migração pendente.
-const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas"]);
+const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas", "ps_faixas_obstetricas"]);
 
 async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;
@@ -4668,6 +4670,108 @@ function FaixasPediatricasModal({ faixas, currentUser, onClose, onSaved }) {
   );
 }
 
+// ── Critérios obstétricos de risco (Triagem Fase 3) ─────────────────────
+// A tabela ps_faixas_obstetricas guarda cada discriminador → nível + os
+// limiares de PA. Só ADM Master edita. O motor (src/clinico/obstetricia.js) lê.
+const FAIXAS_OBST_KEY = "hnsn_faixas_obst";
+const loadFaixasObstLocal = () => { try { return JSON.parse(localStorage.getItem(FAIXAS_OBST_KEY) || "[]"); } catch { return []; } };
+async function loadFaixasObstetricas() {
+  const rows = await sbFetch("ps_faixas_obstetricas?select=*&order=ordem");
+  if (Array.isArray(rows)) { try { localStorage.setItem(FAIXAS_OBST_KEY, JSON.stringify(rows)); } catch {} return rows; }
+  return loadFaixasObstLocal();
+}
+async function saveFaixaObstetrica(regra, user) {
+  await sbFetch("ps_faixas_obstetricas?on_conflict=chave", {
+    method: "POST", headers: { "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify({ ...regra, usuario: user?.name || null, updated_at: nowISO() }),
+  });
+}
+
+// Editor dos critérios obstétricos — SÓ ADM Master. Mudar um nível/limiar marca
+// a regra como NÃO validada (exige revalidar): critério clínico não passa batido.
+function FaixasObstetricasModal({ regras, currentUser, onClose, onSaved }) {
+  const vazio = { chave: "", rotulo: "", ordem: "", nivel: "amarelo", pas_min: "", pad_min: "", requer_sintoma: false };
+  const [f, setF] = useState(vazio);
+  const [busy, setBusy] = useState(false);
+  const set = (k, val) => setF(p => ({ ...p, [k]: val }));
+  const isMaster = currentUser?.role === "adm_master";
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 12.5, outline: "none", width: "100%", boxSizing: "border-box" };
+  const hl = { fontSize: 9.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 };
+  const numOrNull = v => v === "" || v == null ? null : Number(v);
+  const ordenadas = [...(regras || [])].sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+  const editar = row => setF({ chave: row.chave, rotulo: row.rotulo, ordem: row.ordem ?? "", nivel: row.nivel || "amarelo", pas_min: row.pas_min ?? "", pad_min: row.pad_min ?? "", requer_sintoma: !!row.requer_sintoma });
+  async function salvar(validar) {
+    if (!isMaster) return;
+    const slug = (f.chave || "").trim();
+    if (!slug || !f.rotulo.trim()) { alert("Informe o identificador e o rótulo da regra."); return; }
+    setBusy(true);
+    await saveFaixaObstetrica({ chave: slug, rotulo: f.rotulo.trim(), ordem: numOrNull(f.ordem) ?? 0, nivel: f.nivel, pas_min: numOrNull(f.pas_min), pad_min: numOrNull(f.pad_min), requer_sintoma: !!f.requer_sintoma, ativo: true, validado: !!validar }, currentUser);
+    setBusy(false); setF(vazio); onSaved && onSaved();
+  }
+  async function marcarValidada(row, val) { if (!isMaster) return; await saveFaixaObstetrica({ ...row, validado: val }, currentUser); onSaved && onSaved(); }
+  const cor = nv => (MANCHESTER[nv]?.cor || "var(--text)");
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 760, maxWidth: "96vw", maxHeight: "92vh", overflowY: "auto" }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Critérios obstétricos de risco</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14, marginTop: 2, lineHeight: 1.5 }}>Cada discriminador ou limiar de PA que a triagem obstétrica usa para <em>sugerir</em> a classificação (a enfermeira decide). Regras com limiar de PA (mmHg) disparam pela pressão; as demais, pela presença do achado. "Exige sintoma" = só dispara com cefaleia/epigastralgia/alteração visual marcados (iminência de pré-eclâmpsia). {!isMaster && <strong style={{ color: "#f59e0b" }}>Somente o ADM Master edita.</strong>}</div>
+
+        {isMaster && (
+          <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 12, marginBottom: 14, background: "var(--surface-2)" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 2.4fr 60px", gap: 8, marginBottom: 8 }}>
+              <div><label style={hl}>Identificador</label><input value={f.chave} onChange={e => set("chave", e.target.value)} placeholder="ex.: sangramento" style={inp} /></div>
+              <div><label style={hl}>Rótulo</label><input value={f.rotulo} onChange={e => set("rotulo", e.target.value)} placeholder="Sangramento vaginal" style={inp} /></div>
+              <div><label style={hl}>Ordem</label><input type="number" value={f.ordem} onChange={e => set("ordem", e.target.value)} style={inp} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 90px 90px auto", gap: 8, alignItems: "end" }}>
+              <div><label style={hl}>Nível</label>
+                <select value={f.nivel} onChange={e => set("nivel", e.target.value)} style={inp}>
+                  {Object.entries(MANCHESTER).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                </select>
+              </div>
+              <div><label style={hl}>PA sist. ≥</label><input type="number" value={f.pas_min} onChange={e => set("pas_min", e.target.value)} placeholder="—" style={inp} /></div>
+              <div><label style={hl}>PA diast. ≥</label><input type="number" value={f.pad_min} onChange={e => set("pad_min", e.target.value)} placeholder="—" style={inp} /></div>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12, color: "var(--text-2)", cursor: "pointer", paddingBottom: 6 }}><input type="checkbox" checked={f.requer_sintoma} onChange={e => set("requer_sintoma", e.target.checked)} style={{ width: 15, height: 15 }} /> Exige sintoma</label>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
+              <button onClick={() => setF(vazio)} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 12px", fontWeight: 600, cursor: "pointer", fontSize: 12 }}>Limpar</button>
+              <button onClick={() => salvar(false)} disabled={busy} style={{ background: "var(--surface-3)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>{busy ? "…" : "Salvar (em validação)"}</button>
+              <button onClick={() => salvar(true)} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Salvar e validar</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+            <thead><tr>{["Discriminador", "Nível", "PA (≥)", "Sintoma", "Status", ""].map(h => <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {ordenadas.length === 0 && <tr><td colSpan={6} style={{ padding: 18, textAlign: "center", color: "var(--text-muted)" }}>Nenhuma regra — rode a migração <code>migracao-ps-faixas-obstetricas.sql</code>.</td></tr>}
+              {ordenadas.map(s => (
+                <tr key={s.chave}>
+                  <td style={{ padding: "7px 10px", fontWeight: 700 }}>{s.rotulo}</td>
+                  <td style={{ padding: "7px 10px", color: cor(s.nivel), fontWeight: 700 }}>{MANCHESTER[s.nivel]?.label || s.nivel}</td>
+                  <td style={{ padding: "7px 10px", color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{s.pas_min != null || s.pad_min != null ? `${s.pas_min ?? "—"}/${s.pad_min ?? "—"}` : "—"}</td>
+                  <td style={{ padding: "7px 10px", color: "var(--text-3)" }}>{s.requer_sintoma ? "sim" : "—"}</td>
+                  <td style={{ padding: "7px 10px" }}>{s.validado ? <span style={{ color: "#34d399", fontWeight: 700 }}>✓ validada</span> : <span style={{ color: "#f59e0b", fontWeight: 700 }}>⏳ em validação</span>}</td>
+                  <td style={{ padding: "7px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
+                    {isMaster && <>
+                      <button onClick={() => editar(s)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: "#22d3ee", cursor: "pointer", fontSize: 11.5, marginRight: 6 }}>Editar</button>
+                      <button onClick={() => marcarValidada(s, !s.validado)} style={{ background: "transparent", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 8px", color: s.validado ? "#f59e0b" : "#34d399", cursor: "pointer", fontSize: 11.5 }}>{s.validado ? "Revogar" : "Validar"}</button>
+                    </>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PSPage({ currentUser, canEdit }) {
   const [fila, setFila] = useState([]);
   const [finalizados, setFinalizados] = useState([]);
@@ -4691,6 +4795,8 @@ function PSPage({ currentUser, canEdit }) {
   const [showProtocolos, setShowProtocolos] = useState(false);
   const [faixasPed, setFaixasPed] = useState([]);            // faixas pediátricas (Fase 3)
   const [showFaixasPed, setShowFaixasPed] = useState(false); // editor (só ADM Master)
+  const [faixasObst, setFaixasObst] = useState([]);          // critérios obstétricos (Fase 3)
+  const [showFaixasObst, setShowFaixasObst] = useState(false);
   const [alocando, setAlocando] = useState(null);      // sala recebendo paciente
   const buscaRef = useRef(null);
   const [, setTick] = useState(0);
@@ -4703,8 +4809,8 @@ function PSPage({ currentUser, canEdit }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  // Faixas pediátricas: carrega uma vez (o motor da triagem peds lê delas).
-  useEffect(() => { if (USE_SUPABASE) loadFaixasPediatricas().then(setFaixasPed); }, []);
+  // Faixas peds + critérios obstétricos: carrega uma vez (os motores leem deles).
+  useEffect(() => { if (USE_SUPABASE) { loadFaixasPediatricas().then(setFaixasPed); loadFaixasObstetricas().then(setFaixasObst); } }, []);
 
   function refresh() {
     if (!USE_SUPABASE) return;
@@ -5424,7 +5530,10 @@ function PSPage({ currentUser, canEdit }) {
             <strong>Manchester adaptado — {HOSPITAL_NOME}.</strong> Cinco níveis de prioridade definidos pela queixa de apresentação e pelos discriminadores. Os tempos-alvo abaixo são os oficiais desta unidade.
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>Material de referência e treinamento. A classificação final é sempre da enfermeira triadora, conforme o fluxograma da queixa — o sistema apenas apoia.</div>
             {currentUser?.role === "adm_master" && (
-              <button onClick={() => setShowFaixasPed(true)} style={{ marginTop: 10, background: "transparent", border: `1px solid ${VX.turquesa}`, color: VX.turquesa, borderRadius: 6, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Editar faixas pediátricas (FC/FR por idade)</button>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                <button onClick={() => setShowFaixasPed(true)} style={{ background: "transparent", border: `1px solid ${VX.turquesa}`, color: VX.turquesa, borderRadius: 6, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Editar faixas pediátricas (FC/FR por idade)</button>
+                <button onClick={() => setShowFaixasObst(true)} style={{ background: "transparent", border: `1px solid ${VX.turquesa}`, color: VX.turquesa, borderRadius: 6, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>Editar critérios obstétricos</button>
+              </div>
             )}
           </div>
 
@@ -5955,10 +6064,11 @@ function PSPage({ currentUser, canEdit }) {
 
       {showProtocolos && <PsProtocolosModal currentUser={currentUser} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowProtocolos(false)} />}
       {showFaixasPed && <FaixasPediatricasModal faixas={faixasPed} currentUser={currentUser} onClose={() => setShowFaixasPed(false)} onSaved={() => loadFaixasPediatricas().then(setFaixasPed)} />}
+      {showFaixasObst && <FaixasObstetricasModal regras={faixasObst} currentUser={currentUser} onClose={() => setShowFaixasObst(false)} onSaved={() => loadFaixasObstetricas().then(setFaixasObst)} />}
       {showSalas && <PsSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={salvarSala} onDelete={excluirSala} isMaster={currentUser?.role === "adm_master"} />}
       {alocando && <PsAlocarSalaModal sala={alocando} pacientes={fila.filter(p => ["aguardando_atendimento", "em_atendimento"].includes(p.status) && !salas.some(s => s.atendimento_id === p.id))} onClose={() => setAlocando(null)} onSave={ocuparSala} />}
-      {triando && <TriagemModal paciente={triando} faixasPediatricas={faixasPed} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb, extras) => triar(triando, cls, vitais, sug, comorb, extras)} />}
-      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao faixasPediatricas={faixasPed} onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb, extras) => reavaliar(reavaliando, cls, vitais, sug, comorb, extras)} />}
+      {triando && <TriagemModal paciente={triando} faixasPediatricas={faixasPed} faixasObstetricas={faixasObst} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb, extras) => triar(triando, cls, vitais, sug, comorb, extras)} />}
+      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao faixasPediatricas={faixasPed} faixasObstetricas={faixasObst} onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb, extras) => reavaliar(reavaliando, cls, vitais, sug, comorb, extras)} />}
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
@@ -6680,7 +6790,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
 }
 
 // Modal de triagem/reavaliação: sinais vitais → sugestão de Manchester → decisão da triadora
-function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasPediatricas = [] }) {
+function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasPediatricas = [], faixasObstetricas = [] }) {
   const [v, setV] = useState({ pa_sist: "", pa_diast: "", fc: "", fr: "", spo2: "", temp: "", dor: "", consciencia: "A", glicemia: "" });
   const [busy, setBusy] = useState(false);
   const [idade, setIdade] = useState(null);       // idade pelo cadastro do Paciente 360
@@ -6710,12 +6820,13 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
   // Obstétrica: sugestão automática segue desativada (fase posterior).
   // Pediátrica: motor por faixa de idade (Fase 3). Adulto: motor padrão.
   const av = tipo === "obstetrica"
-    ? { sugestao: null, motivos: [], faixa: null }
+    ? avaliarObstetrica(v, obst, faixasObstetricas)
     : pediatrico
       ? avaliarSinaisVitaisPediatrico(v, idadeMeses, faixasPediatricas)
       : avaliarSinaisVitais(v);
   const sug = av.sugestao ? MANCHESTER[av.sugestao] : null;
   const faixasPedProntas = faixasValidadas(faixasPediatricas);
+  const obstetricasProntas = obstetricasValidadas(faixasObstetricas);
   const semIdadeMeses = pediatrico && idadeMeses == null;
   const semFaixaPeds = pediatrico && idadeMeses != null && !av.faixa;
 
@@ -6748,7 +6859,10 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
         {tipo === "obstetrica" && (
           <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "4px solid #e11d48", borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: "#e11d48" }}>Triagem obstétrica</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>A sugestão automática (faixas de adulto) está desativada. Classifique pelo protocolo de acolhimento e classificação de risco em obstetrícia — atenção a sangramento, perda de líquido, PA alta com cefaleia/epigastralgia e ausência de movimento fetal.</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
+              A sugestão usa os discriminadores obstétricos (sangramento, movimento fetal, perda de líquido, contrações) e a PA (pré-eclâmpsia). É apoio — a classificação final é da enfermeira, pelo protocolo de acolhimento e classificação de risco em obstetrícia.
+              {!obstetricasProntas && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Critérios obstétricos em validação</strong> — ainda não validados pelo ADM Master; use como apoio provisório.</>}
+            </div>
           </div>
         )}
 
@@ -6796,6 +6910,12 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
               <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.sangramento} onChange={e => setO("sangramento", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Sangramento vaginal</label>
               <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.perda_liquido} onChange={e => setO("perda_liquido", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Perda de líquido / bolsa rota</label>
               <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.contracoes} onChange={e => setO("contracoes", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Contrações</label>
+            </div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em", margin: "10px 0 5px" }}>Sinais de alerta (pré-eclâmpsia)</div>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.cefaleia} onChange={e => setO("cefaleia", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Cefaleia</label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.epigastralgia} onChange={e => setO("epigastralgia", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Epigastralgia</label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}><input type="checkbox" checked={!!obst.alteracao_visual} onChange={e => setO("alteracao_visual", e.target.checked)} style={{ accentColor: "#e11d48", width: 15, height: 15 }} /> Alteração visual</label>
             </div>
           </div>
         )}
@@ -6845,7 +6965,7 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 12 }}>Marque o que o paciente tem. "DRC em diálise" e "Hepatopatia" já avisam a farmácia sobre ajuste de dose — sem precisar digitar ClCr.</div>
 
         {/* SUGESTÃO AO VIVO */}
-        {tipo !== "obstetrica" && (sug ? (
+        {(sug ? (
           <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${sug.cor}`, borderRadius: 8, padding: "10px 14px", marginBottom: 12 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: sug.cor }}>Sugestão pelos sinais vitais: {sug.label.toUpperCase()}</div>
             {av.motivos.length > 0 ? (
