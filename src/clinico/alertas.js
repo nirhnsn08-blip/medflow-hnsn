@@ -107,12 +107,20 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
     const al = checarAlergia(med, termosAlergia);
     if (al.match === "direta") push("alergia", "alta", "Alergia declarada ao medicamento", `${nome}: paciente alérgico a "${al.termo}"${al.grupo ? ` (${al.grupo})` : ""}. NÃO administrar sem reavaliação médica.`, [nome]);
     else if (al.match === "cruzada") push("alergia", "alta", "Possível reatividade cruzada com alergia", `${nome}: paciente alérgico a "${al.termo}" — reatividade cruzada com ${al.grupo}. Avaliar o risco antes de administrar.`, [nome]);
-    // 8) Ajuste pela função renal (ClCr/TFG)
+    // 8) Ajuste pela função renal — o ClCr/TFG explícito manda; sem ele, a
+    // comorbidade estima (DRC em diálise = grave; DRC = moderada).
     const clcr = ctx && ctx.clearance_renal !== "" && ctx.clearance_renal != null ? Number(ctx.clearance_renal) : null;
-    if (clcr != null && clcr < 60 && med.ajuste_renal) push("ajuste_renal", clcr < 30 ? "alta" : "media", "Ajuste pela função renal", `${nome} (ClCr ${clcr} mL/min): ${med.ajuste_renal}`, [nome]);
-    // 9) Ajuste pela função hepática
-    const fh = (ctx?.funcao_hepatica || "");
-    if ((fh === "moderada" || fh === "grave") && med.ajuste_hepatico) push("ajuste_hepatico", fh === "grave" ? "alta" : "media", "Ajuste pela função hepática", `${nome} (função hepática ${fh}): ${med.ajuste_hepatico}`, [nome]);
+    const comorb = Array.isArray(ctx?.comorbidades) ? ctx.comorbidades : [];
+    let renalNivel = null, renalMotivo = "";
+    if (clcr != null) { if (clcr < 30) { renalNivel = "alta"; renalMotivo = `ClCr ${clcr} mL/min`; } else if (clcr < 60) { renalNivel = "media"; renalMotivo = `ClCr ${clcr} mL/min`; } }
+    else if (comorb.includes("drc_dialise")) { renalNivel = "alta"; renalMotivo = "DRC em diálise"; }
+    else if (comorb.includes("drc")) { renalNivel = "media"; renalMotivo = "doença renal crônica"; }
+    if (renalNivel && med.ajuste_renal) push("ajuste_renal", renalNivel, "Ajuste pela função renal", `${nome} (${renalMotivo}): ${med.ajuste_renal}`, [nome]);
+    // 9) Ajuste pela função hepática — a seleção explícita manda; sem ela,
+    // "hepatopatia" nas comorbidades sinaliza função comprometida.
+    let fh = (ctx?.funcao_hepatica || ""), fhMotivo = fh ? `função hepática ${fh}` : "";
+    if (!fh && comorb.includes("hepatopatia")) { fh = "grave"; fhMotivo = "hepatopatia"; }
+    if ((fh === "moderada" || fh === "grave") && med.ajuste_hepatico) push("ajuste_hepatico", fh === "grave" ? "alta" : "media", "Ajuste pela função hepática", `${nome} (${fhMotivo}): ${med.ajuste_hepatico}`, [nome]);
   });
 
   // 8) Interações medicamentosas (pares)

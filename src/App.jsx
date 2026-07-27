@@ -34,6 +34,7 @@ import { fmt, fmtBRL, fmtReais, taxa } from "./util/formato.js";
 // Previsão de alta e sinaleira de permanência do Giro de Leitos (puras).
 import { sugerirCid, calcAlta, sinalLeito, diasDesde, corEsperaFila } from "./clinico/leitos.js";
 import { resumoExamesPorCategoria } from "./clinico/exames.js";
+import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -4582,14 +4583,14 @@ function PSPage({ currentUser, canEdit }) {
     setNovo({ iniciais: "", prontuario: "", queixa: "", origem: "Meios próprios", origem_detalhe: "" });
     setBusy(false); setTimeout(refresh, 400);
   }
-  async function triar(p, classificacao, vitais, sugerida) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}) });
+  async function triar(p, classificacao, vitais, sugerida, comorbidades) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}) });
     await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
   }
-  async function reavaliar(p, classificacao, vitais, sugerida) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, ...(vitais || {}) });
+  async function reavaliar(p, classificacao, vitais, sugerida, comorbidades) {
+    await updatePsAtendimentoRemote(p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}) });
     await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
     setReavaliando(null); setTimeout(refresh, 300);
@@ -5749,8 +5750,8 @@ function PSPage({ currentUser, canEdit }) {
       {showProtocolos && <PsProtocolosModal currentUser={currentUser} canEdit={canEdit} isMaster={currentUser?.role === "adm_master"} onClose={() => setShowProtocolos(false)} />}
       {showSalas && <PsSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={salvarSala} onDelete={excluirSala} isMaster={currentUser?.role === "adm_master"} />}
       {alocando && <PsAlocarSalaModal sala={alocando} pacientes={fila.filter(p => ["aguardando_atendimento", "em_atendimento"].includes(p.status) && !salas.some(s => s.atendimento_id === p.id))} onClose={() => setAlocando(null)} onSave={ocuparSala} />}
-      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug) => triar(triando, cls, vitais, sug)} />}
-      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug) => reavaliar(reavaliando, cls, vitais, sug)} />}
+      {triando && <TriagemModal paciente={triando} onClose={() => setTriando(null)} onTriar={(cls, vitais, sug, comorb) => triar(triando, cls, vitais, sug, comorb)} />}
+      {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb) => reavaliar(reavaliando, cls, vitais, sug, comorb)} />}
 
       {/* MODAL DESFECHO */}
       {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
@@ -5896,7 +5897,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
   const [adms, setAdms] = useState([]);                       // checagens de medicação deste atendimento
   const [checando, setChecando] = useState(null);             // item aberto para checar
   const [chkForm, setChkForm] = useState({ status: "administrado", motivo: "", observacao: "", categoria: "enfermagem", quando: "" });
-  const [ctx, setCtx] = useState({ idade: paciente.idade ?? "", peso: paciente.peso ?? "", clearance_renal: paciente.clearance_renal ?? "", funcao_hepatica: paciente.funcao_hepatica ?? "", alergias: paciente.alergias ?? "", em_sonda: !!paciente.em_sonda, gestante: !!paciente.gestante });
+  const [ctx, setCtx] = useState({ idade: paciente.idade ?? "", peso: paciente.peso ?? "", clearance_renal: paciente.clearance_renal ?? "", funcao_hepatica: paciente.funcao_hepatica ?? "", alergias: paciente.alergias ?? "", em_sonda: !!paciente.em_sonda, gestante: !!paciente.gestante, comorbidades: Array.isArray(paciente.comorbidades) ? paciente.comorbidades : [] });
   const [ctxAberto, setCtxAberto] = useState(false);
   const [ctxBusy, setCtxBusy] = useState(false);
   const [ctxMsg, setCtxMsg] = useState("");
@@ -5952,7 +5953,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
   }
   async function salvarContexto() {
     setCtxBusy(true); setCtxMsg("");
-    const payload = { idade: ctx.idade === "" ? null : Number(ctx.idade), peso: ctx.peso === "" ? null : Number(ctx.peso), clearance_renal: ctx.clearance_renal === "" ? null : Number(ctx.clearance_renal), funcao_hepatica: ctx.funcao_hepatica || null, alergias: ctx.alergias?.trim() || null, em_sonda: !!ctx.em_sonda, gestante: !!ctx.gestante };
+    const payload = { idade: ctx.idade === "" ? null : Number(ctx.idade), peso: ctx.peso === "" ? null : Number(ctx.peso), clearance_renal: ctx.clearance_renal === "" ? null : Number(ctx.clearance_renal), funcao_hepatica: ctx.funcao_hepatica || null, alergias: ctx.alergias?.trim() || null, em_sonda: !!ctx.em_sonda, gestante: !!ctx.gestante, comorbidades: Array.isArray(ctx.comorbidades) ? ctx.comorbidades : [] };
     const r = await patchPsAtendimentoDireto(paciente.id, payload);
     setCtxBusy(false);
     if (!r.ok) { setCtxMsg("erro: " + (r.erro || "falha ao salvar")); return; }
@@ -6120,8 +6121,16 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 8 }}>
                     <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Idade (anos)</label><input type="number" min="0" value={ctx.idade} onChange={e => setCtx(p => ({ ...p, idade: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
                     <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Peso (kg)</label><input type="number" min="0" step="any" value={ctx.peso} onChange={e => setCtx(p => ({ ...p, peso: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
-                    <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>ClCr / TFG (mL/min)</label><input type="number" min="0" step="any" value={ctx.clearance_renal} onChange={e => setCtx(p => ({ ...p, clearance_renal: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
+                    <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>ClCr / TFG (opcional)</label><input type="number" min="0" step="any" value={ctx.clearance_renal} onChange={e => setCtx(p => ({ ...p, clearance_renal: e.target.value }))} style={{ ...inp, padding: "7px 9px" }} /></div>
                     <div><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Função hepática</label><select value={ctx.funcao_hepatica} onChange={e => setCtx(p => ({ ...p, funcao_hepatica: e.target.value }))} style={{ ...inp, padding: "7px 9px" }}><option value="">—</option><option value="normal">Normal</option><option value="leve">Leve</option><option value="moderada">Moderada</option><option value="grave">Grave</option></select></div>
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 }}>Comorbidades</label>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {COMORBIDADES.map(c => { const on = (ctx.comorbidades || []).includes(c.chave); return (
+                        <button key={c.chave} type="button" onClick={() => setCtx(p => ({ ...p, comorbidades: on ? (p.comorbidades || []).filter(x => x !== c.chave) : [...(p.comorbidades || []), c.chave] }))} style={{ background: on ? "#22d3ee22" : "transparent", color: on ? "#22d3ee" : "var(--text-3)", border: `1px solid ${on ? "#22d3ee" : "var(--border-2)"}`, borderRadius: 99, padding: "3px 10px", fontSize: 11, fontWeight: on ? 700 : 500, cursor: "pointer" }}>{on ? "✓ " : ""}{c.label}</button>
+                      ); })}
+                    </div>
                   </div>
                   <div style={{ marginBottom: 8 }}><label style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 }}>Alergias</label><input value={ctx.alergias} onChange={e => setCtx(p => ({ ...p, alergias: e.target.value }))} placeholder="Ex.: penicilina, dipirona" style={{ ...inp, padding: "7px 9px" }} /></div>
                   <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
@@ -6469,7 +6478,9 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   const [busy, setBusy] = useState(false);
   const [idade, setIdade] = useState(null);       // idade pelo cadastro do Paciente 360
   const [historico, setHistorico] = useState([]); // aferições anteriores (reavaliação)
+  const [comorb, setComorb] = useState(Array.isArray(paciente.comorbidades) ? paciente.comorbidades : []);
   const set = (k, val) => setV(p => ({ ...p, [k]: val }));
+  const toggleComorb = k => setComorb(cs => cs.includes(k) ? cs.filter(x => x !== k) : [...cs, k]);
   useEffect(() => {
     if (paciente.prontuario && USE_SUPABASE) {
       sbFetch(`pacientes?prontuario=eq.${encodeURIComponent(paciente.prontuario)}&select=ano_nascimento`)
@@ -6493,7 +6504,7 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
   }
   async function classificar(k) {
     setBusy(true);
-    await onTriar(k, vitaisPayload(), av.sugestao || null);
+    await onTriar(k, vitaisPayload(), av.sugestao || null, comorb);
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
@@ -6544,6 +6555,15 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false }) {
             ))}
           </div>
         </div>
+
+        {/* COMORBIDADES */}
+        <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Comorbidades</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 4 }}>
+          {COMORBIDADES.map(c => { const on = comorb.includes(c.chave); return (
+            <button key={c.chave} type="button" onClick={() => toggleComorb(c.chave)} style={{ background: on ? "#22d3ee22" : "transparent", color: on ? "#22d3ee" : "var(--text-3)", border: `1px solid ${on ? "#22d3ee" : "var(--border-2)"}`, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: on ? 700 : 500, cursor: "pointer" }}>{on ? "✓ " : ""}{c.label}</button>
+          ); })}
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginBottom: 12 }}>Marque o que o paciente tem. "DRC em diálise" e "Hepatopatia" já avisam a farmácia sobre ajuste de dose — sem precisar digitar ClCr.</div>
 
         {/* SUGESTÃO AO VIVO */}
         {!pediatrico && (sug ? (
@@ -7165,7 +7185,7 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
   const todas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
     const pend = its.filter(i => { if (!i.medicamento_id) return false; const q = Number(i.quantidade || 0); const d = dispDoItem(i.id); return q > 0 ? d < q : d <= 0; });
-    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
+    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades };
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
     const tipos = new Set(alertas.map(x => x.tipo));
     const temControlado = its.some(i => medById[i.medicamento_id]?.controlado);
@@ -7736,7 +7756,7 @@ function FarmAnaliseView({ currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const linhas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
-    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
+    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades };
     return { at: a, itens: its, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
   }).filter(x => x.itens.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
   const totalAlertas = linhas.reduce((s, l) => s + l.alertas.length, 0);
@@ -7951,7 +7971,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const prepByReg = {}; preparo.forEach(p => prepByReg[p.registro_id] = p);
   const atSet = new Set(atends.map(a => a.id));
-  const scoreDe = atId => { const its = itens.filter(i => i.atendimento_id === atId); const a = atendById[atId] || {}; const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }; return scorePrescricao(its, analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY)); };
+  const scoreDe = atId => { const its = itens.filter(i => i.atendimento_id === atId); const a = atendById[atId] || {}; const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return scorePrescricao(its, analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY)); };
 
   const cards = prescricoes.filter(r => atSet.has(r.atendimento_id)).map(r => ({ reg: r, prep: prepByReg[r.id], status: prepByReg[r.id] ? prepByReg[r.id].status : "aguardando", at: atendById[r.atendimento_id], nItens: itens.filter(i => i.registro_id === r.id).length, score: scoreDe(r.atendimento_id) }));
   const cols = [
@@ -8022,7 +8042,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
         </div>
       )}
 
-      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }, medById, interacoes, incompatY); })()} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
+      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }, medById, interacoes, incompatY); })()} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
     </div>
   );
 }
@@ -8373,7 +8393,7 @@ function FarmIntervencaoView({ currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const comAlerta = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
-    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante };
+    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades };
     return { at: a, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
   }).filter(x => x.alertas.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
 
@@ -8559,7 +8579,7 @@ function FarmDashboardView({ currentUser, canEdit, onNav }) {
   const aguardando = pres.filter(r => atSet.has(r.atendimento_id) && !prepByReg[r.id]).length;
   const emPreparo = prep.filter(p => p.status === "preparo").length;
   const prontos = prep.filter(p => p.status === "pronto").length;
-  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; }).length;
+  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; }).length;
   const intervPend = intervs.filter(i => i.status === "pendente").length;
   const ativos = meds.filter(m => m.ativo !== false);
   const rupturas = ativos.filter(m => farmStatusEstoque(m, lotes).key === "zerado").length;
@@ -8676,7 +8696,7 @@ function FarmAssistenteView() {
   const aguardando = pres.filter(r => atSet.has(r.atendimento_id) && !prepByReg[r.id]).length;
   const emPreparo = prep.filter(p => p.status === "preparo").length;
   const prontos = prep.filter(p => p.status === "pronto").length;
-  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; });
+  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; });
   const intervPend = intervs.filter(i => i.status === "pendente").length;
   const iA = intervs.filter(i => i.status === "aceita").length, iN = intervs.filter(i => i.status === "nao_aceita").length;
   const intervTaxa = (iA + iN) ? (iA / (iA + iN)) * 100 : null;
