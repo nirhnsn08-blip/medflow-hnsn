@@ -36,6 +36,23 @@ describe("privativo do enfermeiro — COFEN 736/2024 arts. 6º e 7º", () => {
   });
 });
 
+describe("SAE — histórico do enfermeiro × checagem do cuidado pelo técnico (Fase 1b)", () => {
+  it("o histórico de enfermagem é conduzido pelo enfermeiro (não é ato de qualquer assistencial)", () => {
+    expect(podeClinico(perfil("enfermeiro"), "historico_enfermagem")).toBe(true);
+    expect(podeClinico(perfil("tecnico_enfermagem"), "historico_enfermagem")).toBe(false);
+    expect(podeClinico(perfil("fisioterapeuta"), "historico_enfermagem")).toBe(false);
+  });
+
+  it("o técnico PODE checar o cuidado de enfermagem prescrito (como checa a medicação)", () => {
+    expect(podeClinico(perfil("tecnico_enfermagem"), "checar_cuidado_enfermagem")).toBe(true);
+    expect(podeClinico(perfil("enfermeiro"), "checar_cuidado_enfermagem")).toBe(true);
+  });
+
+  it("administrativo não checa cuidado", () => {
+    expect(podeClinico(perfil("administrativo"), "checar_cuidado_enfermagem")).toBe(false);
+  });
+});
+
 describe("privativo do médico", () => {
   it("médico prescreve e evolui", () => {
     expect(podeClinico(perfil("medico"), "prescricao_medica")).toBe(true);

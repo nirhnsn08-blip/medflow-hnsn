@@ -68,12 +68,15 @@ export async function carregarProntuario(sb, prontuario) {
              medicamentosUso: Array.isArray(medicamentosUso) ? medicamentosUso : [],
              prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [],
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
-             escalas: [], lpp: [], faixasEscalas: [] };
+             escalas: [], lpp: [], faixasEscalas: [],
+             saeCatalogo: [], saeHistorico: [], saeDiagnosticos: [], saePrescricoes: [],
+             saePrescricaoItens: [], saeChecagem: [] };
   }
 
   const e = ativo.id;
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
-         reconciliacoes, reconciliacaoItens, sumarios, escalas, lpp, faixasEscalas] = await Promise.all([
+         reconciliacoes, reconciliacaoItens, sumarios, escalas, lpp, faixasEscalas,
+         saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_prescricao_eventos?episodio_id=eq.${e}&select=*&order=criado_em`).catch(() => []),
@@ -92,6 +95,14 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`enf_escalas?episodio_id=eq.${e}&select=*&order=aferido_em.desc`).catch(() => []),
     sb(`enf_lesao_pressao?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`enf_escala_faixas?select=*&order=ordem`).catch(() => []),
+    // SAE / Processo de Enfermagem (Tier 1 Fase 1b): catálogo curado (global) +
+    // registros do episódio (histórico, diagnósticos, prescrição, checagem).
+    sb(`enf_sae_catalogo?select=*&order=ordem`).catch(() => []),
+    sb(`enf_sae_historico?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    sb(`enf_sae_diagnosticos?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    sb(`enf_sae_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    sb(`enf_sae_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
+    sb(`enf_sae_checagem?episodio_id=eq.${e}&select=*&order=executado_em.desc`).catch(() => []),
   ]);
 
   const arr = x => (Array.isArray(x) ? x : []);
@@ -105,6 +116,9 @@ export async function carregarProntuario(sb, prontuario) {
     reconciliacoes: arr(reconciliacoes), reconciliacaoItens: arr(reconciliacaoItens),
     sumarios: arr(sumarios),
     escalas: arr(escalas), lpp: arr(lpp), faixasEscalas: arr(faixasEscalas),
+    saeCatalogo: arr(saeCatalogo), saeHistorico: arr(saeHistorico),
+    saeDiagnosticos: arr(saeDiagnosticos), saePrescricoes: arr(saePrescricoes),
+    saePrescricaoItens: arr(saePrescricaoItens), saeChecagem: arr(saeChecagem),
   };
 }
 
@@ -509,4 +523,160 @@ export async function encerrarEpisodio(sb, episodio, { desfecho, desfecho_detalh
 /** Data civil LOCAL em YYYY-MM-DD. Não usar toISOString: devolve UTC. */
 export function dataLocalISO(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// ── FASE 1b: SAE / PROCESSO DE ENFERMAGEM ───────────────────
+// Autoria congelada nas colunas próprias das tabelas enf_sae_* (registrado_por/
+// prescritor_nome/executor_nome + categoria + conselho), no mesmo padrão da
+// Fase 1a (registrarEscala) — não usa o helper assinatura(), que gravaria a
+// coluna `usuario` que estas tabelas de registro não têm.
+
+/** Registra o histórico de enfermagem (coleta de dados). Append-only. */
+export async function registrarHistoricoEnfermagem(sb, episodio, { modelo, dados, queixa, exame_fisico, observacao, corrige_id, motivo_correcao } = {}, user) {
+  const a = assinaturaDe(user);
+  return sb("enf_sae_historico", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario, episodio_id: episodio.id,
+      modelo: modelo || "necessidades_humanas",
+      dados: dados || {},
+      queixa: queixa || null,
+      exame_fisico: exame_fisico || null,
+      observacao: observacao || null,
+      registrado_por: a.profissional_nome, conselho: a.conselho, registro_conselho: a.registro_conselho,
+      categoria: user?.categoria || null,
+      corrige_id: corrige_id || null, motivo_correcao: motivo_correcao || null,
+    }),
+  });
+}
+
+/**
+ * Registra um diagnóstico de enfermagem (NANDA-I). Privativo do enfermeiro
+ * (a tela barra por podeClinico "diagnostico_enfermagem"). Append-only:
+ * resolver/suspender é novo registro com `corrige_id`.
+ */
+export async function registrarDiagnostico(sb, episodio, dx, user) {
+  const a = assinaturaDe(user);
+  return sb("enf_sae_diagnosticos", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario, episodio_id: episodio.id,
+      historico_id: dx.historico_id || null,
+      catalogo_id: dx.catalogo_id || null,
+      codigo: dx.codigo || null,
+      titulo: dx.titulo,
+      dominio: dx.dominio || null,
+      subtipo: dx.subtipo || null,
+      caracteristicas: dx.caracteristicas || [],
+      fatores: dx.fatores || [],
+      resultado_esperado: dx.resultado_esperado || null,
+      prioridade: dx.prioridade || null,
+      status: dx.status || "ativo",
+      registrado_por: a.profissional_nome, conselho: a.conselho, registro_conselho: a.registro_conselho,
+      categoria: user?.categoria || null,
+      corrige_id: dx.corrige_id || null, motivo_correcao: dx.motivo_correcao || null,
+    }),
+  });
+}
+
+/**
+ * Assina a prescrição de enfermagem: cabeçalho + itens (cuidados aprazados).
+ * Espelha assinarPrescricao (médica). `substituiId` aposenta a prescrição
+ * anterior — o "represcrever" do dia seguinte. Privativo do enfermeiro.
+ */
+export async function assinarPrescricaoEnf(sb, episodio, { itens = [], observacao, substituiId } = {}, user) {
+  const agora = new Date().toISOString();
+  const a = assinaturaDe(user);
+  const cab = await sb("enf_sae_prescricoes", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario, episodio_id: episodio.id,
+      data_referencia: dataLocalISO(),
+      substitui_id: substituiId || null,
+      observacao: observacao || null,
+      inicio_em: agora, assinada_em: agora,
+      prescritor_nome: a.profissional_nome, conselho: a.conselho, registro_conselho: a.registro_conselho,
+      categoria: user?.categoria || null,
+    }),
+  });
+  const prescricao = Array.isArray(cab) ? cab[0] : cab;
+  if (!prescricao?.id || !itens.length) return prescricao;
+
+  await sb("enf_sae_prescricao_itens", {
+    method: "POST",
+    body: JSON.stringify(itens.map((i, k) => ({
+      prescricao_id: prescricao.id, episodio_id: episodio.id, prontuario: episodio.prontuario,
+      diagnostico_id: i.diagnostico_id || null,
+      catalogo_id: i.catalogo_id || null,
+      codigo_nic: i.codigo_nic || null,
+      descricao: i.descricao,
+      detalhe: i.detalhe || null,
+      frequencia: i.frequencia || null,
+      frequencia_dia: i.frequencia_dia ?? null,
+      intervalo_horas: i.intervalo_horas ?? null,
+      se_necessario: !!i.se_necessario,
+      horarios: i.horarios || [],
+      ordem: k,
+      usuario: a.profissional_nome,
+    }))),
+  });
+  return prescricao;
+}
+
+/**
+ * Registra a checagem do cuidado à beira-leito — o técnico executa e checa,
+ * como checa a medicação. "não realizado" carrega o motivo. Append-only.
+ */
+export async function registrarChecagemCuidado(sb, episodio, { item_id, prescricao_id, competencia, horario_previsto, status, motivo, observacao, executado_em } = {}, user) {
+  const a = assinaturaDe(user);
+  return sb("enf_sae_checagem", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario, episodio_id: episodio.id,
+      item_id, prescricao_id: prescricao_id || null,
+      competencia: competencia || dataLocalISO(),
+      horario_previsto: horario_previsto || null,
+      status: status || "realizado",
+      motivo: motivo || null,
+      observacao: observacao || null,
+      executado_em: executado_em || new Date().toISOString(),
+      executor_nome: a.profissional_nome, conselho: a.conselho, registro_conselho: a.registro_conselho,
+      categoria: user?.categoria || null,
+    }),
+  });
+}
+
+/**
+ * Cria/atualiza um item do catálogo da SAE (diagnóstico ou intervenção).
+ * Só ADM Master (a tela restringe). Upsert por `id` — é curadoria editável,
+ * não registro clínico; cada item nasce `status='em_validacao'`.
+ */
+export async function salvarCatalogoSae(sb, item, user) {
+  return sb("enf_sae_catalogo?on_conflict=id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({ ...item, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+}
+
+/**
+ * Evolução de enfermagem — a 5ª etapa da SAE, reusando `pep_evolucoes` (a mesma
+ * tabela das demais evoluções, `tipo` diferente). Aparece na linha do tempo do
+ * Paciente 360 com o rótulo próprio. Registro imutável (append-only).
+ */
+export async function registrarEvolucaoEnfermagem(sb, episodio, texto, user) {
+  return sb("pep_evolucoes", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario,
+      tipo: "evolucao_enfermagem",
+      texto,
+      usuario: assinaturaDe(user).profissional_nome,
+    }),
+  });
 }

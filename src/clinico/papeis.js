@@ -56,6 +56,9 @@ const QUEM_PODE = {
   diagnostico_enfermagem: ["enfermeiro"],
   prescricao_enfermagem:  ["enfermeiro"],
   evolucao_enfermagem:    ["enfermeiro"],
+  // Histórico de enfermagem (coleta de dados da SAE): etapa conduzida pelo
+  // enfermeiro. O técnico contribui pela Anotação de Enfermagem, abaixo.
+  historico_enfermagem:   ["enfermeiro"],
 
   // ── Enfermagem em geral ───────────────────────────────────
   // Técnico e auxiliar PODEM: anotar e checar cuidado prescrito.
@@ -66,6 +69,9 @@ const QUEM_PODE = {
   // o enfermeiro valida e estadia. Ambos podem registrar (COFEN 736/2024).
   aplicar_escala:          ["enfermeiro", "tecnico_enfermagem"],
   notificar_lesao_pressao: ["enfermeiro", "tecnico_enfermagem"],
+  // Checagem do cuidado prescrito à beira-leito: o técnico executa e checa o
+  // cuidado de enfermagem, como checa a medicação (COFEN 736/2024).
+  checar_cuidado_enfermagem: ["enfermeiro", "tecnico_enfermagem"],
 
   // ── Multiprofissional ─────────────────────────────────────
   evolucao_multi:         ["fisioterapeuta", "nutricionista", "farmaceutico", "assistente_social"],
