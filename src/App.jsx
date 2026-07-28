@@ -28,6 +28,8 @@ import { precisaRenovar, deveTentarRenovar } from "./acesso/sessao.js";
 import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "./clinico/pediatria.js";
 // Triagem obstétrica — sugestão por discriminadores + PA (pré-eclâmpsia).
 import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.js";
+// Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
+import { montarMapaRisco } from "./clinico/mapa-risco.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -1666,6 +1668,16 @@ async function loadLeitosFromSupabase() {
   const rows = await sbFetch("leitos?select=*");
   return Array.isArray(rows) ? rows : null;
 }
+// Escalas + LPP ativas dos leitos ocupados, para o mapa de risco de enfermagem.
+async function loadRiscoEnfermagem(prontuarios) {
+  if (!USE_SUPABASE || !prontuarios.length) return { escalas: [], lpp: [] };
+  const lista = prontuarios.map(encodeURIComponent).join(",");
+  const [escalas, lpp] = await Promise.all([
+    sbFetch(`enf_escalas?prontuario=in.(${lista})&select=*&order=aferido_em.desc`),
+    sbFetch(`enf_lesao_pressao?prontuario=in.(${lista})&status=eq.ativa&select=*`),
+  ]);
+  return { escalas: Array.isArray(escalas) ? escalas : [], lpp: Array.isArray(lpp) ? lpp : [] };
+}
 async function upsertLeitoRemote(leito, user) {
   if (!USE_SUPABASE) return;
   await sbFetch("leitos?on_conflict=identificacao", {
@@ -1764,6 +1776,7 @@ const LEITOS_NAV = [
   { key: "mapa",           label: "Mapa de leitos",       icon: "bed" },
   { key: "fila",           label: "Fila de internação",   icon: "list" },
   { key: "pacientes",      label: "Pacientes",            icon: "users" },
+  { key: "risco",          label: "Mapa de risco",        icon: "shield" },
   { key: "kanban",         label: "Alta segura",          icon: "clipboard" },
   { key: "altas",          label: "Altas",                icon: "record" },
   { key: "transferencias", label: "Transferências ext.",  icon: "upload" },
@@ -10164,6 +10177,15 @@ function LeitosPage({ currentUser, canEdit }) {
   function sairTv() { setTv(false); try { if (document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {}); } catch {} }
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 60000); return () => clearInterval(id); }, []);
+  // Mapa de risco: carrega escalas/LPP dos leitos ocupados só quando a aba é vista.
+  const [risco, setRisco] = useState({ escalas: [], lpp: [] });
+  useEffect(() => {
+    if (!USE_SUPABASE || sub !== "risco") return;
+    const pront = leitos.filter(l => l.status === "ocupado" && l.prontuario).map(l => l.prontuario);
+    let cancel = false;
+    loadRiscoEnfermagem(pront).then(r => { if (!cancel) setRisco(r); });
+    return () => { cancel = true; };
+  }, [sub, leitos]);
 
   useEffect(() => {
     if (!USE_SUPABASE) return;
@@ -10438,6 +10460,7 @@ function LeitosPage({ currentUser, canEdit }) {
     mapa: "Mapa de leitos em tempo real, agrupado por setor, com previsão de alta e sinaleira.",
     fila: "Solicitações de leito aguardando internação (origem → destino).",
     pacientes: "Pacientes internados agora.",
+    risco: "Semáforo de risco de enfermagem por leito — Braden, Morse, flebite e lesão por pressão.",
     altas: "Histórico de altas registradas.",
     transferencias: "Transferências externas (Gerint / outros hospitais).",
     internacoes: "Histórico de internações.",
@@ -10702,6 +10725,42 @@ function LeitosPage({ currentUser, canEdit }) {
           </div>
           <button onClick={entrarTv} title="Painel somente leitura para monitor/TV (sai com Esc)" style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 12.5, whiteSpace: "nowrap" }}>Modo TV</button>
         </div>
+
+        {/* ── MAPA DE RISCO (enfermagem) ── */}
+        {sub === "risco" && (() => {
+          const ocup = leitos.filter(l => l.status === "ocupado" && l.prontuario);
+          const linhas = montarMapaRisco(ocup, risco.escalas, risco.lpp);
+          const COR = { vermelho: "#f43f5e", laranja: "#fb923c", amarelo: "#f5b301", verde: "#34d399" };
+          const th = { textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" };
+          const td = { padding: "9px 12px", borderBottom: "1px solid var(--border)", fontSize: 13 };
+          const chip = e => e ? <span style={{ background: `${COR[e.nivel] || "#8891a5"}1f`, color: COR[e.nivel] || "#8891a5", border: `1px solid ${(COR[e.nivel] || "#8891a5")}66`, borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{e.classificacao || e.score}</span> : <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>;
+          return (
+            <div>
+              {ocup.length === 0 ? (
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Nenhum leito ocupado — sem risco a mostrar.</div>
+              ) : (
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Leito", "Paciente", "Braden", "Morse", "Flebite", "Lesão por pressão"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {linhas.map(r => (
+                        <tr key={r.leito} style={{ boxShadow: `inset 3px 0 0 ${COR[r.pior] || "transparent"}` }}>
+                          <td style={{ ...td, fontWeight: 700 }}>{r.leito}{r.setor ? <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {r.setor}</span> : ""}</td>
+                          <td style={td}>{r.iniciais || "—"}{r.prontuario ? <span style={{ color: "var(--text-muted)", fontSize: 10.5, fontFamily: "JetBrains Mono, monospace" }}> · {r.prontuario}</span> : ""}</td>
+                          <td style={td}>{chip(r.braden)}</td>
+                          <td style={td}>{chip(r.morse)}</td>
+                          <td style={td}>{chip(r.flebite)}</td>
+                          <td style={td}>{r.lpp.total ? <span style={{ color: r.lpp.adquiridas ? "#f43f5e" : "#38bdf8", fontWeight: 700, fontSize: 11.5 }}>{r.lpp.adquiridas ? `${r.lpp.adquiridas} adquirida(s)` : `${r.lpp.total} (presente na adm.)`}</span> : <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>Última aplicação de cada escala por leito, ordenado do mais grave ao menos grave. As escalas são registradas no prontuário (Paciente 360 → Escalas). A LPP <strong>adquirida na unidade</strong> puxa o leito para o topo.</div>
+            </div>
+          );
+        })()}
 
         {/* ── DASHBOARD ── */}
         {sub === "dashboard" && (<>
