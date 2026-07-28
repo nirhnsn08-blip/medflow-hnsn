@@ -240,6 +240,10 @@ const ICON_PATHS = {
   clock:     <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
   checks:    <><path d="M4 12.5l3.5 3.5L14 9"/><path d="M11 15l1.6 1.6L20 9"/></>,
   truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
+  // Porta de entrada — a Recepção. Ícone próprio para não dividir o
+  // `record` com o Paciente 360: são módulos diferentes e o menu precisa
+  // deixar isso óbvio.
+  door:      <><path d="M4 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17"/><path d="M2.5 21h19"/><circle cx="13" cy="12.5" r="1"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -15312,7 +15316,7 @@ export default function App() {
   const sidebarItems = [
     ...(verModulo("overview")    ? [{ id: "overview",  icon: "dashboard", label: "Visão Geral" }] : []),
     { id: "d1" },
-    ...(verModulo("atendimento") ? [{ id: "atendimento", icon: "record", label: "Atendimento" }] : []),
+    ...(verModulo("atendimento") ? [{ id: "atendimento", icon: "door", label: "Atendimento" }] : []),
     ...(verModulo("ambulatorio") ? [{ id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) }] : []),
     { id: "d2" },
     ...(verModulo("ps")          ? [{ id: "ps",       icon: "activity", label: "Pronto-Socorro" }]    : []),
