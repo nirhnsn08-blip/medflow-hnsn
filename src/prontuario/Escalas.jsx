@@ -9,6 +9,7 @@ import { avaliarEscala, precisaReavaliar, escalasValidadas } from "../clinico/es
 import { ESCALAS, ORDEM_ESCALAS, ESTAGIOS_LPP } from "../clinico/escalas-catalogo.js";
 import { podeClinico, motivoDaRecusa } from "../clinico/papeis.js";
 import { registrarEscala, registrarLesaoPressao } from "./dados.js";
+import EditorCortesEscalas from "./EditorCortesEscalas.jsx";
 
 const NIVEL_COR = { verde: "#34d399", amarelo: "#f5b301", laranja: "#fb923c", vermelho: "#f43f5e" };
 const cor = { borda: "var(--border)", sup: "var(--surface)", sup2: "var(--surface-2)", txt: "var(--text)", txt3: "var(--text-3)", mut: "var(--text-muted)" };
@@ -28,7 +29,9 @@ export default function Escalas({ sb, episodio, escalas = [], lpp = [], faixas =
   const [sitio, setSitio] = useState("");
   const [lppForm, setLppForm] = useState(null);       // objeto do formulário de LPP
   const [busy, setBusy] = useState(false);
+  const [editandoCortes, setEditandoCortes] = useState(false);
 
+  const isMaster    = currentUser?.role === "adm_master";
   const podeAplicar = canEdit && podeClinico(currentUser, "aplicar_escala");
   const podeLpp     = canEdit && podeClinico(currentUser, "notificar_lesao_pressao");
   const validadas   = escalasValidadas(faixas);
@@ -62,6 +65,11 @@ export default function Escalas({ sb, episodio, escalas = [], lpp = [], faixas =
 
   return (
     <div>
+      {isMaster && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button onClick={() => setEditandoCortes(true)} style={{ background: "transparent", color: cor.mut, border: `1px solid ${cor.borda}`, borderRadius: 6, padding: "5px 12px", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>⚙ Editar cortes das escalas</button>
+        </div>
+      )}
       {!validadas && (
         <div style={{ ...cartao, borderLeft: "4px solid #f5b301", background: "#f5b30112" }}>
           <strong style={{ fontSize: 12.5, color: "#b45309" }}>Cortes das escalas em validação</strong>
@@ -187,6 +195,8 @@ export default function Escalas({ sb, episodio, escalas = [], lpp = [], faixas =
           </div>
         )}
       </div>
+
+      {editandoCortes && <EditorCortesEscalas sb={sb} faixas={faixas} currentUser={currentUser} onClose={() => setEditandoCortes(false)} onSaved={() => { setEditandoCortes(false); onOk && onOk(); }} />}
     </div>
   );
 }

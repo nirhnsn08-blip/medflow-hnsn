@@ -207,6 +207,19 @@ export async function registrarLesaoPressao(sb, episodio, { presente_admissao, l
 }
 
 /**
+ * Cria/atualiza um corte de classificação de escala (enf_escala_faixas).
+ * Só ADM Master (a tela restringe). Diferente do resto do módulo, ESTE é
+ * upsert por `id` — é configuração editável, não registro clínico imutável.
+ */
+export async function salvarFaixaEscala(sb, faixa, user) {
+  return sb("enf_escala_faixas?on_conflict=id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({ ...faixa, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+}
+
+/**
  * Registra a admissão — anamnese médica, histórico de enfermagem ou
  * avaliação de outra categoria. Todos na mesma tabela, mudando `categoria`.
  */

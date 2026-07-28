@@ -32,7 +32,7 @@ import {
   registrarAnamnese, registrarAlergia, assinarPrescricao, eventoDoItem,
   registrarAdministracao, registrarAcesso, registrarMedicamentoUso,
   salvarReconciliacao, emitirSumarioAlta, encerrarEpisodio,
-  registrarEscala, registrarLesaoPressao,
+  registrarEscala, registrarLesaoPressao, salvarFaixaEscala,
 } from "./dados.js";
 
 // ── o que o banco tem, segundo a auditoria gerada ───────────
@@ -138,6 +138,15 @@ describe("escrita — toda coluna enviada existe no banco", () => {
     await registrarLesaoPressao(sb, EPISODIO, {
       presente_admissao: false, local: "região sacral", estagio: "2",
       medidas: { comprimento: 3, largura: 2 }, descricao: "Eritema não branqueável", status: "ativa",
+    }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("salvarFaixaEscala (config editável)", async () => {
+    const { sb, chamadas } = espiao();
+    await salvarFaixaEscala(sb, {
+      id: "braden_alto", tipo: "braden", ordem: 1, faixa_min: 10, faixa_max: 12,
+      rotulo: "Risco alto", nivel: "laranja", reavaliar_horas: 24, validado: true, ativo: true,
     }, USER);
     chamadas.forEach(conferirEscrita);
   });
