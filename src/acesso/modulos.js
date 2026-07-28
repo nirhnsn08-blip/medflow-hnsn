@@ -58,6 +58,13 @@ export const NIVEL_LABEL = {
  */
 export const MODULOS = [
   { chave: "overview",     label: "Visão Geral",        grupo: "Geral" },
+  // A porta de entrada. NÃO é marcado como `clinico`: o que se registra
+  // aqui é identificação e abertura de atendimento, não ato assistencial —
+  // é exatamente o recorte administrativo que a COFEN 754/2024 art. 6º
+  // manda separar do prontuário, e é por isso que a Recepção pode ter este
+  // módulo sem alcançar o Paciente 360.
+  { chave: "atendimento",  label: "Atendimento / Recepção", grupo: "Assistencial",
+    nota: "Não é prontuário, mas concentra o dado pessoal identificável (nome, CPF, filiação, endereço) de todo mundo que já passou pelo hospital." },
   { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Assistencial", clinico: true },
   { chave: "ps",           label: "Pronto-Socorro",     grupo: "Assistencial", clinico: true },
   { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Assistencial", clinico: true },
@@ -105,14 +112,14 @@ export const PERFIS_MODELO = [
   {
     chave: "medico", nome: "Médico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Assistência médica: prescreve, evolui, dá alta.",
-    grants: p({ overview: "leitura", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
+    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
                 leitos: "escrita", scih: "leitura", paciente: "escrita", farmacia: "leitura",
                 print: "leitura" }),
   },
   {
     chave: "enfermeiro", nome: "Enfermeiro(a)", categoria: "enfermeiro", role: "adm_silver",
     descricao: "Processo de Enfermagem completo, gestão de leitos e do cuidado.",
-    grants: p({ overview: "leitura", ambulatorio: "escrita", ps: "escrita", bloco: "leitura",
+    grants: p({ overview: "leitura", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "leitura",
                 leitos: "escrita", scih: "escrita", paciente: "escrita", farmacia: "leitura",
                 suprimentos: "leitura", print: "leitura" }),
   },
@@ -125,7 +132,7 @@ export const PERFIS_MODELO = [
   {
     chave: "tecnico_enfermagem", nome: "Técnico(a) de Enfermagem", categoria: "tecnico_enfermagem", role: "adm_silver",
     descricao: "Anotação de enfermagem, checagem de medicação e sinais vitais. O que pode registrar é limitado pela categoria (COFEN 736/2024).",
-    grants: p({ overview: "leitura", ambulatorio: "leitura", ps: "escrita", leitos: "escrita",
+    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", leitos: "escrita",
                 scih: "leitura", paciente: "escrita" }),
   },
   {
@@ -172,12 +179,12 @@ export const PERFIS_MODELO = [
   {
     chave: "recepcao", nome: "Recepção / Admissão", categoria: "administrativo", role: "adm_silver",
     descricao: "Cadastro, chegada e agendamento. NÃO acessa prontuário (COFEN 754/2024, art. 6º).",
-    grants: p({ overview: "leitura", ambulatorio: "escrita", ps: "escrita", leitos: "leitura" }),
+    grants: p({ overview: "leitura", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", leitos: "leitura" }),
   },
   {
     chave: "faturamento", nome: "Faturamento", categoria: "administrativo", role: "analista",
     descricao: "Produção e movimento para faturamento. NÃO acessa prontuário.",
-    grants: p({ overview: "leitura", ambulatorio: "leitura", leitos: "leitura", print: "leitura" }),
+    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", leitos: "leitura", print: "leitura" }),
   },
   {
     chave: "almoxarifado", nome: "Almoxarifado / Suprimentos", categoria: "administrativo", role: "adm_silver",
@@ -196,14 +203,14 @@ export const PERFIS_MODELO = [
   {
     chave: "gestao", nome: "Gestão / Diretoria", categoria: "administrativo", role: "analista",
     descricao: "Indicadores e BI de todos os módulos. Gestão trabalha com número agregado — não precisa de prontuário individual.",
-    grants: p({ overview: "leitura", ambulatorio: "leitura", ps: "leitura", bloco: "leitura",
+    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "leitura", bloco: "leitura",
                 leitos: "leitura", scih: "leitura", farmacia: "leitura", suprimentos: "leitura",
                 print: "leitura", auditoria: "leitura" }),
   },
   {
     chave: "diretor_tecnico", nome: "Diretor(a) Técnico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º): acessa tudo do assistencial e a trilha de auditoria.",
-    grants: p({ overview: "leitura", ambulatorio: "leitura", ps: "escrita", bloco: "leitura",
+    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", bloco: "leitura",
                 leitos: "leitura", scih: "leitura", paciente: "escrita", farmacia: "leitura",
                 controlados: "leitura", suprimentos: "leitura", print: "leitura", auditoria: "escrita" }),
   },
@@ -211,7 +218,7 @@ export const PERFIS_MODELO = [
     chave: "ti", nome: "TI / Analista de Sistemas", categoria: "administrativo", role: "adm_master",
     descricao: "Administra o sistema: cria usuários, configura perfis, importa e acessa o banco. Não tem competência clínica.",
     sistema: true,   // não pode ser apagado — é a porta de volta
-    grants: p({ overview: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
+    grants: p({ overview: "escrita", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
                 leitos: "escrita", scih: "escrita", paciente: "escrita", farmacia: "escrita",
                 controlados: "escrita", suprimentos: "escrita", print: "escrita",
                 auditoria: "escrita", import: "escrita", supabase: "escrita", users: "escrita" }),

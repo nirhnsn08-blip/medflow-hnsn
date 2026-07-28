@@ -72,6 +72,7 @@ const ORDEM = [
   "migracao-enf-escalas-lpp.sql",
   "migracao-enf-sae.sql",
   "migracao-pacientes-identificacao.sql",
+  "migracao-atendimento-recepcao.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM

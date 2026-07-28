@@ -185,11 +185,11 @@ on conflict (chave) do nothing;
 
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Médico
-  ('medico','overview','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
+  ('medico','overview','leitura'),('medico','atendimento','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
   ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),
   ('medico','paciente','escrita'),('medico','farmacia','leitura'),('medico','print','leitura'),
   -- Enfermeiro
-  ('enfermeiro','overview','leitura'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
+  ('enfermeiro','overview','leitura'),('enfermeiro','atendimento','escrita'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
   ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),
   ('enfermeiro','paciente','escrita'),('enfermeiro','farmacia','leitura'),('enfermeiro','suprimentos','leitura'),
   ('enfermeiro','print','leitura'),
@@ -198,7 +198,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('enfermeiro_scih','leitos','leitura'),('enfermeiro_scih','scih','escrita'),('enfermeiro_scih','paciente','escrita'),
   ('enfermeiro_scih','farmacia','leitura'),('enfermeiro_scih','print','leitura'),
   -- Técnico de enfermagem
-  ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
+  ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','atendimento','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
   ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),
   ('tecnico_enfermagem','scih','leitura'),('tecnico_enfermagem','paciente','escrita'),
   -- Fisioterapeuta
@@ -219,28 +219,28 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Auxiliar de farmácia
   ('aux_farmacia','farmacia','escrita'),('aux_farmacia','controlados','leitura'),('aux_farmacia','suprimentos','leitura'),
   -- Recepção
-  ('recepcao','overview','leitura'),('recepcao','ambulatorio','escrita'),('recepcao','ps','escrita'),
+  ('recepcao','overview','leitura'),('recepcao','atendimento','escrita'),('recepcao','ambulatorio','escrita'),('recepcao','ps','escrita'),
   ('recepcao','leitos','leitura'),
   -- Faturamento
-  ('faturamento','overview','leitura'),('faturamento','ambulatorio','leitura'),
+  ('faturamento','overview','leitura'),('faturamento','atendimento','leitura'),('faturamento','ambulatorio','leitura'),
   ('faturamento','leitos','leitura'),('faturamento','print','leitura'),
   -- Almoxarifado
   ('almoxarifado','suprimentos','escrita'),
   -- Matriz / Aprovação de compras
   ('matriz','overview','leitura'),('matriz','suprimentos','leitura'),
   -- Gestão
-  ('gestao','overview','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
+  ('gestao','overview','leitura'),('gestao','atendimento','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
   ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),
   ('gestao','farmacia','leitura'),('gestao','suprimentos','leitura'),('gestao','print','leitura'),
   ('gestao','auditoria','leitura'),
   -- Diretor técnico
-  ('diretor_tecnico','overview','leitura'),('diretor_tecnico','ambulatorio','leitura'),
+  ('diretor_tecnico','overview','leitura'),('diretor_tecnico','atendimento','leitura'),('diretor_tecnico','ambulatorio','leitura'),
   ('diretor_tecnico','ps','escrita'),('diretor_tecnico','bloco','leitura'),('diretor_tecnico','leitos','leitura'),
   ('diretor_tecnico','scih','leitura'),('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
   ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
   -- TI
-  ('ti','overview','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
+  ('ti','overview','escrita'),('ti','atendimento','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
   ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
   ('ti','controlados','escrita'),('ti','suprimentos','escrita'),('ti','print','escrita'),
   ('ti','auditoria','escrita'),('ti','import','escrita'),('ti','supabase','escrita'),('ti','users','escrita')
@@ -266,7 +266,7 @@ insert into public.perfis_acesso (chave, nome, descricao, categoria_sugerida, ro
 on conflict (chave) do nothing;
 
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
-  ('provisorio','overview','escrita'),('provisorio','ambulatorio','escrita'),('provisorio','ps','escrita'),
+  ('provisorio','overview','escrita'),('provisorio','atendimento','escrita'),('provisorio','ambulatorio','escrita'),('provisorio','ps','escrita'),
   ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),
   ('provisorio','paciente','escrita'),('provisorio','farmacia','escrita'),('provisorio','controlados','escrita'),
   ('provisorio','suprimentos','escrita'),('provisorio','print','escrita'),('provisorio','auditoria','escrita'),

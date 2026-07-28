@@ -49,6 +49,8 @@ import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
 // meses — o que trocava a faixa de referência na triagem pediátrica.
 import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
 import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
+import Recepcao from "./atendimento/Recepcao.jsx";
+import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -2524,14 +2526,12 @@ const PS_NAV_EMERG = [
   { key: "e_aguardando",     label: "Aguardando leito",     icon: "clock" },
   { key: "e_ia",             label: "Assistente IA",        icon: "chat" },
 ];
-// Vias de transferência externa usadas na rede
-const PS_VIAS_TRANSF = ["Vaga Zero", "GERINT", "Contato direto", "Outro"];
-// Como o paciente chegou ao PS — dado de pactuação regional e epidemiologia
-const PS_ORIGENS = ["Meios próprios", "SAMU", "Transalva", "Polícia Militar", "Bombeiros", "GERINT (aceite)", "Outro"];
-// Unidades de origem quando o aceite vem pela regulação
-const PS_ORIGEM_UNIDADES = ["PA Torres", "Arroio do Sal", "Três Cachoeiras", "Outra unidade"];
-// Origens que exigem detalhar a unidade de procedência
-const psPedeDetalhe = o => o === "GERINT (aceite)" || o === "Outro";
+// PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES e psPedeDetalhe passaram
+// para `src/atendimento/recepcao.js` e são importados no topo. A chegada do
+// paciente é registrada em DUAS telas agora (Recepção e este formulário do
+// PS); manter duas cópias da mesma lista faria uma ganhar uma origem nova e
+// a outra não, sem ninguém perceber — e o indicador de procedência sairia
+// diferente conforme a porta usada.
 // Mapa de vagas do PS — ordem fixa das áreas (igual ao padrão do Giro de Leitos)
 const PS_AREAS = ["Sala Vermelha", "Sala Laranja", "Sala AVC", "Isolamento", "Pediatria", "Observação", "Procedimento", "PCR", "Outros"];
 // Retaguarda provisória: alta rotatividade, NÃO entra no censo dos leitos do
@@ -15312,6 +15312,7 @@ export default function App() {
   const sidebarItems = [
     ...(verModulo("overview")    ? [{ id: "overview",  icon: "dashboard", label: "Visão Geral" }] : []),
     { id: "d1" },
+    ...(verModulo("atendimento") ? [{ id: "atendimento", icon: "record", label: "Atendimento" }] : []),
     ...(verModulo("ambulatorio") ? [{ id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) }] : []),
     { id: "d2" },
     ...(verModulo("ps")          ? [{ id: "ps",       icon: "activity", label: "Pronto-Socorro" }]    : []),
@@ -15408,6 +15409,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
+          {active === "atendimento" && <Recepcao sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "bloco"     && <BlocoPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
