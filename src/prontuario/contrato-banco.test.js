@@ -33,6 +33,8 @@ import {
   registrarAdministracao, registrarAcesso, registrarMedicamentoUso,
   salvarReconciliacao, emitirSumarioAlta, encerrarEpisodio,
   registrarEscala, registrarLesaoPressao, salvarFaixaEscala,
+  registrarHistoricoEnfermagem, registrarDiagnostico, assinarPrescricaoEnf,
+  registrarChecagemCuidado, salvarCatalogoSae, registrarEvolucaoEnfermagem,
 } from "./dados.js";
 
 // ── o que o banco tem, segundo a auditoria gerada ───────────
@@ -232,6 +234,68 @@ describe("escrita — toda coluna enviada existe no banco", () => {
     const { sb, chamadas } = espiao();
     await encerrarEpisodio(sb, EPISODIO, { desfecho: "alta_melhorado" }, USER);
     expect(chamadas[0].opcoes.method).toBe("PATCH");
+    chamadas.forEach(conferirEscrita);
+  });
+
+  // ── SAE / Processo de Enfermagem (Fase 1b) ──
+  it("registrarHistoricoEnfermagem", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarHistoricoEnfermagem(sb, EPISODIO, {
+      modelo: "necessidades_humanas",
+      dados: { nutricao: { aceitacao: "Regular" }, pele: { integridade: "Íntegra" } },
+      queixa: "Dispneia aos esforços", exame_fisico: "MV presente bilateral", observacao: "Colaborativo",
+    }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("registrarDiagnostico (NANDA)", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarDiagnostico(sb, EPISODIO, {
+      catalogo_id: "dx_risco_queda_adulto", codigo: "00303", titulo: "Risco de queda em adulto",
+      dominio: "Segurança e proteção", subtipo: "risco",
+      caracteristicas: [], fatores: ["Escala de Morse alterada"],
+      resultado_esperado: "Não sofrer quedas durante a internação", prioridade: "alta", status: "ativo",
+    }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("assinarPrescricaoEnf — cabeçalho e itens", async () => {
+    const { sb, chamadas } = espiao();
+    await assinarPrescricaoEnf(sb, EPISODIO, {
+      observacao: "Reavaliar no plantão", substituiId: null,
+      itens: [{
+        catalogo_id: "nic_prevencao_quedas", codigo_nic: "6490", descricao: "Prevenção contra quedas",
+        detalhe: "Grades elevadas; campainha ao alcance", frequencia: "por turno", frequencia_dia: 3,
+        se_necessario: false, horarios: ["06:00", "14:00", "22:00"], diagnostico_id: null,
+      }],
+    }, USER);
+    expect(chamadas).toHaveLength(2);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("registrarChecagemCuidado", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarChecagemCuidado(sb, EPISODIO, {
+      item_id: 21, prescricao_id: 5, competencia: "2026-07-28", horario_previsto: "06:00",
+      status: "realizado", observacao: "Sem intercorrências",
+    }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("salvarCatalogoSae (config editável do ADM Master)", async () => {
+    const { sb, chamadas } = espiao();
+    await salvarCatalogoSae(sb, {
+      id: "dx_dor_aguda", tipo: "diagnostico", codigo: "00132", titulo: "Dor aguda",
+      dominio: "Conforto", subtipo: "real", unidades: ["clinica"], payload: { def: [] },
+      status: "validado", ordem: 1, ativo: true,
+    }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("registrarEvolucaoEnfermagem (reusa pep_evolucoes)", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarEvolucaoEnfermagem(sb, EPISODIO, "Paciente colaborativo, dor controlada, sem novas lesões.", USER);
+    expect(JSON.parse(chamadas[0].opcoes.body).tipo).toBe("evolucao_enfermagem");
     chamadas.forEach(conferirEscrita);
   });
 });
