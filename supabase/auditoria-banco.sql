@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 69 tabelas, 1051 colunas.
+-- Cobertura atual: 69 tabelas, 1085 colunas.
 -- ============================================================
 
 with
@@ -438,9 +438,43 @@ colunas(tabela, coluna, origem) as (values
   ('leitos','updated_at','schema'),
   ('leitos','usuario','schema'),
   ('pacientes','ano_nascimento','schema'),
+  ('pacientes','cadastro_completo_em','pacientes-identificacao'),
+  ('pacientes','cns','pacientes-identificacao'),
+  ('pacientes','cpf','pacientes-identificacao'),
+  ('pacientes','criado_em','pacientes-identificacao'),
+  ('pacientes','data_nascimento','pacientes-identificacao'),
+  ('pacientes','email','pacientes-identificacao'),
+  ('pacientes','end_bairro','pacientes-identificacao'),
+  ('pacientes','end_cep','pacientes-identificacao'),
+  ('pacientes','end_complemento','pacientes-identificacao'),
+  ('pacientes','end_logradouro','pacientes-identificacao'),
+  ('pacientes','end_municipio','pacientes-identificacao'),
+  ('pacientes','end_numero','pacientes-identificacao'),
+  ('pacientes','end_referencia','pacientes-identificacao'),
+  ('pacientes','end_uf','pacientes-identificacao'),
+  ('pacientes','identidade_genero','pacientes-identificacao'),
   ('pacientes','iniciais','schema'),
+  ('pacientes','nacionalidade','pacientes-identificacao'),
+  ('pacientes','naturalidade_municipio','pacientes-identificacao'),
+  ('pacientes','naturalidade_uf','pacientes-identificacao'),
+  ('pacientes','nome_completo','pacientes-identificacao'),
+  ('pacientes','nome_mae','pacientes-identificacao'),
+  ('pacientes','nome_pai','pacientes-identificacao'),
+  ('pacientes','nome_social','pacientes-identificacao'),
+  ('pacientes','obito','pacientes-identificacao'),
+  ('pacientes','obito_em','pacientes-identificacao'),
+  ('pacientes','observacao','pacientes-identificacao'),
   ('pacientes','prontuario','schema'),
+  ('pacientes','raca_cor','pacientes-identificacao'),
+  ('pacientes','responsavel_documento','pacientes-identificacao'),
+  ('pacientes','responsavel_nome','pacientes-identificacao'),
+  ('pacientes','responsavel_parentesco','pacientes-identificacao'),
+  ('pacientes','responsavel_telefone','pacientes-identificacao'),
+  ('pacientes','rg','pacientes-identificacao'),
+  ('pacientes','rg_orgao_emissor','pacientes-identificacao'),
   ('pacientes','sexo','schema'),
+  ('pacientes','telefone','pacientes-identificacao'),
+  ('pacientes','telefone_alt','pacientes-identificacao'),
   ('pacientes','updated_at','schema'),
   ('pacientes','usuario','schema'),
   ('pep_acessos','contexto','pep-acessos'),

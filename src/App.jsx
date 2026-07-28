@@ -43,6 +43,11 @@ import { fmt, fmtBRL, fmtReais, taxa } from "./util/formato.js";
 import { sugerirCid, calcAlta, sinalLeito, diasDesde, corEsperaFila } from "./clinico/leitos.js";
 import { resumoExamesPorCategoria } from "./clinico/exames.js";
 import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
+// Identificação do paciente: conteúdo mínimo da CFM 1.638/2002, validação
+// de CPF/CNS e idade EXATA. A idade por subtração de anos errava até 11
+// meses — o que trocava a faixa de referência na triagem pediátrica.
+import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
+import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -3297,17 +3302,37 @@ async function loadPaciente360(prontuario) {
     registrosPS,
   };
 }
-async function buscarPacientesPorIniciais(termo) {
-  const rows = await sbFetch(`pacientes?iniciais=ilike.*${encodeURIComponent(termo)}*&select=*&limit=10`);
+/**
+ * Busca de paciente por nome, iniciais, CPF ou Cartão SUS.
+ *
+ * Antes procurava só nas iniciais — que era tudo o que existia. Com o nome
+ * no cadastro, procurar por "J.S.M." deixou de ser o jeito natural: quem
+ * está no balcão tem o nome ou o documento na mão, não as iniciais.
+ * O número puro continua sendo tratado como prontuário por quem chama.
+ */
+async function buscarPacientes(termo) {
+  const t = String(termo || "").trim();
+  if (t.length < 2) return [];
+  const filtros = [`iniciais.ilike.*${encodeURIComponent(t)}*`];
+  if (t.length >= 3) filtros.push(
+    `nome_completo.ilike.*${encodeURIComponent(t)}*`,
+    `nome_social.ilike.*${encodeURIComponent(t)}*`);
+  const doc = t.replace(/\D/g, "");
+  if (doc.length === 11) filtros.push(`cpf.eq.${doc}`);
+  if (doc.length === 15) filtros.push(`cns.eq.${doc}`);
+  const rows = await sbFetch(`pacientes?or=(${filtros.join(",")})&select=*&limit=12`).catch(() => null);
+  // Banco sem a migração da identificação ainda: cai para a busca antiga em
+  // vez de devolver vazio e fazer parecer que o paciente não existe.
+  if (rows == null) {
+    const antigo = await sbFetch(`pacientes?iniciais=ilike.*${encodeURIComponent(t)}*&select=*&limit=12`);
+    return Array.isArray(antigo) ? antigo : [];
+  }
   return Array.isArray(rows) ? rows : [];
 }
-async function upsertPacienteRemote(pac, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("pacientes?on_conflict=prontuario", {
-    method: "POST", headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify({ ...pac, usuario: user?.name || null, updated_at: nowISO() }),
-  });
-}
+// A gravação do paciente passou para `src/pacientes/CadastroPaciente.jsx`:
+// ela agora valida documento, confere duplicidade antes de criar um segundo
+// prontuário da mesma pessoa e grava a identificação inteira. Um upsert
+// solto aqui voltaria a gravar cadastro sem nada disso.
 async function addEvolucaoRemote(ev, user) {
   if (!USE_SUPABASE) return;
   await sbFetch("pep_evolucoes", { method: "POST", body: JSON.stringify({ ...ev, usuario: user?.name || null }) });
@@ -3451,19 +3476,27 @@ function PacientePage({ currentUser, canEdit }) {
   async function buscar() {
     const t = busca.trim();
     if (!t) return;
-    if (/^\d+$/.test(t)) { abrir(t); return; }
-    const achados = await buscarPacientesPorIniciais(t);
-    if (achados.length === 1) abrir(achados[0].prontuario);
-    else if (achados.length > 1) setSugestoes(achados);
-    else { setSugestoes([]); alert("Nenhum paciente cadastrado com essas iniciais. Busque pelo número do prontuário."); }
+    // Número puro é prontuário — menos quando tem cara de CPF ou CNS, que
+    // agora também são caminho de busca.
+    const doc = t.replace(/\D/g, "");
+    if (/^\d+$/.test(t) && doc.length !== 11 && doc.length !== 15) { abrir(t); return; }
+    const achados = await buscarPacientes(t);
+    if (achados.length === 1) { abrir(achados[0].prontuario); return; }
+    if (achados.length > 1) { setSugestoes(achados); return; }
+    setSugestoes([]);
+    // Nada encontrado por nome/documento. Antes isto era um beco sem saída
+    // com um alerta — e o prontuário deste hospital é alfanumérico ("T9035"),
+    // então quem digitava o número certo batia no aviso de "não encontrado".
+    // Agora tenta abrir como prontuário: se existir, abre; se não, cai na
+    // tela de paciente sem cadastro, que é justamente onde se cadastra.
+    if (/^[A-Za-z0-9._-]{2,}$/.test(t)) { abrir(t); return; }
+    alert("Nenhum paciente encontrado por nome, iniciais, CPF ou Cartão SUS.");
   }
-  async function salvarCadastro() {
-    if (!cadForm.iniciais.trim()) { alert("Informe as iniciais."); return; }
-    await upsertPacienteRemote({ prontuario, iniciais: cadForm.iniciais.trim(), ano_nascimento: cadForm.ano_nascimento ? Number(cadForm.ano_nascimento) : null, sexo: cadForm.sexo || null }, currentUser);
-    addAuditLog(currentUser, "cadastrar paciente", prontuario, {});
-    abrir(prontuario);
-  }
-  const idade = dados?.cadastro?.ano_nascimento ? new Date().getFullYear() - dados.cadastro.ano_nascimento : null;
+  // Idade a partir da data COMPLETA quando ela existe; do ano só como
+  // queda para o cadastro antigo — e aí vem marcada como aproximada.
+  const idadeInfo = dados?.cadastro ? idadeMesesParaTriagem(dados.cadastro) : { meses: null, exata: false, rotulo: null };
+  const idade = idadeInfo.rotulo;
+  const conferenciaCadastro = conferirCadastro(dados?.cadastro);
   const timeline = dados ? montarTimeline(dados) : [];
   const alertas = dados ? sentinelaPaciente(dados) : [];
   // Alergia funde a fonte nova (pep_alergias) com o texto legado que ainda
@@ -3481,12 +3514,21 @@ function PacientePage({ currentUser, canEdit }) {
 
       {/* BUSCA */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} placeholder="Nº do prontuário ou iniciais (ex.: 48213 ou J.S.M.)" style={{ ...inp, flex: 1, minWidth: 240 }} />
+        <input value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={e => e.key === "Enter" && buscar()} placeholder="Prontuário, nome, CPF ou Cartão SUS" style={{ ...inp, flex: 1, minWidth: 240 }} />
         <button onClick={buscar} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Buscar</button>
       </div>
       {sugestoes.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-          {sugestoes.map(s => <button key={s.prontuario} onClick={() => abrir(s.prontuario)} style={btnLeito("#22d3ee")}>{s.iniciais} · reg. {s.prontuario}</button>)}
+          {/* A lista de resultados mostra iniciais + nascimento, não o nome
+              completo: é o suficiente para escolher a pessoa certa sem
+              expor a identidade de vários pacientes numa tela que fica
+              aberta no balcão. */}
+          {sugestoes.map(s => (
+            <button key={s.prontuario} onClick={() => abrir(s.prontuario)} style={btnLeito("#22d3ee")}>
+              {comoExibir(s) || s.iniciais} · reg. {s.prontuario}
+              {s.data_nascimento ? ` · ${fmtDataBR(s.data_nascimento)}` : ""}
+            </button>
+          ))}
         </div>
       )}
       {carregando && <div style={{ fontSize: 13, color: "var(--text-muted)", padding: "1rem 0" }}>Carregando…</div>}
@@ -3501,13 +3543,24 @@ function PacientePage({ currentUser, canEdit }) {
             <div>
               <div style={{ fontSize: 17, fontWeight: 800 }}>{iniciaisConhecidas || "Paciente"} <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>· prontuário {prontuario}</span></div>
               <div style={{ fontSize: 12, color: "var(--text-3)" }}>
-                {idade != null ? `${idade} anos` : "idade não cadastrada"}{dados.cadastro?.sexo ? ` · ${dados.cadastro.sexo}` : ""}
+                {/* "~68 anos" quando só há o ano de nascimento: o til é o
+                    aviso de que a idade é estimada, não medida. */}
+                {idade || "idade não cadastrada"}{dados.cadastro?.sexo ? ` · ${rotuloSexo(dados.cadastro.sexo)}` : ""}
                 {dados.leitoAtual.length > 0 && <strong style={{ color: "#22d3ee" }}> · internado agora — leito {dados.leitoAtual[0].identificacao}{dados.leitoAtual[0].setor ? ` (${dados.leitoAtual[0].setor})` : ""}</strong>}
               </div>
             </div>
             <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              {!dados.cadastro && canEdit && !cadForm && (
-                <button onClick={() => setCadForm({ iniciais: iniciaisConhecidas || "", ano_nascimento: "", sexo: "" })} style={btnLeito("#22d3ee")}>Completar cadastro</button>
+              {/* O cadastro deixa de ser só "criar quando não existe": a
+                  identificação da CFM 1.638 quase nunca fica pronta na
+                  primeira passagem, então editar precisa estar sempre à mão.
+                  O botão avisa quando ainda falta algo essencial. */}
+              {canEdit && !cadForm && (
+                <button onClick={() => setCadForm(true)}
+                  style={btnLeito(conferenciaCadastro.completo ? "var(--text-muted)" : "#d97706")}>
+                  {!dados.cadastro ? "Cadastrar paciente"
+                    : conferenciaCadastro.completo ? "Editar cadastro"
+                    : `Completar cadastro (${conferenciaCadastro.percentual}%)`}
+                </button>
               )}
               {timeline.length > 0 && (
                 <button onClick={resumir} style={{ background: `linear-gradient(90deg, ${VX.turquesa}, ${VX.azul})`, color: "#062a35", border: "none", borderRadius: 6, padding: "7px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Resumo do paciente</button>
@@ -3554,17 +3607,17 @@ function PacientePage({ currentUser, canEdit }) {
             </div>
           )}
 
-          {/* CADASTRO MÍNIMO */}
+          {/* CADASTRO DO PACIENTE — identificação da CFM 1.638/2002.
+              Substituiu o formulário de três campos: aquele deixava o
+              prontuário sem nome, sem data completa e sem filiação, o que
+              não atende à norma e ainda estraga o cálculo de idade. */}
           {cadForm && (
-            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 18px", marginBottom: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-              <div><label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Iniciais *</label><input value={cadForm.iniciais} onChange={e => setCadForm(p => ({ ...p, iniciais: e.target.value }))} style={{ ...inp, width: 110 }} /></div>
-              <div><label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Ano de nascimento</label><input type="number" value={cadForm.ano_nascimento} onChange={e => setCadForm(p => ({ ...p, ano_nascimento: e.target.value }))} placeholder="1957" style={{ ...inp, width: 100 }} /></div>
-              <div><label style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 }}>Sexo</label>
-                <select value={cadForm.sexo} onChange={e => setCadForm(p => ({ ...p, sexo: e.target.value }))} style={{ ...inp, width: 130 }}>
-                  <option value="">—</option><option value="feminino">Feminino</option><option value="masculino">Masculino</option>
-                </select></div>
-              <button onClick={salvarCadastro} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Salvar cadastro</button>
-              <button onClick={() => setCadForm(null)} style={btnLeito("var(--text-muted)")}>Cancelar</button>
+            <div style={{ marginBottom: 16 }}>
+              <CadastroPaciente
+                sb={sbFetch} prontuario={prontuario} paciente={dados.cadastro}
+                canEdit={canEdit} currentUser={currentUser}
+                onSalvo={() => { setCadForm(null); abrir(prontuario); }}
+                onCancelar={() => setCadForm(null)} />
             </div>
           )}
 
@@ -6806,7 +6859,12 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
 function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasPediatricas = [], faixasObstetricas = [] }) {
   const [v, setV] = useState({ pa_sist: "", pa_diast: "", fc: "", fr: "", spo2: "", temp: "", dor: "", consciencia: "A", glicemia: "" });
   const [busy, setBusy] = useState(false);
-  const [idade, setIdade] = useState(null);       // idade pelo cadastro do Paciente 360
+  // Idade vinda do cadastro. Guarda o objeto inteiro (`{ meses, exata }`),
+  // não só o número de anos: a triagem pediátrica precisa saber se a idade
+  // é EXATA (veio da data de nascimento) ou aproximada (só do ano) —
+  // sugerir faixa de sinal vital com base em chute é o que não pode.
+  const [idadeInfo, setIdadeInfo] = useState({ meses: null, exata: false, rotulo: null });
+  const idade = idadeInfo.meses != null ? Math.floor(idadeInfo.meses / 12) : null;
   const [historico, setHistorico] = useState([]); // aferições anteriores (reavaliação)
   const [comorb, setComorb] = useState(Array.isArray(paciente.comorbidades) ? paciente.comorbidades : []);
   const set = (k, val) => setV(p => ({ ...p, [k]: val }));
@@ -6818,8 +6876,9 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
   const setP = (k, val) => setPed(p => ({ ...p, [k]: val }));
   useEffect(() => {
     if (paciente.prontuario && USE_SUPABASE) {
-      sbFetch(`pacientes?prontuario=eq.${encodeURIComponent(paciente.prontuario)}&select=ano_nascimento`)
-        .then(r => { const ano = Array.isArray(r) && r[0]?.ano_nascimento; if (ano) setIdade(new Date().getFullYear() - ano); });
+      sbFetch(`pacientes?prontuario=eq.${encodeURIComponent(paciente.prontuario)}&select=data_nascimento,ano_nascimento`)
+        .then(r => { const p = Array.isArray(r) && r[0]; if (p) setIdadeInfo(idadeMesesParaTriagem(p)); })
+        .catch(() => {});
     }
     if (reavaliacao) loadPsSinais(paciente.id).then(setHistorico);
   }, []);
@@ -6827,9 +6886,23 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
   const naoAdulto = tipo !== "adulto";
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 };
-  // Idade em meses para a faixa pediátrica: campo da triagem peds; se vazio,
-  // cai para a idade em anos do cadastro (× 12).
-  const idadeMeses = ped.idade_meses != null && ped.idade_meses !== "" ? Number(ped.idade_meses) : (idade != null ? idade * 12 : null);
+  // Idade em meses para a faixa pediátrica. A ordem importa:
+  //   1. o que a triadora digitou (é quem está com a criança na frente);
+  //   2. a data de nascimento do cadastro — exata;
+  //   3. o ano de nascimento — APROXIMADO, erro de até 11 meses.
+  //
+  // O caso 3 era a fonte de um erro silencioso: `ano * 12` transformava um
+  // bebê de 26 dias nascido em dezembro num "12 meses" em janeiro, e os
+  // sinais vitais dele passavam a ser julgados contra outra fisiologia.
+  // Agora a aproximação continua servindo para criança maior — onde ±11
+  // meses não troca a faixa — e é RECUSADA abaixo de 2 anos, que é onde
+  // ela mente. Aí a tela pede a idade exata em vez de sugerir por chute.
+  const idadeDigitada = ped.idade_meses != null && ped.idade_meses !== "" ? Number(ped.idade_meses) : null;
+  const idadeAproximadaDemais = idadeDigitada == null && !idadeInfo.exata
+    && idadeInfo.meses != null && idadeInfo.meses < 24;
+  const idadeMeses = idadeDigitada != null ? idadeDigitada
+    : idadeAproximadaDemais ? null
+    : idadeInfo.meses;
   // Obstétrica: sugestão automática segue desativada (fase posterior).
   // Pediátrica: motor por faixa de idade (Fase 3). Adulto: motor padrão.
   const av = tipo === "obstetrica"
@@ -6885,7 +6958,16 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
             <div style={{ fontSize: 13, fontWeight: 800, color: "#ef4444" }}>Paciente pediátrico{idade != null ? ` (${idade} anos)` : ""}</div>
             <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3, lineHeight: 1.5 }}>
               O apoio à decisão usa faixas de FC/FR <strong>por idade</strong> (não as de adulto). A PA não é usada na triagem pediátrica. A sugestão é apoio — a classificação final é da enfermeira, pelo protocolo pediátrico.
-              {semIdadeMeses && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Informe a idade em meses</strong> (campo abaixo) para a sugestão por faixa etária.</>}
+              {/* Duas causas diferentes para a mesma falta, e o profissional
+                  precisa saber qual é: "não temos a idade" pede um dado;
+                  "temos só o ano" avisa que o dado que existe MENTE nessa
+                  faixa — e por que o sistema preferiu não sugerir. */}
+              {semIdadeMeses && (idadeAproximadaDemais
+                ? <><br />⚠ <strong style={{ color: "#f59e0b" }}>O cadastro tem só o ano de nascimento</strong> — nesta faixa isso erra até 11 meses e trocaria a faixa de referência. Informe a idade em meses abaixo, ou complete a data de nascimento no cadastro.</>
+                : <><br />⚠ <strong style={{ color: "#f59e0b" }}>Informe a idade em meses</strong> (campo abaixo) para a sugestão por faixa etária.</>)}
+              {pediatrico && !idadeDigitada && idadeInfo.exata && idadeInfo.rotulo && (
+                <><br />Idade pelo cadastro: <strong>{idadeInfo.rotulo}</strong>.</>
+              )}
               {semFaixaPeds && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Sem faixa cadastrada para esta idade</strong> — FC/FR não entram na sugestão.</>}
               {!faixasPedProntas && <><br />⚠ <strong style={{ color: "#f59e0b" }}>Faixas pediátricas em validação</strong> — ainda não validadas pelo ADM Master; use como apoio provisório.</>}
             </div>
@@ -15004,8 +15086,23 @@ export default function App() {
     let vivo = true;
     (async () => {
       const chave = currentUser.perfil;
+      // SEM CARGO CONHECIDO, NÃO SE DECIDE NADA.
+      //
+      // `currentUser` vem da sessão salva, que pode ser anterior ao campo
+      // `perfil` existir — e o perfil só chega depois que a consulta a
+      // `profiles` responde. Nesse intervalo, calcular permissão com uma
+      // lista vazia de grants escondia o sistema INTEIRO: o usuário via só
+      // "Usuários" e achava que tinha perdido o acesso.
+      //
+      // Aconteceu comigo testando, com o cargo correto no banco. Num
+      // plantão seria alguém ligando para a TI achando que foi bloqueado.
+      // O menu não é a barreira de segurança (a barreira é o RLS), então
+      // aqui se falha ABERTO — mostrar um módulo a mais por um instante é
+      // menos grave que tirar o sistema de quem está trabalhando.
+      if (!chave) { setPerms(null); return; }
+
       const [gs, exc] = await Promise.all([
-        chave ? sbFetch(`perfis_permissoes?perfil_chave=eq.${encodeURIComponent(chave)}&select=modulo,nivel`).catch(() => null) : null,
+        sbFetch(`perfis_permissoes?perfil_chave=eq.${encodeURIComponent(chave)}&select=modulo,nivel`).catch(() => null),
         sbFetch(`usuarios_permissoes?user_id=eq.${currentUser.id}&select=modulo,nivel`).catch(() => null),
       ]);
       if (!vivo) return;
@@ -15013,9 +15110,9 @@ export default function App() {
       // null e não `[]` — e as duas coisas significam o oposto uma da outra:
       // null = "não sei", [] = "sei que não tem nada". Tratar null como
       // vazio esconderia o sistema inteiro de todo mundo.
-      if (gs == null && exc == null) { setPerms(null); return; }
+      if (gs == null) { setPerms(null); return; }
       const grants = {};
-      for (const g of (gs || [])) grants[g.modulo] = g.nivel;
+      for (const g of gs) grants[g.modulo] = g.nivel;
       setPerms(permissoesEfetivas(currentUser, { grants }, exc || []));
     })();
     return () => { vivo = false; };
