@@ -62,6 +62,10 @@ const QUEM_PODE = {
   anotacao_enfermagem:    ["enfermeiro", "tecnico_enfermagem"],
   checar_medicacao:       ["enfermeiro", "tecnico_enfermagem"],
   sinais_vitais:          ["enfermeiro", "tecnico_enfermagem"],
+  // Escalas de risco e notificação de LPP: o técnico aplica/coleta e notifica;
+  // o enfermeiro valida e estadia. Ambos podem registrar (COFEN 736/2024).
+  aplicar_escala:          ["enfermeiro", "tecnico_enfermagem"],
+  notificar_lesao_pressao: ["enfermeiro", "tecnico_enfermagem"],
 
   // ── Multiprofissional ─────────────────────────────────────
   evolucao_multi:         ["fisioterapeuta", "nutricionista", "farmaceutico", "assistente_social"],
