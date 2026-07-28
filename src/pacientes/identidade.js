@@ -1,0 +1,369 @@
+// ═══════════════════════════════════════════════════════════
+// IDENTIFICAÇÃO DO PACIENTE — regras puras
+//
+// POR QUE ESTE MÓDULO EXISTE
+// O cadastro do paciente tinha quatro campos: prontuário, iniciais, ano de
+// nascimento e sexo. Isso foi uma decisão consciente de minimizar dado —
+// mas deixa o sistema em duas dívidas, uma legal e uma CLÍNICA:
+//
+//   1. LEGAL — a CFM 1.638/2002, art. 5º, I, "a", lista o conteúdo mínimo
+//      de identificação de um prontuário: nome completo, data de nascimento
+//      com dia/mês/ano, sexo, NOME DA MÃE, NATURALIDADE (município e
+//      estado) e endereço completo. Sem isso não é prontuário; é anotação.
+//      A CFM 2.299/2021, art. 2º, acrescenta o documento legal do paciente
+//      nos documentos emitidos (receita, atestado, laudo).
+//
+//   2. CLÍNICA — e esta é a que machuca antes. Guardar só o ANO de
+//      nascimento obriga a calcular idade por subtração de anos, e o erro
+//      chega a 11 meses. Em pediatria isso troca a faixa de referência: um
+//      bebê de 1 mês nascido em dezembro vira "1 ano" em janeiro, e os
+//      sinais vitais dele passam a ser avaliados contra a faixa de 12
+//      meses, que é outra fisiologia. `src/clinico/pediatria.js` pede
+//      `idadeMeses` justamente porque essa precisão importa.
+//
+// SOBRE A LGPD — o que muda e o que não muda
+// Passar a guardar nome, CPF e filiação NÃO viola a LGPD: a base legal do
+// dado assistencial é a TUTELA DA SAÚDE (art. 11, II, "f"), e a
+// minimização (art. 6º, III) é "o mínimo necessário para a finalidade" —
+// aqui a finalidade é identificação exigida por norma. Deixar de coletar é
+// que descumpre a CFM 1.638.
+//
+// O que muda de verdade é a EXPOSIÇÃO: enquanto a política de SELECT do
+// banco for aberta a qualquer autenticado, o que vazava era "J.S.M., 1957"
+// e passa a ser nome completo, CPF, nome da mãe e endereço. A decisão de
+// apertar o RLS deixa de ser arquitetura e vira urgência. Por isso as
+// funções daqui preferem devolver INICIAIS para a tela (`comoExibir`) —
+// nome completo só onde a tarefa exige.
+//
+// Tudo aqui é puro: sem React, sem rede, sem relógio próprio (as que
+// dependem de "hoje" recebem a data por parâmetro). Testado em
+// identidade.test.js.
+// ═══════════════════════════════════════════════════════════
+
+// ── DOCUMENTOS ──────────────────────────────────────────────
+
+/** Só os dígitos — o usuário digita com ponto, traço ou espaço. */
+export const limparDoc = v => String(v ?? "").replace(/\D/g, "");
+
+/**
+ * CPF válido? Confere os dois dígitos verificadores.
+ *
+ * Não é preciosismo: CPF errado é a origem nº 1 de prontuário duplicado
+ * (o mesmo paciente entra duas vezes) e de glosa no faturamento. Barrar na
+ * digitação custa um alerta; corrigir depois custa fundir dois prontuários
+ * clínicos, que é operação de risco.
+ */
+export function validarCPF(valor) {
+  const cpf = limparDoc(valor);
+  if (cpf.length !== 11) return false;
+  // 111.111.111-11 e afins passam na conta dos dígitos, mas não existem.
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+  const dv = (base, pesoInicial) => {
+    let soma = 0;
+    for (let i = 0; i < base.length; i++) soma += Number(base[i]) * (pesoInicial - i);
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  return dv(cpf.slice(0, 9), 10) === Number(cpf[9])
+      && dv(cpf.slice(0, 10), 11) === Number(cpf[10]);
+}
+
+/** CPF como se lê: 000.000.000-00. Devolve o que veio se não der 11 dígitos. */
+export function formatarCPF(valor) {
+  const c = limparDoc(valor);
+  if (c.length !== 11) return String(valor ?? "");
+  return `${c.slice(0, 3)}.${c.slice(3, 6)}.${c.slice(6, 9)}-${c.slice(9)}`;
+}
+
+/**
+ * CNS (Cartão Nacional de Saúde) válido?
+ *
+ * 15 dígitos, soma ponderada (peso 15 → 1) divisível por 11. O primeiro
+ * dígito diz a natureza: 1 e 2 são definitivos (vinculados ao CPF); 7, 8 e
+ * 9 são provisórios. Importa porque é o que identifica o paciente no SUS —
+ * sem CNS válido, a AIH não fecha.
+ */
+export function validarCNS(valor) {
+  const cns = limparDoc(valor);
+  if (cns.length !== 15) return false;
+  if (!"12789".includes(cns[0])) return false;
+  if (/^(\d)\1{14}$/.test(cns)) return false;
+  let soma = 0;
+  for (let i = 0; i < 15; i++) soma += Number(cns[i]) * (15 - i);
+  return soma % 11 === 0;
+}
+
+/** CNS como se lê: 000 0000 0000 0000. */
+export function formatarCNS(valor) {
+  const c = limparDoc(valor);
+  if (c.length !== 15) return String(valor ?? "");
+  return `${c.slice(0, 3)} ${c.slice(3, 7)} ${c.slice(7, 11)} ${c.slice(11)}`;
+}
+
+/** Provisório (7/8/9) ou definitivo (1/2)? `null` quando inválido. */
+export function tipoCNS(valor) {
+  if (!validarCNS(valor)) return null;
+  return "12".includes(limparDoc(valor)[0]) ? "definitivo" : "provisorio";
+}
+
+// ── NOME ────────────────────────────────────────────────────
+
+/** Sem acento, minúsculo, espaços colapsados — só para COMPARAR. */
+export const normalizarNome = n =>
+  String(n ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+// Partículas não identificam ninguém — "de", "da", "dos" não entram na
+// comparação nem viram inicial.
+const PARTICULAS = new Set(["de", "da", "do", "das", "dos", "e"]);
+
+/** Os pedaços do nome que de fato identificam. */
+export function partesDoNome(nome) {
+  return normalizarNome(nome).split(" ").filter(p => p && !PARTICULAS.has(p));
+}
+
+/**
+ * Iniciais a partir do nome completo: "José da Silva Matos" → "J.S.M."
+ *
+ * Existe para a tela continuar mostrando iniciais por padrão mesmo agora
+ * que o nome completo está no banco — exibir o mínimo é a prática que
+ * protege o paciente quando alguém passa atrás da recepcionista.
+ */
+export function iniciaisDe(nome) {
+  const partes = partesDoNome(nome);
+  if (!partes.length) return "";
+  return partes.map(p => p[0].toUpperCase()).join(".") + ".";
+}
+
+/**
+ * Como o paciente deve aparecer na tela.
+ *
+ * Prefere o NOME SOCIAL quando existe — é direito garantido no SUS
+ * (Decreto 8.727/2016; Portaria MS 2.836/2011), e chamar a pessoa pelo
+ * nome de registro contra a vontade dela é constrangimento, não detalhe.
+ * `completo: false` (padrão) devolve iniciais.
+ */
+export function comoExibir(paciente, { completo = false } = {}) {
+  if (!paciente) return "";
+  const social = String(paciente.nome_social ?? "").trim();
+  const nome = String(paciente.nome_completo ?? "").trim();
+  const preferido = social || nome;
+  if (completo && preferido) return preferido;
+  if (preferido) return iniciaisDe(preferido);
+  return String(paciente.iniciais ?? "").trim();
+}
+
+// ── SEXO ────────────────────────────────────────────────────
+
+/**
+ * Normaliza o sexo para "M" | "F" | "" .
+ *
+ * O sistema acumulou DUAS convenções: o formulário antigo gravava
+ * "masculino"/"feminino" e os dados carregados usam "M"/"F". Comparar sem
+ * normalizar faz `sexo === "F"` falhar silenciosamente em metade da base —
+ * e é esse tipo de comparação que decide se um alerta obstétrico aparece.
+ * Aqui as duas entram e sai uma só.
+ */
+export function normalizarSexo(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return "";
+  if (s.startsWith("m")) return "M";
+  if (s.startsWith("f")) return "F";
+  return "";
+}
+
+/** Rótulo por extenso, aceitando qualquer das convenções. */
+export const rotuloSexo = v =>
+  ({ M: "Masculino", F: "Feminino" }[normalizarSexo(v)] || "—");
+
+// ── IDADE ───────────────────────────────────────────────────
+
+/**
+ * Idade exata a partir da data de nascimento.
+ *
+ * Devolve { anos, meses, dias, totalMeses, rotulo } — `totalMeses` é o que
+ * a triagem pediátrica consome. `null` se a data faltar, for inválida ou
+ * estiver no futuro (digitação trocada não pode virar idade negativa).
+ *
+ * `hoje` é injetável para teste.
+ */
+export function idadeDetalhada(nascimento, hoje = new Date()) {
+  if (!nascimento) return null;
+  const n = typeof nascimento === "string"
+    ? new Date(nascimento.slice(0, 10) + "T00:00:00")
+    : new Date(nascimento);
+  if (isNaN(n)) return null;
+  const h = new Date(hoje); h.setHours(0, 0, 0, 0);
+  n.setHours(0, 0, 0, 0);
+  if (n > h) return null;
+
+  let anos = h.getFullYear() - n.getFullYear();
+  let meses = h.getMonth() - n.getMonth();
+  let dias = h.getDate() - n.getDate();
+  if (dias < 0) {
+    meses -= 1;
+    // dias do mês anterior ao de referência
+    dias += new Date(h.getFullYear(), h.getMonth(), 0).getDate();
+  }
+  if (meses < 0) { anos -= 1; meses += 12; }
+
+  const totalMeses = anos * 12 + meses;
+  // Como o profissional fala a idade: recém-nascido em dias, lactente em
+  // meses, o resto em anos. "0 anos" não é resposta útil na pediatria.
+  const rotulo = totalMeses < 1 ? `${dias} dia${dias === 1 ? "" : "s"}`
+    : totalMeses < 24 ? `${totalMeses} ${totalMeses === 1 ? "mês" : "meses"}`
+    : `${anos} anos`;
+
+  return { anos, meses, dias, totalMeses, rotulo };
+}
+
+/**
+ * Idade em meses para a triagem pediátrica — a partir da data exata quando
+ * existe; senão, do ano de nascimento (cadastro antigo), e AÍ o valor é
+ * aproximado. `exata: false` é o sinal para a tela pedir confirmação em vez
+ * de sugerir faixa com base em chute.
+ */
+export function idadeMesesParaTriagem(paciente, hoje = new Date()) {
+  const det = idadeDetalhada(paciente?.data_nascimento, hoje);
+  if (det) return { meses: det.totalMeses, exata: true, rotulo: det.rotulo };
+  const ano = Number(paciente?.ano_nascimento);
+  if (!ano || Number.isNaN(ano)) return { meses: null, exata: false, rotulo: null };
+  const anos = new Date(hoje).getFullYear() - ano;
+  if (anos < 0) return { meses: null, exata: false, rotulo: null };
+  return { meses: anos * 12, exata: false, rotulo: `~${anos} anos` };
+}
+
+// ── CONFERÊNCIA DO CADASTRO ─────────────────────────────────
+
+/**
+ * O que falta para este cadastro atender à norma.
+ *
+ * NUNCA bloqueia. Emergência entra com o que dá (CFM 1.638, art. 5º, I,
+ * "e", prevê o atendimento sem anamnese possível) — travar o cadastro de um
+ * politraumatizado para exigir o nome da mãe seria inverter a prioridade.
+ * O papel desta função é deixar a pendência VISÍVEL para alguém completar
+ * depois, não impedir o cuidado agora.
+ *
+ * Níveis:
+ *   essencial  — CFM 1.638/2002, art. 5º, I, "a" (conteúdo mínimo)
+ *   documento  — CFM 2.299/2021, art. 2º (documentos emitidos)
+ *   sus        — faturamento SUS / RNDS
+ *   contato    — operacional (não é exigência normativa)
+ */
+const REGRAS_CADASTRO = [
+  { campo: "nome_completo",  nivel: "essencial", label: "Nome completo",
+    norma: "CFM 1.638/2002, art. 5º" },
+  { campo: "data_nascimento", nivel: "essencial", label: "Data de nascimento (dia, mês e ano)",
+    norma: "CFM 1.638/2002, art. 5º",
+    porque: "Sem o dia e o mês, a idade sai por subtração de anos e erra até 11 meses — o que troca a faixa de referência na pediatria." },
+  { campo: "sexo",           nivel: "essencial", label: "Sexo", norma: "CFM 1.638/2002, art. 5º",
+    valida: v => normalizarSexo(v) !== "" },
+  { campo: "nome_mae",       nivel: "essencial", label: "Nome da mãe",
+    norma: "CFM 1.638/2002, art. 5º",
+    porque: "É o campo que mais desempata homônimo — e o mais esquecido." },
+  { campo: "naturalidade_municipio", nivel: "essencial", label: "Naturalidade (município)",
+    norma: "CFM 1.638/2002, art. 5º" },
+  { campo: "naturalidade_uf", nivel: "essencial", label: "Naturalidade (estado)",
+    norma: "CFM 1.638/2002, art. 5º" },
+  { campo: "end_logradouro", nivel: "essencial", label: "Endereço", norma: "CFM 1.638/2002, art. 5º" },
+  { campo: "end_municipio",  nivel: "essencial", label: "Município de residência", norma: "CFM 1.638/2002, art. 5º" },
+  { campo: "cpf",            nivel: "documento", label: "CPF",
+    norma: "CFM 2.299/2021, art. 2º",
+    porque: "Documento legal do paciente é exigido nos documentos emitidos (receita, atestado, laudo)." },
+  { campo: "cns",            nivel: "sus",       label: "Cartão SUS (CNS)",
+    porque: "Sem CNS o atendimento não fecha no faturamento SUS." },
+  { campo: "telefone",       nivel: "contato",   label: "Telefone",
+    porque: "Sem contato não há como avisar resultado nem confirmar retorno." },
+];
+
+export function conferirCadastro(paciente) {
+  const p = paciente || {};
+  const vazio = c => {
+    const v = p[c];
+    return v == null || String(v).trim() === "";
+  };
+  // `valida` cobre o campo que existe mas está com valor que o sistema não
+  // reconhece — preenchido com lixo é tão inútil quanto vazio, e engana mais.
+  const falta = r => vazio(r.campo) || (r.valida && !r.valida(p[r.campo]));
+  const pendencias = REGRAS_CADASTRO.filter(falta).map(r => ({ ...r }));
+
+  // Documento inválido é pior que documento ausente: ausente todo mundo vê,
+  // inválido passa por preenchido e só aparece na hora da glosa.
+  if (!vazio("cpf") && !validarCPF(p.cpf))
+    pendencias.push({ campo: "cpf", nivel: "documento", label: "CPF inválido",
+      porque: "Os dígitos verificadores não conferem. CPF errado gera prontuário duplicado e glosa." });
+  if (!vazio("cns") && !validarCNS(p.cns))
+    pendencias.push({ campo: "cns", nivel: "sus", label: "Cartão SUS inválido",
+      porque: "Os dígitos verificadores não conferem." });
+
+  const essenciais = REGRAS_CADASTRO.filter(r => r.nivel === "essencial");
+  const faltamEssenciais = pendencias.filter(x => x.nivel === "essencial").length;
+  return {
+    pendencias,
+    faltamEssenciais,
+    // "Completo" é sobre a norma de identificação, não sobre a ficha inteira.
+    completo: faltamEssenciais === 0,
+    percentual: Math.round(((essenciais.length - faltamEssenciais) / essenciais.length) * 100),
+  };
+}
+
+// ── DUPLICIDADE ─────────────────────────────────────────────
+
+/**
+ * Este paciente já está cadastrado com outro prontuário?
+ *
+ * Prontuário duplicado é o defeito mais caro de sistema hospitalar: parte
+ * do histórico fica num registro e parte no outro, e o médico decide vendo
+ * metade. Fundir depois é operação de risco. Por isso a checagem acontece
+ * ANTES de gravar.
+ *
+ * A comparação é explicável de propósito — nada de distância de edição que
+ * ninguém sabe justificar. Cada achado diz POR QUE casou, para a pessoa
+ * decidir. O sistema sugere; quem confirma é quem está cadastrando.
+ */
+export function possiveisDuplicatas(novo, existentes = [], { limite = 5 } = {}) {
+  if (!novo) return [];
+  const lista = Array.isArray(existentes) ? existentes : [];
+  const cpfNovo = limparDoc(novo.cpf);
+  const cnsNovo = limparDoc(novo.cns);
+  const nomeNovo = partesDoNome(novo.nome_completo);
+  const maeNova = normalizarNome(novo.nome_mae);
+  const nascNovo = String(novo.data_nascimento ?? "").slice(0, 10);
+
+  const achados = [];
+  for (const e of lista) {
+    // O próprio registro não é duplicata de si mesmo.
+    if (e?.prontuario && novo.prontuario && String(e.prontuario) === String(novo.prontuario)) continue;
+
+    const motivos = [];
+    let confianca = 0;
+
+    if (cpfNovo && cpfNovo.length === 11 && limparDoc(e.cpf) === cpfNovo) {
+      motivos.push("mesmo CPF"); confianca = 100;
+    }
+    if (cnsNovo && cnsNovo.length === 15 && limparDoc(e.cns) === cnsNovo) {
+      motivos.push("mesmo Cartão SUS"); confianca = Math.max(confianca, 100);
+    }
+
+    const nomeExist = partesDoNome(e.nome_completo);
+    const nomeIgual = nomeNovo.length > 0 && nomeNovo.join(" ") === nomeExist.join(" ");
+    const nascIgual = nascNovo && String(e.data_nascimento ?? "").slice(0, 10) === nascNovo;
+    const maeIgual = maeNova && normalizarNome(e.nome_mae) === maeNova;
+
+    if (nomeIgual && nascIgual) { motivos.push("mesmo nome e mesma data de nascimento"); confianca = Math.max(confianca, 90); }
+    else if (nomeIgual && maeIgual) { motivos.push("mesmo nome e mesma mãe"); confianca = Math.max(confianca, 90); }
+    else if (nomeIgual) { motivos.push("mesmo nome completo"); confianca = Math.max(confianca, 60); }
+    else if (nomeNovo.length >= 2 && nomeExist.length >= 2) {
+      // Homônimo parcial: primeiro e último nome batem (grafia do meio varia
+      // muito — "Maria de Souza" e "Maria Souza" são a mesma pessoa).
+      const mesmaPonta = nomeNovo[0] === nomeExist[0]
+        && nomeNovo[nomeNovo.length - 1] === nomeExist[nomeExist.length - 1];
+      if (mesmaPonta && nascIgual) { motivos.push("primeiro e último nome iguais, mesma data de nascimento"); confianca = Math.max(confianca, 70); }
+      else if (mesmaPonta && maeIgual) { motivos.push("primeiro e último nome iguais, mesma mãe"); confianca = Math.max(confianca, 70); }
+    }
+
+    if (motivos.length) achados.push({ paciente: e, prontuario: e.prontuario, motivos, confianca });
+  }
+
+  return achados.sort((a, b) => b.confianca - a.confianca).slice(0, limite);
+}
