@@ -30,6 +30,7 @@ import Anamnese from "./Anamnese.jsx";
 import Reconciliacao from "./Reconciliacao.jsx";
 import AltaHospitalar from "./AltaHospitalar.jsx";
 import Escalas from "./Escalas.jsx";
+import SAE from "./SAE.jsx";
 
 const cor = { borda: "var(--border)", sup: "var(--surface)", sup2: "var(--surface-2)", txt3: "var(--text-3)", mut: "var(--text-muted)" };
 const cartao = { background: cor.sup, border: `1px solid ${cor.borda}`, borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -116,6 +117,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
     ["reconciliacao", `Reconciliação${recAdmissao.pendentes ? ` (${recAdmissao.pendentes}!)` : ""}`],
     ["sinais", `Sinais vitais (${serie.length})`],
     ["escalas", `Escalas${d.escalas?.length ? ` (${d.escalas.length})` : ""}`],
+    ["sae", `SAE${d.saeDiagnosticos?.length ? ` (${d.saeDiagnosticos.length})` : ""}`],
     ["timeline", "Linha do tempo"],
     ["alta", "Alta"],
   ];
@@ -185,6 +187,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
       )}
       {aba === "sinais"     && <Sinais serie={serie} ep={ep} canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar} />}
       {aba === "escalas"    && <Escalas sb={sb} episodio={ep} escalas={d.escalas} lpp={d.lpp} faixas={d.faixasEscalas} currentUser={currentUser} canEdit={canEdit} onOk={recarregar} />}
+      {aba === "sae"        && <SAE sb={sb} episodio={ep} saeCatalogo={d.saeCatalogo} saeHistorico={d.saeHistorico} saeDiagnosticos={d.saeDiagnosticos} saePrescricoes={d.saePrescricoes} saePrescricaoItens={d.saePrescricaoItens} saeChecagem={d.saeChecagem} escalas={d.escalas} lpp={d.lpp} sinais={d.sinais} evolucoes={d.evolucoes} currentUser={currentUser} canEdit={canEdit} onOk={recarregar} />}
       {aba === "timeline"   && <Timeline d={d} />}
       {aba === "alta"       && (
         <>
