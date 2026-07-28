@@ -1,17 +1,37 @@
-# 📍 Ponto de restauração — checkpoint-v45
+# 📍 Ponto de restauração — checkpoint-v46
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v45` (anteriores: `checkpoint-v44` … `checkpoint-v1`)
-- **Data:** 2026-07-27 · `main` em `900a04b`
+- **Tag Git mais recente:** `checkpoint-v46` (anteriores: `checkpoint-v45` … `checkpoint-v1`)
+- **Data:** 2026-07-27 · `main` em `599af09`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v44 para cá: **PR #31** (Fase 3 — triagem pediátrica sugere por
-  faixa de idade).
+  vai ao ar). Da v45 para cá: **PR #33** (Fase 3 — triagem obstétrica sugere por
+  discriminadores).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v46 (desde a v45 — PR #33): triagem obstétrica por discriminadores
+
+- **🤰 Fase 3 (obstétrica) — sugestão de Manchester por discriminadores:** na triagem
+  **Obstétrica**, a sugestão automática (selo SUGERIDA) volta a funcionar, agora por
+  **discriminadores** (sangramento, movimento fetal ausente/reduzido, perda de líquido,
+  contrações) e pela **PA obstétrica** (pré-eclâmpsia: PA ≥ 140/90 já conta, ≥ 160/110
+  é grave; **com sintoma** — cefaleia/epigastralgia/alteração visual — escala para
+  iminência). A PA de adulto (hipotensão/crise) NÃO é usada aqui; os demais vitais
+  (FR/FC/SpO₂/temp/AVPU) usam limiar de adulto. Continua sendo apoio: a enfermeira
+  classifica. Motor puro e testável `src/clinico/obstetricia.js` (+17 testes).
+- **⚙️ Tabela editável `ps_faixas_obstetricas` (só ADM Master):** cada discriminador →
+  nível Manchester + os limiares de PA vivem numa tabela que **só o ADM Master** edita
+  (botão "Editar critérios obstétricos" na tela Protocolo Manchester). Cada regra nasce
+  **"em validação"** — a triagem avisa até o ADM Master validar. Migração
+  `migracao-ps-faixas-obstetricas.sql` (tabela nova + seed de 9 regras), já rodada nos
+  2 bancos. Os 3 sintomas de pré-eclâmpsia entraram no formulário sem migração (jsonb).
+- **Com isto, a Fase 3 da triagem está completa:** adulto, **pediátrica** (v45) e
+  **obstétrica** (v46) têm apoio à decisão adaptado — sempre como sugestão, com a
+  decisão final da enfermeira.
 
 ## 🆕 Novidades da v45 (desde a v44 — PR #31): triagem pediátrica por idade
 
