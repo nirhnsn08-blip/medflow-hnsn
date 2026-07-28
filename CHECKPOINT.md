@@ -1,17 +1,43 @@
-# 📍 Ponto de restauração — checkpoint-v47
+# 📍 Ponto de restauração — checkpoint-v48
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v47` (anteriores: `checkpoint-v46` … `checkpoint-v1`)
-- **Data:** 2026-07-28 · `main` em `0134e0a`
+- **Tag Git mais recente:** `checkpoint-v48` (anteriores: `checkpoint-v47` … `checkpoint-v1`)
+- **Data:** 2026-07-28 · `main` em `517b203`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v46 para cá: **PR #35** (Fase 1a — escalas de enfermagem + lesão por
-  pressão + mapa de risco).
+  vai ao ar). Da v47 para cá: **PR #37** (Fase 1b — SAE / Processo de Enfermagem:
+  núcleo clínico).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v48 (desde a v47 — PR #37): enfermagem — SAE / Processo de Enfermagem (núcleo)
+
+Segunda entrega do **Tier 1**. Fase 1b: leva o **Processo de Enfermagem** (COFEN
+736/2024, ex-358/2009) à beira-leito, dentro do PEP — no padrão da Fase 1a (motor puro
+testável + catálogo curado "em validação" editável pelo ADM Master).
+
+- **🩺 Aba SAE no prontuário do internado (Paciente 360 → aba SAE)** com as 5 etapas:
+  **Histórico** de enfermagem (coleta por necessidades humanas) → **Diagnóstico NANDA-I**
+  (com **sugestão automática** a partir das escalas da Fase 1a, LPP e sinais vitais) →
+  **Resultado esperado** (texto curado ligado ao diagnóstico) → **Prescrição de
+  enfermagem (NIC)** com aprazamento → **Evolução** (reusa `pep_evolucoes`).
+- **🛏️ Checagem do cuidado à beira-leito:** o **técnico** executa e checa o cuidado
+  prescrito por horário (realizado × não realizado com motivo), na mesma lógica da
+  checagem de medicação — vermelho quando atrasa.
+- **🧠 Motor puro** `src/clinico/sae.js`: sugere diagnósticos do que já existe e reusa o
+  aprazamento/checagem de `prontuario.js`. Estrutura fixa (modelo do histórico, domínios)
+  em `sae-catalogo.js`.
+- **📚 Catálogo curado "em validação"** (`enf_sae_catalogo`): **20 diagnósticos NANDA-I
+  e 19 intervenções NIC** para clínica adulto, UTI, pediatria e obstétrica.
+- **Competência COFEN** (`papeis.js`): histórico/diagnóstico/prescrição/evolução
+  privativos do enfermeiro; **checagem do cuidado** também pelo técnico.
+- Migração `migracao-enf-sae.sql` (6 tabelas `enf_sae_*`), já rodada no demo e no HNSN.
+  **433 testes** + build verdes.
+- **Próximo (só código, sem migração):** editor do catálogo NANDA/NIC pelo ADM Master
+  e lista de trabalho da checagem à beira-leito.
 
 ## 🆕 Novidades da v47 (desde a v46 — PR #35): enfermagem — escalas, LPP e mapa de risco
 
@@ -545,7 +571,7 @@ de triagem** nas listas de trabalho ("Em atendimento"/fila).
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v42
+git reset --hard checkpoint-v48
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -554,7 +580,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v42
+git checkout -b recuperacao checkpoint-v48
 ```
 
 ## ⚠️ Importante: código ≠ dados
