@@ -32,6 +32,7 @@ import {
   registrarAnamnese, registrarAlergia, assinarPrescricao, eventoDoItem,
   registrarAdministracao, registrarAcesso, registrarMedicamentoUso,
   salvarReconciliacao, emitirSumarioAlta, encerrarEpisodio,
+  registrarEscala, registrarLesaoPressao,
 } from "./dados.js";
 
 // ── o que o banco tem, segundo a auditoria gerada ───────────
@@ -120,6 +121,24 @@ describe("escrita — toda coluna enviada existe no banco", () => {
   it("registrarSinais", async () => {
     const { sb, chamadas } = espiao();
     await registrarSinais(sb, EPISODIO, { pa_sist: 120, pa_diast: 80, fc: 88, fr: 18, temp: 36.5, spo2: 97, glicemia: 99, dor: 2, consciencia: "A", o2_suplementar: false }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("registrarEscala", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarEscala(sb, EPISODIO, {
+      tipo: "braden", itens: { percepcao: 2, umidade: 3, atividade: 2, mobilidade: 2, nutricao: 3, friccao: 2 },
+      score: 14, classificacao: "Risco moderado", nivel: "amarelo", sitio: null,
+    }, USER);
+    chamadas.forEach(conferirEscrita);
+  });
+
+  it("registrarLesaoPressao", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarLesaoPressao(sb, EPISODIO, {
+      presente_admissao: false, local: "região sacral", estagio: "2",
+      medidas: { comprimento: 3, largura: 2 }, descricao: "Eritema não branqueável", status: "ativa",
+    }, USER);
     chamadas.forEach(conferirEscrita);
   });
 

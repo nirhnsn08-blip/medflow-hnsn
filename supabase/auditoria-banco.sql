@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 63 tabelas, 950 colunas.
+-- Cobertura atual: 63 tabelas, 956 colunas.
 -- ============================================================
 
 with
@@ -155,17 +155,22 @@ colunas(tabela, coluna, origem) as (values
   ('enf_escalas','aplicado_por','enf-escalas-lpp'),
   ('enf_escalas','categoria','enf-escalas-lpp'),
   ('enf_escalas','classificacao','enf-escalas-lpp'),
+  ('enf_escalas','conselho','enf-escalas-lpp'),
   ('enf_escalas','criado_em','enf-escalas-lpp'),
+  ('enf_escalas','episodio_id','enf-escalas-lpp'),
   ('enf_escalas','id','enf-escalas-lpp'),
   ('enf_escalas','itens','enf-escalas-lpp'),
   ('enf_escalas','nivel','enf-escalas-lpp'),
   ('enf_escalas','prontuario','enf-escalas-lpp'),
+  ('enf_escalas','registro_conselho','enf-escalas-lpp'),
   ('enf_escalas','score','enf-escalas-lpp'),
   ('enf_escalas','sitio','enf-escalas-lpp'),
   ('enf_escalas','tipo','enf-escalas-lpp'),
   ('enf_lesao_pressao','categoria','enf-escalas-lpp'),
+  ('enf_lesao_pressao','conselho','enf-escalas-lpp'),
   ('enf_lesao_pressao','criado_em','enf-escalas-lpp'),
   ('enf_lesao_pressao','descricao','enf-escalas-lpp'),
+  ('enf_lesao_pressao','episodio_id','enf-escalas-lpp'),
   ('enf_lesao_pressao','estagio','enf-escalas-lpp'),
   ('enf_lesao_pressao','id','enf-escalas-lpp'),
   ('enf_lesao_pressao','local','enf-escalas-lpp'),
@@ -173,6 +178,7 @@ colunas(tabela, coluna, origem) as (values
   ('enf_lesao_pressao','presente_admissao','enf-escalas-lpp'),
   ('enf_lesao_pressao','prontuario','enf-escalas-lpp'),
   ('enf_lesao_pressao','registrado_por','enf-escalas-lpp'),
+  ('enf_lesao_pressao','registro_conselho','enf-escalas-lpp'),
   ('enf_lesao_pressao','status','enf-escalas-lpp'),
   ('farm_incompat_y','created_at','farmacia-clinica-fase2'),
   ('farm_incompat_y','descricao','farmacia-clinica-fase2'),

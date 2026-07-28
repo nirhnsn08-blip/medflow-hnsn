@@ -4634,14 +4634,17 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 create table if not exists public.enf_escalas (
   id             uuid primary key default gen_random_uuid(),
   prontuario     text not null,
+  episodio_id    uuid,                        -- internação (pep_episodios); escopo do PEP
   tipo           text not null,              -- braden|morse|dor|flebite|fugulin|glasgow|rass
   itens          jsonb not null default '{}'::jsonb,  -- respostas das subescalas
   score          int,                         -- soma (braden/morse/fugulin/glasgow) ou valor (dor/rass)
   classificacao  text,                        -- rótulo da faixa resultante
   nivel          text,                        -- semáforo: verde|amarelo|laranja|vermelho
   sitio          text,                        -- flebite: identificação do acesso venoso
-  aplicado_por   text,
-  categoria      text,                        -- medica|enfermagem|tecnico|...
+  aplicado_por   text,                        -- nome congelado de quem aplicou
+  categoria      text,                        -- categoria profissional (papeis.js)
+  conselho          text,                      -- autoria congelada (COFEN 754/2024)
+  registro_conselho text,
   aferido_em     timestamptz not null default now(),
   criado_em      timestamptz not null default now()
 );
@@ -4650,14 +4653,17 @@ create index if not exists enf_escalas_pront_idx on public.enf_escalas (prontuar
 create table if not exists public.enf_lesao_pressao (
   id                 uuid primary key default gen_random_uuid(),
   prontuario         text not null,
+  episodio_id        uuid,                              -- internação (pep_episodios)
   presente_admissao  boolean not null default false,  -- POA: veio COM a lesão?
   local              text,                              -- região corporal
   estagio            text,                              -- 1|2|3|4|nao_classificavel|tissular_profunda
   medidas            jsonb,                             -- comprimento/largura/profundidade (cm)
   descricao          text,
   status             text not null default 'ativa',     -- ativa|regressao|cicatrizada
-  registrado_por     text,
+  registrado_por     text,                               -- nome congelado de quem notificou
   categoria          text,
+  conselho           text,                                -- autoria congelada (COFEN 754/2024)
+  registro_conselho  text,
   criado_em          timestamptz not null default now()
 );
 create index if not exists enf_lpp_pront_idx on public.enf_lesao_pressao (prontuario, criado_em desc);

@@ -67,12 +67,13 @@ export async function carregarProntuario(sb, prontuario) {
     return { episodios: eps, episodio: null, alergias: alergias || [], condicoes: condicoes || [],
              medicamentosUso: Array.isArray(medicamentosUso) ? medicamentosUso : [],
              prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [],
-             anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [] };
+             anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
+             escalas: [], lpp: [], faixasEscalas: [] };
   }
 
   const e = ativo.id;
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
-         reconciliacoes, reconciliacaoItens, sumarios] = await Promise.all([
+         reconciliacoes, reconciliacaoItens, sumarios, escalas, lpp, faixasEscalas] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_prescricao_eventos?episodio_id=eq.${e}&select=*&order=criado_em`).catch(() => []),
@@ -87,6 +88,10 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`pep_reconciliacoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_reconciliacao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_sumarios_alta?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    // Escalas de enfermagem + LPP (Tier 1 Fase 1a) + cortes globais de classificação.
+    sb(`enf_escalas?episodio_id=eq.${e}&select=*&order=aferido_em.desc`).catch(() => []),
+    sb(`enf_lesao_pressao?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    sb(`enf_escala_faixas?select=*&order=ordem`).catch(() => []),
   ]);
 
   const arr = x => (Array.isArray(x) ? x : []);
@@ -99,6 +104,7 @@ export async function carregarProntuario(sb, prontuario) {
     medicamentosUso: arr(medicamentosUso),
     reconciliacoes: arr(reconciliacoes), reconciliacaoItens: arr(reconciliacaoItens),
     sumarios: arr(sumarios),
+    escalas: arr(escalas), lpp: arr(lpp), faixasEscalas: arr(faixasEscalas),
   };
 }
 
@@ -152,6 +158,50 @@ export async function registrarAnotacao(sb, episodio, { categoria, texto, interc
       intercorrencia: !!intercorrencia,
       ocorrido_em: ocorrido_em || new Date().toISOString(),
       ...assinatura(user),
+    }),
+  });
+}
+
+/**
+ * Registra a aplicação de uma escala de enfermagem (Braden, Morse, dor,
+ * flebite, Fugulin, Glasgow, RASS). Append-only. O score e a classificação
+ * chegam já calculados pela tela (motor escalas-enfermagem.js).
+ */
+export async function registrarEscala(sb, episodio, { tipo, itens, score, classificacao, nivel, sitio, aferido_em }, user) {
+  const a = assinaturaDe(user);
+  return sb("enf_escalas", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario, episodio_id: episodio.id,
+      tipo, itens: itens || {},
+      score: score ?? null, classificacao: classificacao || null, nivel: nivel || null,
+      sitio: sitio || null,
+      aplicado_por: a.profissional_nome, conselho: a.conselho, registro_conselho: a.registro_conselho,
+      categoria: user?.categoria || null,
+      aferido_em: aferido_em || new Date().toISOString(),
+    }),
+  });
+}
+
+/**
+ * Notifica uma lesão por pressão. `presente_admissao` (POA) separa a lesão que
+ * o paciente TROUXE da ADQUIRIDA na unidade — base do indicador de LPP
+ * adquirida. Append-only (evolução = novo registro).
+ */
+export async function registrarLesaoPressao(sb, episodio, { presente_admissao, local, estagio, medidas, descricao, status }, user) {
+  const a = assinaturaDe(user);
+  return sb("enf_lesao_pressao", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      prontuario: episodio.prontuario, episodio_id: episodio.id,
+      presente_admissao: !!presente_admissao,
+      local: local || null, estagio: estagio || null,
+      medidas: medidas || null, descricao: descricao || null,
+      status: status || "ativa",
+      registrado_por: a.profissional_nome, conselho: a.conselho, registro_conselho: a.registro_conselho,
+      categoria: user?.categoria || null,
     }),
   });
 }
