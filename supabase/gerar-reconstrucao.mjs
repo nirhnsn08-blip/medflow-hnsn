@@ -70,6 +70,7 @@ const ORDEM = [
   "migracao-ps-faixas-pediatricas.sql",
   "migracao-ps-faixas-obstetricas.sql",
   "migracao-enf-escalas-lpp.sql",
+  "migracao-enf-sae.sql",
   "migracao-pacientes-identificacao.sql",
 ];
 
