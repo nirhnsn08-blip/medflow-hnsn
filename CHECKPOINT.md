@@ -1,17 +1,43 @@
-# 📍 Ponto de restauração — checkpoint-v46
+# 📍 Ponto de restauração — checkpoint-v47
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v46` (anteriores: `checkpoint-v45` … `checkpoint-v1`)
-- **Data:** 2026-07-27 · `main` em `599af09`
+- **Tag Git mais recente:** `checkpoint-v47` (anteriores: `checkpoint-v46` … `checkpoint-v1`)
+- **Data:** 2026-07-28 · `main` em `0134e0a`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v45 para cá: **PR #33** (Fase 3 — triagem obstétrica sugere por
-  discriminadores).
+  vai ao ar). Da v46 para cá: **PR #35** (Fase 1a — escalas de enfermagem + lesão por
+  pressão + mapa de risco).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v47 (desde a v46 — PR #35): enfermagem — escalas, LPP e mapa de risco
+
+Primeira entrega do **Tier 1** (roadmap de cuidado e segurança). Fase 1a: leva o
+Processo de Enfermagem à beira-leito, dentro do PEP.
+
+- **🩺 Escalas de risco no prontuário do internado (Paciente 360 → aba Escalas):**
+  aplica 7 escalas — **Braden** (lesão por pressão), **Morse** (queda), **dor**,
+  **flebite** (grau INS), **Fugulin** (grau de dependência), **Glasgow** e **RASS** —
+  com formulário vindo de um catálogo (`src/clinico/escalas-catalogo.js`), **prévia de
+  score ao vivo**, classificação pelo motor puro (`src/clinico/escalas-enfermagem.js`)
+  e aviso de **reavaliação vencida**. Append-only, com autoria congelada.
+- **🛏️ Lesão por pressão (LPP) com POA:** o marcador **presente na admissão ×
+  adquirida na unidade** — base do indicador limpo de LPP adquirida. Estágio (NPUAP),
+  localização, evolução.
+- **⚙️ Cortes editáveis pelo ADM Master:** os pontos de corte de cada escala
+  (`enf_escala_faixas`) são editáveis na tela (botão na aba Escalas); cada faixa nasce
+  **"em validação"** — a equipe valida contra o protocolo do HNSN. Os subitens das
+  escalas são fixos; só os cortes se ajustam.
+- **📊 Mapa de risco por leito (Giro de Leitos → Mapa de risco):** semáforo por leito
+  ocupado (Braden/Morse/flebite/LPP), ordenado do mais grave ao menos grave, com a
+  **LPP adquirida** puxando o leito para o topo. Agregador puro `src/clinico/mapa-risco.js`.
+- **Competência COFEN respeitada** (`papeis.js`): técnico aplica escalas e notifica LPP;
+  a SAE (diagnóstico/prescrição de enfermagem, privativa do enfermeiro) vem na **Fase 1b**.
+- Migração `migracao-enf-escalas-lpp.sql` (3 tabelas), já rodada no demo e no HNSN.
+  **406 testes** + build verdes.
 
 ## 🆕 Novidades da v46 (desde a v45 — PR #33): triagem obstétrica por discriminadores
 

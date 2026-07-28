@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-07-27 · `main` em `599af09` (checkpoint-v46) · zero PRs abertos.
+**Atualizado em:** 2026-07-28 · `main` em `0134e0a` (checkpoint-v47) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **381 testes**. Três merecem atenção especial:
+`npm test` roda **406 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -107,6 +107,12 @@ alimentam os alertas de ajuste de dose sem exigir o ClCr) e tem **tipo Adulto /
 Obstétrica / Pediátrica**, com captura específica para gestante e criança. No
 **Estoque**, os pedidos de compra agora passam por
 **aprovação da matriz** (aguardando → aprovado/negado) antes de ir ao fornecedor.
+A **enfermagem** ganhou (Tier 1, Fase 1a) as **escalas de risco à beira-leito**
+(Braden, Morse, dor, flebite, Fugulin, Glasgow, RASS) e a **lesão por pressão com
+marcador POA** no prontuário do internado, com **cortes editáveis pelo ADM Master**
+e um **mapa de risco por leito** no Giro de Leitos. O **Processo de Enfermagem
+completo (SAE)** — diagnóstico e prescrição de enfermagem — é a **Fase 1b**, o
+próximo passo do roadmap Tier 1.
 
 **Ainda não há paciente real no sistema.**
 
