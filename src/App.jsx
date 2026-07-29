@@ -52,6 +52,9 @@ import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
 // meses — o que trocava a faixa de referência na triagem pediátrica.
 import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
 import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
+import Recepcao from "./atendimento/Recepcao.jsx";
+import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
+import { carregarPaciente } from "./atendimento/dados.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -241,6 +244,10 @@ const ICON_PATHS = {
   clock:     <><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></>,
   checks:    <><path d="M4 12.5l3.5 3.5L14 9"/><path d="M11 15l1.6 1.6L20 9"/></>,
   truck:     <><rect x="2" y="6" width="12" height="10" rx="1.5"/><path d="M14 9.5h4l3 3.5v3h-7"/><circle cx="6.5" cy="18.5" r="1.8"/><circle cx="17.5" cy="18.5" r="1.8"/></>,
+  // Porta de entrada — a Recepção. Ícone próprio para não dividir o
+  // `record` com o Paciente 360: são módulos diferentes e o menu precisa
+  // deixar isso óbvio.
+  door:      <><path d="M4 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17"/><path d="M2.5 21h19"/><circle cx="13" cy="12.5" r="1"/></>,
 };
 function Icon({ name, size = 15 }) {
   return (
@@ -2569,14 +2576,12 @@ const PS_NAV_EMERG = [
   { key: "e_aguardando",     label: "Aguardando leito",     icon: "clock" },
   { key: "e_ia",             label: "Assistente IA",        icon: "chat" },
 ];
-// Vias de transferência externa usadas na rede
-const PS_VIAS_TRANSF = ["Vaga Zero", "GERINT", "Contato direto", "Outro"];
-// Como o paciente chegou ao PS — dado de pactuação regional e epidemiologia
-const PS_ORIGENS = ["Meios próprios", "SAMU", "Transalva", "Polícia Militar", "Bombeiros", "GERINT (aceite)", "Outro"];
-// Unidades de origem quando o aceite vem pela regulação
-const PS_ORIGEM_UNIDADES = ["PA Torres", "Arroio do Sal", "Três Cachoeiras", "Outra unidade"];
-// Origens que exigem detalhar a unidade de procedência
-const psPedeDetalhe = o => o === "GERINT (aceite)" || o === "Outro";
+// PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES e psPedeDetalhe passaram
+// para `src/atendimento/recepcao.js` e são importados no topo. A chegada do
+// paciente é registrada em DUAS telas agora (Recepção e este formulário do
+// PS); manter duas cópias da mesma lista faria uma ganhar uma origem nova e
+// a outra não, sem ninguém perceber — e o indicador de procedência sairia
+// diferente conforme a porta usada.
 // Mapa de vagas do PS — ordem fixa das áreas (igual ao padrão do Giro de Leitos)
 const PS_AREAS = ["Sala Vermelha", "Sala Laranja", "Sala AVC", "Isolamento", "Pediatria", "Observação", "Procedimento", "PCR", "Outros"];
 // Retaguarda provisória: alta rotatividade, NÃO entra no censo dos leitos do
@@ -4996,6 +5001,31 @@ function PSPage({ currentUser, canEdit }) {
     if (!novo.origem) { alert("Informe por onde o paciente chegou."); return; }
     if (psPedeDetalhe(novo.origem) && !novo.origem_detalhe.trim()) { alert("Informe a unidade/origem de procedência."); return; }
     setBusy(true);
+
+    // O prontuário precisa EXISTIR, não só estar preenchido.
+    //
+    // Desde `migracao-atendimento-recepcao.sql` há chave estrangeira de
+    // ps_atendimentos para pacientes. Sem esta conferência, digitar um
+    // número que não existe faz o PostgREST recusar o INSERT — e o
+    // sbFetch devolve null sem alarde. A recepcionista clicaria em
+    // "Registrar chegada", a tela limparia o formulário, e o paciente não
+    // entraria na fila da triagem. Ninguém seria chamado.
+    //
+    // Conferir aqui transforma esse silêncio numa instrução: quem não tem
+    // cadastro é cadastrado na Recepção, que é a porta feita para isso.
+    const cadastrado = await carregarPaciente(sbFetch, novo.prontuario.trim());
+    if (!cadastrado) {
+      setBusy(false);
+      alert(
+        `Não existe paciente cadastrado com o prontuário ${novo.prontuario.trim()}.\n\n` +
+        "Abra o menu ATENDIMENTO e registre a chegada por lá: ele procura o paciente, " +
+        "emite o prontuário quando é a primeira vez e tem o caminho de emergência para " +
+        "quem chega sem identificação.\n\n" +
+        "Registrar aqui um número que não existe deixaria este atendimento solto — sem " +
+        "aparecer no histórico do paciente.");
+      return;
+    }
+
     await addPsAtendimentoRemote({
       iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim(),
       queixa: novo.queixa.trim() || null, origem: novo.origem,
@@ -15622,6 +15652,7 @@ export default function App() {
   const sidebarItems = [
     ...(verModulo("overview")    ? [{ id: "overview",  icon: "dashboard", label: "Visão Geral" }] : []),
     { id: "d1" },
+    ...(verModulo("atendimento") ? [{ id: "atendimento", icon: "door", label: "Atendimento" }] : []),
     ...(verModulo("ambulatorio") ? [{ id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) }] : []),
     { id: "d2" },
     ...(verModulo("ps")          ? [{ id: "ps",       icon: "activity", label: "Pronto-Socorro" }]    : []),
@@ -15720,6 +15751,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
+          {active === "atendimento" && <Recepcao sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "bloco"     && <BlocoPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
