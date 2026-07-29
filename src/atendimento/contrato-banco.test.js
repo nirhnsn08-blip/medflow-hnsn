@@ -24,6 +24,10 @@ import {
   listarAguardandoIdentificacao, concluirIdentificacao,
   carregarCatalogos, carregarProfissionais,
   salvarCatalogo, alternarAtivoCatalogo, carregarCatalogoCompleto,
+  carregarGrades, salvarGrade, alternarAtivoGrade,
+  carregarBloqueios, salvarBloqueio, carregarAgendaDoDia,
+  marcarAgendamento, confirmarPresenca, registrarFalta, cancelarAgendamento,
+  vincularPacienteAoAgendamento,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -205,6 +209,149 @@ describe("leituras da recepção", () => {
     const { sb, chamadas } = espiao([]);
     await carregarProfissionais(sb);
     conferirLeitura(chamadas[0]);
+  });
+});
+
+describe("a agenda grava e lê em coluna real", () => {
+  const GRADE = {
+    especialidade_cod: "ortopedia", profissional_username: "dr.joao", dia_semana: 2,
+    hora_inicio: "08:00", hora_fim: "12:00", duracao_min: 20,
+    vagas_regulacao: 6, vagas_internas: 4, vagas_chegada: 2,
+    vigencia_inicio: "2026-01-01", observacao: "grade da terça",
+  };
+
+  it("salvar grade", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await salvarGrade(sb, GRADE, USER);
+    expect(r.ok).toBe(true);
+    conferirEscrita(chamadas[0]);
+  });
+
+  it("desligar grade", async () => {
+    const { sb, chamadas } = espiao();
+    await alternarAtivoGrade(sb, 3, false, USER);
+    conferirEscrita(chamadas[0]);
+  });
+
+  it("salvar bloqueio", async () => {
+    const { sb, chamadas } = espiao();
+    await salvarBloqueio(sb, { data_inicio: "2026-07-28", data_fim: "2026-07-28", motivo: "Feriado" }, USER);
+    conferirEscrita(chamadas[0]);
+  });
+
+  it("marcar agendamento", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await marcarAgendamento(sb, {
+      data: "2026-07-28", hora: "08:20", especialidade_cod: "ortopedia",
+      profissional_username: "dr.joao", grade_id: 1, prontuario: "100001",
+      origem_marcacao: "interna", tipo_atendimento_cod: "retorno",
+      protocolo_regulacao: "", observacao: "retorno de 30 dias",
+    }, USER);
+    expect(r.ok).toBe(true);
+    conferirEscrita(chamadas[0]);
+  });
+
+  it("falta, cancelamento e vínculo do paciente", async () => {
+    for (const acao of [
+      sb => registrarFalta(sb, 5, USER),
+      sb => cancelarAgendamento(sb, 5, "paciente desmarcou", USER),
+      sb => vincularPacienteAoAgendamento(sb, 5, "100001", "GERCON-9988", USER),
+    ]) {
+      const { sb, chamadas } = espiao();
+      await acao(sb);
+      conferirEscrita(chamadas[0]);
+    }
+  });
+
+  it("confirmar presença: abre o atendimento E carimba o agendamento", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await confirmarPresenca(sb,
+      { id: 9, especialidade_cod: "ortopedia", tipo_atendimento_cod: "retorno" },
+      { paciente: { prontuario: "100001", iniciais: "M.S." }, ficha: { convenio_id: 1 }, medico: { nome: "Dr. João", cbo: "225125" } },
+      USER);
+    expect(r.ok).toBe(true);
+    expect(chamadas).toHaveLength(2);
+    for (const c of chamadas) conferirEscrita(c);
+
+    // O atendimento nasce ligado ao agendamento e marcado como ambulatorial
+    const at = JSON.parse(chamadas[0].opcoes.body);
+    expect(at.agendamento_id).toBe(9);
+    expect(at.tipo_atendimento).toBe("ambulatorial");
+    expect(at.unidade_origem_cod).toBe("ambulatorio");
+    // E o agendamento recebe o id do atendimento de volta
+    expect(JSON.parse(chamadas[1].opcoes.body).atendimento_id).toBe(1);
+  });
+
+  it("consulta ambulatorial NÃO entra na fila de triagem do PS", async () => {
+    // Cravar "aguardando_triagem" para os dois tipos punha consulta
+    // agendada na fila do plantão, onde ela ficaria para sempre: ninguém
+    // vai triar quem já tem hora marcada. Isso aconteceu de verdade e foi
+    // visto no navegador, não nos testes — por isso o caso existe aqui.
+    const { sb, chamadas } = espiao();
+    await confirmarPresenca(sb, { id: 9, especialidade_cod: "ORTOPEDIA" },
+      { paciente: { prontuario: "T9004", iniciais: "?" } }, USER);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.tipo_atendimento).toBe("ambulatorial");
+    expect(corpo.status).toBe("aguardando_atendimento");
+    expect(corpo.status).not.toBe("aguardando_triagem");
+  });
+
+  it("emergência continua entrando aguardando triagem", async () => {
+    const { sb, chamadas } = espiao();
+    await abrirAtendimento(sb, {
+      paciente: { prontuario: "1001", iniciais: "M.S." }, tipo: "emergencia", origem: "SAMU",
+    }, USER);
+    expect(JSON.parse(chamadas[0].opcoes.body).status).toBe("aguardando_triagem");
+  });
+
+  it("presença sem paciente definido não grava nada", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await confirmarPresenca(sb, { id: 9 }, { paciente: null }, USER);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("se o carimbo falhar, o atendimento continua valendo e o aviso explica", async () => {
+    // Primeira chamada devolve o atendimento; a segunda (o PATCH) devolve
+    // vazio. O paciente está atendido — o que não pode é a tela dizer que
+    // deu tudo certo quando o indicador do dia vai sair errado.
+    let n = 0;
+    const sb = async () => (++n === 1 ? [{ id: 77 }] : []);
+    const r = await confirmarPresenca(sb, { id: 9 },
+      { paciente: { prontuario: "100001", iniciais: "M.S." } }, USER);
+    expect(r.ok).toBe(true);
+    expect(r.atendimento.id).toBe(77);
+    expect(r.aviso).toMatch(/indicador de produção/);
+  });
+
+  it("as leituras da agenda consultam colunas reais", async () => {
+    for (const acao of [
+      sb => carregarGrades(sb),
+      sb => carregarBloqueios(sb, { de: "2026-07-01", ate: "2026-07-31" }),
+      sb => carregarAgendaDoDia(sb, "2026-07-28"),
+    ]) {
+      const { sb, chamadas } = espiao([]);
+      await acao(sb);
+      conferirLeitura(chamadas[0]);
+    }
+  });
+
+  it("fila de chegada grava hora nula — ali a vaga é posição, não relógio", async () => {
+    const { sb, chamadas } = espiao();
+    await marcarAgendamento(sb, {
+      data: "2026-07-28", hora: "08:20", especialidade_cod: "ortopedia",
+      origem_marcacao: "chegada",
+    }, USER);
+    expect(JSON.parse(chamadas[0].opcoes.body).hora).toBeNull();
+  });
+
+  it("silêncio do banco não passa por sucesso", async () => {
+    for (const resposta of [null, []]) {
+      const { sb } = espiao(resposta);
+      expect((await salvarGrade(sb, GRADE, USER)).ok).toBe(false);
+      expect((await marcarAgendamento(sb, { data: "2026-07-28", especialidade_cod: "x", origem_marcacao: "interna" }, USER)).ok).toBe(false);
+      expect((await registrarFalta(sb, 5, USER)).ok).toBe(false);
+    }
   });
 });
 

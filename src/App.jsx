@@ -2889,13 +2889,25 @@ const PS_DESFECHOS = {
   evasao:        { label: "Evasão",        cor: "#8d99ab" },
   obito:         { label: "Óbito",         cor: "#f43f5e" },
 };
+// O PS só enxerga atendimento de EMERGÊNCIA.
+//
+// Desde a agenda do ambulatório, `ps_atendimentos` guarda os dois tipos —
+// a tabela é herança do pronto-socorro. Sem este filtro, uma consulta
+// ambulatorial com presença confirmada aparece na fila de triagem do
+// plantão: polui o painel, suja os indicadores de Manchester e o paciente
+// fica "aguardando triagem" para sempre, porque ninguém vai triar uma
+// consulta agendada.
+//
+// `is.null` entra no filtro de propósito: os atendimentos criados antes
+// da coluna existir não têm tipo, e todos eles são do PS.
+const SO_EMERGENCIA = "or=(tipo_atendimento.eq.emergencia,tipo_atendimento.is.null)";
 async function loadPsAtendimentos() {
-  const rows = await sbFetch("ps_atendimentos?status=neq.finalizado&select=*&order=chegada_em");
+  const rows = await sbFetch(`ps_atendimentos?status=neq.finalizado&${SO_EMERGENCIA}&select=*&order=chegada_em`);
   return Array.isArray(rows) ? rows : [];
 }
 async function loadPsFinalizadosHoje() {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const rows = await sbFetch(`ps_atendimentos?status=eq.finalizado&desfecho_em=gte.${hoje.toISOString()}&select=*&order=desfecho_em.desc`);
+  const rows = await sbFetch(`ps_atendimentos?status=eq.finalizado&desfecho_em=gte.${hoje.toISOString()}&${SO_EMERGENCIA}&select=*&order=desfecho_em.desc`);
   return Array.isArray(rows) ? rows : [];
 }
 // Atendimentos do PS de um mês civil (para o relatório mensal). SOMENTE LEITURA.
@@ -2904,7 +2916,7 @@ async function loadPsFinalizadosHoje() {
 async function loadPsAtendimentosPeriodo(ano, mes) {
   const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
   const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
-  const rows = await sbFetch(`ps_atendimentos?chegada_em=gte.${ini.toISOString()}&chegada_em=lt.${fim.toISOString()}&select=*&order=chegada_em.asc`);
+  const rows = await sbFetch(`ps_atendimentos?chegada_em=gte.${ini.toISOString()}&chegada_em=lt.${fim.toISOString()}&${SO_EMERGENCIA}&select=*&order=chegada_em.asc`);
   return Array.isArray(rows) ? rows : [];
 }
 // Exames do PS de um mês civil (para o BI do relatório mensal). SOMENTE LEITURA.

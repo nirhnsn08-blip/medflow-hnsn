@@ -13,11 +13,14 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 75 tabelas, 1187 colunas.
+-- Cobertura atual: 78 tabelas, 1231 colunas.
 -- ============================================================
 
 with
 tabelas(nome, origem) as (values
+  ('ag_agendamentos','atendimento-agenda'),
+  ('ag_bloqueios','atendimento-agenda'),
+  ('ag_grades','atendimento-agenda'),
   ('at_convenios','atendimento-fase2'),
   ('at_dominios','atendimento-fase2'),
   ('at_planos','atendimento-fase2'),
@@ -95,6 +98,49 @@ tabelas(nome, origem) as (values
   ('usuarios_permissoes','perfis-acesso')
 ),
 colunas(tabela, coluna, origem) as (values
+  ('ag_agendamentos','atendimento_id','atendimento-agenda'),
+  ('ag_agendamentos','cancelado_motivo','atendimento-agenda'),
+  ('ag_agendamentos','criado_em','atendimento-agenda'),
+  ('ag_agendamentos','data','atendimento-agenda'),
+  ('ag_agendamentos','especialidade_cod','atendimento-agenda'),
+  ('ag_agendamentos','grade_id','atendimento-agenda'),
+  ('ag_agendamentos','hora','atendimento-agenda'),
+  ('ag_agendamentos','id','atendimento-agenda'),
+  ('ag_agendamentos','observacao','atendimento-agenda'),
+  ('ag_agendamentos','origem_marcacao','atendimento-agenda'),
+  ('ag_agendamentos','presente_em','atendimento-agenda'),
+  ('ag_agendamentos','profissional_username','atendimento-agenda'),
+  ('ag_agendamentos','prontuario','atendimento-agenda'),
+  ('ag_agendamentos','protocolo_regulacao','atendimento-agenda'),
+  ('ag_agendamentos','status','atendimento-agenda'),
+  ('ag_agendamentos','tipo_atendimento_cod','atendimento-agenda'),
+  ('ag_agendamentos','updated_at','atendimento-agenda'),
+  ('ag_agendamentos','usuario','atendimento-agenda'),
+  ('ag_bloqueios','criado_em','atendimento-agenda'),
+  ('ag_bloqueios','data_fim','atendimento-agenda'),
+  ('ag_bloqueios','data_inicio','atendimento-agenda'),
+  ('ag_bloqueios','especialidade_cod','atendimento-agenda'),
+  ('ag_bloqueios','id','atendimento-agenda'),
+  ('ag_bloqueios','motivo','atendimento-agenda'),
+  ('ag_bloqueios','profissional_username','atendimento-agenda'),
+  ('ag_bloqueios','usuario','atendimento-agenda'),
+  ('ag_grades','ativo','atendimento-agenda'),
+  ('ag_grades','criado_em','atendimento-agenda'),
+  ('ag_grades','dia_semana','atendimento-agenda'),
+  ('ag_grades','duracao_min','atendimento-agenda'),
+  ('ag_grades','especialidade_cod','atendimento-agenda'),
+  ('ag_grades','hora_fim','atendimento-agenda'),
+  ('ag_grades','hora_inicio','atendimento-agenda'),
+  ('ag_grades','id','atendimento-agenda'),
+  ('ag_grades','observacao','atendimento-agenda'),
+  ('ag_grades','profissional_username','atendimento-agenda'),
+  ('ag_grades','updated_at','atendimento-agenda'),
+  ('ag_grades','usuario','atendimento-agenda'),
+  ('ag_grades','vagas_chegada','atendimento-agenda'),
+  ('ag_grades','vagas_internas','atendimento-agenda'),
+  ('ag_grades','vagas_regulacao','atendimento-agenda'),
+  ('ag_grades','vigencia_fim','atendimento-agenda'),
+  ('ag_grades','vigencia_inicio','atendimento-agenda'),
   ('at_convenios','ativo','atendimento-fase2'),
   ('at_convenios','codigo','atendimento-fase2'),
   ('at_convenios','criado_em','atendimento-fase2'),
@@ -962,6 +1008,7 @@ colunas(tabela, coluna, origem) as (values
   ('ps_administracoes','usuario','ps-checagem-medicacao'),
   ('ps_administracoes','via','ps-checagem-medicacao'),
   ('ps_atendimentos','acidente_trabalho','atendimento-fase2'),
+  ('ps_atendimentos','agendamento_id','atendimento-agenda'),
   ('ps_atendimentos','alergias','farmacia-clinica-fase1'),
   ('ps_atendimentos','atendimento_em','schema'),
   ('ps_atendimentos','autorizacao_senha','atendimento-fase2'),

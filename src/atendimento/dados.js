@@ -108,7 +108,7 @@ export async function atendimentosAbertos(sb, prontuario) {
  * o campo em que a chegada do PS divergia do cadastro sem ninguém notar —
  * a fila mostrava um nome e o Paciente 360, outro.
  */
-export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", origem, origemDetalhe, queixa, ficha, medico }, user) {
+export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", origem, origemDetalhe, queixa, ficha, medico, agendamentoId }, user) {
   const prontuario = normalizarProntuario(paciente?.prontuario);
   if (!prontuario) return { ok: false, motivo: "Atendimento sem paciente não é gravado." };
 
@@ -120,7 +120,14 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
     origem_detalhe: String(origemDetalhe ?? "").trim() || null,
     tipo_atendimento: tipo,
     chegada_em: new Date().toISOString(),
-    status: "aguardando_triagem",
+    // O status de entrada depende do tipo. Emergência entra AGUARDANDO
+    // TRIAGEM porque a classificação de Manchester é o que ordena a fila.
+    // Ambulatorial não é triado: a consulta já tem hora marcada e
+    // especialidade definida, então o paciente entra aguardando o
+    // profissional. Cravar "aguardando_triagem" para os dois punha consulta
+    // agendada na fila do plantão, onde ela ficaria para sempre — ninguém
+    // vai triar quem já tem consulta marcada.
+    status: tipo === "emergencia" ? "aguardando_triagem" : "aguardando_atendimento",
     usuario: user?.name || null,
     updated_at: new Date().toISOString(),
     // A parte administrativa da ficha. `camposDaFicha` devolve exatamente
@@ -132,6 +139,10 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
     // assinatura no PEP: quem atendeu pode mudar de ocupação depois, e a
     // conta daquele mês precisa continuar contando a história daquele mês.
     ...(medico ? { medico: medico.nome || null, medico_cbo: medico.cbo || null } : {}),
+    // De qual agendamento este atendimento nasceu. É o que faz "realizadas"
+    // deixar de ser digitado: consulta realizada é agendamento com
+    // atendimento aberto.
+    ...(agendamentoId ? { agendamento_id: agendamentoId } : {}),
   };
 
   const r = await sb("ps_atendimentos", {
@@ -193,6 +204,226 @@ export async function carregarProfissionais(sb) {
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
   return lista.filter(p => p.categoria && p.categoria !== "administrativo");
+}
+
+// ── AGENDA DO AMBULATÓRIO ───────────────────────────────────
+
+const CAMPOS_AGENDAMENTO = [
+  "id", "data", "hora", "especialidade_cod", "profissional_username", "grade_id",
+  "prontuario", "origem_marcacao", "tipo_atendimento_cod", "protocolo_regulacao",
+  "status", "presente_em", "atendimento_id", "cancelado_motivo", "observacao",
+].join(",");
+
+/** As grades cadastradas, incluindo as desligadas (a tela precisa religar). */
+export async function carregarGrades(sb) {
+  const r = await sb("ag_grades?select=*&order=especialidade_cod,dia_semana,hora_inicio");
+  return Array.isArray(r) ? r : [];
+}
+
+export async function salvarGrade(sb, grade, user) {
+  const corpo = {
+    ...(grade.id ? { id: grade.id } : {}),
+    especialidade_cod: String(grade.especialidade_cod ?? "").trim(),
+    profissional_username: String(grade.profissional_username ?? "").trim() || null,
+    dia_semana: Number(grade.dia_semana),
+    hora_inicio: grade.hora_inicio,
+    hora_fim: grade.hora_fim,
+    duracao_min: Number(grade.duracao_min) || 20,
+    vagas_regulacao: Number(grade.vagas_regulacao) || 0,
+    vagas_internas: Number(grade.vagas_internas) || 0,
+    vagas_chegada: Number(grade.vagas_chegada) || 0,
+    vigencia_inicio: grade.vigencia_inicio || new Date().toISOString().slice(0, 10),
+    vigencia_fim: grade.vigencia_fim || null,
+    ativo: grade.ativo !== false,
+    observacao: String(grade.observacao ?? "").trim() || null,
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+  const r = await sb("ag_grades", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(corpo),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Confirme que a migração `migracao-atendimento-agenda.sql` foi aplicada e que seu perfil permite editar a agenda." };
+  }
+  return { ok: true, grade: r[0] };
+}
+
+/**
+ * Liga ou desliga uma grade. Não existe apagar: agendamento já feito aponta
+ * para ela, e sumir com a grade faria a agenda de meses atrás perder a
+ * referência de quantas vagas existiam naquele dia.
+ */
+export async function alternarAtivoGrade(sb, id, ativo, user) {
+  if (!id) return { ok: false, motivo: "Grade inválida." };
+  const r = await sb(`ag_grades?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ativo: !!ativo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado." };
+  return { ok: true, grade: r[0] };
+}
+
+/** Os bloqueios que alcançam um período. */
+export async function carregarBloqueios(sb, { de, ate } = {}) {
+  const filtros = [];
+  if (ate) filtros.push(`data_inicio=lte.${ate}`);
+  if (de) filtros.push(`data_fim=gte.${de}`);
+  const q = filtros.length ? filtros.join("&") + "&" : "";
+  const r = await sb(`ag_bloqueios?${q}select=*&order=data_inicio`);
+  return Array.isArray(r) ? r : [];
+}
+
+export async function salvarBloqueio(sb, b, user) {
+  const corpo = {
+    ...(b.id ? { id: b.id } : {}),
+    data_inicio: b.data_inicio,
+    data_fim: b.data_fim || b.data_inicio,
+    especialidade_cod: String(b.especialidade_cod ?? "").trim() || null,
+    profissional_username: String(b.profissional_username ?? "").trim() || null,
+    motivo: String(b.motivo ?? "").trim(),
+    usuario: user?.name || null,
+  };
+  const r = await sb("ag_bloqueios", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(corpo),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi gravado." };
+  return { ok: true, bloqueio: r[0] };
+}
+
+/** Os agendamentos de um dia. */
+export async function carregarAgendaDoDia(sb, data) {
+  if (!data) return [];
+  const r = await sb(`ag_agendamentos?data=eq.${encodeURIComponent(data)}&select=${CAMPOS_AGENDAMENTO}&order=hora,criado_em`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Marca uma vaga.
+ *
+ * A conferência da REGRA (vaga da regulação, cota esgotada, horário tomado)
+ * é de `podeMarcar` em agenda.js e acontece antes desta chamada. Aqui fica a
+ * última linha de defesa, que é do banco: o índice único
+ * `ag_agend_vaga_unica` recusa duas pessoas no mesmo horário mesmo que duas
+ * recepcionistas cliquem no mesmo instante — coisa que validação de tela
+ * nenhuma consegue impedir.
+ */
+export async function marcarAgendamento(sb, dados, user) {
+  const corpo = {
+    data: dados.data,
+    hora: dados.origem_marcacao === "chegada" ? null : (dados.hora || null),
+    especialidade_cod: dados.especialidade_cod,
+    profissional_username: String(dados.profissional_username ?? "").trim() || null,
+    grade_id: dados.grade_id || null,
+    prontuario: String(dados.prontuario ?? "").trim() || null,
+    origem_marcacao: dados.origem_marcacao,
+    tipo_atendimento_cod: String(dados.tipo_atendimento_cod ?? "").trim() || null,
+    protocolo_regulacao: String(dados.protocolo_regulacao ?? "").trim() || null,
+    observacao: String(dados.observacao ?? "").trim() || null,
+    status: "agendado",
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+  const r = await sb("ag_agendamentos", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(corpo),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Se outra pessoa marcou este mesmo horário agora, o banco recusou a segunda — recarregue o dia e escolha outro horário." };
+  }
+  return { ok: true, agendamento: r[0] };
+}
+
+/**
+ * Confirma presença: abre o atendimento e liga os dois lados.
+ *
+ * A ordem importa. Primeiro o ATENDIMENTO, porque é ele que faz o paciente
+ * existir no fluxo assistencial; só depois o carimbo no agendamento. Se o
+ * segundo passo falhar, o paciente está atendido e o vínculo pode ser
+ * refeito — o inverso deixaria o agendamento marcado como presente sem
+ * ninguém na fila.
+ */
+export async function confirmarPresenca(sb, agendamento, { paciente, ficha, medico, queixa }, user) {
+  if (!agendamento?.id) return { ok: false, motivo: "Agendamento inválido." };
+  if (!paciente?.prontuario) return { ok: false, motivo: "Confirme quem é o paciente antes de dar presença." };
+
+  const at = await abrirAtendimento(sb, {
+    paciente,
+    tipo: "ambulatorial",
+    origem: "Meios próprios",
+    queixa,
+    ficha: {
+      ...(ficha || {}),
+      tipo_atendimento_cod: ficha?.tipo_atendimento_cod || agendamento.tipo_atendimento_cod || null,
+      especialidade_cod: ficha?.especialidade_cod || agendamento.especialidade_cod || null,
+      unidade_origem_cod: ficha?.unidade_origem_cod || "ambulatorio",
+    },
+    medico,
+    agendamentoId: agendamento.id,
+  }, user);
+  if (!at.ok) return at;
+
+  const r = await sb(`ag_agendamentos?id=eq.${encodeURIComponent(agendamento.id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: "presente",
+      presente_em: new Date().toISOString(),
+      atendimento_id: at.atendimento.id,
+      prontuario: paciente.prontuario,
+      usuario: user?.name || null,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return {
+      ok: true, atendimento: at.atendimento, agendamento: null,
+      aviso: `O atendimento ${at.atendimento.id} foi aberto, mas o agendamento não ficou marcado como presente. O paciente está na fila; o indicador de produção deste dia vai sair errado até alguém corrigir.`,
+    };
+  }
+  return { ok: true, atendimento: at.atendimento, agendamento: r[0] };
+}
+
+/**
+ * Registra falta.
+ *
+ * Falta LIBERA a vaga de propósito (ver `ocupaVaga` em agenda.js): o horário
+ * volta para quem remarca. O registro fica, porque absenteísmo é indicador
+ * que a gestão cobra.
+ */
+export async function registrarFalta(sb, id, user) {
+  return patchAgendamento(sb, id, { status: "falta" }, user);
+}
+
+export async function cancelarAgendamento(sb, id, motivo, user) {
+  return patchAgendamento(sb, id, {
+    status: "cancelado",
+    cancelado_motivo: String(motivo ?? "").trim() || null,
+  }, user);
+}
+
+/** Liga o paciente a uma vaga da regulação que estava reservada sem nome. */
+export async function vincularPacienteAoAgendamento(sb, id, prontuario, protocolo, user) {
+  return patchAgendamento(sb, id, {
+    prontuario: normalizarProntuario(prontuario) || null,
+    ...(protocolo !== undefined ? { protocolo_regulacao: String(protocolo ?? "").trim() || null } : {}),
+  }, user);
+}
+
+async function patchAgendamento(sb, id, campos, user) {
+  if (!id) return { ok: false, motivo: "Agendamento inválido." };
+  const r = await sb(`ag_agendamentos?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...campos, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar a agenda." };
+  return { ok: true, agendamento: r[0] };
 }
 
 // ── MANUTENÇÃO DOS CATÁLOGOS ────────────────────────────────
