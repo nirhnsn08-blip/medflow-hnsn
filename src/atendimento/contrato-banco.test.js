@@ -22,7 +22,11 @@ import {
   buscarPacientes, carregarPaciente, emitirProntuario,
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
   listarAguardandoIdentificacao, concluirIdentificacao,
+  carregarCatalogos, carregarProfissionais,
+  salvarCatalogo, alternarAtivoCatalogo, carregarCatalogoCompleto,
 } from "./dados.js";
+import { DOMINIOS } from "./ficha.js";
+import { CATALOGOS } from "./catalogo.js";
 
 const AUDITORIA = fs.readFileSync(
   path.join(process.cwd(), "supabase", "auditoria-banco.sql"), "utf8");
@@ -40,6 +44,15 @@ it("a auditoria foi lida (o parser não quebrou em silêncio)", () => {
   expect(COLUNAS.pacientes?.has("nao_identificado")).toBe(true);
   expect(COLUNAS.pacientes?.has("origem_cadastro")).toBe(true);
   expect(COLUNAS.ps_atendimentos?.has("tipo_atendimento")).toBe(true);
+  // Fase 2: se a auditoria não foi regenerada depois da migração da ficha,
+  // o contrato inteiro conferiria contra um banco velho e passaria sem
+  // olhar justamente o que é novo.
+  expect(COLUNAS.at_convenios?.has("exige_autorizacao")).toBe(true);
+  expect(COLUNAS.at_dominios?.has("dominio")).toBe(true);
+  expect(COLUNAS.at_procedimentos?.has("cbos_compativeis")).toBe(true);
+  expect(COLUNAS.ps_atendimentos?.has("convenio_id")).toBe(true);
+  expect(COLUNAS.ps_atendimentos?.has("medico_cbo")).toBe(true);
+  expect(COLUNAS.profiles?.has("cbo")).toBe(true);
 });
 
 // O padrão só vale quando NADA é passado. Um `= [...]` na assinatura
@@ -116,6 +129,32 @@ describe("escritas da recepção", () => {
     conferirEscrita(chamadas[0]);
   });
 
+  it("abrir atendimento COM a ficha completa grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await abrirAtendimento(sb, {
+      paciente: { prontuario: "100001", iniciais: "M.S." },
+      tipo: "emergencia", origem: "SAMU", queixa: "dor torácica",
+      medico: { nome: "Dr. João", cbo: "225125" },
+      ficha: {
+        convenio_id: 1, plano_id: 2, carteira: "998877", carteira_validade: "2027-01-01",
+        guia_numero: "G-1", autorizacao_senha: "S-1",
+        tipo_atendimento_cod: "primeira_consulta", tipo_paciente_cod: "tp",
+        especialidade_cod: "clinica", carater_cod: "urgencia",
+        unidade_origem_cod: "pronto_socorro", local_procedencia_cod: "domicilio",
+        destino_cod: "clinica_medica", procedimento_cod: "0301010072",
+        cid: "I10", acidente_trabalho: true,
+      },
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+    // Prova que a ficha REALMENTE foi ao corpo — sem isto, um bug que
+    // descartasse a ficha passaria com o contrato verde.
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.convenio_id).toBe(1);
+    expect(corpo.medico_cbo).toBe("225125");
+    expect(corpo.acidente_trabalho).toBe(true);
+  });
+
   it("concluir identificação grava só em coluna que existe", async () => {
     const { sb, chamadas } = espiao();
     await concluirIdentificacao(sb, "1042", USER);
@@ -153,6 +192,102 @@ describe("leituras da recepção", () => {
     const { sb, chamadas } = espiao([]);
     await listarAguardandoIdentificacao(sb);
     conferirLeitura(chamadas[0]);
+  });
+
+  it("os quatro catálogos consultam tabelas e colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarCatalogos(sb);
+    expect(chamadas).toHaveLength(4);
+    for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("a lista de profissionais consulta colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarProfissionais(sb);
+    conferirLeitura(chamadas[0]);
+  });
+});
+
+describe("manutenção dos catálogos grava em coluna real", () => {
+  // Um caso por catálogo: são três formatos de corpo diferentes
+  // (convênio, plano, procedimento e domínio), e o erro de coluna só
+  // aparece no formato que ninguém testou.
+  const EXEMPLO = {
+    convenios:     { codigo: "UNI", nome: "Unimed", tipo: "convenio", registro_ans: "339679" },
+    planos:        { codigo: "P1", nome: "Plano Único", convenio_id: 2, acomodacao: "enfermaria", coparticipacao: true },
+    procedimentos: { codigo: "0301010072", nome: "Consulta", tabela: "sigtap", cbos_compativeis: "225125" },
+  };
+
+  for (const cat of CATALOGOS) {
+    it(`${cat.chave} → ${cat.tabela}`, async () => {
+      const { sb, chamadas } = espiao();
+      const dados = EXEMPLO[cat.chave] || { codigo: "X", nome: "Exemplo", ordem: 2 };
+      const r = await salvarCatalogo(sb, cat.chave, dados, USER);
+      expect(r.ok).toBe(true);
+      expect(chamadas).toHaveLength(1);
+      conferirEscrita(chamadas[0]);
+    });
+  }
+
+  it("desligar uma linha altera só coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await alternarAtivoCatalogo(sb, "convenios", 7, false, USER);
+    conferirEscrita(chamadas[0]);
+    expect(JSON.parse(chamadas[0].opcoes.body).ativo).toBe(false);
+  });
+
+  it("a leitura de manutenção consulta colunas reais, com o filtro de domínio certo", async () => {
+    for (const cat of CATALOGOS) {
+      const { sb, chamadas } = espiao([]);
+      await carregarCatalogoCompleto(sb, cat.chave);
+      conferirLeitura(chamadas[0]);
+      if (cat.dominio) expect(chamadas[0].recurso).toContain(`dominio=eq.${cat.dominio}`);
+    }
+  });
+
+  it("catálogo desconhecido não tenta gravar nada", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await salvarCatalogo(sb, "inventado", { codigo: "X", nome: "X" }, USER);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("silêncio do banco não passa por sucesso", async () => {
+    for (const resposta of [null, []]) {
+      const { sb } = espiao(resposta);
+      expect((await salvarCatalogo(sb, "convenios", EXEMPLO.convenios, USER)).ok).toBe(false);
+      expect((await alternarAtivoCatalogo(sb, "convenios", 7, false, USER)).ok).toBe(false);
+    }
+  });
+});
+
+describe("catálogo vazio não vira tela quebrada", () => {
+  it("devolve todas as chaves mesmo sem nada cadastrado", async () => {
+    const { sb } = espiao([]);
+    const cat = await carregarCatalogos(sb);
+    for (const d of DOMINIOS) expect(Array.isArray(cat[d.chave]), d.chave).toBe(true);
+    expect(cat.convenios).toEqual([]);
+    expect(cat.procedimentos).toEqual([]);
+  });
+
+  it("falha de rede não derruba a recepção — vira catálogo vazio", async () => {
+    // O sbFetch devolve `null` quando a chamada falha. Se isso virasse
+    // exceção aqui, a tela inteira quebraria por causa de um catálogo.
+    const { sb } = espiao(null);
+    const cat = await carregarCatalogos(sb);
+    expect(cat.convenios).toEqual([]);
+    for (const d of DOMINIOS) expect(cat[d.chave]).toEqual([]);
+  });
+
+  it("agrupa os domínios pela coluna `dominio`", async () => {
+    const sb = async () => ([
+      { dominio: "carater", codigo: "eletivo", nome: "Eletivo" },
+      { dominio: "carater", codigo: "urgencia", nome: "Urgência" },
+      { dominio: "tipo_atendimento", codigo: "retorno", nome: "Retorno" },
+    ]);
+    const cat = await carregarCatalogos(sb);
+    expect(cat.carater).toHaveLength(2);
+    expect(cat.tipo_atendimento).toHaveLength(1);
   });
 });
 

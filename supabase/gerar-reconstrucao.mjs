@@ -78,6 +78,7 @@ const ORDEM = [
   // existe para o banco que JÁ está rodando.
   "migracao-atendimento-fk.sql",
   "migracao-nsp-incidentes.sql",
+  "migracao-atendimento-fase2.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM

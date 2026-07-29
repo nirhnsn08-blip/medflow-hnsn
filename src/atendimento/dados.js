@@ -17,6 +17,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { filtroBuscaPacientes, normalizarProntuario, dadosNaoIdentificado } from "./recepcao.js";
+import { camposDaFicha, DOMINIOS } from "./ficha.js";
+import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -106,7 +108,7 @@ export async function atendimentosAbertos(sb, prontuario) {
  * o campo em que a chegada do PS divergia do cadastro sem ninguém notar —
  * a fila mostrava um nome e o Paciente 360, outro.
  */
-export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", origem, origemDetalhe, queixa }, user) {
+export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", origem, origemDetalhe, queixa, ficha, medico }, user) {
   const prontuario = normalizarProntuario(paciente?.prontuario);
   if (!prontuario) return { ok: false, motivo: "Atendimento sem paciente não é gravado." };
 
@@ -121,6 +123,15 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
     status: "aguardando_triagem",
     usuario: user?.name || null,
     updated_at: new Date().toISOString(),
+    // A parte administrativa da ficha. `camposDaFicha` devolve exatamente
+    // as colunas que existem — o `contrato-banco.test.js` confere isso
+    // contra a auditoria, que é o que impede a volta do INSERT recusado em
+    // silêncio.
+    ...(ficha ? camposDaFicha(ficha) : {}),
+    // Médico e CBO congelados no momento da abertura, pelo mesmo motivo da
+    // assinatura no PEP: quem atendeu pode mudar de ocupação depois, e a
+    // conta daquele mês precisa continuar contando a história daquele mês.
+    ...(medico ? { medico: medico.nome || null, medico_cbo: medico.cbo || null } : {}),
   };
 
   const r = await sb("ps_atendimentos", {
@@ -132,6 +143,125 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
     return { ok: false, motivo: "Nada foi gravado. Se o paciente foi cadastrado agora, confirme que o cadastro concluiu antes de abrir o atendimento." };
   }
   return { ok: true, atendimento: r[0] };
+}
+
+/**
+ * Os catálogos que a ficha consome, numa ida só.
+ *
+ * Devolve SEMPRE todas as chaves, com array vazio quando não há nada
+ * cadastrado — é isso que permite a tela distinguir "o hospital ainda não
+ * configurou" de "a recepcionista não preencheu", e cobrar só o segundo.
+ *
+ * Falha de rede também cai em array vazio, e não em exceção: catálogo que
+ * não carregou não pode derrubar a recepção. A consequência é a tela pedir
+ * menos, nunca travar.
+ */
+export async function carregarCatalogos(sb) {
+  const vazio = { convenios: [], planos: [], procedimentos: [] };
+  for (const d of DOMINIOS) vazio[d.chave] = [];
+
+  const [convenios, planos, procedimentos, dominios] = await Promise.all([
+    sb("at_convenios?ativo=is.true&select=*&order=nome"),
+    sb("at_planos?ativo=is.true&select=*&order=nome"),
+    sb("at_procedimentos?ativo=is.true&select=*&order=nome"),
+    sb("at_dominios?ativo=is.true&select=*&order=dominio,ordem,nome"),
+  ]);
+
+  const out = {
+    ...vazio,
+    convenios: Array.isArray(convenios) ? convenios : [],
+    planos: Array.isArray(planos) ? planos : [],
+    procedimentos: Array.isArray(procedimentos) ? procedimentos : [],
+  };
+  for (const linha of Array.isArray(dominios) ? dominios : []) {
+    if (out[linha.dominio]) out[linha.dominio].push(linha);
+    else out[linha.dominio] = [linha];
+  }
+  return out;
+}
+
+/**
+ * Quem pode aparecer como profissional responsável.
+ *
+ * Traz o CBO junto porque é ele que será congelado no atendimento — e
+ * porque a tela precisa avisar quando o profissional escolhido não tem CBO
+ * cadastrado, antes de a produção ser rejeitada.
+ */
+export async function carregarProfissionais(sb) {
+  const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,cbo&order=nome");
+  const lista = Array.isArray(r) ? r : [];
+  // Só quem tem competência clínica assinala atendimento; administrativo
+  // não vira responsável por ato assistencial.
+  return lista.filter(p => p.categoria && p.categoria !== "administrativo");
+}
+
+// ── MANUTENÇÃO DOS CATÁLOGOS ────────────────────────────────
+
+/**
+ * Grava uma linha de catálogo (cria ou atualiza).
+ *
+ * Um `upsert` só, para os três tipos de tabela, porque `corpoDoCatalogo`
+ * já devolve exatamente as colunas de destino. Montar o corpo aqui, tabela
+ * por tabela, era o caminho para a chave inexistente que o PostgREST
+ * recusa em silêncio.
+ */
+export async function salvarCatalogo(sb, chave, dados, user) {
+  const cat = CATALOGO_POR_CHAVE[chave];
+  if (!cat) return { ok: false, motivo: "Catálogo desconhecido." };
+
+  const corpo = {
+    ...corpoDoCatalogo(chave, dados),
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const r = await sb(cat.tabela, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(corpo),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Confirme que a migração `migracao-atendimento-fase2.sql` foi aplicada e que seu perfil permite editar as tabelas." };
+  }
+  return { ok: true, linha: r[0] };
+}
+
+/**
+ * Liga ou desliga uma linha do catálogo.
+ *
+ * NÃO existe apagar. Convênio, plano e procedimento aparecem em
+ * atendimentos já gravados; remover a linha faria um relatório de meses
+ * atrás mostrar código sem nome. `ativo = false` some das listas novas e
+ * preserva o que já foi registrado.
+ */
+export async function alternarAtivoCatalogo(sb, chave, id, ativo, user) {
+  const cat = CATALOGO_POR_CHAVE[chave];
+  if (!cat || !id) return { ok: false, motivo: "Registro inválido." };
+  const r = await sb(`${cat.tabela}?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ativo: !!ativo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar as tabelas." };
+  }
+  return { ok: true, linha: r[0] };
+}
+
+/**
+ * Lê um catálogo inteiro, INCLUINDO os inativos.
+ *
+ * `carregarCatalogos` (usado pela ficha) traz só os ativos, porque a
+ * recepção não pode escolher convênio desligado. A tela de manutenção
+ * precisa do contrário: mostrar o que está desligado é a única forma de
+ * alguém religar.
+ */
+export async function carregarCatalogoCompleto(sb, chave) {
+  const cat = CATALOGO_POR_CHAVE[chave];
+  if (!cat) return [];
+  const filtro = cat.dominio ? `dominio=eq.${encodeURIComponent(cat.dominio)}&` : "";
+  const r = await sb(`${cat.tabela}?${filtro}select=*&order=nome`);
+  return Array.isArray(r) ? r : [];
 }
 
 /**
