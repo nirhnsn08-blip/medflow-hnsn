@@ -49,7 +49,7 @@ import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
 // meses — o que trocava a faixa de referência na triagem pediátrica.
 import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
 import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
-import Recepcao from "./atendimento/Recepcao.jsx";
+import Atendimento from "./atendimento/Atendimento.jsx";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 import { carregarPaciente } from "./atendimento/dados.js";
 
@@ -15439,7 +15439,7 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
-          {active === "atendimento" && <Recepcao sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "bloco"     && <BlocoPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}

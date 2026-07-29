@@ -18,6 +18,7 @@
 
 import { filtroBuscaPacientes, normalizarProntuario, dadosNaoIdentificado } from "./recepcao.js";
 import { camposDaFicha, DOMINIOS } from "./ficha.js";
+import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -192,6 +193,75 @@ export async function carregarProfissionais(sb) {
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
   return lista.filter(p => p.categoria && p.categoria !== "administrativo");
+}
+
+// ── MANUTENÇÃO DOS CATÁLOGOS ────────────────────────────────
+
+/**
+ * Grava uma linha de catálogo (cria ou atualiza).
+ *
+ * Um `upsert` só, para os três tipos de tabela, porque `corpoDoCatalogo`
+ * já devolve exatamente as colunas de destino. Montar o corpo aqui, tabela
+ * por tabela, era o caminho para a chave inexistente que o PostgREST
+ * recusa em silêncio.
+ */
+export async function salvarCatalogo(sb, chave, dados, user) {
+  const cat = CATALOGO_POR_CHAVE[chave];
+  if (!cat) return { ok: false, motivo: "Catálogo desconhecido." };
+
+  const corpo = {
+    ...corpoDoCatalogo(chave, dados),
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const r = await sb(cat.tabela, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(corpo),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Confirme que a migração `migracao-atendimento-fase2.sql` foi aplicada e que seu perfil permite editar as tabelas." };
+  }
+  return { ok: true, linha: r[0] };
+}
+
+/**
+ * Liga ou desliga uma linha do catálogo.
+ *
+ * NÃO existe apagar. Convênio, plano e procedimento aparecem em
+ * atendimentos já gravados; remover a linha faria um relatório de meses
+ * atrás mostrar código sem nome. `ativo = false` some das listas novas e
+ * preserva o que já foi registrado.
+ */
+export async function alternarAtivoCatalogo(sb, chave, id, ativo, user) {
+  const cat = CATALOGO_POR_CHAVE[chave];
+  if (!cat || !id) return { ok: false, motivo: "Registro inválido." };
+  const r = await sb(`${cat.tabela}?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ativo: !!ativo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar as tabelas." };
+  }
+  return { ok: true, linha: r[0] };
+}
+
+/**
+ * Lê um catálogo inteiro, INCLUINDO os inativos.
+ *
+ * `carregarCatalogos` (usado pela ficha) traz só os ativos, porque a
+ * recepção não pode escolher convênio desligado. A tela de manutenção
+ * precisa do contrário: mostrar o que está desligado é a única forma de
+ * alguém religar.
+ */
+export async function carregarCatalogoCompleto(sb, chave) {
+  const cat = CATALOGO_POR_CHAVE[chave];
+  if (!cat) return [];
+  const filtro = cat.dominio ? `dominio=eq.${encodeURIComponent(cat.dominio)}&` : "";
+  const r = await sb(`${cat.tabela}?${filtro}select=*&order=nome`);
+  return Array.isArray(r) ? r : [];
 }
 
 /**

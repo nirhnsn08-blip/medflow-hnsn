@@ -23,8 +23,10 @@ import {
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
   listarAguardandoIdentificacao, concluirIdentificacao,
   carregarCatalogos, carregarProfissionais,
+  salvarCatalogo, alternarAtivoCatalogo, carregarCatalogoCompleto,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
+import { CATALOGOS } from "./catalogo.js";
 
 const AUDITORIA = fs.readFileSync(
   path.join(process.cwd(), "supabase", "auditoria-banco.sql"), "utf8");
@@ -203,6 +205,59 @@ describe("leituras da recepção", () => {
     const { sb, chamadas } = espiao([]);
     await carregarProfissionais(sb);
     conferirLeitura(chamadas[0]);
+  });
+});
+
+describe("manutenção dos catálogos grava em coluna real", () => {
+  // Um caso por catálogo: são três formatos de corpo diferentes
+  // (convênio, plano, procedimento e domínio), e o erro de coluna só
+  // aparece no formato que ninguém testou.
+  const EXEMPLO = {
+    convenios:     { codigo: "UNI", nome: "Unimed", tipo: "convenio", registro_ans: "339679" },
+    planos:        { codigo: "P1", nome: "Plano Único", convenio_id: 2, acomodacao: "enfermaria", coparticipacao: true },
+    procedimentos: { codigo: "0301010072", nome: "Consulta", tabela: "sigtap", cbos_compativeis: "225125" },
+  };
+
+  for (const cat of CATALOGOS) {
+    it(`${cat.chave} → ${cat.tabela}`, async () => {
+      const { sb, chamadas } = espiao();
+      const dados = EXEMPLO[cat.chave] || { codigo: "X", nome: "Exemplo", ordem: 2 };
+      const r = await salvarCatalogo(sb, cat.chave, dados, USER);
+      expect(r.ok).toBe(true);
+      expect(chamadas).toHaveLength(1);
+      conferirEscrita(chamadas[0]);
+    });
+  }
+
+  it("desligar uma linha altera só coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await alternarAtivoCatalogo(sb, "convenios", 7, false, USER);
+    conferirEscrita(chamadas[0]);
+    expect(JSON.parse(chamadas[0].opcoes.body).ativo).toBe(false);
+  });
+
+  it("a leitura de manutenção consulta colunas reais, com o filtro de domínio certo", async () => {
+    for (const cat of CATALOGOS) {
+      const { sb, chamadas } = espiao([]);
+      await carregarCatalogoCompleto(sb, cat.chave);
+      conferirLeitura(chamadas[0]);
+      if (cat.dominio) expect(chamadas[0].recurso).toContain(`dominio=eq.${cat.dominio}`);
+    }
+  });
+
+  it("catálogo desconhecido não tenta gravar nada", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await salvarCatalogo(sb, "inventado", { codigo: "X", nome: "X" }, USER);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("silêncio do banco não passa por sucesso", async () => {
+    for (const resposta of [null, []]) {
+      const { sb } = espiao(resposta);
+      expect((await salvarCatalogo(sb, "convenios", EXEMPLO.convenios, USER)).ok).toBe(false);
+      expect((await alternarAtivoCatalogo(sb, "convenios", 7, false, USER)).ok).toBe(false);
+    }
   });
 });
 
