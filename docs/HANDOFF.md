@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-07-28 · `main` em `517b203` (checkpoint-v48) · zero PRs abertos.
+**Atualizado em:** 2026-07-28 · `main` em `e3c72a4` (checkpoint-v49) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **433 testes**. Três merecem atenção especial:
+`npm test` roda **481 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -114,8 +114,10 @@ e um **mapa de risco por leito** no Giro de Leitos. E ganhou (Tier 1, Fase 1b) o
 **Processo de Enfermagem (SAE)** no prontuário do internado — **aba SAE**: histórico →
 diagnóstico **NANDA-I** (sugerido a partir das escalas/LPP/sinais) → prescrição de
 enfermagem **(NIC)** aprazada → **checagem do cuidado à beira-leito** pelo técnico →
-evolução; catálogo curado "em validação". Faltam, só como código, o **editor do
-catálogo pelo ADM Master** e a **lista de trabalho da checagem** (próximos PRs).
+evolução; catálogo curado "em validação", com **editor do ADM Master** e **fila de
+checagem por leito** no Giro de Leitos. E o **cadastro do paciente** passou a ter a
+**identificação completa (CFM 1.638)** — nome, filiação, documentos (CPF/CNS), endereço e
+data de nascimento (que conserta a idade da triagem pediátrica).
 
 **Ainda não há paciente real no sistema.**
 
@@ -123,9 +125,11 @@ catálogo pelo ADM Master** e a **lista de trabalho da checagem** (próximos PRs
 
 1. **Reclassificar a equipe** nos cargos certos — hoje quase todos estão no perfil
    "Provisório", que mantém o acesso antigo. Só depois disso desativar o Provisório.
-2. **Modo sombra + quebra-vidro**, que são pré-requisitos para apertar o RLS de
-   verdade (ver o aviso em [CONTEXTO.md](CONTEXTO.md) — hoje o controle de acesso
-   organiza o menu, **não** restringe o dado).
+2. **Apertar o RLS de `pacientes` (URGENTE — antes do primeiro paciente real).** A
+   identificação completa (CFM 1.638, v49) fez a tabela expor nome/CPF/nome da mãe/
+   endereço, e a política de SELECT é `using(true)` (todo autenticado lê tudo). Depende de
+   **modo sombra + quebra-vidro** (ver [CONTEXTO.md](CONTEXTO.md)); hoje o controle de
+   acesso organiza o menu, **não** restringe o dado.
 3. **Modularizar o `App.jsx`** — dívida estrutural que trava o trabalho em paralelo.
 
 ---
