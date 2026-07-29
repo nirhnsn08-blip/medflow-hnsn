@@ -78,7 +78,7 @@ function LinhaResultado({ p, onEscolher }) {
  * olhando para um campo que ela não tem como preencher aprende a ignorar a
  * tela inteira.
  */
-function CampoCatalogo({ label, dica, lista, valor, onChange, largura }) {
+function CampoCatalogo({ label, dica, lista, valor, onChange, largura, campoValor = "codigo" }) {
   if (!lista?.length) {
     return (
       <div style={largura ? { width: largura } : undefined}>
@@ -94,7 +94,14 @@ function CampoCatalogo({ label, dica, lista, valor, onChange, largura }) {
       <label style={lbl}>{label}</label>
       <select value={valor ?? ""} onChange={e => onChange(e.target.value)} style={inp}>
         <option value="">—</option>
-        {lista.map(o => <option key={o.codigo ?? o.id} value={o.codigo ?? o.id}>{o.nome}</option>)}
+        {/* Convênio e plano são guardados no atendimento por ID (são chave
+            estrangeira); os domínios, por CÓDIGO. Usar `codigo ?? id` para
+            os dois fazia o seletor devolver o código do convênio enquanto a
+            busca procurava pelo id — e o convênio escolhido nunca era
+            encontrado, sem erro nenhum na tela. */}
+        {lista.map(o => (
+          <option key={o.id ?? o.codigo} value={o[campoValor] ?? o.id}>{o.nome}</option>
+        ))}
       </select>
       {dica && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{dica}</div>}
     </div>
@@ -478,11 +485,11 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               {/* ── FONTE PAGADORA ── */}
               <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Fonte pagadora</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-                <CampoCatalogo label="Convênio" lista={cat.convenios}
+                <CampoCatalogo label="Convênio" lista={cat.convenios} campoValor="id"
                   valor={ficha.convenio_id}
                   onChange={v => setFicha(p => ({ ...p, convenio_id: v, plano_id: "" }))} />
                 {convenio && planosDoConvenio.length > 0 && (
-                  <CampoCatalogo label="Plano" lista={planosDoConvenio}
+                  <CampoCatalogo label="Plano" lista={planosDoConvenio} campoValor="id"
                     valor={ficha.plano_id} onChange={v => setFi("plano_id", v)} />
                 )}
                 {/* Carteira, validade e senha só aparecem quando o convênio
