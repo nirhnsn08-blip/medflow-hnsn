@@ -77,6 +77,7 @@ const ORDEM = [
   // novo a ordem não muda nada (não há código antigo no ar); a separação
   // existe para o banco que JÁ está rodando.
   "migracao-atendimento-fk.sql",
+  "migracao-nsp-incidentes.sql",
   "migracao-atendimento-fase2.sql",
 ];
 
