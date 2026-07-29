@@ -18,6 +18,12 @@
 --
 -- ⚠️ Se `prontuarios com 7+ digitos` for maior que zero, PARE e olhe a
 --    lista da última consulta antes de rodar a migração.
+--
+-- ⚠️ REGRA DESTE ARQUIVO: ele só pode citar coluna que existe ANTES da
+--    migração. A primeira versão filtrava por `origem_cadastro`, que é
+--    criada PELA migração — e o banco principal recusou a consulta
+--    inteira com "column does not exist". O filtro nem fazia falta: antes
+--    da migração não existe cadastro criado por backfill, por definição.
 -- ═══════════════════════════════════════════════════════════
 
 select 'pacientes cadastrados hoje' as item, count(*)::text as valor
@@ -56,7 +62,6 @@ select '>> DE ONDE A NUMERACAO VAI CONTINUAR', coalesce((
       from public.pacientes
      where prontuario ~ '[0-9]'
        and length(regexp_replace(prontuario, '[^0-9]', '', 'g')) between 1 and 6
-       and origem_cadastro is distinct from 'backfill'
      order by (regexp_replace(prontuario, '[^0-9]', '', 'g'))::bigint desc
      limit 1), '(nenhum - comecaria em 1001)')
 
