@@ -168,3 +168,39 @@ export function resumoSae({ diagnosticos, itens, checagens } = {}, opts = {}) {
     checagensAtrasadas: atrasadas,
   };
 }
+
+/**
+ * Lista de trabalho da checagem à beira-leito, por leito ocupado: os cuidados de
+ * enfermagem da prescrição VIGENTE (a mais recente de cada paciente) e o estado
+ * da checagem de hoje (pendentes × atrasados). Ordena do mais crítico (mais
+ * atrasados) ao menos — é a fila de trabalho da enfermagem, como a checagem de
+ * medicação do PS. Agregação pura, testável.
+ */
+export function montarChecagemSae(leitosOcupados, prescricoes, itens, checagens, agora = new Date()) {
+  const ultimaPresc = {};
+  arr(prescricoes).forEach(p => {
+    if (!p?.prontuario) return;
+    const cur = ultimaPresc[p.prontuario];
+    if (!cur || new Date(p.criado_em || 0) > new Date(cur.criado_em || 0)) ultimaPresc[p.prontuario] = p;
+  });
+  const itensPorPresc = {};
+  arr(itens).forEach(i => { if (i?.prescricao_id) (itensPorPresc[i.prescricao_id] ||= []).push(i); });
+
+  return arr(leitosOcupados).map(le => {
+    const presc = ultimaPresc[le.prontuario];
+    const its = presc ? (itensPorPresc[presc.id] || []) : [];
+    let pendentes = 0, atrasados = 0;
+    const atrasadosLista = [];
+    for (const item of its) {
+      for (const s of checarCuidados(item, checagens, { competencia: agora, agora })) {
+        if (s.atrasado) { atrasados++; atrasadosLista.push({ descricao: item.descricao, horario: s.horario }); }
+        else if (s.pendente) pendentes++;
+      }
+    }
+    atrasadosLista.sort((a, b) => a.horario - b.horario);
+    return {
+      leito: le.identificacao, setor: le.setor || null, iniciais: le.iniciais || null, prontuario: le.prontuario,
+      temPrescricao: !!presc, cuidados: its.length, pendentes, atrasados, atrasadosLista,
+    };
+  }).sort((a, b) => (b.atrasados - a.atrasados) || (b.pendentes - a.pendentes) || (b.cuidados - a.cuidados));
+}

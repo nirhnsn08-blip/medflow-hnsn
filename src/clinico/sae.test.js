@@ -4,7 +4,7 @@ import {
 } from "./sae-catalogo.js";
 import {
   ultimaEscala, sugerirDiagnosticos, aprazarItem, montarItensPrescricao,
-  horariosParaData, checarCuidados, resumoSae,
+  horariosParaData, checarCuidados, resumoSae, montarChecagemSae,
 } from "./sae.js";
 
 // ── catálogo de teste (espelha a forma do enf_sae_catalogo) ──
@@ -181,5 +181,35 @@ describe("resumo da SAE", () => {
     expect(r.cuidados).toBe(1);
     expect(r.checagensAtrasadas).toBe(1);
     expect(r.checagensPendentes).toBe(0);
+  });
+});
+
+describe("lista de trabalho da checagem por leito", () => {
+  const agora = new Date(2026, 6, 28, 13, 30);
+  const leitos = [
+    { identificacao: "L1", prontuario: "P1", iniciais: "A.B.", setor: "Clínica" },
+    { identificacao: "L2", prontuario: "P2", iniciais: "C.D." },
+  ];
+  const prescricoes = [
+    { id: "pr1", prontuario: "P1", criado_em: "2026-07-28T05:00:00Z" },
+    { id: "pr0", prontuario: "P1", criado_em: "2026-07-27T05:00:00Z" },   // aposentada
+  ];
+  const itens = [
+    { id: "i1", prescricao_id: "pr1", descricao: "Monitorar sinais vitais", horarios: ["06:00", "12:00"], se_necessario: false },
+    { id: "i0", prescricao_id: "pr0", descricao: "Cuidado antigo", horarios: ["06:00"], se_necessario: false },
+  ];
+  const checagens = [{ item_id: "i1", status: "realizado", executado_em: new Date(2026, 6, 28, 6, 10).toISOString() }];
+
+  it("usa só a prescrição vigente e aponta o atraso, ordenando o mais crítico primeiro", () => {
+    const linhas = montarChecagemSae(leitos, prescricoes, itens, checagens, agora);
+    expect(linhas[0].leito).toBe("L1");
+    expect(linhas[0].temPrescricao).toBe(true);
+    expect(linhas[0].cuidados).toBe(1);          // só i1 (pr1); i0 da prescrição aposentada fica de fora
+    expect(linhas[0].atrasados).toBe(1);         // slot 12:00 vencido
+    expect(linhas[0].pendentes).toBe(0);
+    expect(linhas[0].atrasadosLista).toHaveLength(1);
+    const l2 = linhas.find(r => r.leito === "L2");
+    expect(l2.temPrescricao).toBe(false);
+    expect(l2.cuidados).toBe(0);
   });
 });
