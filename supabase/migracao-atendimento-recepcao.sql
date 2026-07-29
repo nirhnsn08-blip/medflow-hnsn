@@ -152,17 +152,50 @@ create index if not exists ps_atendimentos_prontuario_idx
 -- ═══════════════════════════════════════════════════════════
 -- 5) EMISSÃO DO PRONTUÁRIO — o número deixa de ser inventado
 --
--- A sequência começa ACIMA do maior número já usado, para nunca colidir
--- com o que a recepção digitou à mão até hoje. Prontuários alfanuméricos
--- ("T9035") entram pela parte numérica; o `length` limita para um valor
--- estranho ('12/2020' → 122020) não empurrar a sequência para o infinito.
+-- A sequência continua de onde a numeração do hospital já estava: começa
+-- acima do maior prontuário CONFIÁVEL que existe. Prontuários alfanuméricos
+-- ("T9035") entram pela parte numérica.
 --
 -- O piso de 1000 evita emitir prontuário de um dígito num hospital que
 -- ainda tem poucos cadastros — número curto é fácil de confundir na fala
 -- e no papel.
+--
+-- "Confiável" faz muito trabalho nessa frase. Ver o bloco abaixo.
 -- ═══════════════════════════════════════════════════════════
 create sequence if not exists public.prontuario_seq as bigint;
 
+-- ⚠️ O QUE **NÃO** PODE ANCORAR A SEQUÊNCIA — descoberto rodando no demo
+--
+-- A primeira versão disto olhava TODOS os pacientes. Resultado no banco de
+-- teste: a sequência parou em 990001 e o próximo prontuário do hospital
+-- seria 990002.
+--
+-- A causa é uma corrente de dois passos que só aparece junta:
+--   1. alguém digitou "990001" no campo prontuário da chegada do PS;
+--   2. o backfill (passo 3) transformou isso num cadastro de verdade;
+--   3. a sequência então ancorou nesse cadastro.
+--
+-- Ou seja: QUALQUER número digitado errado no PS viraria a âncora de toda
+-- a numeração futura do hospital. Um CPF digitado no campo errado (11
+-- dígitos, passa no filtro de tamanho) faria os prontuários reais nascerem
+-- em 52.998.224.726.
+--
+-- Duas defesas, e a segunda é a que importa:
+--
+--   `origem_cadastro is distinct from 'backfill'` — cadastro que o backfill
+--   deduziu de um atendimento órfão não é fonte confiável de numeração.
+--   Ninguém conferiu aquele número; ele existe só para o histórico não se
+--   perder. Cadastro que uma pessoa criou, sim, ancora.
+--
+--   `length(...) <= 6` — prontuário de hospital não tem sete dígitos. Isso
+--   segura CPF, CNS, telefone e data digitados no campo errado, inclusive
+--   nos cadastros antigos, que não têm `origem_cadastro` preenchido.
+--
+-- E a rede de segurança final é o laço em `proximo_prontuario()`: se
+-- mesmo assim o número calculado colidir com um prontuário existente, ele
+-- pula para o próximo em vez de devolver um número que o INSERT recusaria.
+-- É por causa desse laço que ancorar baixo demais é seguro — e ancorar
+-- alto demais, não.
 do $$
 declare maior bigint;
 begin
@@ -171,7 +204,8 @@ begin
       select (regexp_replace(prontuario, '[^0-9]', '', 'g'))::bigint as n
         from public.pacientes
        where prontuario ~ '[0-9]'
-         and length(regexp_replace(prontuario, '[^0-9]', '', 'g')) between 1 and 12
+         and length(regexp_replace(prontuario, '[^0-9]', '', 'g')) between 1 and 6
+         and origem_cadastro is distinct from 'backfill'
     ) t;
   perform setval('public.prontuario_seq', greatest(maior, 1000), true);
 end $$;
@@ -186,11 +220,21 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare candidato text;
+declare
+  candidato text;
+  tentativas int := 0;
 begin
   loop
     candidato := nextval('public.prontuario_seq')::text;
     exit when not exists (select 1 from public.pacientes where prontuario = candidato);
+    tentativas := tentativas + 1;
+    -- Teto para o laço não virar espera infinita se a sequência for
+    -- reposicionada muito abaixo da numeração real. Falhar com uma
+    -- mensagem que diz o que fazer é melhor do que a recepção olhando
+    -- uma tela travada com o paciente no balcão.
+    if tentativas > 10000 then
+      raise exception 'Nao foi possivel emitir prontuario: 10000 numeros seguidos ja estao em uso a partir de %. Reposicione a sequencia com: select setval(''public.prontuario_seq'', <maior numero em uso>, true);', candidato;
+    end if;
   end loop;
   return candidato;
 end;
