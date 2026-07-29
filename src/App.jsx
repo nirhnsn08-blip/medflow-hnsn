@@ -30,6 +30,7 @@ import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "./clinico/pediat
 import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.js";
 // Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
 import { montarMapaRisco } from "./clinico/mapa-risco.js";
+import { montarChecagemSae } from "./clinico/sae.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -1683,6 +1684,21 @@ async function loadRiscoEnfermagem(prontuarios) {
   ]);
   return { escalas: Array.isArray(escalas) ? escalas : [], lpp: Array.isArray(lpp) ? lpp : [] };
 }
+// Fila de trabalho da checagem SAE: prescrições de enfermagem, itens e checagens
+// de HOJE dos leitos ocupados. O agregador puro monta a lista por leito.
+async function loadChecagemSae(prontuarios) {
+  if (!USE_SUPABASE || !prontuarios.length) return { prescricoes: [], itens: [], checagens: [] };
+  const lista = prontuarios.map(encodeURIComponent).join(",");
+  const d = new Date();
+  const hoje = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const [prescricoes, itens, checagens] = await Promise.all([
+    sbFetch(`enf_sae_prescricoes?prontuario=in.(${lista})&select=*&order=criado_em.desc`),
+    sbFetch(`enf_sae_prescricao_itens?prontuario=in.(${lista})&select=*`),
+    sbFetch(`enf_sae_checagem?prontuario=in.(${lista})&competencia=eq.${hoje}&select=*`),
+  ]);
+  const A = x => (Array.isArray(x) ? x : []);
+  return { prescricoes: A(prescricoes), itens: A(itens), checagens: A(checagens) };
+}
 async function upsertLeitoRemote(leito, user) {
   if (!USE_SUPABASE) return;
   await sbFetch("leitos?on_conflict=identificacao", {
@@ -1782,6 +1798,7 @@ const LEITOS_NAV = [
   { key: "fila",           label: "Fila de internação",   icon: "list" },
   { key: "pacientes",      label: "Pacientes",            icon: "users" },
   { key: "risco",          label: "Mapa de risco",        icon: "shield" },
+  { key: "checagem-sae",   label: "Checagem SAE",         icon: "clipboard" },
   { key: "kanban",         label: "Alta segura",          icon: "clipboard" },
   { key: "altas",          label: "Altas",                icon: "record" },
   { key: "transferencias", label: "Transferências ext.",  icon: "upload" },
@@ -10268,6 +10285,16 @@ function LeitosPage({ currentUser, canEdit }) {
     loadRiscoEnfermagem(pront).then(r => { if (!cancel) setRisco(r); });
     return () => { cancel = true; };
   }, [sub, leitos]);
+  // Checagem SAE: carrega a prescrição de enfermagem e checagens dos leitos
+  // ocupados só quando a aba é vista (mesmo padrão do mapa de risco).
+  const [checagemSae, setChecagemSae] = useState({ prescricoes: [], itens: [], checagens: [] });
+  useEffect(() => {
+    if (!USE_SUPABASE || sub !== "checagem-sae") return;
+    const pront = leitos.filter(l => l.status === "ocupado" && l.prontuario).map(l => l.prontuario);
+    let cancel = false;
+    loadChecagemSae(pront).then(r => { if (!cancel) setChecagemSae(r); });
+    return () => { cancel = true; };
+  }, [sub, leitos]);
 
   useEffect(() => {
     if (!USE_SUPABASE) return;
@@ -10543,6 +10570,7 @@ function LeitosPage({ currentUser, canEdit }) {
     fila: "Solicitações de leito aguardando internação (origem → destino).",
     pacientes: "Pacientes internados agora.",
     risco: "Semáforo de risco de enfermagem por leito — Braden, Morse, flebite e lesão por pressão.",
+    "checagem-sae": "Fila da checagem de cuidados (SAE) por leito — pendentes e atrasados da prescrição de enfermagem.",
     altas: "Histórico de altas registradas.",
     transferencias: "Transferências externas (Gerint / outros hospitais).",
     internacoes: "Histórico de internações.",
@@ -10840,6 +10868,48 @@ function LeitosPage({ currentUser, canEdit }) {
                 </div>
               )}
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>Última aplicação de cada escala por leito, ordenado do mais grave ao menos grave. As escalas são registradas no prontuário (Paciente 360 → Escalas). A LPP <strong>adquirida na unidade</strong> puxa o leito para o topo.</div>
+            </div>
+          );
+        })()}
+
+        {/* ── CHECAGEM SAE (cuidados de enfermagem à beira-leito) ── */}
+        {sub === "checagem-sae" && (() => {
+          const ocup = leitos.filter(l => l.status === "ocupado" && l.prontuario);
+          const linhas = montarChecagemSae(ocup, checagemSae.prescricoes, checagemSae.itens, checagemSae.checagens).filter(r => r.temPrescricao);
+          const th = { textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", background: "var(--bg-2)", borderBottom: "1px solid var(--border)" };
+          const td = { padding: "9px 12px", borderBottom: "1px solid var(--border)", fontSize: 13, verticalAlign: "top" };
+          const hm = d => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+          const totalAtras = linhas.reduce((s, r) => s + r.atrasados, 0);
+          const totalPend = linhas.reduce((s, r) => s + r.pendentes, 0);
+          return (
+            <div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                <Card label="Leitos com prescrição" valor={linhas.length} cor="#22d3ee" sub="prescrição de enfermagem vigente" />
+                <Card label="Cuidados atrasados" valor={totalAtras} cor={totalAtras ? "#f43f5e" : "#34d399"} sub="passaram do horário previsto" />
+                <Card label="Cuidados pendentes" valor={totalPend} cor={totalPend ? "#f5b301" : "var(--text)"} sub="dentro da janela, ainda por checar" />
+              </div>
+              {linhas.length === 0 ? (
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>Nenhum leito com prescrição de enfermagem vigente.</div>
+              ) : (
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                    <thead><tr>{["Leito", "Paciente", "Cuidados", "Pendentes", "Atrasados", "Cuidados atrasados"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {linhas.map(r => (
+                        <tr key={r.leito} style={{ boxShadow: `inset 3px 0 0 ${r.atrasados ? "#f43f5e" : r.pendentes ? "#f5b301" : "#34d399"}` }}>
+                          <td style={{ ...td, fontWeight: 700 }}>{r.leito}{r.setor ? <span style={{ color: "var(--text-muted)", fontWeight: 400 }}> · {r.setor}</span> : ""}</td>
+                          <td style={td}>{r.iniciais || "—"}{r.prontuario ? <span style={{ color: "var(--text-muted)", fontSize: 10.5, fontFamily: "JetBrains Mono, monospace" }}> · {r.prontuario}</span> : ""}</td>
+                          <td style={{ ...td, color: "var(--text-3)" }}>{r.cuidados}</td>
+                          <td style={td}>{r.pendentes ? <span style={{ color: "#f5b301", fontWeight: 700 }}>{r.pendentes}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                          <td style={td}>{r.atrasados ? <span style={{ color: "#f43f5e", fontWeight: 800 }}>{r.atrasados}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                          <td style={td}>{r.atrasadosLista.length ? <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{r.atrasadosLista.slice(0, 4).map(a => `${hm(a.horario)} ${a.descricao}`).join(" · ")}{r.atrasadosLista.length > 4 ? ` +${r.atrasadosLista.length - 4}` : ""}</span> : <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>Prescrição de enfermagem vigente por leito e o estado da checagem de <strong>hoje</strong>. A checagem é registrada no prontuário (Paciente 360 → SAE → Checagem). Vermelho = há cuidado atrasado.</div>
             </div>
           );
         })()}

@@ -15,6 +15,7 @@ import {
   registrarHistoricoEnfermagem, registrarDiagnostico, assinarPrescricaoEnf,
   registrarChecagemCuidado, registrarEvolucaoEnfermagem,
 } from "./dados.js";
+import EditorCatalogoSae from "./EditorCatalogoSae.jsx";
 
 const cor = { borda: "var(--border)", sup: "var(--surface)", sup2: "var(--surface-2)", txt: "var(--text)", txt3: "var(--text-3)", mut: "var(--text-muted)" };
 const cartao = { background: cor.sup, border: `1px solid ${cor.borda}`, borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -47,8 +48,10 @@ export default function SAE({
   const [hist, setHist] = useState({ dados: {}, queixa: "", exame_fisico: "", observacao: "" });
   const [motivo, setMotivo] = useState({});
   const [evo, setEvo] = useState("");
+  const [editandoCatalogo, setEditandoCatalogo] = useState(false);
 
   const idx = indexarCatalogo(saeCatalogo);
+  const isMaster = currentUser?.role === "adm_master";
   const podeHist = canEdit && podeClinico(currentUser, "historico_enfermagem");
   const podeDx = canEdit && podeClinico(currentUser, "diagnostico_enfermagem");
   const podePresc = canEdit && podeClinico(currentUser, "prescricao_enfermagem");
@@ -77,6 +80,7 @@ export default function SAE({
   const resumo = resumoSae({ diagnosticos: dxVigentes, itens: itensAtuais, checagens: saeChecagem }, { competencia: hoje, agora: hoje });
   const evolucoesEnf = evolucoes.filter(e => e.tipo === "evolucao_enfermagem");
   const catalogoVazio = idx.diagnosticos.length === 0;
+  const catalogoPendente = saeCatalogo.filter(c => c.status !== "validado" && c.ativo !== false).length;
 
   function abrirNovoDx(catId) {
     const c = idx.porId.get(catId);
@@ -152,6 +156,11 @@ export default function SAE({
 
   return (
     <div>
+      {isMaster && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button onClick={() => setEditandoCatalogo(true)} style={{ background: "transparent", color: cor.mut, border: `1px solid ${cor.borda}`, borderRadius: 6, padding: "5px 12px", fontWeight: 600, fontSize: 12, cursor: "pointer" }}>⚙ Editar catálogo SAE{catalogoPendente ? ` (${catalogoPendente} em validação)` : ""}</button>
+        </div>
+      )}
       {/* RESUMO */}
       <div style={{ ...cartao, display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
         {[["Diagnósticos ativos", resumo.diagnosticosAtivos, "#38bdf8"],
@@ -172,6 +181,12 @@ export default function SAE({
         <div style={{ ...cartao, borderLeft: "4px solid #f5b301", background: "#f5b30112" }}>
           <strong style={{ fontSize: 12.5, color: "#b45309" }}>Catálogo da SAE não carregado</strong>
           <div style={{ fontSize: 11.5, color: cor.txt3, marginTop: 3 }}>Rode a migração <code>migracao-enf-sae.sql</code> no banco. Sem o catálogo, não há diagnósticos/intervenções para sugerir.</div>
+        </div>
+      )}
+
+      {!catalogoVazio && catalogoPendente > 0 && (
+        <div style={{ ...cartao, borderLeft: "4px solid #f5b301", background: "#f5b30112", padding: "10px 14px" }}>
+          <span style={{ fontSize: 11.5, color: cor.txt3 }}><strong style={{ color: "#b45309" }}>{catalogoPendente} item(ns) do catálogo em validação.</strong> Diagnósticos/intervenções ainda não validados pelo ADM Master — apoio provisório.</span>
         </div>
       )}
 
@@ -426,6 +441,8 @@ export default function SAE({
           ))}
         </div>
       )}
+
+      {editandoCatalogo && <EditorCatalogoSae sb={sb} catalogo={saeCatalogo} currentUser={currentUser} onClose={() => setEditandoCatalogo(false)} onSaved={() => { setEditandoCatalogo(false); onOk && onOk(); }} />}
     </div>
   );
 }
