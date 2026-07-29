@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 69 tabelas, 1085 colunas.
+-- Cobertura atual: 69 tabelas, 1089 colunas.
 -- ============================================================
 
 with
@@ -453,8 +453,10 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','end_referencia','pacientes-identificacao'),
   ('pacientes','end_uf','pacientes-identificacao'),
   ('pacientes','identidade_genero','pacientes-identificacao'),
+  ('pacientes','identificado_em','atendimento-recepcao'),
   ('pacientes','iniciais','schema'),
   ('pacientes','nacionalidade','pacientes-identificacao'),
+  ('pacientes','nao_identificado','atendimento-recepcao'),
   ('pacientes','naturalidade_municipio','pacientes-identificacao'),
   ('pacientes','naturalidade_uf','pacientes-identificacao'),
   ('pacientes','nome_completo','pacientes-identificacao'),
@@ -464,6 +466,7 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','obito','pacientes-identificacao'),
   ('pacientes','obito_em','pacientes-identificacao'),
   ('pacientes','observacao','pacientes-identificacao'),
+  ('pacientes','origem_cadastro','atendimento-recepcao'),
   ('pacientes','prontuario','schema'),
   ('pacientes','raca_cor','pacientes-identificacao'),
   ('pacientes','responsavel_documento','pacientes-identificacao'),
@@ -905,6 +908,7 @@ colunas(tabela, coluna, origem) as (values
   ('ps_atendimentos','spo2','schema'),
   ('ps_atendimentos','status','schema'),
   ('ps_atendimentos','temp','schema'),
+  ('ps_atendimentos','tipo_atendimento','atendimento-recepcao'),
   ('ps_atendimentos','triagem_em','schema'),
   ('ps_atendimentos','triagem_tipo','ps-triagem-tipo'),
   ('ps_atendimentos','updated_at','schema'),

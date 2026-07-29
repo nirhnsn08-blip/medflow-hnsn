@@ -72,6 +72,11 @@ const ORDEM = [
   "migracao-enf-escalas-lpp.sql",
   "migracao-enf-sae.sql",
   "migracao-pacientes-identificacao.sql",
+  "migracao-atendimento-recepcao.sql",
+  // A FK vem depois de propósito — ver o cabeçalho do arquivo. Num banco
+  // novo a ordem não muda nada (não há código antigo no ar); a separação
+  // existe para o banco que JÁ está rodando.
+  "migracao-atendimento-fk.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM
@@ -81,10 +86,15 @@ const ORDEM = [
 // estrutura. Entrar aqui plantaria 60 pacientes inventados no banco de um
 // hospital novo — exatamente o oposto do que reconstruir-banco.sql serve.
 // Esses arquivos têm trava própria e são rodados à mão, só no banco demo.
+// `conferencia-*` também fica de fora: são consultas de LEITURA, rodadas à
+// mão depois de uma migração para ver se ela pegou. Não criam nem alteram
+// nada, então não têm lugar num script de reconstrução — e entrariam como
+// `select` solto no meio da criação do banco.
 const noDisco = fs.readdirSync(dir)
   .filter(f => f.endsWith(".sql")
             && !f.startsWith("auditoria-")
             && !f.startsWith("seed-teste-")
+            && !f.startsWith("conferencia-")
             && f !== "reconstruir-banco.sql");
 const esquecidos = noDisco.filter(f => !ORDEM.includes(f));
 if (esquecidos.length) {
