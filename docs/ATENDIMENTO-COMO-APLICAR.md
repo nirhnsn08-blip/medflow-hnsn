@@ -26,6 +26,11 @@ Esta feature tem **duas** migrações, e a segunda é o contrário disso.
 | 1 | `supabase/migracao-atendimento-recepcao.sql` | **Pode rodar já** | 100% aditiva: colunas, backfill, sequência, função e permissões. Nenhuma linha dela recusa escrita do código atual. |
 | 2 | *merge do código + deploy* | — | — |
 | 3 | `supabase/migracao-atendimento-fk.sql` | **Só depois do merge** | Instala a chave estrangeira. Uma *constraint* não serve o código novo — ela **cobra do código que está no ar**. |
+| 4 | `supabase/migracao-atendimento-fase2.sql` | **Antes do merge da fase 2** | A ficha: convênio, plano, classificação, procedimento. Volta à regra normal — é aditiva e não cobra nada do código atual. |
+
+> Sem o passo 4 aplicado, a tela da Recepção **funciona**, mas os campos da
+> ficha aparecem todos como "Nenhum cadastrado ainda" e o console registra
+> 404 nas quatro tabelas de catálogo. Não quebra — só não serve para nada.
 
 ### O que acontece se a #3 rodar cedo demais
 

@@ -31,7 +31,11 @@ import {
   buscarPacientes, carregarPaciente, emitirProntuario,
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
   listarAguardandoIdentificacao, concluirIdentificacao,
+  carregarCatalogos, carregarProfissionais,
 } from "./dados.js";
+import {
+  DOMINIOS, exigenciasDoConvenio, conferirFicha, tipoDoConvenio,
+} from "./ficha.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -66,6 +70,37 @@ function LinhaResultado({ p, onEscolher }) {
   );
 }
 
+/**
+ * Um campo de catálogo.
+ *
+ * Quando a lista está VAZIA a tela não mostra um `select` vazio, que parece
+ * defeito — mostra a frase que diz de quem é a pendência. Recepcionista
+ * olhando para um campo que ela não tem como preencher aprende a ignorar a
+ * tela inteira.
+ */
+function CampoCatalogo({ label, dica, lista, valor, onChange, largura }) {
+  if (!lista?.length) {
+    return (
+      <div style={largura ? { width: largura } : undefined}>
+        <label style={lbl}>{label}</label>
+        <div style={{ ...inp, color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.35, paddingTop: 7, paddingBottom: 7 }}>
+          Nenhum cadastrado ainda
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={largura ? { width: largura } : undefined}>
+      <label style={lbl}>{label}</label>
+      <select value={valor ?? ""} onChange={e => onChange(e.target.value)} style={inp}>
+        <option value="">—</option>
+        {lista.map(o => <option key={o.codigo ?? o.id} value={o.codigo ?? o.id}>{o.nome}</option>)}
+      </select>
+      {dica && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{dica}</div>}
+    </div>
+  );
+}
+
 export default function Recepcao({ sb, currentUser, canEdit }) {
   const [termo, setTermo] = useState("");
   const [resultados, setResultados] = useState([]);
@@ -82,13 +117,30 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [msg, setMsg] = useState(null);      // { tom: "erro" | "ok", texto }
   const [busy, setBusy] = useState(false);
 
+  // ── a ficha administrativa ──
+  const [catalogos, setCatalogos] = useState(null);   // null = ainda carregando
+  const [profissionais, setProfissionais] = useState([]);
+  const [ficha, setFicha] = useState({});
+  const [medicoUser, setMedicoUser] = useState("");
+
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const setFi = (k, v) => setFicha(p => ({ ...p, [k]: v }));
 
   const recarregarPendentes = useCallback(async () => {
     setPendentes(await listarAguardandoIdentificacao(sb));
   }, [sb]);
 
   useEffect(() => { recarregarPendentes(); }, [recarregarPendentes]);
+
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([carregarCatalogos(sb), carregarProfissionais(sb)]).then(([c, p]) => {
+      if (!vivo) return;
+      setCatalogos(c);
+      setProfissionais(p);
+    });
+    return () => { vivo = false; };
+  }, [sb]);
 
   async function fazerBusca() {
     const filtro = filtroBuscaPacientes(termo);
@@ -117,6 +169,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setPaciente(null); setAbertos([]); setCadastrando(null);
     setResultados([]); setBuscou(false); setTermo(""); setMsg(null);
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
+    setFicha({}); setMedicoUser("");
   }
 
   /** Cadastro novo: o número vem do BANCO, não da cabeça de quem atende. */
@@ -174,10 +227,20 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     if (bloqueantes.length &&
         !confirm(bloqueantes.map(a => `• ${a.texto}`).join("\n\n") + "\n\nAbrir mesmo assim?")) return;
 
+    // Pendência de faturamento também não impede — mas quem abre precisa
+    // ter visto. Confirmar aqui é o que separa "ninguém percebeu" de
+    // "alguém decidiu seguir assim".
+    if (conf.pendenciasGraves > 0 &&
+        !confirm(
+          "Este atendimento tem pendência que impede o faturamento:\n\n" +
+          conf.avisos.filter(a => a.gravidade === "alta").map(a => `• ${a.texto}`).join("\n\n") +
+          "\n\nO atendimento pode ser aberto assim mesmo — a conta é que não fecha.\n\nAbrir?")) return;
+
     setBusy(true);
     const r = await abrirAtendimento(sb, {
       paciente, tipo: f.tipo, origem: f.origem,
       origemDetalhe: f.origemDetalhe, queixa: f.queixa,
+      ficha, medico: medicoEscolhido,
     }, currentUser);
     setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
@@ -196,6 +259,19 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
 
   const pend = paciente ? pendenciasDeIdentificacao(paciente) : null;
   const aviso = paciente ? validarAbertura({ paciente, tipo: f.tipo, origem: f.origem, origemDetalhe: f.origemDetalhe, atendimentosAbertos: abertos }).avisos : [];
+
+  const cat = catalogos || {};
+  const convenio = (cat.convenios || []).find(c => String(c.id) === String(ficha.convenio_id)) || null;
+  const plano = (cat.planos || []).find(p => String(p.id) === String(ficha.plano_id)) || null;
+  const planosDoConvenio = (cat.planos || []).filter(p => convenio && p.convenio_id === convenio.id);
+  const procedimento = (cat.procedimentos || []).find(p => p.codigo === ficha.procedimento_cod) || null;
+  const medicoEscolhido = profissionais.find(p => p.username === medicoUser) || null;
+  const exig = exigenciasDoConvenio(convenio);
+  const tipoConv = tipoDoConvenio(convenio);
+  const conf = conferirFicha({
+    paciente, convenio, plano, ficha, procedimento,
+    medico: medicoEscolhido, catalogos: cat,
+  });
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -398,6 +474,120 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                     placeholder="O que a pessoa diz que está sentindo — a classificação é da triagem" />
                 </div>
               </div>
+
+              {/* ── FONTE PAGADORA ── */}
+              <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Fonte pagadora</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                <CampoCatalogo label="Convênio" lista={cat.convenios}
+                  valor={ficha.convenio_id}
+                  onChange={v => setFicha(p => ({ ...p, convenio_id: v, plano_id: "" }))} />
+                {convenio && planosDoConvenio.length > 0 && (
+                  <CampoCatalogo label="Plano" lista={planosDoConvenio}
+                    valor={ficha.plano_id} onChange={v => setFi("plano_id", v)} />
+                )}
+                {/* Carteira, validade e senha só aparecem quando o convênio
+                    escolhido exige. No SUS não existe carteirinha, e campo
+                    que não se aplica só ensina a preencher qualquer coisa. */}
+                {exig.carteira && (
+                  <>
+                    <div>
+                      <label style={lbl}>Carteira</label>
+                      <input value={ficha.carteira || ""} onChange={e => setFi("carteira", e.target.value)} style={inp} />
+                    </div>
+                    <div>
+                      <label style={lbl}>Validade da carteira</label>
+                      <input type="date" value={ficha.carteira_validade || ""}
+                        onChange={e => setFi("carteira_validade", e.target.value)} style={inp} />
+                    </div>
+                  </>
+                )}
+                {exig.autorizacao && (
+                  <>
+                    <div>
+                      <label style={lbl}>Nº da guia</label>
+                      <input value={ficha.guia_numero || ""} onChange={e => setFi("guia_numero", e.target.value)} style={inp} />
+                    </div>
+                    <div>
+                      <label style={lbl}>Senha de autorização</label>
+                      <input value={ficha.autorizacao_senha || ""} onChange={e => setFi("autorizacao_senha", e.target.value)} style={inp} />
+                    </div>
+                  </>
+                )}
+              </div>
+              {tipoConv && (
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7 }}>
+                  {tipoConv.label} · fatura por <strong>{tipoConv.faturamento}</strong>
+                  {tipoConv.cobraDoPaciente ? "" : " · o paciente não pode ser cobrado"}
+                </div>
+              )}
+
+              {/* ── CLASSIFICAÇÃO ── */}
+              <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Classificação do atendimento</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                {DOMINIOS.map(d => (
+                  <CampoCatalogo key={d.chave} label={d.label} lista={cat[d.chave]}
+                    valor={ficha[`${d.chave}_cod`]} onChange={v => setFi(`${d.chave}_cod`, v)} />
+                ))}
+              </div>
+
+              {/* ── ATO E RESPONSÁVEL ── */}
+              <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Ato e responsável</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                <div>
+                  <label style={lbl}>Profissional responsável</label>
+                  <select value={medicoUser} onChange={e => setMedicoUser(e.target.value)} style={inp}>
+                    <option value="">— definir depois</option>
+                    {profissionais.map(p => (
+                      <option key={p.username} value={p.username}>{p.nome || p.username}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
+                    {medicoEscolhido
+                      ? (medicoEscolhido.cbo ? `CBO ${medicoEscolhido.cbo}` : "sem CBO no cadastro")
+                      : "No PS costuma ficar em branco — quem atende só se sabe depois da triagem."}
+                  </div>
+                </div>
+                <CampoCatalogo label="Procedimento" lista={cat.procedimentos}
+                  valor={ficha.procedimento_cod} onChange={v => setFi("procedimento_cod", v)} />
+                <div>
+                  <label style={lbl}>CID</label>
+                  <input value={ficha.cid || ""} onChange={e => setFi("cid", e.target.value)} style={inp} placeholder="Ex.: I10" />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, paddingTop: 16 }}>
+                  <input id="rec-at" type="checkbox" checked={!!ficha.acidente_trabalho}
+                    onChange={e => setFi("acidente_trabalho", e.target.checked)} />
+                  <label htmlFor="rec-at" style={{ fontSize: 12.5, cursor: "pointer" }}>Acidente de trabalho</label>
+                </div>
+              </div>
+              {ficha.acidente_trabalho && (
+                <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 6 }}>
+                  Acidente de trabalho troca o pagador e exige CAT — confirme com o setor responsável.
+                </div>
+              )}
+
+              {/* ── PENDÊNCIAS DE FATURAMENTO ── */}
+              {conf.avisos.length > 0 && (
+                <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 8, fontSize: 12,
+                              background: conf.pendenciasGraves ? "#d9770610" : "var(--surface-2)",
+                              border: `1px solid ${conf.pendenciasGraves ? "#d9770655" : "var(--border)"}` }}>
+                  <strong style={{ color: conf.pendenciasGraves ? "#d97706" : "var(--text-muted)" }}>
+                    {conf.pendenciasGraves
+                      ? `${conf.pendenciasGraves} pendência(s) que impedem o faturamento`
+                      : "Pendências menores"}
+                  </strong>
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {conf.avisos.map(a => (
+                      <div key={a.chave} style={{ color: a.gravidade === "alta" ? "var(--text)" : "var(--text-muted)" }}>
+                        • {a.texto}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ color: "var(--text-muted)", marginTop: 7 }}>
+                    Nada disso impede o atendimento. O que não fecha é a conta.
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <button onClick={abrir} disabled={busy} style={btn("#22d3ee", !busy)}>
                   {busy ? "Abrindo…" : "Abrir atendimento"}
