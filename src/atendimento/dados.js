@@ -120,7 +120,14 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
     origem_detalhe: String(origemDetalhe ?? "").trim() || null,
     tipo_atendimento: tipo,
     chegada_em: new Date().toISOString(),
-    status: "aguardando_triagem",
+    // O status de entrada depende do tipo. Emergência entra AGUARDANDO
+    // TRIAGEM porque a classificação de Manchester é o que ordena a fila.
+    // Ambulatorial não é triado: a consulta já tem hora marcada e
+    // especialidade definida, então o paciente entra aguardando o
+    // profissional. Cravar "aguardando_triagem" para os dois punha consulta
+    // agendada na fila do plantão, onde ela ficaria para sempre — ninguém
+    // vai triar quem já tem consulta marcada.
+    status: tipo === "emergencia" ? "aguardando_triagem" : "aguardando_atendimento",
     usuario: user?.name || null,
     updated_at: new Date().toISOString(),
     // A parte administrativa da ficha. `camposDaFicha` devolve exatamente

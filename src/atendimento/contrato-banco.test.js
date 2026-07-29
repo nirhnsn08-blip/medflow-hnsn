@@ -282,6 +282,28 @@ describe("a agenda grava e lê em coluna real", () => {
     expect(JSON.parse(chamadas[1].opcoes.body).atendimento_id).toBe(1);
   });
 
+  it("consulta ambulatorial NÃO entra na fila de triagem do PS", async () => {
+    // Cravar "aguardando_triagem" para os dois tipos punha consulta
+    // agendada na fila do plantão, onde ela ficaria para sempre: ninguém
+    // vai triar quem já tem hora marcada. Isso aconteceu de verdade e foi
+    // visto no navegador, não nos testes — por isso o caso existe aqui.
+    const { sb, chamadas } = espiao();
+    await confirmarPresenca(sb, { id: 9, especialidade_cod: "ORTOPEDIA" },
+      { paciente: { prontuario: "T9004", iniciais: "?" } }, USER);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.tipo_atendimento).toBe("ambulatorial");
+    expect(corpo.status).toBe("aguardando_atendimento");
+    expect(corpo.status).not.toBe("aguardando_triagem");
+  });
+
+  it("emergência continua entrando aguardando triagem", async () => {
+    const { sb, chamadas } = espiao();
+    await abrirAtendimento(sb, {
+      paciente: { prontuario: "1001", iniciais: "M.S." }, tipo: "emergencia", origem: "SAMU",
+    }, USER);
+    expect(JSON.parse(chamadas[0].opcoes.body).status).toBe("aguardando_triagem");
+  });
+
   it("presença sem paciente definido não grava nada", async () => {
     const { sb, chamadas } = espiao();
     const r = await confirmarPresenca(sb, { id: 9 }, { paciente: null }, USER);
