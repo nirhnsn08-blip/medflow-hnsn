@@ -1,17 +1,52 @@
-# 📍 Ponto de restauração — checkpoint-v48
+# 📍 Ponto de restauração — checkpoint-v49
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v48` (anteriores: `checkpoint-v47` … `checkpoint-v1`)
-- **Data:** 2026-07-28 · `main` em `517b203`
+- **Tag Git mais recente:** `checkpoint-v49` (anteriores: `checkpoint-v48` … `checkpoint-v1`)
+- **Data:** 2026-07-28 · `main` em `e3c72a4`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v47 para cá: **PR #37** (Fase 1b — SAE / Processo de Enfermagem:
-  núcleo clínico).
+  vai ao ar). Da v48 para cá: **PR #39** (identificação do paciente — Adauam) e
+  **PR #40** (SAE: editor do catálogo + fila de checagem).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v49 (desde a v48 — PRs #39–#40): identificação do paciente + SAE (editor e fila de checagem)
+
+Dois blocos: a **identificação completa do paciente** (Adauam) e o **fecho da Fase 1b**
+da enfermagem (editor do catálogo + fila de checagem).
+
+### 👤 Identificação do paciente (CFM 1.638/2002) — PR #39 (Adauam)
+- **`pacientes` deixa de guardar só iniciais + ano:** ganha **nome completo, nome social,
+  data de nascimento completa, filiação, naturalidade, raça/cor, identidade de gênero,
+  CPF/RG/CNS, endereço em campos separados, contato e responsável, óbito** — o conteúdo
+  mínimo de identificação exigido por norma.
+- **Conserta a idade da triagem pediátrica:** com `data_nascimento` (dia/mês/ano), a faixa
+  de sinais vitais deixa de errar até 11 meses (um bebê de 20/12 não é mais "1 ano" em
+  janeiro, avaliado contra outra fisiologia).
+- Índices de busca (nome, mãe, nascimento) e **índice único de CPF/CNS** (trava de
+  prontuário duplicado). Migração `migracao-pacientes-identificacao.sql`, **aditiva**
+  (`add column if not exists`), já rodada nos 2 bancos. A tela mostra **iniciais por
+  padrão** (`comoExibir()`); o nome completo só onde a tarefa exige.
+- ⚠️ **Eleva uma urgência de segurança:** a política de SELECT de `pacientes` é
+  `using(true)` — passa a expor nome/CPF/nome da mãe/endereço a qualquer usuário
+  autenticado. **Apertar o RLS de `pacientes` (modo sombra + quebra-vidro) virou
+  pré-requisito antes do primeiro paciente real.** Ver Pendências.
+
+### 🩺 SAE — editor do catálogo + fila de checagem — PR #40 (fecha a Fase 1b)
+- **Editor do catálogo SAE (só ADM Master):** botão **⚙ Editar catálogo SAE** na aba SAE
+  abre um editor que **valida e amplia** o catálogo NANDA/NIC — adiciona/edita diagnósticos
+  e intervenções (características/fatores/resultado; atividades/frequência/aprazamento),
+  valida/revoga e ativa/desativa, ou **"Validar todos"**. Editar o conteúdo clínico volta
+  o item para **"em validação"**. `src/prontuario/EditorCatalogoSae.jsx`.
+- **Fila de checagem à beira-leito (Giro de Leitos → aba "Checagem SAE"):** por leito
+  ocupado, os cuidados da prescrição de enfermagem vigente e o estado da checagem de
+  **hoje** (pendentes × atrasados), ordenado do mais crítico ao menos (vermelho = atrasado),
+  com 3 KPIs no topo. Agregador puro `montarChecagemSae` (`src/clinico/sae.js`) + loader
+  `loadChecagemSae`, no padrão do mapa de risco.
+- **Sem migração** (usa as tabelas `enf_sae_*` da v48). **481 testes** + build verdes.
 
 ## 🆕 Novidades da v48 (desde a v47 — PR #37): enfermagem — SAE / Processo de Enfermagem (núcleo)
 
@@ -571,7 +606,7 @@ de triagem** nas listas de trabalho ("Em atendimento"/fila).
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v48
+git reset --hard checkpoint-v49
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -580,7 +615,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v48
+git checkout -b recuperacao checkpoint-v49
 ```
 
 ## ⚠️ Importante: código ≠ dados
