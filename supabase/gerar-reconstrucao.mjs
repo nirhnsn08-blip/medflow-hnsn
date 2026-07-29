@@ -73,6 +73,10 @@ const ORDEM = [
   "migracao-enf-sae.sql",
   "migracao-pacientes-identificacao.sql",
   "migracao-atendimento-recepcao.sql",
+  // A FK vem depois de propósito — ver o cabeçalho do arquivo. Num banco
+  // novo a ordem não muda nada (não há código antigo no ar); a separação
+  // existe para o banco que JÁ está rodando.
+  "migracao-atendimento-fk.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM

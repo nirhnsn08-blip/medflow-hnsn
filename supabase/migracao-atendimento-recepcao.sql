@@ -128,37 +128,25 @@ on conflict (prontuario) do nothing;
 
 
 -- ═══════════════════════════════════════════════════════════
--- 4) A TRAVA — atendimento sem paciente deixa de ser possível
+-- 4) A TRAVA MORA EM OUTRO ARQUIVO — E ISSO É DE PROPÓSITO
 --
--- Sem `on update cascade` DE PROPÓSITO. Trocar o número do prontuário
--- parece inofensivo e não é: `leitos`, `cc_cirurgias`, `scih_casos`,
--- `pep_*` e `enf_*` guardam o mesmo número como texto solto e NÃO seriam
--- levados junto. Melhor a troca ser recusada aqui, à vista, do que
--- espalhar um histórico partido por seis tabelas.
+-- A chave estrangeira de ps_atendimentos → pacientes está em
+-- `migracao-atendimento-fk.sql`, que se roda DEPOIS do merge do código.
 --
--- Índice na coluna que REFERENCIA: o Postgres cria índice do lado
--- referenciado (é a PK), não deste. Sem ele, toda conferência de FK e todo
--- `join` do Paciente 360 varre a tabela inteira.
+-- POR QUE A ORDEM INVERTE AQUI
+-- A regra da casa é rodar o SQL ANTES do merge, porque o código novo grava
+-- em coluna nova. Uma CONSTRAINT é o contrário: ela cobra do código que
+-- está no ar. O formulário de chegada do PS que está hoje na `main` aceita
+-- prontuário digitado à mão, sem conferir se existe — com a FK no lugar,
+-- esse INSERT passa a ser recusado, e o sbFetch devolve `null` sem alarde.
+-- A recepcionista clicaria em "Registrar chegada" e o paciente não entraria
+-- na fila da triagem.
+--
+-- Este arquivo é 100% aditivo: nenhuma linha dele pode recusar uma escrita
+-- do código antigo. Pode rodar quando quiser.
 -- ═══════════════════════════════════════════════════════════
 create index if not exists ps_atendimentos_prontuario_idx
   on public.ps_atendimentos (prontuario);
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint
-     where conname = 'ps_atendimentos_paciente_fk'
-       and conrelid = 'public.ps_atendimentos'::regclass
-  ) then
-    alter table public.ps_atendimentos
-      add constraint ps_atendimentos_paciente_fk
-      foreign key (prontuario) references public.pacientes (prontuario);
-  end if;
-exception when others then
-  -- Falhar aqui não pode abortar a migração inteira: as colunas dos passos
-  -- anteriores já valem por si. O aviso diz o que conferir.
-  raise notice 'ATENCAO: nao foi possivel criar a FK de ps_atendimentos (%). Rode a conferencia do passo 7 para achar o prontuario orfao.', sqlerrm;
-end $$;
 
 
 -- ═══════════════════════════════════════════════════════════

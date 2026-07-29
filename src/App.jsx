@@ -51,6 +51,7 @@ import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from 
 import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
 import Recepcao from "./atendimento/Recepcao.jsx";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
+import { carregarPaciente } from "./atendimento/dados.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -4955,6 +4956,31 @@ function PSPage({ currentUser, canEdit }) {
     if (!novo.origem) { alert("Informe por onde o paciente chegou."); return; }
     if (psPedeDetalhe(novo.origem) && !novo.origem_detalhe.trim()) { alert("Informe a unidade/origem de procedência."); return; }
     setBusy(true);
+
+    // O prontuário precisa EXISTIR, não só estar preenchido.
+    //
+    // Desde `migracao-atendimento-recepcao.sql` há chave estrangeira de
+    // ps_atendimentos para pacientes. Sem esta conferência, digitar um
+    // número que não existe faz o PostgREST recusar o INSERT — e o
+    // sbFetch devolve null sem alarde. A recepcionista clicaria em
+    // "Registrar chegada", a tela limparia o formulário, e o paciente não
+    // entraria na fila da triagem. Ninguém seria chamado.
+    //
+    // Conferir aqui transforma esse silêncio numa instrução: quem não tem
+    // cadastro é cadastrado na Recepção, que é a porta feita para isso.
+    const cadastrado = await carregarPaciente(sbFetch, novo.prontuario.trim());
+    if (!cadastrado) {
+      setBusy(false);
+      alert(
+        `Não existe paciente cadastrado com o prontuário ${novo.prontuario.trim()}.\n\n` +
+        "Abra o menu ATENDIMENTO e registre a chegada por lá: ele procura o paciente, " +
+        "emite o prontuário quando é a primeira vez e tem o caminho de emergência para " +
+        "quem chega sem identificação.\n\n" +
+        "Registrar aqui um número que não existe deixaria este atendimento solto — sem " +
+        "aparecer no histórico do paciente.");
+      return;
+    }
+
     await addPsAtendimentoRemote({
       iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim(),
       queixa: novo.queixa.trim() || null, origem: novo.origem,
