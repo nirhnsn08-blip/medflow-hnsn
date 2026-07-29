@@ -86,10 +86,15 @@ const ORDEM = [
 // estrutura. Entrar aqui plantaria 60 pacientes inventados no banco de um
 // hospital novo — exatamente o oposto do que reconstruir-banco.sql serve.
 // Esses arquivos têm trava própria e são rodados à mão, só no banco demo.
+// `conferencia-*` também fica de fora: são consultas de LEITURA, rodadas à
+// mão depois de uma migração para ver se ela pegou. Não criam nem alteram
+// nada, então não têm lugar num script de reconstrução — e entrariam como
+// `select` solto no meio da criação do banco.
 const noDisco = fs.readdirSync(dir)
   .filter(f => f.endsWith(".sql")
             && !f.startsWith("auditoria-")
             && !f.startsWith("seed-teste-")
+            && !f.startsWith("conferencia-")
             && f !== "reconstruir-banco.sql");
 const esquecidos = noDisco.filter(f => !ORDEM.includes(f));
 if (esquecidos.length) {
