@@ -31,6 +31,9 @@ import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.j
 // Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
 import { montarMapaRisco } from "./clinico/mapa-risco.js";
 import { montarChecagemSae } from "./clinico/sae.js";
+import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
+         matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
+         rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -1698,6 +1701,48 @@ async function loadChecagemSae(prontuarios) {
   ]);
   const A = x => (Array.isArray(x) ? x : []);
   return { prescricoes: A(prescricoes), itens: A(itens), checagens: A(checagens) };
+}
+
+// ── NSP — Núcleo de Segurança do Paciente (Fase 2a) ──
+async function loadIncidentes() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_incidentes?select=*&order=criado_em.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+// Indicador automático (diferencial): LPP adquirida na unidade (marcador POA da Fase 1a).
+async function loadLppAdquiridas() {
+  if (!USE_SUPABASE) return 0;
+  const rows = await sbFetch("enf_lesao_pressao?presente_admissao=eq.false&select=id").catch(() => []);
+  return Array.isArray(rows) ? rows.length : 0;
+}
+async function registrarIncidente(inc, user) {
+  if (!USE_SUPABASE) return null;
+  const anonimo = !!inc.anonimo;
+  const risco = matrizRisco(inc.probabilidade, inc.gravidade);
+  const res = await sbFetch("nsp_incidentes", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      classe: inc.classe, tipo: inc.tipo || null, grau_dano: inc.grau_dano || null,
+      descricao: inc.descricao, acoes_imediatas: inc.acoes_imediatas || null,
+      local_setor: inc.local_setor || null, leito: inc.leito || null,
+      ocorrido_em: inc.ocorrido_em || null, detectado_em: inc.detectado_em || new Date().toISOString(),
+      prontuario: inc.prontuario || null, episodio_id: inc.episodio_id || null,
+      origem_tipo: inc.origem_tipo || "manual", origem_id: inc.origem_id || null, origem_ref: inc.origem_ref || null,
+      probabilidade: inc.probabilidade ?? null, gravidade: inc.gravidade ?? null,
+      risco_score: risco.score || null, risco_faixa: risco.faixa || null,
+      anonimo, notificado_por: anonimo ? null : (user?.name || null), categoria: anonimo ? null : (user?.categoria || null),
+      notificacao_compulsoria: notificacaoCompulsoria(inc), exige_rca: exigeRCA(inc), status: "nova",
+    }),
+  });
+  return Array.isArray(res) ? res[0] : res;
+}
+async function atualizarStatusIncidente(inc, novoStatus, texto, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`nsp_incidentes?id=eq.${inc.id}`, { method: "PATCH", body: JSON.stringify({ status: novoStatus, atualizado_em: new Date().toISOString() }) });
+  await sbFetch("nsp_incidente_eventos", { method: "POST", body: JSON.stringify({
+    incidente_id: inc.id, tipo: "status", de_status: inc.status || null, para_status: novoStatus,
+    texto: texto || null, usuario: user?.name || null, categoria: user?.categoria || null,
+  }) });
 }
 async function upsertLeitoRemote(leito, user) {
   if (!USE_SUPABASE) return;
@@ -10249,6 +10294,271 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// NSP — Núcleo de Segurança do Paciente (Fase 2a)
+// Barra lateral própria (padrão dos outros módulos). Nesta fase são
+// funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
+// Consultar incidente; os demais entram nas sub-fases 2b–2d.
+// ═══════════════════════════════════════════════════════════
+const NSP_NAV = [
+  { key: "visao",        label: "Visão geral",         icon: "shield" },
+  { key: "dashboard",    label: "Dashboard",           icon: "dashboard" },
+  { key: "notificacoes", label: "Notificações",        icon: "activity" },
+  { key: "registrar",    label: "Registrar incidente", icon: "record" },
+  { key: "consultar",    label: "Consultar incidente", icon: "list" },
+  { key: "causas",       label: "Análise de causas",   icon: "clipboard" },
+  { key: "plano",        label: "Plano de ação",       icon: "clipboard" },
+  { key: "indicadores",  label: "Indicadores",         icon: "chart" },
+  { key: "protocolos",   label: "Protocolos",          icon: "shield" },
+  { key: "metas",        label: "Metas de segurança",  icon: "record" },
+  { key: "capacitacoes", label: "Capacitações",        icon: "users" },
+  { key: "comunicacao",  label: "Comunicação",         icon: "chat" },
+  { key: "relatorios",   label: "Relatórios",          icon: "printer" },
+  { key: "assistente",   label: "Assistente AI",       icon: "chat" },
+];
+const NSP_COR = { verde: "#34d399", amarelo: "#f5b301", laranja: "#fb923c", vermelho: "#f43f5e", azul: "#38bdf8" };
+const nspCorClasse = c => NSP_COR[(NSP_CLASSES.find(x => x.v === c) || {}).nivel] || "#8891a5";
+const nspCorGrau   = g => NSP_COR[(NSP_GRAUS.find(x => x.v === g) || {}).nivel] || "#8891a5";
+const nspCorStatus = s => NSP_COR[(NSP_STATUS.find(x => x.v === s) || {}).nivel] || "#8891a5";
+function nspFormVazio() {
+  return { classe: "", tipo: "", grau_dano: "", descricao: "", acoes_imediatas: "", local_setor: "", leito: "", prontuario: "", probabilidade: "", gravidade: "", anonimo: false };
+}
+
+function NSPPage({ currentUser, canEdit }) {
+  const [sub, setSub] = useState("visao");
+  const [incidentes, setIncidentes] = useState([]);
+  const [lppAdq, setLppAdq] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState(nspFormVazio());
+  const [filtro, setFiltro] = useState({ tipo: "", classe: "", status: "" });
+
+  function recarregar() { loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq); }
+  useEffect(() => { if (USE_SUPABASE) recarregar(); }, []);
+
+  const navAtual = NSP_NAV.find(n => n.key === sub) || NSP_NAV[0];
+  const resumo = resumoIncidentes(incidentes);
+  const risco = matrizRisco(form.probabilidade, form.gravidade);
+  const filtrados = incidentes.filter(i =>
+    (!filtro.tipo || i.tipo === filtro.tipo) && (!filtro.classe || i.classe === filtro.classe) && (!filtro.status || (i.status || "nova") === filtro.status));
+  const fila = incidentes.filter(i => ["nova", "em_analise"].includes(i.status || "nova"));
+
+  async function salvar() {
+    if (busy || !form.classe || !form.descricao.trim()) return;
+    setBusy(true); await registrarIncidente(form, currentUser);
+    setBusy(false); setForm(nspFormVazio()); recarregar(); setSub("consultar");
+  }
+  async function avancar(inc, novo) {
+    if (busy) return; setBusy(true); await atualizarStatusIncidente(inc, novo, null, currentUser); setBusy(false); recarregar();
+  }
+
+  const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" };
+  const Pill = ({ c, t }) => <span style={{ background: `${c}1f`, color: c, border: `1px solid ${c}66`, borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{t}</span>;
+  const dataHora = d => d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+  const Placeholder = ({ fase }) => (
+    <div style={{ ...card, textAlign: "center", padding: "2.5rem", color: "var(--text-muted)" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{navAtual.label}</div>
+      <div style={{ fontSize: 12.5 }}>Em construção — entra na <strong>Fase {fase}</strong>. A estrutura já está aqui na barra lateral.</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      <nav style={{ width: 210, minWidth: 210, background: "var(--bg-2)", borderRight: "1px solid var(--border)", padding: "1rem 0", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
+          <Icon name="shield" size={16} /><span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>SEGURANÇA DO PACIENTE</span>
+        </div>
+        {NSP_NAV.map(it => { const active = sub === it.key; return (
+          <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".5rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
+            <Icon name={it.icon} size={15} />{it.label}
+          </button>
+        ); })}
+      </nav>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{navAtual.label}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Núcleo de Segurança do Paciente · RDC 36/2013 · PNSP</div>
+        </div>
+
+        {sub === "visao" && (<>
+          <div style={card}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 6 }}>O Núcleo de Segurança do Paciente</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.6 }}>
+              Base na <strong>RDC 36/2013 (ANVISA)</strong> e no <strong>PNSP (Portaria 529/2013)</strong>: notificar incidentes, analisar causas, tratar com plano de ação e monitorar indicadores — em cultura <strong>justa e não-punitiva</strong>. Qualquer profissional notifica, inclusive anonimamente.
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+            <Card label="Incidentes" valor={resumo.total} cor="#22d3ee" sub="notificados" />
+            <Card label="Novos" valor={resumo.novas} cor={resumo.novas ? "#f5b301" : "var(--text)"} sub="aguardando triagem" />
+            <Card label="Com dano" valor={resumo.comDano} cor={resumo.comDano ? "#f43f5e" : "#34d399"} sub="eventos adversos" />
+            <Card label="Never events" valor={resumo.neverEvents} cor={resumo.neverEvents ? "#f43f5e" : "#34d399"} sub="nunca deveriam ocorrer" />
+          </div>
+          {canEdit && <button onClick={() => setSub("registrar")} style={{ marginTop: 14, background: VX.turquesa, color: "#04222b", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>+ Registrar incidente</button>}
+        </>)}
+
+        {sub === "dashboard" && (<>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
+            <Card label="Total" valor={resumo.total} cor="#22d3ee" />
+            <Card label="Abertos" valor={resumo.abertas} cor={resumo.abertas ? "#f5b301" : "#34d399"} sub="não concluídos" />
+            <Card label="Com dano" valor={resumo.comDano} cor={resumo.comDano ? "#f43f5e" : "#34d399"} />
+            <Card label="Near-miss ratio" valor={resumo.nearMissRatio ?? "—"} cor="#818cf8" sub="quase-erros ÷ com dano" />
+            <Card label="LPP adquirida" valor={lppAdq} cor={lppAdq ? "#fb923c" : "#34d399"} sub="automático · POA Fase 1a" />
+          </div>
+          <div style={card}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>Por tipo</div>
+            {Object.keys(resumo.porTipo).length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem incidentes.</div> :
+              Object.entries(resumo.porTipo).sort((a, b) => b[1] - a[1]).map(([t, n]) => (
+                <div key={t} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: 12.5, flex: 1 }}>{rotuloTipo(t)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-3)" }}>{n}</span>
+                </div>
+              ))}
+          </div>
+        </>)}
+
+        {sub === "notificacoes" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>Fila de triagem do núcleo — notificações novas e em análise.</div>
+          {fila.length === 0 ? <div style={{ ...card, color: "var(--text-muted)", fontSize: 13 }}>Nada na fila.</div> :
+            fila.map(i => (
+              <div key={i.id} style={{ ...card, borderLeft: `4px solid ${nspCorClasse(i.classe)}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "var(--text-muted)" }}>#{i.numero}</span>
+                  <Pill c={nspCorClasse(i.classe)} t={rotuloClasse(i.classe)} />
+                  {i.tipo && <Pill c="#8891a5" t={rotuloTipo(i.tipo)} />}
+                  {i.grau_dano && i.grau_dano !== "nenhum" && <Pill c={nspCorGrau(i.grau_dano)} t={`dano ${rotuloGrau(i.grau_dano)}`} />}
+                  <Pill c={nspCorStatus(i.status)} t={rotuloStatus(i.status)} />
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--text-muted)" }}>{dataHora(i.criado_em)} · {i.anonimo ? "anônimo" : (i.notificado_por || "—")}</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>{i.descricao}</div>
+                {canEdit && <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                  {(i.status || "nova") === "nova" && <button onClick={() => avancar(i, "em_analise")} disabled={busy} style={{ background: "transparent", color: "#fb923c", border: "1px solid #fb923c66", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Iniciar análise</button>}
+                  <button onClick={() => avancar(i, "classificada")} disabled={busy} style={{ background: "transparent", color: "#38bdf8", border: "1px solid #38bdf866", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Classificar</button>
+                  <button onClick={() => avancar(i, "concluida")} disabled={busy} style={{ background: "transparent", color: "#34d399", border: "1px solid #34d39966", borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Concluir</button>
+                </div>}
+              </div>
+            ))}
+        </>)}
+
+        {sub === "registrar" && (canEdit ? (
+          <div style={{ ...card, maxWidth: 720 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div><label style={lbl}>Classe do incidente *</label>
+                <select value={form.classe} onChange={e => setForm(f => ({ ...f, classe: e.target.value }))} style={inp}><option value="">—</option>{NSP_CLASSES.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}</select></div>
+              <div><label style={lbl}>Tipo</label>
+                <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))} style={inp}><option value="">—</option>{NSP_TIPOS.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</select></div>
+            </div>
+            <div style={{ marginBottom: 10 }}><label style={lbl}>Grau de dano (OMS)</label>
+              <select value={form.grau_dano} onChange={e => setForm(f => ({ ...f, grau_dano: e.target.value }))} style={{ ...inp, maxWidth: 260 }}><option value="">—</option>{NSP_GRAUS.map(g => <option key={g.v} value={g.v}>{g.l}</option>)}</select></div>
+            <div style={{ marginBottom: 10 }}><label style={lbl}>O que aconteceu *</label>
+              <textarea value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} rows={3} style={{ ...inp, resize: "vertical" }} /></div>
+            <div style={{ marginBottom: 10 }}><label style={lbl}>Ações imediatas (o que já foi feito)</label>
+              <textarea value={form.acoes_imediatas} onChange={e => setForm(f => ({ ...f, acoes_imediatas: e.target.value }))} rows={2} style={{ ...inp, resize: "vertical" }} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
+              <div><label style={lbl}>Setor</label><input value={form.local_setor} onChange={e => setForm(f => ({ ...f, local_setor: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Leito</label><input value={form.leito} onChange={e => setForm(f => ({ ...f, leito: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Prontuário</label><input value={form.prontuario} onChange={e => setForm(f => ({ ...f, prontuario: e.target.value }))} style={inp} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, marginBottom: 10, alignItems: "end" }}>
+              <div><label style={lbl}>Probabilidade (1–5)</label><input type="number" min={1} max={5} value={form.probabilidade} onChange={e => setForm(f => ({ ...f, probabilidade: e.target.value }))} style={inp} /></div>
+              <div><label style={lbl}>Gravidade (1–5)</label><input type="number" min={1} max={5} value={form.gravidade} onChange={e => setForm(f => ({ ...f, gravidade: e.target.value }))} style={inp} /></div>
+              {risco.faixa && <Pill c={risco.score >= 15 ? "#f43f5e" : risco.score >= 8 ? "#fb923c" : risco.score >= 4 ? "#f5b301" : "#34d399"} t={`risco ${risco.faixa} · ${risco.score}`} />}
+            </div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text)" }}><input type="checkbox" checked={form.anonimo} onChange={e => setForm(f => ({ ...f, anonimo: e.target.checked }))} /> Notificar anonimamente</label>
+              {exigeRCA(form) && <Pill c="#fb923c" t="Exige análise de causa raiz" />}
+              {notificacaoCompulsoria(form) && <Pill c="#f43f5e" t="Notificação compulsória (ANVISA)" />}
+            </div>
+            <button onClick={salvar} disabled={busy || !form.classe || !form.descricao.trim()} style={{ background: busy || !form.classe || !form.descricao.trim() ? "#5b76a0" : VX.turquesa, color: "#04222b", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>{busy ? "…" : "Registrar notificação"}</button>
+          </div>
+        ) : <div style={{ ...card, color: "var(--text-muted)" }}>Sem permissão para lançar no módulo.</div>)}
+
+        {sub === "consultar" && (<>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <select value={filtro.classe} onChange={e => setFiltro(f => ({ ...f, classe: e.target.value }))} style={{ ...inp, width: "auto" }}><option value="">Toda classe</option>{NSP_CLASSES.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}</select>
+            <select value={filtro.tipo} onChange={e => setFiltro(f => ({ ...f, tipo: e.target.value }))} style={{ ...inp, width: "auto" }}><option value="">Todo tipo</option>{NSP_TIPOS.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</select>
+            <select value={filtro.status} onChange={e => setFiltro(f => ({ ...f, status: e.target.value }))} style={{ ...inp, width: "auto" }}><option value="">Todo status</option>{NSP_STATUS.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}</select>
+            <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)", alignSelf: "center" }}>{filtrados.length} incidente(s)</span>
+          </div>
+          {filtrados.length === 0 ? <div style={{ ...card, color: "var(--text-muted)" }}>Nenhum incidente.</div> :
+            filtrados.map(i => (
+              <div key={i.id} style={{ ...card, borderLeft: `4px solid ${nspCorClasse(i.classe)}`, marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "var(--text-muted)" }}>#{i.numero}</span>
+                  <Pill c={nspCorClasse(i.classe)} t={rotuloClasse(i.classe)} />
+                  {i.tipo && <Pill c="#8891a5" t={rotuloTipo(i.tipo)} />}
+                  {i.grau_dano && i.grau_dano !== "nenhum" && <Pill c={nspCorGrau(i.grau_dano)} t={rotuloGrau(i.grau_dano)} />}
+                  <Pill c={nspCorStatus(i.status)} t={rotuloStatus(i.status)} />
+                  {i.exige_rca && <Pill c="#fb923c" t="RCA" />}
+                  {i.notificacao_compulsoria && <Pill c="#f43f5e" t="ANVISA" />}
+                  <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--text-muted)" }}>{dataHora(i.criado_em)}</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 6 }}>{i.descricao}</div>
+                {(i.local_setor || i.leito || i.prontuario) && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{[i.local_setor, i.leito && `leito ${i.leito}`, i.prontuario && `pront. ${i.prontuario}`].filter(Boolean).join(" · ")}</div>}
+              </div>
+            ))}
+        </>)}
+
+        {sub === "causas"       && <Placeholder fase="2b" />}
+        {sub === "plano"        && <Placeholder fase="2b" />}
+        {sub === "indicadores"  && <Placeholder fase="2c" />}
+        {sub === "metas"        && <Placeholder fase="2c" />}
+        {sub === "protocolos"   && <Placeholder fase="2d" />}
+        {sub === "capacitacoes" && <Placeholder fase="2d" />}
+        {sub === "comunicacao"  && <Placeholder fase="2d" />}
+        {sub === "relatorios"   && <Placeholder fase="2d" />}
+        {sub === "assistente"   && <Placeholder fase="2d" />}
+      </div>
+    </div>
+  );
+}
+
+// Notificação em 30s de qualquer tela (diferencial). Botão flutuante global,
+// disponível a todo usuário logado — cultura justa, não-punitiva, com anonimato.
+function NotificacaoRapida({ currentUser }) {
+  const [aberto, setAberto] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [ok, setOk] = useState(false);
+  const [f, setF] = useState({ classe: "near_miss", tipo: "", descricao: "", anonimo: false });
+  if (!USE_SUPABASE) return null;
+  async function enviar() {
+    if (busy || !f.descricao.trim()) return;
+    setBusy(true);
+    await registrarIncidente({ ...f, origem_tipo: "rapida" }, currentUser);
+    setBusy(false); setOk(true);
+    setTimeout(() => { setOk(false); setAberto(false); setF({ classe: "near_miss", tipo: "", descricao: "", anonimo: false }); }, 1800);
+  }
+  const campo = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, width: "100%", boxSizing: "border-box" };
+  return (<>
+    <button onClick={() => setAberto(true)} title="Notificar incidente de segurança (30s)" style={{ position: "fixed", right: 20, bottom: 20, zIndex: 250, background: "#f43f5e", color: "#fff", border: "none", borderRadius: 999, padding: "11px 17px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", display: "flex", alignItems: "center", gap: 7 }}>
+      <Icon name="shield" size={15} />Notificar
+    </button>
+    {aberto && (
+      <div onClick={() => setAberto(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.3rem", width: 480, maxWidth: "96vw" }}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Notificar incidente de segurança</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 14 }}>Cultura justa, sem punição. Vale para quase-erros também — notificar antes do dano é o que salva.</div>
+          {ok ? <div style={{ padding: "1.5rem", textAlign: "center", color: "#34d399", fontWeight: 700 }}>Notificação registrada. Obrigado.</div> : (<>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              {NSP_CLASSES.slice(0, 4).map(c => <button key={c.v} onClick={() => setF(x => ({ ...x, classe: c.v }))} style={{ background: f.classe === c.v ? nspCorClasse(c.v) + "33" : "transparent", color: f.classe === c.v ? nspCorClasse(c.v) : "var(--text-3)", border: `1px solid ${f.classe === c.v ? nspCorClasse(c.v) : "var(--border)"}`, borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{c.l}</button>)}
+            </div>
+            <select value={f.tipo} onChange={e => setF(x => ({ ...x, tipo: e.target.value }))} style={{ ...campo, marginBottom: 10 }}><option value="">Tipo (opcional)</option>{NSP_TIPOS.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</select>
+            <textarea value={f.descricao} onChange={e => setF(x => ({ ...x, descricao: e.target.value }))} rows={3} placeholder="O que aconteceu?" style={{ ...campo, resize: "vertical", marginBottom: 10 }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)" }}><input type="checkbox" checked={f.anonimo} onChange={e => setF(x => ({ ...x, anonimo: e.target.checked }))} /> Anônimo</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setAberto(false)} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+                <button onClick={enviar} disabled={busy || !f.descricao.trim()} style={{ background: busy || !f.descricao.trim() ? "#5b76a0" : "#f43f5e", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: busy || !f.descricao.trim() ? "default" : "pointer" }}>{busy ? "…" : "Notificar"}</button>
+              </div>
+            </div>
+          </>)}
+        </div>
+      </div>
+    )}
+  </>);
+}
+
 function LeitosPage({ currentUser, canEdit }) {
   const [sub, setSub] = useState("dashboard"); // tela da barra lateral interna
   const [leitos, setLeitos] = useState(() => loadLeitos());
@@ -15318,6 +15628,7 @@ export default function App() {
     ...(verModulo("bloco")       ? [{ id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" }]   : []),
     ...(verModulo("leitos")      ? [{ id: "leitos",   icon: "bed", label: "Giro de Leitos", aviso: filaAviso.n ? filaAviso : null }] : []),
     ...(verModulo("scih")        ? [{ id: "scih",     icon: "shield", label: "SCIH" }]                : []),
+    ...(verModulo("nsp")         ? [{ id: "nsp",      icon: "clipboard", label: "Segurança do Paciente" }] : []),
     ...(verModulo("farmacia")    ? [{ id: "farmacia", icon: "pill", label: "Farmácia" }]              : []),
     ...(verModulo("suprimentos") ? [{ id: "suprimentos", icon: "cart", label: "Estoque & Compras" }]  : []),
     ...(verModulo("paciente")    ? [{ id: "paciente", icon: "record", label: "Paciente 360" }]        : []),
@@ -15365,6 +15676,7 @@ export default function App() {
 
       {/* ALERTAS */}
       <AlertBanner db={db} />
+      <NotificacaoRapida currentUser={currentUser} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* SIDEBAR */}
@@ -15412,6 +15724,7 @@ export default function App() {
           {active === "bloco"     && <BlocoPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "nsp"       && <NSPPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "suprimentos" && <SuprimentosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}

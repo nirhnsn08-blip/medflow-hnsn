@@ -4282,7 +4282,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
   -- TI
   ('ti','overview','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
-  ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
+  ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','nsp','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
   ('ti','controlados','escrita'),('ti','suprimentos','escrita'),('ti','print','escrita'),
   ('ti','auditoria','escrita'),('ti','import','escrita'),('ti','supabase','escrita'),('ti','users','escrita')
 on conflict (perfil_chave, modulo) do nothing;
@@ -4308,7 +4308,7 @@ on conflict (chave) do nothing;
 
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('provisorio','overview','escrita'),('provisorio','ambulatorio','escrita'),('provisorio','ps','escrita'),
-  ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),
+  ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),('provisorio','nsp','escrita'),
   ('provisorio','paciente','escrita'),('provisorio','farmacia','escrita'),('provisorio','controlados','escrita'),
   ('provisorio','suprimentos','escrita'),('provisorio','print','escrita'),('provisorio','auditoria','escrita'),
   ('provisorio','import','escrita'),('provisorio','supabase','escrita')

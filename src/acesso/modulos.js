@@ -63,6 +63,8 @@ export const MODULOS = [
   { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Assistencial", clinico: true },
   { chave: "leitos",       label: "Giro de Leitos",     grupo: "Assistencial", clinico: true },
   { chave: "scih",         label: "SCIH",               grupo: "Assistencial", clinico: true },
+  { chave: "nsp",          label: "Segurança do Paciente", grupo: "Assistencial", clinico: true,
+    nota: "Núcleo de Segurança do Paciente (RDC 36/2013). Notificação de incidentes e eventos adversos." },
   { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Assistencial", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
   { chave: "farmacia",     label: "Farmácia",           grupo: "Apoio" },
@@ -212,7 +214,7 @@ export const PERFIS_MODELO = [
     descricao: "Administra o sistema: cria usuários, configura perfis, importa e acessa o banco. Não tem competência clínica.",
     sistema: true,   // não pode ser apagado — é a porta de volta
     grants: p({ overview: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
-                leitos: "escrita", scih: "escrita", paciente: "escrita", farmacia: "escrita",
+                leitos: "escrita", scih: "escrita", nsp: "escrita", paciente: "escrita", farmacia: "escrita",
                 controlados: "escrita", suprimentos: "escrita", print: "escrita",
                 auditoria: "escrita", import: "escrita", supabase: "escrita", users: "escrita" }),
   },
