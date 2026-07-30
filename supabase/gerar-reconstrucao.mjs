@@ -80,6 +80,7 @@ const ORDEM = [
   "migracao-nsp-incidentes.sql",
   "migracao-atendimento-fase2.sql",
   "migracao-atendimento-agenda.sql",
+  "migracao-nsp-rca-plano.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM
