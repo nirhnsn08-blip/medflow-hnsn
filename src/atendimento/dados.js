@@ -20,6 +20,7 @@ import { filtroBuscaPacientes, normalizarProntuario, dadosNaoIdentificado } from
 import { camposDaFicha, DOMINIOS } from "./ficha.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
+import { CAMPOS_DO_EPISODIO } from "./consultas.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -205,6 +206,66 @@ export async function carregarProfissionais(sb) {
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
   return lista.filter(p => p.categoria && p.categoria !== "administrativo");
+}
+
+// ── PESQUISA DE ATENDIMENTOS (aba Consultas) ────────────────
+
+/**
+ * Todo o histórico de episódios de um paciente.
+ *
+ * Traz só `CAMPOS_DO_EPISODIO` — a lista sem dado clínico. É o que permite
+ * a recepção responder "esse paciente já veio?" sem ter acesso ao
+ * prontuário, que é a separação que a COFEN 754/2024, art. 6º, exige.
+ *
+ * Inclui os CANCELADOS de propósito: quem pesquisa precisa ver que houve um
+ * atendimento cancelado, senão "abri e cancelei por engano" fica
+ * indistinguível de "nunca abri". Quem filtra é o consumidor.
+ */
+export async function historicoDoPaciente(sb, prontuario, { limite = 200 } = {}) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const r = await sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}` +
+    `&select=${CAMPOS_DO_EPISODIO.join(",")}&order=chegada_em.desc&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * O que este paciente tem marcado a partir de hoje.
+ *
+ * Responde a pergunta que evita o erro mais comum do balcão: marcar de novo
+ * quem já está marcado. Sem isso, a mesma pessoa acaba com duas consultas da
+ * mesma especialidade no mesmo dia — e ocupa uma vaga que faltaria para
+ * outro.
+ */
+export async function agendamentosFuturos(sb, prontuario, { de } = {}) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const inicio = de || new Date().toISOString().slice(0, 10);
+  const r = await sb(`ag_agendamentos?prontuario=eq.${encodeURIComponent(p)}` +
+    `&data=gte.${inicio}&status=in.(agendado,presente)` +
+    `&select=id,data,hora,especialidade_cod,origem_marcacao,tipo_atendimento_cod,status,protocolo_regulacao` +
+    `&order=data,hora`);
+  return Array.isArray(r) ? r : [];
+}
+
+/** Os atendimentos abertos num período. As bordas vêm de `bordasDoPeriodo`. */
+export async function atendimentosDoPeriodo(sb, { inicio, fim, tipo, status } = {}) {
+  if (!inicio || !fim) return [];
+  const extra = [
+    tipo ? `&tipo_atendimento=eq.${encodeURIComponent(tipo)}` : "",
+    status ? `&status=eq.${encodeURIComponent(status)}` : "",
+  ].join("");
+  const r = await sb(`ps_atendimentos?chegada_em=gte.${inicio}&chegada_em=lt.${fim}${extra}` +
+    `&select=${CAMPOS_DO_EPISODIO.join(",")}&order=chegada_em.desc&limit=500`);
+  return Array.isArray(r) ? r : [];
+}
+
+/** Um atendimento pelo número — sem dado clínico. */
+export async function atendimentoPorNumero(sb, id) {
+  const n = String(id ?? "").replace(/\D/g, "");
+  if (!n) return null;
+  const r = await sb(`ps_atendimentos?id=eq.${n}&select=${CAMPOS_DO_EPISODIO.join(",")}`);
+  return Array.isArray(r) && r.length ? r[0] : null;
 }
 
 // ── CICLO DE VIDA DO ATENDIMENTO ────────────────────────────
