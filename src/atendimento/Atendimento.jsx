@@ -14,11 +14,13 @@
 import { useState } from "react";
 import Recepcao from "./Recepcao.jsx";
 import Agenda from "./Agenda.jsx";
+import Consultas from "./Consultas.jsx";
 import Tabelas from "./Tabelas.jsx";
 
 const ABAS = [
   { chave: "recepcao", label: "Recepção", dica: "Identifica o paciente e abre o atendimento." },
   { chave: "agenda",   label: "Agenda",   dica: "Grade do ambulatório, marcação e o painel do dia." },
+  { chave: "consultas", label: "Consultas", dica: "Pesquisa: histórico do paciente, período e número do atendimento." },
   { chave: "tabelas",  label: "Tabelas",  dica: "Convênios, planos, procedimentos e as listas da ficha." },
 ];
 
@@ -43,6 +45,7 @@ export default function Atendimento({ sb, currentUser, canEdit }) {
       <div style={{ flex: 1, overflow: "hidden" }}>
         {aba === "recepcao" && <Recepcao sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {aba === "agenda"   && <Agenda   sb={sb} currentUser={currentUser} canEdit={canEdit} />}
+        {aba === "consultas" && <Consultas sb={sb} />}
         {aba === "tabelas"  && <Tabelas  sb={sb} currentUser={currentUser} canEdit={canEdit} />}
       </div>
     </div>

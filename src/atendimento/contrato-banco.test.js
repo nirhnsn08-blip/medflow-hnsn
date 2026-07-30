@@ -30,6 +30,7 @@ import {
   vincularPacienteAoAgendamento,
   encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
+  historicoDoPaciente, agendamentosFuturos, atendimentosDoPeriodo, atendimentoPorNumero,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -211,6 +212,76 @@ describe("leituras da recepção", () => {
     const { sb, chamadas } = espiao([]);
     await carregarProfissionais(sb);
     conferirLeitura(chamadas[0]);
+  });
+});
+
+describe("a pesquisa não vira prontuário", () => {
+  // O perfil da recepção não acessa o Paciente 360 de propósito (COFEN
+  // 754/2024, art. 6º). Se uma destas consultas pedir campo clínico, a
+  // separação está furada por dentro — e ninguém percebe, porque a tela
+  // funciona.
+  const CLINICOS = ["cid", "queixa", "alergias", "classificacao", "pa_sist",
+                    "temp", "spo2", "comorbidades", "observacao"];
+
+  it("nenhuma consulta da aba pede campo clínico", async () => {
+    for (const acao of [
+      sb => historicoDoPaciente(sb, "100001"),
+      sb => atendimentosDoPeriodo(sb, { inicio: "2026-07-01T00:00:00Z", fim: "2026-08-01T00:00:00Z" }),
+      sb => atendimentoPorNumero(sb, 72),
+    ]) {
+      const { sb, chamadas } = espiao([]);
+      await acao(sb);
+      conferirLeitura(chamadas[0]);
+      const select = new URLSearchParams(chamadas[0].recurso.split("?")[1]).get("select") || "";
+      for (const c of CLINICOS) {
+        expect(select.split(",").map(x => x.trim()), `${c} vazou em ${chamadas[0].recurso.split("?")[0]}`).not.toContain(c);
+      }
+      expect(select).not.toBe("*");
+    }
+  });
+
+  it("as leituras da pesquisa consultam colunas reais", async () => {
+    for (const acao of [
+      sb => historicoDoPaciente(sb, "100001"),
+      sb => agendamentosFuturos(sb, "100001", { de: "2026-07-30" }),
+      sb => atendimentosDoPeriodo(sb, { inicio: "2026-07-01T00:00:00Z", fim: "2026-08-01T00:00:00Z" }),
+      sb => atendimentoPorNumero(sb, 72),
+    ]) {
+      const { sb, chamadas } = espiao([]);
+      await acao(sb);
+      conferirLeitura(chamadas[0]);
+    }
+  });
+
+  it("os agendamentos futuros só trazem os vivos, a partir da data", async () => {
+    const { sb, chamadas } = espiao([]);
+    await agendamentosFuturos(sb, "100001", { de: "2026-07-30" });
+    expect(chamadas[0].recurso).toContain("data=gte.2026-07-30");
+    expect(chamadas[0].recurso).toContain("status=in.(agendado,presente)");
+  });
+
+  it("o período usa `lt` na borda final, não `lte`", async () => {
+    // Com `lte` num horário fixo, quem chegou 23:59:30 ficava fora da
+    // própria data. Este sistema já teve bug de borda de mês.
+    const { sb, chamadas } = espiao([]);
+    await atendimentosDoPeriodo(sb, { inicio: "2026-07-01T00:00:00Z", fim: "2026-08-01T00:00:00Z" });
+    expect(chamadas[0].recurso).toContain("chegada_em=lt.");
+    expect(chamadas[0].recurso).not.toContain("chegada_em=lte.");
+  });
+
+  it("entrada vazia não consulta nada", async () => {
+    const { sb, chamadas } = espiao([]);
+    expect(await historicoDoPaciente(sb, "")).toEqual([]);
+    expect(await agendamentosFuturos(sb, null)).toEqual([]);
+    expect(await atendimentosDoPeriodo(sb, {})).toEqual([]);
+    expect(await atendimentoPorNumero(sb, "abc")).toBeNull();
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("número de atendimento aceita só dígitos", async () => {
+    const { sb, chamadas } = espiao([]);
+    await atendimentoPorNumero(sb, "#72 ");
+    expect(chamadas[0].recurso).toContain("id=eq.72");
   });
 });
 
