@@ -23,6 +23,7 @@ import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
 import { camposDaProducao } from "./producao.js";
 import { camposDoResponsavel } from "./responsavel.js";
+import { camposDaConta, camposDoItem } from "./faturamento.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -602,6 +603,131 @@ async function patchAgendamento(sb, id, campos, user) {
   });
   if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar a agenda." };
   return { ok: true, agendamento: r[0] };
+}
+
+// ── FATURAMENTO — a conta do atendimento ────────────────────
+
+const CAMPOS_CONTA = [
+  "id", "atendimento_id", "prontuario", "convenio_id", "plano_id", "via",
+  "competencia", "status", "fechada_em", "fechada_por", "observacao", "criado_em",
+].join(",");
+
+const CAMPOS_ITEM = [
+  "id", "conta_id", "tipo", "codigo", "descricao", "quantidade",
+  "valor_unitario", "valor_total", "executante", "executante_cbo",
+  "data_execucao", "cobrar_do_paciente", "observacao", "cancelado", "criado_em",
+].join(",");
+
+/** A conta viva de um atendimento, ou `null`. Cancelada não conta. */
+export async function carregarConta(sb, atendimentoId) {
+  if (!atendimentoId) return null;
+  const r = await sb(`at_contas?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&status=neq.cancelada&select=${CAMPOS_CONTA}&order=criado_em.desc&limit=1`);
+  return Array.isArray(r) && r.length ? r[0] : null;
+}
+
+export async function carregarItensDaConta(sb, contaId) {
+  if (!contaId) return [];
+  const r = await sb(`at_conta_itens?conta_id=eq.${encodeURIComponent(contaId)}` +
+    `&select=${CAMPOS_ITEM}&order=criado_em`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Abre a conta de um atendimento.
+ *
+ * O índice único parcial do banco (`at_contas_atend_unica`) é a última
+ * linha de defesa: duas telas abrindo conta ao mesmo tempo para o mesmo
+ * episódio fariam o atendimento ser transmitido duas vezes, e validação de
+ * tela nenhuma impede isso.
+ */
+export async function abrirConta(sb, dados, user) {
+  const corpo = camposDaConta(dados);
+  if (!corpo.atendimento_id) return { ok: false, motivo: "Conta sem atendimento não é gravada." };
+  const r = await sb("at_contas", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Se este atendimento já tem conta aberta, o banco recusou a segunda — recarregue. Confirme também que a migração `migracao-atendimento-faturamento.sql` foi aplicada." };
+  }
+  return { ok: true, conta: r[0] };
+}
+
+export async function acrescentarItem(sb, dados, user) {
+  const corpo = camposDoItem(dados);
+  if (!corpo.conta_id) return { ok: false, motivo: "Item sem conta não é gravado." };
+  const r = await sb("at_conta_itens", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      ...corpo,
+      cobrar_do_paciente: dados.cobrar_do_paciente === true,
+      usuario: user?.name || null, updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Se o item foi marcado para cobrança do paciente numa conta do SUS, o banco recusou — e recusou certo: atendimento SUS não pode ser cobrado do paciente." };
+  }
+  return { ok: true, item: r[0] };
+}
+
+/** Cancela um item — não apaga. A diferença entre a conta de ontem e a de hoje precisa ter explicação. */
+export async function cancelarItem(sb, id, user) {
+  if (!id) return { ok: false, motivo: "Item inválido." };
+  const r = await sb(`at_conta_itens?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ cancelado: true, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado." };
+  return { ok: true, item: r[0] };
+}
+
+/** Fecha a conta na competência. A validação é de `validarFechamento`. */
+export async function fecharConta(sb, id, { via, competencia }, user) {
+  return patchConta(sb, id, {
+    status: "fechada", via: via || null, competencia: competencia || null,
+    fechada_em: new Date().toISOString(), fechada_por: user?.name || null,
+  }, user);
+}
+
+/**
+ * Reabre uma conta fechada.
+ *
+ * `faturada` não reabre: a partir dela existe remessa transmitida, e mexer
+ * no que já foi enviado faz a conta e o arquivo contarem histórias
+ * diferentes. Correção depois disso é glosa, que é outro fluxo.
+ */
+export async function reabrirConta(sb, id, user) {
+  return patchConta(sb, id, { status: "aberta", fechada_em: null, fechada_por: null }, user);
+}
+
+export async function marcarContaFaturada(sb, id, user) {
+  return patchConta(sb, id, { status: "faturada" }, user);
+}
+
+async function patchConta(sb, id, campos, user) {
+  if (!id) return { ok: false, motivo: "Conta inválida." };
+  const r = await sb(`at_contas?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...campos, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar faturamento." };
+  }
+  return { ok: true, conta: r[0] };
+}
+
+/** As contas de uma competência — a lista de trabalho do faturamento. */
+export async function contasDaCompetencia(sb, competencia, { status, limite = 500 } = {}) {
+  if (!competencia) return [];
+  const extra = status ? `&status=eq.${encodeURIComponent(status)}` : "";
+  const r = await sb(`at_contas?competencia=eq.${encodeURIComponent(competencia)}${extra}` +
+    `&select=${CAMPOS_CONTA}&order=criado_em.desc&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
 }
 
 // ── RESPONSÁVEL DO EPISÓDIO ─────────────────────────────────
