@@ -148,3 +148,78 @@ export function indicadoresSeguranca({ lpp, incidentes } = {}) {
   const errosMedicacao = arr(incidentes).filter(i => i && i.tipo === "medicacao" && temDano(i)).length;
   return { lppAdquiridas, quedas, errosMedicacao };
 }
+
+// ═══════════════════════════════════════════════════════════
+// FASE 2b — Análise de causa raiz (RCA) + Plano de ação
+// ═══════════════════════════════════════════════════════════
+
+// Ishikawa (espinha de peixe) adaptado à saúde — os 6M.
+export const ISHIKAWA_CATEGORIAS = [
+  { v: "metodo",   l: "Método / processo",         sub: "protocolo, rotina, fluxo" },
+  { v: "mao_obra", l: "Mão de obra / pessoas",     sub: "equipe, competência, dimensionamento" },
+  { v: "material", l: "Material / insumo",         sub: "medicamento, dispositivo, rótulo" },
+  { v: "maquina",  l: "Máquina / equipamento",     sub: "bomba, monitor, sistema" },
+  { v: "medicao",  l: "Medição / monitoramento",   sub: "checagem, alarme, indicador" },
+  { v: "meio",     l: "Meio ambiente / estrutura", sub: "iluminação, ruído, layout" },
+];
+
+// Fatores contribuintes (Protocolo de Londres) — o "porquê" sistêmico.
+export const FATORES_CONTRIBUINTES = [
+  { v: "paciente",      l: "Fatores do paciente" },
+  { v: "tarefa",        l: "Tarefa e tecnologia" },
+  { v: "individuo",     l: "Fatores individuais (profissional)" },
+  { v: "equipe",        l: "Fatores de equipe" },
+  { v: "ambiente",      l: "Ambiente de trabalho" },
+  { v: "organizacao",   l: "Organização e gestão" },
+  { v: "institucional", l: "Contexto institucional" },
+];
+
+export const METODOS_RCA = [
+  { v: "5_porques", l: "5 Porquês" },
+  { v: "ishikawa",  l: "Ishikawa (espinha de peixe)" },
+  { v: "ambos",     l: "5 Porquês + Ishikawa" },
+];
+
+export const STATUS_ACAO = [
+  { v: "pendente",     l: "Pendente",     nivel: "amarelo" },
+  { v: "em_andamento", l: "Em andamento", nivel: "laranja" },
+  { v: "concluida",    l: "Concluída",    nivel: "verde" },
+  { v: "cancelada",    l: "Cancelada",    nivel: "cinza" },
+];
+
+/** A ação venceu? Prazo passou e não está concluída nem cancelada. */
+export function acaoAtrasada(acao, hoje = new Date()) {
+  if (!acao || !acao.prazo) return false;
+  const st = acao.status || "pendente";
+  if (st === "concluida" || st === "cancelada") return false;
+  return new Date(acao.prazo + "T23:59:59") < hoje;
+}
+
+/** Panorama do plano de ação: abertas, atrasadas, concluídas, taxa de fechamento. */
+export function resumoAcoes(acoes, hoje = new Date()) {
+  const lista = arr(acoes);
+  const abertas = lista.filter(a => !["concluida", "cancelada"].includes(a.status || "pendente"));
+  const atrasadas = abertas.filter(a => acaoAtrasada(a, hoje));
+  const concluidas = lista.filter(a => a.status === "concluida");
+  return {
+    total: lista.length,
+    abertas: abertas.length,
+    atrasadas: atrasadas.length,
+    concluidas: concluidas.length,
+    taxaFechamento: lista.length ? +((concluidas.length / lista.length) * 100).toFixed(0) : null,
+  };
+}
+
+/** RCA vigente e concluída de um incidente? (respeita a linhagem corrige_id) */
+export function temRcaConcluida(incidenteId, rcas) {
+  const superadas = new Set(arr(rcas).map(r => r.corrige_id).filter(Boolean));
+  return arr(rcas).some(r => r.incidente_id === incidenteId && !superadas.has(r.id) && (r.status || "em_andamento") === "concluida");
+}
+
+/**
+ * Fila de análise: incidentes que EXIGEM RCA e ainda não têm análise concluída
+ * (nem estão encerrados). É a lista de trabalho da aba Análise de causas.
+ */
+export function incidentesAguardandoRca(incidentes, rcas) {
+  return arr(incidentes).filter(i => exigeRCA(i) && (i.status || "nova") !== "concluida" && !temRcaConcluida(i.id, rcas));
+}
