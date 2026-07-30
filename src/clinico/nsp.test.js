@@ -3,6 +3,8 @@ import {
   CLASSES, GRAUS_DANO, TIPOS, STATUS, METAS,
   matrizRisco, exigeRCA, notificacaoCompulsoria, temDano,
   resumoIncidentes, indicadoresSeguranca, rotuloTipo, rotuloClasse,
+  ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
+  acaoAtrasada, resumoAcoes, temRcaConcluida, incidentesAguardandoRca,
 } from "./nsp.js";
 
 describe("catálogo NSP", () => {
@@ -89,5 +91,60 @@ describe("indicadores automáticos (puxados dos módulos)", () => {
     expect(ind.lppAdquiridas).toBe(2);
     expect(ind.quedas).toBe(1);
     expect(ind.errosMedicacao).toBe(1);   // só o com dano
+  });
+});
+
+describe("RCA e plano de ação (Fase 2b)", () => {
+  it("catálogos fixos: Ishikawa 6M, fatores de Londres, métodos e status", () => {
+    expect(ISHIKAWA_CATEGORIAS).toHaveLength(6);
+    expect(ISHIKAWA_CATEGORIAS.map(c => c.v)).toContain("metodo");
+    expect(FATORES_CONTRIBUINTES.map(f => f.v)).toContain("organizacao");
+    expect(METODOS_RCA.map(m => m.v)).toEqual(["5_porques", "ishikawa", "ambos"]);
+    expect(STATUS_ACAO.map(s => s.v)).toContain("concluida");
+  });
+
+  it("acaoAtrasada: prazo vencido e ainda aberta", () => {
+    const hoje = new Date(2026, 6, 29);
+    expect(acaoAtrasada({ prazo: "2026-07-20", status: "pendente" }, hoje)).toBe(true);
+    expect(acaoAtrasada({ prazo: "2026-08-10", status: "pendente" }, hoje)).toBe(false);
+    expect(acaoAtrasada({ prazo: "2026-07-20", status: "concluida" }, hoje)).toBe(false);
+    expect(acaoAtrasada({ status: "pendente" }, hoje)).toBe(false);  // sem prazo
+  });
+
+  it("resumoAcoes conta abertas, atrasadas, concluídas e a taxa de fechamento", () => {
+    const hoje = new Date(2026, 6, 29);
+    const acoes = [
+      { prazo: "2026-07-20", status: "pendente" },      // atrasada
+      { prazo: "2026-08-10", status: "em_andamento" },  // aberta, no prazo
+      { prazo: "2026-07-01", status: "concluida" },     // concluída
+      { prazo: "2026-07-01", status: "cancelada" },     // cancelada
+    ];
+    const r = resumoAcoes(acoes, hoje);
+    expect(r.total).toBe(4);
+    expect(r.abertas).toBe(2);
+    expect(r.atrasadas).toBe(1);
+    expect(r.concluidas).toBe(1);
+    expect(r.taxaFechamento).toBe(25);
+  });
+
+  it("fila de análise: incidentes que exigem RCA e não têm análise concluída", () => {
+    const incidentes = [
+      { id: "i1", classe: "evento_adverso", grau_dano: "moderado", status: "em_analise" },
+      { id: "i2", classe: "near_miss", grau_dano: "nenhum", status: "nova" },
+      { id: "i3", classe: "never_event", grau_dano: "grave", status: "em_tratamento" },
+      { id: "i4", classe: "evento_adverso", grau_dano: "leve", status: "concluida" },
+    ];
+    const rcas = [{ id: "r3", incidente_id: "i3", status: "concluida" }];
+    expect(incidentesAguardandoRca(incidentes, rcas).map(i => i.id)).toEqual(["i1"]);
+    expect(temRcaConcluida("i3", rcas)).toBe(true);
+    expect(temRcaConcluida("i1", rcas)).toBe(false);
+  });
+
+  it("RCA superada pela linhagem (corrige_id) não conta como concluída", () => {
+    const rcas = [
+      { id: "r1", incidente_id: "iX", status: "concluida" },
+      { id: "r2", incidente_id: "iX", status: "em_andamento", corrige_id: "r1" },
+    ];
+    expect(temRcaConcluida("iX", rcas)).toBe(false);
   });
 });

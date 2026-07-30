@@ -33,6 +33,8 @@ import { montarMapaRisco } from "./clinico/mapa-risco.js";
 import { montarChecagemSae } from "./clinico/sae.js";
 import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
+         ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
+         acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
@@ -1755,6 +1757,52 @@ async function atualizarStatusIncidente(inc, novoStatus, texto, user) {
     incidente_id: inc.id, tipo: "status", de_status: inc.status || null, para_status: novoStatus,
     texto: texto || null, usuario: user?.name || null, categoria: user?.categoria || null,
   }) });
+}
+// ── NSP Fase 2b: análise de causa raiz + plano de ação ──
+async function loadRcas() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_rca?select=*&order=criado_em.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadAcoes() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_acoes?select=*&order=criado_em.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function registrarRca(rca, user) {
+  if (!USE_SUPABASE) return null;
+  const res = await sbFetch("nsp_rca", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      incidente_id: rca.incidente_id, metodo: rca.metodo || null,
+      porques: rca.porques || [], ishikawa: rca.ishikawa || {}, fatores: rca.fatores || [], barreiras: rca.barreiras || [],
+      causa_raiz: rca.causa_raiz || null, conclusao: rca.conclusao || null, status: rca.status || "concluida",
+      registrado_por: user?.name || null, categoria: user?.categoria || null,
+      conselho: user?.conselho || null, registro_conselho: user?.registro_conselho || null,
+    }),
+  });
+  return Array.isArray(res) ? res[0] : res;
+}
+async function registrarAcao(acao, user) {
+  if (!USE_SUPABASE) return null;
+  const res = await sbFetch("nsp_acoes", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      incidente_id: acao.incidente_id, rca_id: acao.rca_id || null,
+      o_que: acao.o_que, por_que: acao.por_que || null, responsavel: acao.responsavel || null,
+      prazo: acao.prazo || null, onde: acao.onde || null, como: acao.como || null, quanto: acao.quanto || null,
+      status: acao.status || "pendente",
+      registrado_por: user?.name || null, categoria: user?.categoria || null,
+      conselho: user?.conselho || null, registro_conselho: user?.registro_conselho || null,
+    }),
+  });
+  return Array.isArray(res) ? res[0] : res;
+}
+async function atualizarAcao(acao, patch) {
+  if (!USE_SUPABASE) return;
+  const body = { ...patch, atualizado_em: new Date().toISOString() };
+  if (patch.status === "concluida" && !acao.concluida_em) body.concluida_em = new Date().toISOString();
+  await sbFetch(`nsp_acoes?id=eq.${acao.id}`, { method: "PATCH", body: JSON.stringify(body) });
 }
 async function upsertLeitoRemote(leito, user) {
   if (!USE_SUPABASE) return;
@@ -10378,12 +10426,21 @@ function NSPPage({ currentUser, canEdit }) {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(nspFormVazio());
   const [filtro, setFiltro] = useState({ tipo: "", classe: "", status: "" });
+  const [rcas, setRcas] = useState([]);
+  const [acoes, setAcoes] = useState([]);
+  const [rcaForm, setRcaForm] = useState(null);
+  const [acaoForm, setAcaoForm] = useState(null);
 
-  function recarregar() { loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq); }
+  function recarregar() {
+    loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq);
+    loadRcas().then(setRcas); loadAcoes().then(setAcoes);
+  }
   useEffect(() => { if (USE_SUPABASE) recarregar(); }, []);
 
   const navAtual = NSP_NAV.find(n => n.key === sub) || NSP_NAV[0];
   const resumo = resumoIncidentes(incidentes);
+  const planoResumo = resumoAcoes(acoes);
+  const filaRca = incidentesAguardandoRca(incidentes, rcas);
   const risco = matrizRisco(form.probabilidade, form.gravidade);
   const filtrados = incidentes.filter(i =>
     (!filtro.tipo || i.tipo === filtro.tipo) && (!filtro.classe || i.classe === filtro.classe) && (!filtro.status || (i.status || "nova") === filtro.status));
@@ -10397,6 +10454,27 @@ function NSPPage({ currentUser, canEdit }) {
   async function avancar(inc, novo) {
     if (busy) return; setBusy(true); await atualizarStatusIncidente(inc, novo, null, currentUser); setBusy(false); recarregar();
   }
+  function abrirRca(inc) {
+    setRcaForm({ incidente: inc, incidente_id: inc.id, metodo: "ambos", porques: ["", "", "", "", ""], ishikawa: {}, fatores: [], barreiras: [], causa_raiz: "", conclusao: "" });
+    setSub("causas");
+  }
+  async function salvarRca() {
+    if (busy || !rcaForm || !rcaForm.causa_raiz.trim()) return;
+    setBusy(true);
+    const porques = rcaForm.porques.map(x => (x || "").trim()).filter(Boolean);
+    await registrarRca({ ...rcaForm, porques, status: "concluida" }, currentUser);
+    if ((rcaForm.incidente.status || "nova") !== "em_tratamento")
+      await atualizarStatusIncidente(rcaForm.incidente, "em_tratamento", "Análise de causa raiz concluída", currentUser);
+    setBusy(false); setRcaForm(null); recarregar();
+  }
+  async function salvarAcao() {
+    if (busy || !acaoForm || !acaoForm.o_que.trim()) return;
+    setBusy(true); await registrarAcao(acaoForm, currentUser);
+    setBusy(false); setAcaoForm(null); recarregar();
+  }
+  async function mudarAcao(acao, status) {
+    if (busy) return; setBusy(true); await atualizarAcao(acao, { status }); setBusy(false); recarregar();
+  }
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
@@ -10409,6 +10487,11 @@ function NSPPage({ currentUser, canEdit }) {
       <div style={{ fontSize: 12.5 }}>Em construção — entra na <strong>Fase {fase}</strong>. A estrutura já está aqui na barra lateral.</div>
     </div>
   );
+  const btnPrimario = (on = true) => ({ background: on ? VX.turquesa : "#5b76a0", color: "#04222b", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: on ? "pointer" : "default" });
+  const btnMiniP = { background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}66`, borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer", marginLeft: "auto" };
+  const btnGhost = { background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" };
+  const btnGhostMini = { background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 5, padding: "3px 10px", fontWeight: 700, fontSize: 11.5, cursor: "pointer" };
+  const chipTgl = (on, c) => ({ background: on ? `${c}33` : "transparent", color: on ? c : "var(--text-3)", border: `1px solid ${on ? c : "var(--border)"}`, borderRadius: 999, padding: "3px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" });
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -10451,6 +10534,7 @@ function NSPPage({ currentUser, canEdit }) {
             <Card label="Abertos" valor={resumo.abertas} cor={resumo.abertas ? "#f5b301" : "#34d399"} sub="não concluídos" />
             <Card label="Com dano" valor={resumo.comDano} cor={resumo.comDano ? "#f43f5e" : "#34d399"} />
             <Card label="Near-miss ratio" valor={resumo.nearMissRatio ?? "—"} cor="#818cf8" sub="quase-erros ÷ com dano" />
+            <Card label="Ações atrasadas" valor={planoResumo.atrasadas} cor={planoResumo.atrasadas ? "#f43f5e" : "#34d399"} sub="plano vencido — cobrar" />
             <Card label="LPP adquirida" valor={lppAdq} cor={lppAdq ? "#fb923c" : "#34d399"} sub="automático · POA Fase 1a" />
           </div>
           <div style={card}>
@@ -10547,8 +10631,143 @@ function NSPPage({ currentUser, canEdit }) {
             ))}
         </>)}
 
-        {sub === "causas"       && <Placeholder fase="2b" />}
-        {sub === "plano"        && <Placeholder fase="2b" />}
+        {sub === "causas" && (<>
+          <div style={card}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>Aguardando análise de causa raiz</div>
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8 }}>Evento adverso, never event e dano moderado+ exigem RCA (Guia de Análise de Incidentes — ANVISA).</div>
+            {filaRca.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Nenhum incidente aguardando análise.</div>
+             : filaRca.map(i => (
+              <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
+                <Pill c="#f43f5e" t={rotuloClasse(i.classe)} />
+                <span style={{ fontSize: 12.5, fontWeight: 600 }}>#{i.numero} · {rotuloTipo(i.tipo)}</span>
+                <span style={{ fontSize: 12, color: "var(--text-3)", flex: 1, minWidth: 120 }}>{i.descricao}</span>
+                {canEdit && <button onClick={() => abrirRca(i)} style={btnMiniP}>Analisar</button>}
+              </div>
+            ))}
+          </div>
+
+          {rcaForm && (
+            <div style={{ ...card, borderLeft: "4px solid #f43f5e" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>Análise — #{rcaForm.incidente.numero} · {rotuloTipo(rcaForm.incidente.tipo)}</div>
+              <label style={lbl}>Método</label>
+              <select value={rcaForm.metodo} onChange={e => setRcaForm(r => ({ ...r, metodo: e.target.value }))} style={{ ...inp, maxWidth: 300, marginBottom: 12 }}>
+                {METODOS_RCA.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+              </select>
+
+              {(rcaForm.metodo === "5_porques" || rcaForm.metodo === "ambos") && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={lbl}>5 Porquês</label>
+                  {rcaForm.porques.map((pq, k) => (
+                    <input key={k} value={pq} onChange={e => setRcaForm(r => { const a = [...r.porques]; a[k] = e.target.value; return { ...r, porques: a }; })} placeholder={`Por quê ${k + 1}?`} style={{ ...inp, marginBottom: 6 }} />
+                  ))}
+                </div>
+              )}
+
+              {(rcaForm.metodo === "ishikawa" || rcaForm.metodo === "ambos") && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={lbl}>Ishikawa — causas por categoria (uma por linha)</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(230px,1fr))", gap: 10 }}>
+                    {ISHIKAWA_CATEGORIAS.map(cat => (
+                      <div key={cat.v}>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#818cf8" }}>{cat.l}</div>
+                        <textarea value={(rcaForm.ishikawa[cat.v] || []).join("\n")} onChange={e => setRcaForm(r => ({ ...r, ishikawa: { ...r.ishikawa, [cat.v]: e.target.value.split("\n").map(x => x.trim()).filter(Boolean) } }))} rows={2} placeholder={cat.sub} style={{ ...inp, resize: "vertical" }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <label style={lbl}>Fatores contribuintes (Protocolo de Londres)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                {FATORES_CONTRIBUINTES.map(f => { const on = rcaForm.fatores.includes(f.v); return (
+                  <span key={f.v} onClick={() => setRcaForm(r => ({ ...r, fatores: on ? r.fatores.filter(x => x !== f.v) : [...r.fatores, f.v] }))} style={chipTgl(on, "#38bdf8")}>{f.l}</span>
+                ); })}
+              </div>
+
+              <label style={lbl}>Barreiras que falharam ou faltaram (uma por linha)</label>
+              <textarea value={rcaForm.barreiras.join("\n")} onChange={e => setRcaForm(r => ({ ...r, barreiras: e.target.value.split("\n").map(x => x.trim()).filter(Boolean) }))} rows={2} style={{ ...inp, resize: "vertical", marginBottom: 12 }} />
+              <label style={lbl}>Causa raiz</label>
+              <textarea value={rcaForm.causa_raiz} onChange={e => setRcaForm(r => ({ ...r, causa_raiz: e.target.value }))} rows={2} style={{ ...inp, resize: "vertical", marginBottom: 12 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={salvarRca} disabled={busy || !rcaForm.causa_raiz.trim()} style={btnPrimario(!busy && !!rcaForm.causa_raiz.trim())}>{busy ? "…" : "Concluir análise"}</button>
+                <button onClick={() => setRcaForm(null)} style={btnGhost}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          {rcas.filter(r => r.status === "concluida").slice(0, 10).map(r => { const inc = incidentes.find(i => i.id === r.incidente_id); return (
+            <div key={r.id} style={card}>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>Causa raiz{inc ? ` · #${inc.numero} ${rotuloTipo(inc.tipo)}` : ""}</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 4 }}>{r.causa_raiz}</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>{r.registrado_por || ""} · {dataHora(r.criado_em)}</div>
+              {canEdit && <button onClick={() => { setAcaoForm({ incidente_id: r.incidente_id, rca_id: r.id, o_que: "", por_que: r.causa_raiz || "", responsavel: "", prazo: "", onde: "", como: "", quanto: "" }); setSub("plano"); }} style={{ ...btnGhost, marginTop: 8 }}>+ Plano de ação</button>}
+            </div>
+          ); })}
+        </>)}
+        {sub === "plano" && (<>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 14 }}>
+            <Card label="Ações" valor={planoResumo.total} cor="#22d3ee" />
+            <Card label="Abertas" valor={planoResumo.abertas} cor={planoResumo.abertas ? "#f5b301" : "#34d399"} />
+            <Card label="Atrasadas" valor={planoResumo.atrasadas} cor={planoResumo.atrasadas ? "#f43f5e" : "#34d399"} sub="passaram do prazo" />
+            <Card label="Fechamento" valor={planoResumo.taxaFechamento != null ? planoResumo.taxaFechamento + "%" : "—"} cor="#818cf8" />
+          </div>
+
+          {acaoForm && (
+            <div style={{ ...card, borderLeft: "4px solid #22d3ee" }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>Nova ação (5W2H)</div>
+              <label style={lbl}>O quê (a ação)</label>
+              <input value={acaoForm.o_que} onChange={e => setAcaoForm(a => ({ ...a, o_que: e.target.value }))} style={{ ...inp, marginBottom: 10 }} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <div><label style={lbl}>Quem (responsável)</label><input value={acaoForm.responsavel} onChange={e => setAcaoForm(a => ({ ...a, responsavel: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Quando (prazo)</label><input type="date" value={acaoForm.prazo} onChange={e => setAcaoForm(a => ({ ...a, prazo: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Onde</label><input value={acaoForm.onde} onChange={e => setAcaoForm(a => ({ ...a, onde: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Quanto (custo / recurso)</label><input value={acaoForm.quanto} onChange={e => setAcaoForm(a => ({ ...a, quanto: e.target.value }))} style={inp} /></div>
+              </div>
+              <label style={lbl}>Por quê</label>
+              <input value={acaoForm.por_que} onChange={e => setAcaoForm(a => ({ ...a, por_que: e.target.value }))} style={{ ...inp, marginBottom: 10 }} />
+              <label style={lbl}>Como</label>
+              <textarea value={acaoForm.como} onChange={e => setAcaoForm(a => ({ ...a, como: e.target.value }))} rows={2} style={{ ...inp, resize: "vertical", marginBottom: 12 }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={salvarAcao} disabled={busy || !acaoForm.o_que.trim()} style={btnPrimario(!busy && !!acaoForm.o_que.trim())}>{busy ? "…" : "Adicionar ação"}</button>
+                <button onClick={() => setAcaoForm(null)} style={btnGhost}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>Plano de ação</div>
+              {canEdit && !acaoForm && <button onClick={() => setAcaoForm({ incidente_id: null, o_que: "", por_que: "", responsavel: "", prazo: "", onde: "", como: "", quanto: "" })} style={btnMiniP}>+ Nova ação</button>}
+            </div>
+            {acoes.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-3)" }}>Nenhuma ação registrada. As ações nascem da análise de causa raiz (aba Análise de causas).</div>
+             : acoes.map(a => {
+              const atras = acaoAtrasada(a);
+              const st = STATUS_ACAO.find(s => s.v === (a.status || "pendente"));
+              const cor = atras ? "#f43f5e" : ({ verde: "#34d399", amarelo: "#f5b301", laranja: "#fb923c", cinza: "#8891a5" }[st?.nivel] || "#8891a5");
+              const inc = incidentes.find(i => i.id === a.incidente_id);
+              const aberta = !["concluida", "cancelada"].includes(a.status || "pendente");
+              return (
+                <div key={a.id} style={{ padding: "9px 0", borderTop: "1px solid var(--border)", boxShadow: atras ? "inset 3px 0 0 #f43f5e" : "none" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Pill c={cor} t={atras ? "ATRASADA" : st?.l} />
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>#{a.numero} · {a.o_que}</span>
+                    {inc && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>inc. #{inc.numero}</span>}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 3 }}>
+                    {a.responsavel ? `${a.responsavel} · ` : ""}{a.prazo ? `prazo ${new Date(a.prazo + "T00:00:00").toLocaleDateString("pt-BR")}` : "sem prazo"}
+                  </div>
+                  {canEdit && aberta && (
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      {(a.status || "pendente") === "pendente" && <button onClick={() => mudarAcao(a, "em_andamento")} style={btnGhostMini}>Iniciar</button>}
+                      <button onClick={() => mudarAcao(a, "concluida")} style={{ ...btnGhostMini, color: "#34d399", borderColor: "#34d39966" }}>Concluir</button>
+                      <button onClick={() => mudarAcao(a, "cancelada")} style={{ ...btnGhostMini, color: "var(--text-muted)" }}>Cancelar</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>)}
         {sub === "indicadores"  && <Placeholder fase="2c" />}
         {sub === "metas"        && <Placeholder fase="2c" />}
         {sub === "protocolos"   && <Placeholder fase="2d" />}
