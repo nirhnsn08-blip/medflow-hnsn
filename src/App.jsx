@@ -33,6 +33,7 @@ import { montarMapaRisco } from "./clinico/mapa-risco.js";
 import { montarChecagemSae } from "./clinico/sae.js";
 import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
+         indicadoresSeguranca, farol, metasSeguranca,
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
@@ -1803,6 +1804,41 @@ async function atualizarAcao(acao, patch) {
   const body = { ...patch, atualizado_em: new Date().toISOString() };
   if (patch.status === "concluida" && !acao.concluida_em) body.concluida_em = new Date().toISOString();
   await sbFetch(`nsp_acoes?id=eq.${acao.id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+// ── NSP Fase 2c: metas de segurança (alvos editáveis + medições de auditoria) ──
+async function loadMetaFaixas() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_meta_faixas?select=*&order=ordem").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadMetaMedicoes() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_meta_medicoes?select=*&order=competencia.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+// Alvo editável — só ADM Master (a tela restringe). Upsert por chave, como enf_escala_faixas.
+async function salvarMetaFaixa(faixa, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("nsp_meta_faixas?on_conflict=chave", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({ ...faixa, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+}
+// Medição de auditoria (append-only, autoria congelada).
+async function registrarMetaMedicao(med, user) {
+  if (!USE_SUPABASE) return null;
+  const res = await sbFetch("nsp_meta_medicoes", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      meta: med.meta, competencia: med.competencia,
+      numerador: Number(med.numerador) || 0, denominador: Number(med.denominador) || 0,
+      observacao: med.observacao || null,
+      registrado_por: user?.name || null, categoria: user?.categoria || null,
+      conselho: user?.conselho || null, registro_conselho: user?.registro_conselho || null,
+    }),
+  });
+  return Array.isArray(res) ? res[0] : res;
 }
 async function upsertLeitoRemote(leito, user) {
   if (!USE_SUPABASE) return;
@@ -10393,7 +10429,9 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // NSP — Núcleo de Segurança do Paciente (Fase 2a)
 // Barra lateral própria (padrão dos outros módulos). Nesta fase são
 // funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
-// Consultar incidente; os demais entram nas sub-fases 2b–2d.
+// Consultar incidente (2a); Análise de causas e Plano de ação (2b);
+// Indicadores e Metas de segurança (2c). Protocolos, Capacitações,
+// Comunicação, Relatórios e Assistente AI entram na 2d.
 // ═══════════════════════════════════════════════════════════
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
@@ -10430,16 +10468,25 @@ function NSPPage({ currentUser, canEdit }) {
   const [acoes, setAcoes] = useState([]);
   const [rcaForm, setRcaForm] = useState(null);
   const [acaoForm, setAcaoForm] = useState(null);
+  const [faixasMeta, setFaixasMeta] = useState([]);
+  const [medicoes, setMedicoes] = useState([]);
+  const [metaEdit, setMetaEdit] = useState(null);
+  const [medForm, setMedForm] = useState(null);
 
   function recarregar() {
     loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq);
     loadRcas().then(setRcas); loadAcoes().then(setAcoes);
+    loadMetaFaixas().then(setFaixasMeta); loadMetaMedicoes().then(setMedicoes);
   }
   useEffect(() => { if (USE_SUPABASE) recarregar(); }, []);
 
   const navAtual = NSP_NAV.find(n => n.key === sub) || NSP_NAV[0];
   const resumo = resumoIncidentes(incidentes);
   const planoResumo = resumoAcoes(acoes);
+  const ind = indicadoresSeguranca({ incidentes });
+  const metas = metasSeguranca({ incidentes, lppAdquiridas: lppAdq, medicoes, faixas: faixasMeta });
+  const farolCor = { verde: "#34d399", amarelo: "#f5b301", vermelho: "#f43f5e", cinza: "#8891a5" };
+  const farolTxt = { verde: "No alvo", amarelo: "Alerta", vermelho: "Fora do alvo", cinza: "Sem leitura" };
   const filaRca = incidentesAguardandoRca(incidentes, rcas);
   const risco = matrizRisco(form.probabilidade, form.gravidade);
   const filtrados = incidentes.filter(i =>
@@ -10474,6 +10521,13 @@ function NSPPage({ currentUser, canEdit }) {
   }
   async function mudarAcao(acao, status) {
     if (busy) return; setBusy(true); await atualizarAcao(acao, { status }); setBusy(false); recarregar();
+  }
+  async function salvarFaixaMeta(faixa) {
+    if (busy) return; setBusy(true); await salvarMetaFaixa(faixa, currentUser); setBusy(false); recarregar();
+  }
+  async function salvarMedicao() {
+    if (busy || !medForm || !medForm.meta || !medForm.competencia || !(Number(medForm.denominador) > 0)) return;
+    setBusy(true); await registrarMetaMedicao(medForm, currentUser); setBusy(false); setMedForm(null); recarregar();
   }
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -10768,8 +10822,109 @@ function NSPPage({ currentUser, canEdit }) {
             })}
           </div>
         </>)}
-        {sub === "indicadores"  && <Placeholder fase="2c" />}
-        {sub === "metas"        && <Placeholder fase="2c" />}
+        {sub === "indicadores" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Indicadores puxados automaticamente dos módulos — sem digitação. LPP adquirida vem do marcador POA (Fase 1a); quedas e erro de medicação, dos incidentes; o plano de ação, da Fase 2b.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
+            <Card label="LPP adquirida" valor={lppAdq} cor={lppAdq ? "#fb923c" : "#34d399"} sub="POA · Fase 1a" />
+            <Card label="Quedas" valor={ind.quedas} cor={ind.quedas ? "#f5b301" : "#34d399"} sub={`${ind.quedasComDano} com dano`} />
+            <Card label="Erro de medicação" valor={ind.errosMedicacao} cor={ind.errosMedicacao ? "#f43f5e" : "#34d399"} sub={`${ind.medicacaoTotal} notificações`} />
+            <Card label="Near-miss ratio" valor={resumo.nearMissRatio ?? "—"} cor="#818cf8" sub="quase-erros ÷ com dano" />
+            <Card label="Ações atrasadas" valor={planoResumo.atrasadas} cor={planoResumo.atrasadas ? "#f43f5e" : "#34d399"} sub="plano da 2b — cobrar" />
+            <Card label="Fechamento do plano" valor={planoResumo.taxaFechamento != null ? planoResumo.taxaFechamento + "%" : "—"} cor="#22d3ee" sub="ações concluídas" />
+          </div>
+          <div style={card}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>Incidentes por tipo</div>
+            {Object.keys(resumo.porTipo).length === 0 ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem incidentes.</div> :
+              Object.entries(resumo.porTipo).sort((a, b) => b[1] - a[1]).map(([t, n]) => (
+                <div key={t} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: "1px solid var(--border)" }}>
+                  <span style={{ fontSize: 12.5, flex: 1 }}>{rotuloTipo(t)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-3)" }}>{n}</span>
+                </div>
+              ))}
+          </div>
+        </>)}
+        {sub === "metas" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            As <strong>6 Metas Internacionais de Segurança do Paciente</strong> (OMS/JCI) com farol contra o alvo. As automáticas saem dos módulos; higiene das mãos, comunicação e cirurgia segura vêm da auditoria periódica. Alvos editáveis pelo ADM Master (nascem "em validação").
+          </div>
+          {medForm && (() => {
+            const pv = Number(medForm.denominador) > 0 ? Math.round((Number(medForm.numerador) / Number(medForm.denominador)) * 100) : null;
+            const pfx = faixasMeta.find(f => f.chave === medForm.meta);
+            const pf = farol(pv, { corte_verde: pfx?.corte_verde, corte_amarelo: pfx?.corte_amarelo, sentido: pfx?.sentido || "maior_melhor" });
+            return (
+              <div style={card}>
+                <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>Registrar auditoria — {(metas.find(x => x.meta === medForm.meta) || {}).label}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10 }}>
+                  <div><label style={lbl}>Competência</label><input type="month" value={medForm.competencia ? medForm.competencia.slice(0, 7) : ""} onChange={e => setMedForm(p => ({ ...p, competencia: e.target.value ? e.target.value + "-01" : "" }))} style={inp} /></div>
+                  <div><label style={lbl}>Com adesão (numerador)</label><input type="number" min="0" value={medForm.numerador} onChange={e => setMedForm(p => ({ ...p, numerador: e.target.value }))} style={inp} /></div>
+                  <div><label style={lbl}>Observados (denominador)</label><input type="number" min="0" value={medForm.denominador} onChange={e => setMedForm(p => ({ ...p, denominador: e.target.value }))} style={inp} /></div>
+                  <div style={{ alignSelf: "end", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18, fontWeight: 800, color: farolCor[pf] }}>{pv == null ? "—" : pv + "%"}</span>
+                    <Pill c={farolCor[pf]} t={farolTxt[pf]} />
+                  </div>
+                </div>
+                <div style={{ marginTop: 8 }}><label style={lbl}>Observação</label><input value={medForm.observacao || ""} onChange={e => setMedForm(p => ({ ...p, observacao: e.target.value }))} style={inp} placeholder="opcional" /></div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button onClick={salvarMedicao} disabled={busy || !medForm.competencia || !(Number(medForm.denominador) > 0)} style={btnPrimario(!busy && !!medForm.competencia && Number(medForm.denominador) > 0)}>Salvar medição</button>
+                  <button onClick={() => setMedForm(null)} style={btnGhost}>Cancelar</button>
+                </div>
+              </div>
+            );
+          })()}
+          <div style={{ display: "grid", gap: 10 }}>
+            {metas.map((m, i) => {
+              const fx = faixasMeta.find(f => f.chave === m.meta);
+              const editando = metaEdit && metaEdit.chave === m.meta;
+              return (
+                <div key={m.meta} style={card}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ width: 20, height: 20, borderRadius: 999, background: farolCor[m.farol], flexShrink: 0, boxShadow: `0 0 0 3px ${farolCor[m.farol]}22` }} />
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{i + 1}. {m.label}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                        {m.fonte === "auto" ? "Automática — dos módulos" : "Auditoria periódica"}{m.competencia ? ` · ${m.competencia.slice(0, 7)}` : ""}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right", minWidth: 60 }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: farolCor[m.farol] }}>{m.valor == null ? "—" : m.valor}{m.valor != null && m.unidade === "%" ? "%" : ""}</div>
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{m.unidade === "%" ? "adesão" : m.unidade}</div>
+                    </div>
+                    <Pill c={farolCor[m.farol]} t={farolTxt[m.farol]} />
+                    {!m.validado && <Pill c="#f5b301" t="em validação" />}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                      Alvo: {m.sentido === "maior_melhor" ? "≥" : "≤"} {m.alvo?.corte_verde ?? "—"} verde · {m.sentido === "maior_melhor" ? "≥" : "≤"} {m.alvo?.corte_amarelo ?? "—"} amarelo
+                    </span>
+                    {m.fonte === "auditoria" && canEdit && <button onClick={() => setMedForm({ meta: m.meta, competencia: "", numerador: "", denominador: "", observacao: "" })} style={{ ...btnGhostMini, marginLeft: "auto" }}>+ Registrar auditoria</button>}
+                    {currentUser?.role === "adm_master" && !editando && <button onClick={() => setMetaEdit(fx ? { ...fx } : { chave: m.meta, rotulo: m.label, sentido: m.sentido, fonte: m.fonte, unidade: m.unidade, corte_verde: m.alvo?.corte_verde ?? null, corte_amarelo: m.alvo?.corte_amarelo ?? null, ativo: true, validado: false })} style={{ ...btnGhostMini, marginLeft: m.fonte === "auditoria" && canEdit ? 0 : "auto" }}>Editar alvo</button>}
+                  </div>
+                  {editando && (
+                    <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, alignItems: "end" }}>
+                      <div><label style={lbl}>Corte verde</label><input type="number" value={metaEdit.corte_verde ?? ""} onChange={e => setMetaEdit(p => ({ ...p, corte_verde: e.target.value === "" ? null : Number(e.target.value) }))} style={inp} /></div>
+                      <div><label style={lbl}>Corte amarelo</label><input type="number" value={metaEdit.corte_amarelo ?? ""} onChange={e => setMetaEdit(p => ({ ...p, corte_amarelo: e.target.value === "" ? null : Number(e.target.value) }))} style={inp} /></div>
+                      <div><label style={lbl}>Sentido</label>
+                        <select value={metaEdit.sentido || "menor_melhor"} onChange={e => setMetaEdit(p => ({ ...p, sentido: e.target.value }))} style={inp}>
+                          <option value="menor_melhor">Menor é melhor</option>
+                          <option value="maior_melhor">Maior é melhor</option>
+                        </select>
+                      </div>
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", whiteSpace: "nowrap" }}>
+                        <input type="checkbox" checked={!!metaEdit.validado} onChange={e => setMetaEdit(p => ({ ...p, validado: e.target.checked }))} /> Validado
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={async () => { await salvarFaixaMeta(metaEdit); setMetaEdit(null); }} disabled={busy} style={btnPrimario(!busy)}>Salvar</button>
+                        <button onClick={() => setMetaEdit(null)} style={btnGhost}>Cancelar</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>)}
         {sub === "protocolos"   && <Placeholder fase="2d" />}
         {sub === "capacitacoes" && <Placeholder fase="2d" />}
         {sub === "comunicacao"  && <Placeholder fase="2d" />}
