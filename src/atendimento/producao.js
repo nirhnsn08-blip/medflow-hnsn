@@ -157,6 +157,110 @@ export function conciliarProducao({
   };
 }
 
+// ── O MÊS ───────────────────────────────────────────────────
+
+/**
+ * Os dias civis de um mês: ["2026-07-01", …].
+ *
+ * `new Date(ano, mes + 1, 0)` é construtor LOCAL (ao contrário de
+ * `new Date("2026-07-01")`, que é UTC) e o dia 0 do mês seguinte é o último
+ * do mês pedido — inclusive em fevereiro bissexto.
+ */
+export function diasDoMes(ano, mes) {
+  const a = Number(ano), m = Number(mes);
+  // A faixa do ano não é preciosismo: `Number(null)` é 0, e 0 passa em
+  // `Number.isInteger`. Sem ela, um ano ausente devolveria "0-07-01" — uma
+  // lista com cara de válida, que só falharia lá na frente, sem erro.
+  if (!Number.isInteger(a) || a < 1900 || a > 2200) return [];
+  if (!Number.isInteger(m) || m < 0 || m > 11) return [];
+  const ultimo = new Date(a, m + 1, 0).getDate();
+  const mm = String(m + 1).padStart(2, "0");
+  return Array.from({ length: ultimo }, (_, i) => `${a}-${mm}-${String(i + 1).padStart(2, "0")}`);
+}
+
+/**
+ * A produção do mês, por especialidade.
+ *
+ * ⚠️ O ABSENTEÍSMO DO MÊS É CALCULADO DOS TOTAIS DO MÊS, e nunca pela média
+ * dos percentuais diários. Um dia com 1 marcado e 1 falta é 100%; a média
+ * aritmética com um dia de 100 marcados e 5 faltas daria 52,5%, quando o
+ * absenteísmo real é 5,9%. É o erro que faz o indicador do mês ser puxado
+ * por um sábado com três pacientes.
+ *
+ * A base é a AGENDA, não a tabela agregada: a agregada é o espelho, e
+ * relatório que lê o espelho herda o erro de digitação que a conciliação
+ * existe para achar.
+ */
+export function producaoDoMes({
+  grades = [], agendamentos = [], bloqueios = [], ano, mes, catalogoEspecialidades = [],
+} = {}) {
+  const dias = diasDoMes(ano, mes);
+  const nomeDe = cod => (catalogoEspecialidades || []).find(e => e.codigo === cod)?.nome || null;
+  const noMes = agendamentos.filter(a => dias.includes(String(a.data ?? "").slice(0, 10)));
+
+  const codigos = [...new Set([
+    ...dias.flatMap(d => especialidadesDoDia({ grades, agendamentos: noMes, data: d })),
+  ])].sort();
+
+  const porEspecialidade = codigos.map(cod => {
+    const meus = noMes.filter(a => a.especialidade_cod === cod);
+    const soma = { ofertadas: 0, realizadas: 0, primeiras: 0, retornos: 0, faltas: 0, cancelados: 0, livres: 0, porChegada: 0 };
+    const diasComGrade = [];
+
+    for (const d of dias) {
+      const p = producaoDaEspecialidade({ grades, agendamentos: meus, bloqueios, data: d, especialidadeCod: cod });
+      for (const k of Object.keys(soma)) soma[k] += num(p[k]);
+      if (p.ofertadas > 0) diasComGrade.push(d);
+    }
+
+    // Marcados = quem tinha hora e podia comparecer. Ordem de chegada não
+    // pode faltar a nada, então fica fora do denominador do absenteísmo.
+    const marcados = meus.filter(a => a.origem_marcacao !== "chegada"
+                                   && ["agendado", "presente", "falta"].includes(a.status)).length;
+
+    const porOrigem = {};
+    for (const o of ["regulacao", "interna", "chegada"]) {
+      const daOrigem = meus.filter(a => a.origem_marcacao === o);
+      porOrigem[o] = {
+        marcados: daOrigem.filter(a => a.status !== "cancelado").length,
+        realizadas: daOrigem.filter(a => a.status === "presente").length,
+        faltas: daOrigem.filter(a => a.status === "falta").length,
+      };
+    }
+
+    const id = idDaEspecialidade(cod, nomeDe(cod));
+    return {
+      especialidadeCod: cod,
+      id,
+      label: ESPECIALIDADE_POR_ID[id]?.label || nomeDe(cod) || cod,
+      meta: ESPECIALIDADE_POR_ID[id]?.metaM ?? null,
+      ...soma,
+      marcados,
+      porOrigem,
+      diasComGrade: diasComGrade.length,
+      // Divisão por zero viraria NaN, e NaN em indicador aparece como campo
+      // vazio — o gestor lê "zero falta", que é o oposto.
+      absenteismo: marcados > 0 ? Math.round((soma.faltas / marcados) * 100) : null,
+      ocupacao: soma.ofertadas > 0 ? Math.round((soma.realizadas / soma.ofertadas) * 100) : null,
+      // `null` e não 0 quando a especialidade não é do painel: ela não tem
+      // meta pactuada, e 0% seria lido como "não entregou nada".
+      pctMeta: ESPECIALIDADE_POR_ID[id]?.metaM
+        ? Math.round((soma.realizadas / ESPECIALIDADE_POR_ID[id].metaM) * 100) : null,
+    };
+  });
+
+  const total = porEspecialidade.reduce((acc, e) => {
+    for (const k of ["ofertadas", "realizadas", "primeiras", "retornos", "faltas", "cancelados", "livres", "marcados"]) {
+      acc[k] = (acc[k] || 0) + num(e[k]);
+    }
+    return acc;
+  }, {});
+  total.absenteismo = total.marcados > 0 ? Math.round((total.faltas / total.marcados) * 100) : null;
+  total.ocupacao = total.ofertadas > 0 ? Math.round((total.realizadas / total.ofertadas) * 100) : null;
+
+  return { ano: Number(ano), mes: Number(mes), dias, porEspecialidade, total };
+}
+
 /**
  * O corpo a gravar em `atendimentos`.
  *

@@ -31,7 +31,7 @@ import {
   encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
   historicoDoPaciente, agendamentosFuturos, atendimentosDoPeriodo, atendimentoPorNumero,
-  carregarProducaoGravada, gravarProducao,
+  carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -226,6 +226,13 @@ describe("leituras da recepção", () => {
     await carregarCatalogos(sb);
     expect(chamadas).toHaveLength(4);
     for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("os agendamentos do mês consultam colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarAgendamentosDoPeriodo(sb, { de: "2026-07-01", ate: "2026-07-31" });
+    expect(chamadas).toHaveLength(1);
+    conferirLeitura(chamadas[0]);
   });
 
   it("a produção gravada do dia consulta colunas reais", async () => {

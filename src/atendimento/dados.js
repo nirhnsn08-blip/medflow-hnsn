@@ -465,6 +465,21 @@ export async function carregarAgendaDoDia(sb, data) {
 }
 
 /**
+ * Os agendamentos de um período — a base do relatório do mês.
+ *
+ * `data` é coluna DATE (dia civil, sem hora), então `lte` no último dia
+ * está certo aqui. A regra do "lt no dia seguinte" vale para as colunas de
+ * TIMESTAMP, como `chegada_em`, onde quem chegou 23:59:30 ficaria de fora
+ * da própria data.
+ */
+export async function carregarAgendamentosDoPeriodo(sb, { de, ate, limite = 3000 } = {}) {
+  if (!de || !ate) return [];
+  const r = await sb(`ag_agendamentos?data=gte.${encodeURIComponent(de)}&data=lte.${encodeURIComponent(ate)}` +
+    `&select=${CAMPOS_AGENDAMENTO}&order=data,hora&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
  * Marca uma vaga.
  *
  * A conferência da REGRA (vaga da regulação, cota esgotada, horário tomado)

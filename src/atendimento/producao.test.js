@@ -21,6 +21,7 @@ import { describe, it, expect } from "vitest";
 import {
   CAMPOS_PRODUCAO, CAMPOS_APURAVEIS, especialidadesDoDia,
   producaoDaEspecialidade, conciliarProducao, camposDaProducao, validarGravacao,
+  diasDoMes, producaoDoMes,
 } from "./producao.js";
 import { idDaEspecialidade, ESPECIALIDADES } from "../ambulatorio/especialidades.js";
 
@@ -225,6 +226,117 @@ describe("validarGravacao", () => {
 
   it("aceita o divergente", () => {
     expect(validarGravacao({ especialidadeCod: "ORTOPEDIA", id: "ortopedia", divergente: true }).ok).toBe(true);
+  });
+});
+
+describe("o mês", () => {
+  it("julho tem 31 dias e fevereiro bissexto tem 29 — sem escorregar de fuso", () => {
+    expect(diasDoMes(2026, 6)).toHaveLength(31);
+    expect(diasDoMes(2026, 6)[0]).toBe("2026-07-01");
+    expect(diasDoMes(2026, 6).at(-1)).toBe("2026-07-31");
+    expect(diasDoMes(2024, 1)).toHaveLength(29);
+    expect(diasDoMes(2026, 1)).toHaveLength(28);
+  });
+
+  it("mês inválido não vira lista torta", () => {
+    expect(diasDoMes(2026, 12)).toEqual([]);
+    expect(diasDoMes(2026, -1)).toEqual([]);
+    expect(diasDoMes(null, 6)).toEqual([]);
+  });
+
+  it("soma as quartas do mês inteiro", () => {
+    // julho/2026 tem 5 quartas: 1, 8, 15, 22 e 29.
+    const m = producaoDoMes({ grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
+    expect(m.porEspecialidade[0].ofertadas).toBe(12 * 5);
+    expect(m.porEspecialidade[0].diasComGrade).toBe(5);
+  });
+
+  it("ABSENTEÍSMO DO MÊS vem dos totais, não da média dos dias", () => {
+    // Dia A: 1 marcado, 1 falta (100%). Dia B: 10 marcados, 1 falta (10%).
+    // A média dos percentuais daria 55%; o real é 2/11 = 18%.
+    const agendamentos = [
+      ag({ id: 1, data: "2026-07-01", status: "falta" }),
+      ...Array.from({ length: 9 }, (_, i) => ag({ id: 10 + i, data: "2026-07-08", status: "presente", hora: `09:${String(i * 2).padStart(2, "0")}` })),
+      ag({ id: 30, data: "2026-07-08", status: "falta", hora: "10:00" }),
+    ];
+    const m = producaoDoMes({ grades: [grade()], agendamentos, ano: 2026, mes: 6 });
+    const e = m.porEspecialidade[0];
+    expect(e.marcados).toBe(11);
+    expect(e.faltas).toBe(2);
+    expect(e.absenteismo).toBe(18);
+    expect(e.absenteismo).not.toBe(55);
+  });
+
+  it("ordem de chegada não entra no denominador do absenteísmo", () => {
+    const m = producaoDoMes({
+      grades: [grade()],
+      agendamentos: [
+        ag({ id: 1, data: "2026-07-01", status: "presente", origem_marcacao: "chegada", hora: null }),
+        ag({ id: 2, data: "2026-07-01", status: "falta" }),
+      ],
+      ano: 2026, mes: 6,
+    });
+    // 1 marcado (o da falta); quem chega por ordem de chegada não podia
+    // faltar a nada.
+    expect(m.porEspecialidade[0].marcados).toBe(1);
+    expect(m.porEspecialidade[0].absenteismo).toBe(100);
+  });
+
+  it("sem ninguém marcado o absenteísmo é null, e não 0%", () => {
+    const m = producaoDoMes({ grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
+    expect(m.porEspecialidade[0].absenteismo).toBeNull();
+    expect(m.total.absenteismo).toBeNull();
+  });
+
+  it("separa a produção por dono da vaga", () => {
+    const m = producaoDoMes({
+      grades: [grade()],
+      agendamentos: [
+        ag({ id: 1, data: "2026-07-01", status: "presente", origem_marcacao: "regulacao" }),
+        ag({ id: 2, data: "2026-07-01", status: "falta", origem_marcacao: "regulacao", hora: "08:20" }),
+        ag({ id: 3, data: "2026-07-01", status: "presente", origem_marcacao: "interna", hora: "08:40" }),
+      ],
+      ano: 2026, mes: 6,
+    });
+    const o = m.porEspecialidade[0].porOrigem;
+    expect(o.regulacao).toMatchObject({ marcados: 2, realizadas: 1, faltas: 1 });
+    expect(o.interna).toMatchObject({ marcados: 1, realizadas: 1, faltas: 0 });
+    expect(o.chegada.marcados).toBe(0);
+  });
+
+  it("compara com a meta da especialidade — e não inventa meta para quem não tem", () => {
+    const comMeta = producaoDoMes({ grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
+    expect(comMeta.porEspecialidade[0].meta).toBe(387);       // ortopedia
+    expect(comMeta.porEspecialidade[0].pctMeta).toBe(0);
+
+    const semMeta = producaoDoMes({
+      grades: [grade({ especialidade_cod: "CARDIOLOGIA" })], agendamentos: [], ano: 2026, mes: 6,
+    });
+    expect(semMeta.porEspecialidade[0].meta).toBeNull();
+    expect(semMeta.porEspecialidade[0].pctMeta).toBeNull();
+  });
+
+  it("agendamento de outro mês não entra", () => {
+    const m = producaoDoMes({
+      grades: [grade()],
+      agendamentos: [ag({ id: 1, data: "2026-06-03", status: "presente" })],
+      ano: 2026, mes: 6,
+    });
+    expect(m.porEspecialidade[0].realizadas).toBe(0);
+  });
+
+  it("o total soma as especialidades", () => {
+    const m = producaoDoMes({
+      grades: [grade(), grade({ id: 2, especialidade_cod: "OFTALMOLOGIA", vagas_internas: 1, vagas_regulacao: 0, vagas_chegada: 0 })],
+      agendamentos: [
+        ag({ id: 1, data: "2026-07-01", status: "presente" }),
+        ag({ id: 2, data: "2026-07-01", status: "presente", especialidade_cod: "OFTALMOLOGIA" }),
+      ],
+      ano: 2026, mes: 6,
+    });
+    expect(m.porEspecialidade).toHaveLength(2);
+    expect(m.total.realizadas).toBe(2);
+    expect(m.total.ofertadas).toBe(12 * 5 + 1 * 5);
   });
 });
 

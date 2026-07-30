@@ -37,6 +37,7 @@ import {
   carregarProducaoGravada, gravarProducao,
 } from "./dados.js";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
+import RelatorioAmbulatorio from "./RelatorioAmbulatorio.jsx";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -265,7 +266,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
         {[["dia", "Dia"], ["grade", "Grade e bloqueios"],
-          ["producao", conciliacao.divergentes ? `Produção (${conciliacao.divergentes})` : "Produção"]].map(([k, l]) => (
+          ["producao", conciliacao.divergentes ? `Produção (${conciliacao.divergentes})` : "Produção"],
+          ["relatorio", "Relatório do mês"]].map(([k, l]) => (
           <button key={k} onClick={() => { setVista(k); setMsg(null); }}
             style={{ ...btn(vista === k ? "#22d3ee" : "var(--surface-2)", vista === k),
                      color: vista === k ? "#000" : "var(--text)" }}>{l}</button>
@@ -823,6 +825,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             </div>
           )}
         </>
+      )}
+
+      {/* ══════════ RELATÓRIO DO MÊS ══════════ */}
+      {vista === "relatorio" && (
+        <RelatorioAmbulatorio sb={sb} grades={grades}
+          catalogoEspecialidades={catalogos.especialidade || []} />
       )}
     </div>
   );
