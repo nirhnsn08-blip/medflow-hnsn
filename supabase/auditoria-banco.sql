@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 80 tabelas, 1273 colunas.
+-- Cobertura atual: 82 tabelas, 1298 colunas.
 -- ============================================================
 
 with
@@ -53,6 +53,8 @@ tabelas(nome, origem) as (values
   ('nsp_acoes','nsp-rca-plano'),
   ('nsp_incidente_eventos','nsp-incidentes'),
   ('nsp_incidentes','nsp-incidentes'),
+  ('nsp_meta_faixas','nsp-metas'),
+  ('nsp_meta_medicoes','nsp-metas'),
   ('nsp_rca','nsp-rca-plano'),
   ('pacientes','schema'),
   ('pep_acessos','pep-acessos'),
@@ -593,6 +595,31 @@ colunas(tabela, coluna, origem) as (values
   ('nsp_incidentes','risco_score','nsp-incidentes'),
   ('nsp_incidentes','status','nsp-incidentes'),
   ('nsp_incidentes','tipo','nsp-incidentes'),
+  ('nsp_meta_faixas','ativo','nsp-metas'),
+  ('nsp_meta_faixas','chave','nsp-metas'),
+  ('nsp_meta_faixas','corte_amarelo','nsp-metas'),
+  ('nsp_meta_faixas','corte_verde','nsp-metas'),
+  ('nsp_meta_faixas','fonte','nsp-metas'),
+  ('nsp_meta_faixas','ordem','nsp-metas'),
+  ('nsp_meta_faixas','rotulo','nsp-metas'),
+  ('nsp_meta_faixas','sentido','nsp-metas'),
+  ('nsp_meta_faixas','unidade','nsp-metas'),
+  ('nsp_meta_faixas','updated_at','nsp-metas'),
+  ('nsp_meta_faixas','usuario','nsp-metas'),
+  ('nsp_meta_faixas','validado','nsp-metas'),
+  ('nsp_meta_medicoes','categoria','nsp-metas'),
+  ('nsp_meta_medicoes','competencia','nsp-metas'),
+  ('nsp_meta_medicoes','conselho','nsp-metas'),
+  ('nsp_meta_medicoes','corrige_id','nsp-metas'),
+  ('nsp_meta_medicoes','criado_em','nsp-metas'),
+  ('nsp_meta_medicoes','denominador','nsp-metas'),
+  ('nsp_meta_medicoes','id','nsp-metas'),
+  ('nsp_meta_medicoes','meta','nsp-metas'),
+  ('nsp_meta_medicoes','motivo_correcao','nsp-metas'),
+  ('nsp_meta_medicoes','numerador','nsp-metas'),
+  ('nsp_meta_medicoes','observacao','nsp-metas'),
+  ('nsp_meta_medicoes','registrado_por','nsp-metas'),
+  ('nsp_meta_medicoes','registro_conselho','nsp-metas'),
   ('nsp_rca','barreiras','nsp-rca-plano'),
   ('nsp_rca','categoria','nsp-rca-plano'),
   ('nsp_rca','causa_raiz','nsp-rca-plano'),

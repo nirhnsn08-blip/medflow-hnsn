@@ -140,13 +140,25 @@ export function resumoIncidentes(incidentes, { pacientesDia } = {}) {
 /**
  * Indicadores de segurança puxados dos módulos que já existem (diferencial:
  * não dependem de digitação). LPP adquirida vem do marcador POA da Fase 1a;
- * quedas, dos incidentes tipo=queda. Cresce na Fase 2c.
+ * quedas e erro de medicação, dos incidentes. `pacientesDia` (opcional) abre as
+ * taxas por 1000 pacientes-dia. Alimenta a tela Indicadores (Fase 2c).
  */
-export function indicadoresSeguranca({ lpp, incidentes } = {}) {
+export function indicadoresSeguranca({ lpp, incidentes, pacientesDia } = {}) {
+  const incs = arr(incidentes).filter(Boolean);
+  const quedasLista = incs.filter(i => i.tipo === "queda");
+  const medicacaoLista = incs.filter(i => i.tipo === "medicacao");
   const lppAdquiridas = arr(lpp).filter(l => l && l.presente_admissao === false).length;
-  const quedas = arr(incidentes).filter(i => i && i.tipo === "queda").length;
-  const errosMedicacao = arr(incidentes).filter(i => i && i.tipo === "medicacao" && temDano(i)).length;
-  return { lppAdquiridas, quedas, errosMedicacao };
+  const quedas = quedasLista.length;
+  const quedasComDano = quedasLista.filter(temDano).length;
+  const errosMedicacao = medicacaoLista.filter(temDano).length;
+  const porMil = n => (pacientesDia ? +((n / pacientesDia) * 1000).toFixed(2) : null);
+  return {
+    lppAdquiridas, quedas, quedasComDano,
+    errosMedicacao, medicacaoTotal: medicacaoLista.length,
+    densidadeIncidentes: porMil(incs.length),
+    quedasPorMil: porMil(quedas),
+    lppPorMil: porMil(lppAdquiridas),
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -222,4 +234,161 @@ export function temRcaConcluida(incidenteId, rcas) {
  */
 export function incidentesAguardandoRca(incidentes, rcas) {
   return arr(incidentes).filter(i => exigeRCA(i) && (i.status || "nova") !== "concluida" && !temRcaConcluida(i.id, rcas));
+}
+
+// ═══════════════════════════════════════════════════════════
+// FASE 2c — Indicadores automáticos + 6 Metas Internacionais
+//
+// As 6 Metas Internacionais de Segurança do Paciente (OMS/JCI) ganham um FAROL
+// (verde/amarelo/vermelho) contra alvos EDITÁVEIS pelo ADM Master
+// (nsp_meta_faixas, "em validação"). Metas que saem dos módulos são automáticas
+// (identificação, medicamentos, quedas+LPP); as que dependem de observação
+// (higiene das mãos, comunicação, cirurgia segura) vêm da auditoria periódica
+// (nsp_meta_medicoes: numerador/denominador → %). Tudo puro/testável.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Farol de um indicador contra os cortes configurados.
+ *  • sentido 'menor_melhor' (quedas, erros, densidade): verde ≤ corte_verde,
+ *    amarelo ≤ corte_amarelo, senão vermelho.
+ *  • sentido 'maior_melhor' (adesão de higiene, comunicação): verde ≥ corte_verde,
+ *    amarelo ≥ corte_amarelo, senão vermelho.
+ * Sem valor ou sem cortes → 'cinza' (sem leitura). Determinístico.
+ */
+export function farol(valor, { corte_verde, corte_amarelo, sentido = "menor_melhor" } = {}) {
+  const v  = valor === null || valor === undefined || valor === "" ? null : Number(valor);
+  const cv = corte_verde   === null || corte_verde   === undefined || corte_verde   === "" ? null : Number(corte_verde);
+  const ca = corte_amarelo === null || corte_amarelo === undefined || corte_amarelo === "" ? null : Number(corte_amarelo);
+  if (v === null || Number.isNaN(v) || cv === null || Number.isNaN(cv) || ca === null || Number.isNaN(ca)) return "cinza";
+  if (sentido === "maior_melhor") {
+    if (v >= cv) return "verde";
+    if (v >= ca) return "amarelo";
+    return "vermelho";
+  }
+  if (v <= cv) return "verde";
+  if (v <= ca) return "amarelo";
+  return "vermelho";
+}
+
+// A medição de auditoria mais recente de uma meta (por competência, depois data).
+function ultimaMedicao(medicoes, meta) {
+  return arr(medicoes)
+    .filter(x => x && x.meta === meta && !arr(medicoes).some(o => o && o.corrige_id === x.id))
+    .sort((a, b) =>
+      String(b.competencia || "").localeCompare(String(a.competencia || "")) ||
+      String(b.criado_em || "").localeCompare(String(a.criado_em || "")))[0] || null;
+}
+const pctMedicao = med => (med && Number(med.denominador) > 0
+  ? +((Number(med.numerador) / Number(med.denominador)) * 100).toFixed(0) : null);
+
+/**
+ * As 6 Metas com valor + farol. Combina os indicadores automáticos (dos módulos)
+ * com a última medição de auditoria (para higiene/comunicação/cirurgia). `faixas`
+ * são os alvos editáveis (nsp_meta_faixas). Retorna uma linha por meta, na ordem
+ * de METAS. Puro/testável.
+ */
+export function metasSeguranca({ incidentes, lpp, lppAdquiridas, medicoes, faixas } = {}) {
+  const incs = arr(incidentes).filter(Boolean);
+  const faixaDe = m => arr(faixas).find(f => f && f.chave === m) || null;
+
+  const lppAdq  = lppAdquiridas != null
+    ? Number(lppAdquiridas) || 0
+    : arr(lpp).filter(l => l && l.presente_admissao === false).length;
+  const quedas  = incs.filter(i => i.tipo === "queda").length;
+  const ident   = incs.filter(i => i.tipo === "identificacao" && temDano(i)).length;
+  const medErros = incs.filter(i => i.tipo === "medicacao" && temDano(i)).length;
+
+  // valor automático por meta (as de auditoria ficam null aqui)
+  const autoValor = {
+    identificacao:   ident,
+    medicamentos:    medErros,
+    quedas_lpp:      quedas + lppAdq,
+  };
+
+  return METAS.map(m => {
+    const fx = faixaDe(m.v);
+    const auditoria = (fx?.fonte || (m.v in autoValor ? "auto" : "auditoria")) === "auditoria";
+    const med = auditoria ? ultimaMedicao(medicoes, m.v) : null;
+    const valor = auditoria ? pctMedicao(med) : (autoValor[m.v] ?? null);
+    const sentido = fx?.sentido || (auditoria ? "maior_melhor" : "menor_melhor");
+    return {
+      meta: m.v,
+      label: m.l,
+      fonte: auditoria ? "auditoria" : "auto",
+      valor,
+      unidade: auditoria ? "%" : (fx?.unidade || "casos"),
+      sentido,
+      competencia: med?.competencia || null,
+      alvo: fx ? { corte_verde: fx.corte_verde, corte_amarelo: fx.corte_amarelo } : null,
+      validado: fx ? !!fx.validado : false,
+      farol: farol(valor, { corte_verde: fx?.corte_verde, corte_amarelo: fx?.corte_amarelo, sentido }),
+    };
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// FASE 2d — Relatórios / NOTIVISA
+//
+// Fecha a lógica do RDC 36/2013 (notificar → analisar → tratar → monitorar →
+// REPORTAR): relatório mensal do NSP a partir do que já existe, e a ficha da
+// notificação compulsória no formato do NOTIVISA (ANVISA) — o sistema gera o
+// documento; a submissão ao portal é manual. Puro/testável.
+// ═══════════════════════════════════════════════════════════
+
+const dataRefInc = inc => (inc && (inc.ocorrido_em || inc.detectado_em || inc.criado_em)) || null;
+
+/** Incidentes cuja data de referência cai no mês/ano (mes 0–11, padrão getMonth). */
+export function filtrarPorMes(incidentes, ano, mes) {
+  const a = Number(ano), m = Number(mes);
+  return arr(incidentes).filter(i => {
+    const d = dataRefInc(i);
+    if (!d) return false;
+    const dt = new Date(d);
+    return dt.getFullYear() === a && dt.getMonth() === m;
+  });
+}
+
+/** Incidentes de notificação compulsória à ANVISA/NOTIVISA (never event ou óbito). */
+export function incidentesCompulsorios(incidentes) {
+  return arr(incidentes).filter(notificacaoCompulsoria);
+}
+
+/**
+ * Mapeia um incidente para os campos da ficha de notificação do NOTIVISA
+ * (ANVISA). Não integra com o portal — gera o documento para a submissão manual.
+ */
+export function fichaNotivisa(inc) {
+  if (!inc) return null;
+  const tipo = inc.grau_dano === "obito" ? "Óbito"
+    : inc.classe === "never_event" ? "Never event (evento que nunca deveria ocorrer)"
+    : "Evento adverso";
+  return {
+    tipo_notificacao: tipo,
+    data_ocorrencia: inc.ocorrido_em || inc.detectado_em || inc.criado_em || null,
+    tipo_incidente: rotuloTipo(inc.tipo),
+    classe: rotuloClasse(inc.classe),
+    grau_dano: rotuloGrau(inc.grau_dano),
+    local: inc.local_setor || null,
+    prontuario: inc.prontuario || null,
+    descricao: inc.descricao || null,
+    providencias: inc.acoes_imediatas || null,
+    risco: inc.risco_faixa || null,
+  };
+}
+
+/**
+ * Relatório mensal do NSP: incidentes DO MÊS (resumo, indicadores automáticos e
+ * notificações compulsórias) + a situação ATUAL do plano de ação e das 6 metas.
+ * `mes` é 0–11. Puro — a tela só apresenta e imprime.
+ */
+export function relatorioNsp({ incidentes, acoes, lppAdquiridas, medicoes, faixas, ano, mes, pacientesDia } = {}) {
+  const doMes = filtrarPorMes(incidentes, ano, mes);
+  return {
+    incidentesMes: doMes,
+    resumo: resumoIncidentes(doMes, { pacientesDia }),
+    indicadores: indicadoresSeguranca({ incidentes: doMes, pacientesDia }),
+    compulsorios: incidentesCompulsorios(doMes),
+    plano: resumoAcoes(acoes),
+    metas: metasSeguranca({ incidentes, lppAdquiridas, medicoes, faixas }),
+  };
 }
