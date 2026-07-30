@@ -33,7 +33,7 @@ import { montarMapaRisco } from "./clinico/mapa-risco.js";
 import { montarChecagemSae } from "./clinico/sae.js";
 import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
-         indicadoresSeguranca, farol, metasSeguranca,
+         indicadoresSeguranca, farol, metasSeguranca, relatorioNsp, fichaNotivisa,
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
@@ -10430,8 +10430,8 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // Barra lateral própria (padrão dos outros módulos). Nesta fase são
 // funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
 // Consultar incidente (2a); Análise de causas e Plano de ação (2b);
-// Indicadores e Metas de segurança (2c). Protocolos, Capacitações,
-// Comunicação, Relatórios e Assistente AI entram na 2d.
+// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA (2d).
+// Protocolos, Capacitações, Comunicação e Assistente AI: restante da 2d.
 // ═══════════════════════════════════════════════════════════
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
@@ -10455,6 +10455,159 @@ const nspCorGrau   = g => NSP_COR[(NSP_GRAUS.find(x => x.v === g) || {}).nivel] 
 const nspCorStatus = s => NSP_COR[(NSP_STATUS.find(x => x.v === s) || {}).nivel] || "#8891a5";
 function nspFormVazio() {
   return { classe: "", tipo: "", grau_dano: "", descricao: "", acoes_imediatas: "", local_setor: "", leito: "", prontuario: "", probabilidade: "", gravidade: "", anonimo: false };
+}
+
+// ── NSP Fase 2d: Relatório mensal do NSP + ficha NOTIVISA (imprimível) ──
+function NspRelatorioView({ incidentes, acoes, lppAdq, medicoes, faixas }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [pacDia, setPacDia] = useState("");
+  const [preview, setPreview] = useState(false);
+  const [fichas, setFichas] = useState({});
+
+  const rel = relatorioNsp({ incidentes, acoes, lppAdquiridas: lppAdq, medicoes, faixas, ano, mes, pacientesDia: Number(pacDia) || undefined });
+  const ind = rel.indicadores, resumo = rel.resumo, plano = rel.plano;
+  const farolCor = { verde: "#34d399", amarelo: "#f5b301", vermelho: "#f43f5e", cinza: "#8891a5" };
+  const farolTxt = { verde: "no alvo", amarelo: "alerta", vermelho: "fora do alvo", cinza: "sem leitura" };
+
+  const selInp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
+  const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+  const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
+  const dataFmt = d => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
+  const RateCard = ({ label, valor, unidade, cor, sub }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}<span style={{ fontSize: 11, fontWeight: 600, marginLeft: 3, color: "var(--text-muted)" }}>{unidade}</span></div>
+      {sub && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+  const printStyles = `@media print { body * { visibility: hidden !important; } #nsp-print, #nsp-print * { visibility: visible !important; } #nsp-print { position: fixed; inset: 0; background: #fff !important; color: #111 !important; padding: 18px; } @page { size: A4 portrait; margin: 12mm; } }`;
+
+  return (
+    <div>
+      <style>{printStyles}</style>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+        Relatório mensal do NSP apurado automaticamente dos módulos (RDC 36/2013). Escolha o mês, gere o relatório e imprima/PDF. A seção NOTIVISA lista as notificações compulsórias com a ficha pronta.
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginBottom: "1.25rem" }}>
+        <div><div style={lbl}>Mês</div><select value={mes} onChange={e => setMes(+e.target.value)} style={selInp}>{MONTHS_FULL.map((m, i) => <option key={i} value={i}>{m}</option>)}</select></div>
+        <div><div style={lbl}>Ano</div><input type="number" value={ano} onChange={e => setAno(+e.target.value)} style={{ ...selInp, width: 90 }} /></div>
+        <div><div style={lbl}>Pacientes-dia (opcional)</div><input type="number" min="0" value={pacDia} onChange={e => setPacDia(e.target.value)} placeholder="p/ taxas /1000" style={{ ...selInp, width: 140 }} /></div>
+        <button onClick={() => setPreview(p => !p)} style={{ background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>{preview ? "✕ Fechar relatório" : "Relatório do mês"}</button>
+        {preview && <button onClick={() => window.print()} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 7, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Imprimir / PDF</button>}
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Incidentes de {MONTHS_FULL[mes]}/{ano}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(165px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
+        <RateCard label="Incidentes no mês" valor={resumo.total} unidade="" cor="#22d3ee" sub={`${resumo.comDano} com dano`} />
+        <RateCard label="Never events" valor={resumo.neverEvents} unidade="" cor={resumo.neverEvents ? "#f43f5e" : "#34d399"} />
+        <RateCard label="Compulsórias" valor={rel.compulsorios.length} unidade="" cor={rel.compulsorios.length ? "#fb923c" : "#34d399"} sub="NOTIVISA" />
+        <RateCard label="Quedas" valor={ind.quedas} unidade="" cor={ind.quedas ? "#f5b301" : "#34d399"} sub={`${ind.quedasComDano} com dano`} />
+        <RateCard label="Erro de medicação" valor={ind.errosMedicacao} unidade="" cor={ind.errosMedicacao ? "#f43f5e" : "#34d399"} />
+        <RateCard label="Densidade" valor={resumo.densidade != null ? resumo.densidade : "—"} unidade="/1000" cor="#818cf8" sub="precisa de pacientes-dia" />
+        <RateCard label="Ações atrasadas" valor={plano.atrasadas} unidade="" cor={plano.atrasadas ? "#f43f5e" : "#34d399"} sub="plano (atual)" />
+        <RateCard label="Fechamento plano" valor={plano.taxaFechamento != null ? plano.taxaFechamento : "—"} unidade="%" cor="#22d3ee" sub="ações concluídas" />
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>NOTIVISA — notificações compulsórias do mês</div>
+      <div style={card}>
+        {rel.compulsorios.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma notificação compulsória (never event / óbito) no mês.</div> :
+          rel.compulsorios.map((inc, i) => {
+            const f = fichaNotivisa(inc); const chave = inc.id ?? i; const aberto = fichas[chave];
+            return (
+              <div key={chave} style={{ borderTop: i ? "1px solid var(--border)" : "none", padding: "10px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ background: "#fb923c22", color: "#fb923c", border: "1px solid #fb923c66", borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700 }}>{f.tipo_notificacao}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{f.tipo_incidente}</span>
+                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{dataFmt(f.data_ocorrencia)} · {f.local || "—"}</span>
+                  <button onClick={() => setFichas(p => ({ ...p, [chave]: !aberto }))} style={{ marginLeft: "auto", background: "transparent", color: "#22d3ee", border: "1px solid #164e63", borderRadius: 6, padding: "4px 12px", fontWeight: 700, fontSize: 11.5, cursor: "pointer" }}>{aberto ? "Ocultar ficha" : "Ver ficha NOTIVISA"}</button>
+                </div>
+                {aberto && (
+                  <div style={{ marginTop: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "12px 14px", fontSize: 12.5, lineHeight: 1.7 }}>
+                    {[["Tipo de notificação", f.tipo_notificacao], ["Data de ocorrência", dataFmt(f.data_ocorrencia)], ["Tipo de incidente", f.tipo_incidente], ["Classificação", f.classe], ["Grau do dano (OMS)", f.grau_dano], ["Local/setor", f.local || "—"], ["Prontuário", f.prontuario || "—"], ["Nível de risco", f.risco || "—"], ["Descrição", f.descricao || "—"], ["Providências imediatas", f.providencias || "—"]].map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", gap: 8 }}><span style={{ minWidth: 165, color: "var(--text-muted)", fontWeight: 700 }}>{k}</span><span style={{ flex: 1 }}>{v}</span></div>
+                    ))}
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, fontStyle: "italic" }}>Campos para lançamento manual no portal NOTIVISA (ANVISA) — o sistema gera a ficha; a submissão é feita no portal.</div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>6 Metas — situação atual</div>
+      <div style={card}>
+        {rel.metas.map(m => (
+          <div key={m.meta} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0", borderTop: "1px solid var(--border)" }}>
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: farolCor[m.farol], flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, flex: 1 }}>{m.label}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: farolCor[m.farol] }}>{m.valor == null ? "—" : m.valor}{m.valor != null && m.unidade === "%" ? "%" : ""}</span>
+          </div>
+        ))}
+      </div>
+
+      {preview && (
+        <div id="nsp-print" style={{ background: "#fff", color: "#111", borderRadius: 10, border: "1px solid #e5e7eb", padding: "24px 28px", fontFamily: "Inter, sans-serif", fontSize: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, paddingBottom: 12, borderBottom: "2px solid #e5e7eb" }}>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>RELATÓRIO NSP — {HOSPITAL_SIGLA}</div>
+              <div style={{ fontSize: 11, color: "#64748b", marginTop: 3 }}>{HOSPITAL_NOME} · Valentrax Healthcare Operations · Núcleo de Segurança do Paciente (RDC 36/2013)</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#0f172a", background: "#f1f5f9", borderRadius: 8, padding: "6px 14px" }}>{MONTHS_FULL[mes]}/{ano}</div>
+              <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>Gerado em {new Date().toLocaleString("pt-BR")}</div>
+            </div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 14 }}>
+            <thead><tr>{["Indicador", "Valor"].map(h => <th key={h} style={{ textAlign: "left", padding: "7px 10px", background: "#f8fafc", color: "#334155", borderBottom: "1.5px solid #e2e8f0", fontSize: 11 }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {[
+                ["Incidentes no mês", resumo.total],
+                ["— com dano", resumo.comDano],
+                ["— never events", resumo.neverEvents],
+                ["Notificações compulsórias (NOTIVISA)", rel.compulsorios.length],
+                ["Quedas (com dano)", `${ind.quedas} (${ind.quedasComDano})`],
+                ["Erro de medicação com dano", ind.errosMedicacao],
+                ["LPP adquirida (POA, atual)", lppAdq],
+                ["Densidade de incidentes", resumo.densidade != null ? `${resumo.densidade} /1000 pac-dia` : "—"],
+                ["Near-miss ratio", resumo.nearMissRatio ?? "—"],
+                ["Plano — abertas / atrasadas", `${plano.abertas} / ${plano.atrasadas}`],
+                ["Plano — taxa de fechamento", plano.taxaFechamento != null ? `${plano.taxaFechamento}%` : "—"],
+              ].map(([k, v]) => (
+                <tr key={k}><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 600, color: "#0f172a" }}>{k}</td><td style={{ padding: "6px 10px", borderBottom: "1px solid #eef2f7", color: "#0369a1", fontWeight: 700 }}>{v}</td></tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", margin: "6px 0" }}>6 Metas Internacionais — situação atual</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 14 }}>
+            <tbody>
+              {rel.metas.map(m => (
+                <tr key={m.meta}><td style={{ padding: "5px 10px", borderBottom: "1px solid #eef2f7", color: "#0f172a" }}>{m.label}</td><td style={{ padding: "5px 10px", borderBottom: "1px solid #eef2f7", fontWeight: 700, color: "#334155" }}>{m.valor == null ? "—" : m.valor}{m.valor != null && m.unidade === "%" ? "%" : ""} · {farolTxt[m.farol]}</td></tr>
+              ))}
+            </tbody>
+          </table>
+
+          {rel.compulsorios.length > 0 && (<>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a", margin: "6px 0" }}>Notificações compulsórias (NOTIVISA)</div>
+            {rel.compulsorios.map((inc, i) => { const f = fichaNotivisa(inc); return (
+              <div key={inc.id ?? i} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px", marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 4 }}>{f.tipo_notificacao} · {f.tipo_incidente} · {dataFmt(f.data_ocorrencia)}</div>
+                <div style={{ color: "#475569", fontSize: 11.5, lineHeight: 1.6 }}>
+                  Classificação: {f.classe} · Grau do dano: {f.grau_dano} · Local: {f.local || "—"} · Prontuário: {f.prontuario || "—"}<br />
+                  Descrição: {f.descricao || "—"}<br />
+                  Providências: {f.providencias || "—"}
+                </div>
+              </div>
+            ); })}
+          </>)}
+
+          <div style={{ marginTop: 12, fontSize: 10, color: "#94a3b8", borderTop: "1px solid #e5e7eb", paddingTop: 8 }}>Relatório gerado pela Valentrax Healthcare Operations · dados apurados automaticamente dos módulos. Documento de apoio ao NSP / direção. As notificações compulsórias devem ser lançadas no portal NOTIVISA (ANVISA).</div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function NSPPage({ currentUser, canEdit }) {
@@ -10928,7 +11081,7 @@ function NSPPage({ currentUser, canEdit }) {
         {sub === "protocolos"   && <Placeholder fase="2d" />}
         {sub === "capacitacoes" && <Placeholder fase="2d" />}
         {sub === "comunicacao"  && <Placeholder fase="2d" />}
-        {sub === "relatorios"   && <Placeholder fase="2d" />}
+        {sub === "relatorios"   && <NspRelatorioView incidentes={incidentes} acoes={acoes} lppAdq={lppAdq} medicoes={medicoes} faixas={faixasMeta} />}
         {sub === "assistente"   && <Placeholder fase="2d" />}
       </div>
     </div>

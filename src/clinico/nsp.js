@@ -325,3 +325,70 @@ export function metasSeguranca({ incidentes, lpp, lppAdquiridas, medicoes, faixa
     };
   });
 }
+
+// ═══════════════════════════════════════════════════════════
+// FASE 2d — Relatórios / NOTIVISA
+//
+// Fecha a lógica do RDC 36/2013 (notificar → analisar → tratar → monitorar →
+// REPORTAR): relatório mensal do NSP a partir do que já existe, e a ficha da
+// notificação compulsória no formato do NOTIVISA (ANVISA) — o sistema gera o
+// documento; a submissão ao portal é manual. Puro/testável.
+// ═══════════════════════════════════════════════════════════
+
+const dataRefInc = inc => (inc && (inc.ocorrido_em || inc.detectado_em || inc.criado_em)) || null;
+
+/** Incidentes cuja data de referência cai no mês/ano (mes 0–11, padrão getMonth). */
+export function filtrarPorMes(incidentes, ano, mes) {
+  const a = Number(ano), m = Number(mes);
+  return arr(incidentes).filter(i => {
+    const d = dataRefInc(i);
+    if (!d) return false;
+    const dt = new Date(d);
+    return dt.getFullYear() === a && dt.getMonth() === m;
+  });
+}
+
+/** Incidentes de notificação compulsória à ANVISA/NOTIVISA (never event ou óbito). */
+export function incidentesCompulsorios(incidentes) {
+  return arr(incidentes).filter(notificacaoCompulsoria);
+}
+
+/**
+ * Mapeia um incidente para os campos da ficha de notificação do NOTIVISA
+ * (ANVISA). Não integra com o portal — gera o documento para a submissão manual.
+ */
+export function fichaNotivisa(inc) {
+  if (!inc) return null;
+  const tipo = inc.grau_dano === "obito" ? "Óbito"
+    : inc.classe === "never_event" ? "Never event (evento que nunca deveria ocorrer)"
+    : "Evento adverso";
+  return {
+    tipo_notificacao: tipo,
+    data_ocorrencia: inc.ocorrido_em || inc.detectado_em || inc.criado_em || null,
+    tipo_incidente: rotuloTipo(inc.tipo),
+    classe: rotuloClasse(inc.classe),
+    grau_dano: rotuloGrau(inc.grau_dano),
+    local: inc.local_setor || null,
+    prontuario: inc.prontuario || null,
+    descricao: inc.descricao || null,
+    providencias: inc.acoes_imediatas || null,
+    risco: inc.risco_faixa || null,
+  };
+}
+
+/**
+ * Relatório mensal do NSP: incidentes DO MÊS (resumo, indicadores automáticos e
+ * notificações compulsórias) + a situação ATUAL do plano de ação e das 6 metas.
+ * `mes` é 0–11. Puro — a tela só apresenta e imprime.
+ */
+export function relatorioNsp({ incidentes, acoes, lppAdquiridas, medicoes, faixas, ano, mes, pacientesDia } = {}) {
+  const doMes = filtrarPorMes(incidentes, ano, mes);
+  return {
+    incidentesMes: doMes,
+    resumo: resumoIncidentes(doMes, { pacientesDia }),
+    indicadores: indicadoresSeguranca({ incidentes: doMes, pacientesDia }),
+    compulsorios: incidentesCompulsorios(doMes),
+    plano: resumoAcoes(acoes),
+    metas: metasSeguranca({ incidentes, lppAdquiridas, medicoes, faixas }),
+  };
+}
