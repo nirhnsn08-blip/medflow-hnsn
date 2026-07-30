@@ -3,6 +3,7 @@ import {
   CLASSES, GRAUS_DANO, TIPOS, STATUS, METAS,
   matrizRisco, exigeRCA, notificacaoCompulsoria, temDano,
   resumoIncidentes, indicadoresSeguranca, farol, metasSeguranca, rotuloTipo, rotuloClasse,
+  filtrarPorMes, incidentesCompulsorios, fichaNotivisa, relatorioNsp,
   ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
   acaoAtrasada, resumoAcoes, temRcaConcluida, incidentesAguardandoRca,
 } from "./nsp.js";
@@ -233,5 +234,46 @@ describe("metasSeguranca — 6 Metas com farol (Fase 2c)", () => {
     ];
     const linhas = metasSeguranca({ incidentes: [], lpp: [], medicoes: meds, faixas });
     expect(linhas.find(l => l.meta === "higiene_maos").valor).toBe(90);
+  });
+});
+
+describe("relatórios / NOTIVISA (Fase 2d)", () => {
+  const incidentes = [
+    { classe: "evento_adverso", tipo: "queda", grau_dano: "moderado", ocorrido_em: "2026-07-10T08:00:00Z", local_setor: "UTI", descricao: "Queda da maca", acoes_imediatas: "Imobilização" },
+    { classe: "never_event", tipo: "cirurgico", grau_dano: "grave", detectado_em: "2026-07-20T10:00:00Z", local_setor: "C.O." },
+    { classe: "evento_adverso", tipo: "medicacao", grau_dano: "obito", criado_em: "2026-07-25T12:00:00Z" },
+    { classe: "near_miss", tipo: "medicacao", grau_dano: "nenhum", ocorrido_em: "2026-06-15T09:00:00Z" },  // outro mês
+  ];
+
+  it("filtrarPorMes usa ocorrido/detectado/criado e respeita o mês (0–11)", () => {
+    expect(filtrarPorMes(incidentes, 2026, 6)).toHaveLength(3);   // julho
+    expect(filtrarPorMes(incidentes, 2026, 5)).toHaveLength(1);   // junho
+    expect(filtrarPorMes(incidentes, 2025, 6)).toHaveLength(0);   // outro ano
+  });
+
+  it("incidentesCompulsorios pega never event e óbito", () => {
+    const c = incidentesCompulsorios(incidentes);
+    expect(c).toHaveLength(2);
+    expect(c.every(notificacaoCompulsoria)).toBe(true);
+  });
+
+  it("fichaNotivisa mapeia os campos do incidente", () => {
+    const f = fichaNotivisa(incidentes[1]);
+    expect(f.tipo_notificacao).toContain("Never event");
+    expect(f.tipo_incidente).toBe("Cirúrgico / procedimento");
+    expect(f.local).toBe("C.O.");
+    expect(fichaNotivisa(incidentes[2]).tipo_notificacao).toBe("Óbito");
+    expect(fichaNotivisa(null)).toBeNull();
+  });
+
+  it("relatorioNsp agrega o mês + snapshot do plano e das metas", () => {
+    const acoes = [{ status: "concluida" }, { status: "pendente", prazo: "2020-01-01" }];
+    const rel = relatorioNsp({ incidentes, acoes, lppAdquiridas: 2, medicoes: [], faixas: [], ano: 2026, mes: 6 });
+    expect(rel.incidentesMes).toHaveLength(3);
+    expect(rel.resumo.total).toBe(3);
+    expect(rel.compulsorios).toHaveLength(2);
+    expect(rel.indicadores.quedas).toBe(1);
+    expect(rel.plano.total).toBe(2);
+    expect(rel.metas).toHaveLength(6);
   });
 });
