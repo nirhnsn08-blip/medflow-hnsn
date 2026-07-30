@@ -1,17 +1,42 @@
-# 📍 Ponto de restauração — checkpoint-v50
+# 📍 Ponto de restauração — checkpoint-v51
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v50` (anteriores: `checkpoint-v49` … `checkpoint-v1`)
-- **Data:** 2026-07-29 · `main` em `5ebdfe1`
+- **Tag Git mais recente:** `checkpoint-v51` (anteriores: `checkpoint-v50` … `checkpoint-v1`)
+- **Data:** 2026-07-29 · `main` em `26fcd25`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v49 para cá: **PR #42** (Atendimento / Recepção — Adauam) e
-  **PR #44** (Núcleo de Segurança do Paciente — Tier 1, Fase 2a).
+  vai ao ar). Da v50 para cá: **PR #43** (Atendimento Fase 2 — ficha + Tabelas — Adauam),
+  **PR #45** (agenda do ambulatório — Adauam) e **PR #47** (NSP Fase 2b — RCA + plano de ação).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v51 (desde a v50 — PRs #43, #45 e #47): NSP Fase 2b + Atendimento (ficha, tabelas, agenda)
+
+### 🛡️ NSP — análise de causas + plano de ação — PR #47 (Tier 1, Fase 2b)
+- **Aba "Análise de causas":** fila dos incidentes que **exigem RCA** (evento adverso,
+  never event, dano moderado+) + formulário com **5 Porquês**, **Ishikawa** (6M adaptado à
+  saúde), **fatores contribuintes** (Protocolo de Londres) e **barreiras** que falharam →
+  causa raiz. Ao concluir, o incidente vai para "em tratamento".
+- **Aba "Plano de ação":** **5W2H** (o quê, por quê, quem, quando, onde, como, quanto),
+  status, prazo, **ações atrasadas em vermelho**, KPIs (abertas / atrasadas / taxa de
+  fechamento) e a **cobrança** no dashboard — o sistema cobra o fechamento (RDC 36/2013,
+  Guia de Análise de Incidentes da ANVISA).
+- Motor puro `src/clinico/nsp.js` (matriz de risco, exige-RCA, ação atrasada, fila de
+  análise). Migração `migracao-nsp-rca-plano.sql` (`nsp_rca` + `nsp_acoes`), nos 2 bancos.
+
+### 🚪 Atendimento — ficha, Tabelas e agenda — PRs #43 e #45 (Adauam)
+- **Ficha do atendimento (PR #43):** **fonte pagadora** (SUS / convênio / particular) e
+  **classificação** entram na abertura do atendimento — base do faturamento.
+- **Tela "Tabelas" (PR #43):** o analista comercial mantém os **catálogos sem SQL**
+  (convênios etc.) direto pela tela.
+- **Agenda do ambulatório (PR #45):** "a vaga tem dono" — agendamento com o paciente
+  identificado, ligando a agenda à ficha/cadastro.
+
+**701 testes + build verdes.** **Próximo do Tier 1: Fase 2c** — indicadores automáticos de
+segurança (LPP adquirida, quedas, erro de medicação) + as 6 metas.
 
 ## 🆕 Novidades da v50 (desde a v49 — PRs #42 e #44): Atendimento/Recepção + Núcleo de Segurança do Paciente
 
@@ -640,7 +665,7 @@ de triagem** nas listas de trabalho ("Em atendimento"/fila).
 ### Reverter o código para o checkpoint
 ```bash
 git fetch --tags
-git reset --hard checkpoint-v50
+git reset --hard checkpoint-v51
 git push --force-with-lease origin main
 ```
 Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que foi feito
@@ -649,7 +674,7 @@ Em ~1 min a Vercel republica os dois sites neste estado. ⚠️ Descarta o que f
 ### Sem apagar nada — branch a partir do checkpoint
 ```bash
 git fetch --tags
-git checkout -b recuperacao checkpoint-v50
+git checkout -b recuperacao checkpoint-v51
 ```
 
 ## ⚠️ Importante: código ≠ dados

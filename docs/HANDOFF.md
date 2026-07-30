@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-07-29 · `main` em `5ebdfe1` (checkpoint-v50) · zero PRs abertos.
+**Atualizado em:** 2026-07-29 · `main` em `26fcd25` (checkpoint-v51) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **546 testes**. Três merecem atenção especial:
+`npm test` roda **701 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -122,8 +122,10 @@ data de nascimento (que conserta a idade da triagem pediátrica). A **recepção
 sequência e liga o atendimento ao cadastro por chave estrangeira (fim do número digitado à
 mão e do atendimento órfão). E abriu o **Núcleo de Segurança do Paciente** (Tier 1, Fase 2a):
 módulo com barra lateral própria (RDC 36/2013), **notificação de incidentes em 30s de
-qualquer tela** (anônima), com classe/tipo/grau de dano (OMS), matriz de risco e dashboard —
-análise de causas e plano de ação vêm na Fase 2b.
+qualquer tela** (anônima), com classe/tipo/grau de dano (OMS), matriz de risco, dashboard,
+**análise de causa raiz** (5 porquês / Ishikawa / fatores de Londres) e **plano de ação 5W2H**
+com cobrança de fechamento. O **Atendimento** ganhou a **ficha** (fonte pagadora +
+classificação), a tela **Tabelas** (catálogos sem SQL) e a **agenda** do ambulatório.
 
 **Ainda não há paciente real no sistema.**
 
