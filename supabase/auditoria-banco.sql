@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 82 tabelas, 1298 colunas.
+-- Cobertura atual: 83 tabelas, 1315 colunas.
 -- ============================================================
 
 with
@@ -25,6 +25,7 @@ tabelas(nome, origem) as (values
   ('at_dominios','atendimento-fase2'),
   ('at_planos','atendimento-fase2'),
   ('at_procedimentos','atendimento-fase2'),
+  ('at_responsaveis','atendimento-responsavel'),
   ('atendimentos','schema'),
   ('auditoria','schema'),
   ('cc_cirurgias','schema'),
@@ -184,6 +185,23 @@ colunas(tabela, coluna, origem) as (values
   ('at_procedimentos','tabela','atendimento-fase2'),
   ('at_procedimentos','updated_at','atendimento-fase2'),
   ('at_procedimentos','usuario','atendimento-fase2'),
+  ('at_responsaveis','atendimento_id','atendimento-responsavel'),
+  ('at_responsaveis','ativo','atendimento-responsavel'),
+  ('at_responsaveis','consente','atendimento-responsavel'),
+  ('at_responsaveis','cpf','atendimento-responsavel'),
+  ('at_responsaveis','criado_em','atendimento-responsavel'),
+  ('at_responsaveis','data_nascimento','atendimento-responsavel'),
+  ('at_responsaveis','documento_judicial','atendimento-responsavel'),
+  ('at_responsaveis','id','atendimento-responsavel'),
+  ('at_responsaveis','nome','atendimento-responsavel'),
+  ('at_responsaveis','observacao','atendimento-responsavel'),
+  ('at_responsaveis','papel','atendimento-responsavel'),
+  ('at_responsaveis','prontuario','atendimento-responsavel'),
+  ('at_responsaveis','recebe_alta','atendimento-responsavel'),
+  ('at_responsaveis','telefone','atendimento-responsavel'),
+  ('at_responsaveis','updated_at','atendimento-responsavel'),
+  ('at_responsaveis','usuario','atendimento-responsavel'),
+  ('at_responsaveis','vinculo','atendimento-responsavel'),
   ('atendimentos','created_at','schema'),
   ('atendimentos','data','schema'),
   ('atendimentos','emergencias','schema'),

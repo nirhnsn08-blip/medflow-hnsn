@@ -32,6 +32,7 @@ import {
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
   historicoDoPaciente, agendamentosFuturos, atendimentosDoPeriodo, atendimentoPorNumero,
   carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
+  carregarResponsaveis, responsaveisAnteriores, salvarResponsavel, desativarResponsavel,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -61,6 +62,13 @@ it("a auditoria foi lida (o parser não quebrou em silêncio)", () => {
   expect(COLUNAS.ps_atendimentos?.has("convenio_id")).toBe(true);
   expect(COLUNAS.ps_atendimentos?.has("medico_cbo")).toBe(true);
   expect(COLUNAS.profiles?.has("cbo")).toBe(true);
+  // Responsável do episódio: se a auditoria não foi regenerada depois da
+  // migração, o contrato conferiria contra um banco sem a tabela e o teste
+  // de escrita falharia por "tabela não existe" em vez de acusar o que
+  // interessa.
+  expect(COLUNAS.at_responsaveis?.has("papel")).toBe(true);
+  expect(COLUNAS.at_responsaveis?.has("documento_judicial")).toBe(true);
+  expect(COLUNAS.at_responsaveis?.has("recebe_alta")).toBe(true);
 });
 
 // O padrão só vale quando NADA é passado. Um `= [...]` na assinatura
@@ -170,6 +178,29 @@ describe("escritas da recepção", () => {
     conferirEscrita(chamadas[0]);
   });
 
+  it("gravar responsável do episódio grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await salvarResponsavel(sb, {
+      atendimento_id: 77, prontuario: "100042", nome: "Maria da Silva",
+      cpf: "529.982.247-25", data_nascimento: "1980-05-02", telefone: "51999998888",
+      vinculo: "mae", papel: "representante", observacao: "trouxe a criança",
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    // O poder vem do papel, nunca do que a tela mandou.
+    expect(corpo.consente).toBe(true);
+    expect(corpo.recebe_alta).toBe(true);
+    expect(corpo.cpf).toBe("52998224725");
+  });
+
+  it("desativar responsável grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await desativarResponsavel(sb, 5, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+  });
+
   it("gravar produção do ambulatório grava só em coluna que existe", async () => {
     const { sb, chamadas } = espiao();
     await gravarProducao(sb, {
@@ -225,6 +256,14 @@ describe("leituras da recepção", () => {
     const { sb, chamadas } = espiao([]);
     await carregarCatalogos(sb);
     expect(chamadas).toHaveLength(4);
+    for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("os responsáveis do episódio consultam colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarResponsaveis(sb, 77);
+    await responsaveisAnteriores(sb, "100042");
+    expect(chamadas).toHaveLength(2);
     for (const c of chamadas) conferirLeitura(c);
   });
 

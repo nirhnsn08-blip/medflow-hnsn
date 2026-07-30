@@ -78,14 +78,14 @@ export default function Impressos({
   paciente, atendimento, catalogos = {}, convenio, plano, procedimento,
   // `null` (padrão) significa "quem imprimiu não consultou o prontuário" —
   // é o caso da recepção, e a ficha diz isso em vez de imprimir negativa.
-  alergias = null, hospital = HOSPITAL_PADRAO, currentUser, onFechar,
+  alergias = null, responsaveis = [], hospital = HOSPITAL_PADRAO, currentUser, onFechar,
 }) {
   const [modo, setModo] = useState("pulseira");
 
   const pulseira = dadosDaPulseira({ paciente, atendimento, hospital });
   const ficha = dadosDaFicha({
     paciente, atendimento, convenio, plano, procedimento,
-    catalogos, alergias,
+    catalogos, alergias, responsaveis,
     // O campo antigo do atendimento continua sendo lido durante a transição
     // — prontuário preenchido antes do `pep_alergias` não pode sumir do papel.
     alergiasTextoLegado: atendimento?.alergias || "",
@@ -170,6 +170,25 @@ export default function Impressos({
                 {ficha.alergias.texto}
               </span>
             </div>
+
+            {ficha.responsaveis.length > 0 && (
+              <div style={{ marginBottom: "4mm" }}>
+                <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".06em", color: "#334155",
+                              borderBottom: "1px solid #e5e7eb", paddingBottom: 2, marginBottom: 3 }}>
+                  RESPONSÁVEL PELO EPISÓDIO
+                </div>
+                {ficha.responsaveis.map((r, i) => (
+                  <div key={i} style={{ fontSize: 10.5, marginBottom: 1 }}>
+                    <strong>{r.nome}</strong>
+                    <span style={{ color: "#64748b" }}>
+                      {r.vinculo ? ` · ${r.vinculo}` : ""} · {r.papel}
+                      {r.cpf ? ` · CPF ${r.cpf}` : ""}{r.telefone ? ` · ${r.telefone}` : ""}
+                    </span>
+                    {r.recebeAlta && <strong style={{ marginLeft: 5 }}>— RECEBE A ALTA</strong>}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {ficha.queixa && (
               <div style={{ marginBottom: "4mm" }}>

@@ -42,6 +42,7 @@ import {
   STATUS_ATENDIMENTO, validarCorrecao, validarCancelamento,
 } from "./ciclo.js";
 import Impressos from "./Impressos.jsx";
+import ResponsavelDoEpisodio from "./Responsavel.jsx";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -138,6 +139,9 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [corrigindo, setCorrigindo] = useState(null);   // { atendimento, campos }
   // { paciente, atendimento } — a etapa de impressão, depois de abrir.
   const [imprimindo, setImprimindo] = useState(null);
+  // Os responsáveis do episódio que está na tela — sobem do componente
+  // para a ficha impressa sair com quem recebe a alta.
+  const [responsaveis, setResponsaveis] = useState([]);
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const setFi = (k, v) => setFicha(p => ({ ...p, [k]: v }));
@@ -185,7 +189,8 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setPaciente(null); setAbertos([]); setCadastrando(null);
     setResultados([]); setBuscou(false); setTermo(""); setMsg(null);
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
-    setFicha({}); setMedicoUser(""); setCorrigindo(null); setImprimindo(null);
+    setFicha({}); setMedicoUser(""); setCorrigindo(null);
+    setImprimindo(null); setResponsaveis([]);
   }
 
   /**
@@ -389,9 +394,20 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
         </div>
       )}
 
-      {/* ── IMPRESSÃO — pulseira e ficha, o último passo do balcão ── */}
+      {/* ── RESPONSÁVEL + IMPRESSÃO — o último passo do balcão ──
+          Nesta ordem de propósito: quem trouxe o paciente ainda está na
+          frente. Depois que ele sai, descobrir quem era vira telefonema. */}
+      {imprimindo && (
+        <ResponsavelDoEpisodio
+          sb={sb} currentUser={currentUser} canEdit={canEdit}
+          paciente={imprimindo.paciente} atendimento={imprimindo.atendimento}
+          onMudou={setResponsaveis}
+        />
+      )}
+
       {imprimindo && (
         <Impressos
+          responsaveis={responsaveis}
           paciente={imprimindo.paciente}
           atendimento={imprimindo.atendimento}
           catalogos={cat}

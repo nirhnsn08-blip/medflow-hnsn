@@ -22,6 +22,7 @@ import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
 import { camposDaProducao } from "./producao.js";
+import { camposDoResponsavel } from "./responsavel.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -601,6 +602,78 @@ async function patchAgendamento(sb, id, campos, user) {
   });
   if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar a agenda." };
   return { ok: true, agendamento: r[0] };
+}
+
+// ── RESPONSÁVEL DO EPISÓDIO ─────────────────────────────────
+
+const CAMPOS_RESPONSAVEL = [
+  "id", "atendimento_id", "prontuario", "nome", "cpf", "data_nascimento",
+  "telefone", "vinculo", "papel", "documento_judicial", "consente",
+  "recebe_alta", "observacao", "ativo", "usuario", "criado_em",
+].join(",");
+
+/** Os responsáveis de um atendimento. */
+export async function carregarResponsaveis(sb, atendimentoId) {
+  if (!atendimentoId) return [];
+  const r = await sb(`at_responsaveis?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&select=${CAMPOS_RESPONSAVEL}&order=criado_em.desc`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Os responsáveis registrados nos episódios ANTERIORES deste paciente.
+ *
+ * Serve para a tela oferecer "copiar do episódio anterior" — a mãe da
+ * criança é a mesma toda visita, e obrigar a redigitar é como se acaba
+ * registrando "mãe" sem CPF às pressas. Copiar CRIA UMA LINHA NOVA no
+ * episódio de hoje: consentimento é ato no tempo, e reaproveitar a linha
+ * antiga faria o registro de hoje reescrever a história de ontem.
+ */
+export async function responsaveisAnteriores(sb, prontuario, { limite = 10 } = {}) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const r = await sb(`at_responsaveis?prontuario=eq.${encodeURIComponent(p)}&ativo=is.true` +
+    `&select=${CAMPOS_RESPONSAVEL}&order=criado_em.desc&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Grava um responsável.
+ *
+ * `camposDoResponsavel` deriva `consente` e `recebe_alta` do papel — a tela
+ * não escolhe. O banco confere de novo, por CHECK: acompanhante com poder
+ * de consentir é recusado lá também.
+ */
+export async function salvarResponsavel(sb, dados, user) {
+  const corpo = camposDoResponsavel(dados);
+  if (!corpo.nome) return { ok: false, motivo: "Responsável sem nome não é gravado." };
+  const r = await sb("at_responsaveis", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Confirme que a migração `migracao-atendimento-responsavel.sql` foi aplicada neste banco e que seu perfil permite editar atendimento." };
+  }
+  return { ok: true, responsavel: r[0] };
+}
+
+/**
+ * Desliga um responsável — não apaga.
+ *
+ * A pessoa que consentiu em março consentiu, e apagar a linha faria o
+ * consentimento daquele dia deixar de ter autor. `ativo = false` tira das
+ * listas de hoje e preserva o que foi feito.
+ */
+export async function desativarResponsavel(sb, id, user) {
+  if (!id) return { ok: false, motivo: "Registro inválido." };
+  const r = await sb(`at_responsaveis?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ativo: false, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado." };
+  return { ok: true, responsavel: r[0] };
 }
 
 // ── PRODUÇÃO DO AMBULATÓRIO (tabela agregada `atendimentos`) ─

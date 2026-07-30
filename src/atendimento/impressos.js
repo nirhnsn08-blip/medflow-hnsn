@@ -32,6 +32,7 @@ import { situacaoAlergica } from "../clinico/alergias.js";
 import { aguardandoIdentificacao } from "./recepcao.js";
 import { DOMINIOS } from "./ficha.js";
 import { STATUS_ATENDIMENTO } from "./ciclo.js";
+import { PAPEIS, VINCULO_POR_CHAVE } from "./responsavel.js";
 
 /** O piso do PNSP. Menos que isso não é identificação, é palpite. */
 export const MINIMO_IDENTIFICADORES = 2;
@@ -222,7 +223,7 @@ export function rotuloDominio(catalogos, chave, codigo) {
 export function dadosDaFicha({
   paciente, atendimento, convenio, plano, procedimento,
   catalogos = {}, alergias = null, alergiasTextoLegado = "",
-  hospital, usuario, agora = new Date(),
+  responsaveis = [], hospital, usuario, agora = new Date(),
 } = {}) {
   const idade = idadeDetalhada(paciente?.data_nascimento, agora);
   const conf = conferirPulseira(paciente);
@@ -290,6 +291,21 @@ export function dadosDaFicha({
             ? "SEM REGISTRO — ninguém perguntou ainda"
             : "NÃO CONSULTADO NESTA VIA — conferir com a enfermagem antes de administrar qualquer coisa",
     },
+    // Quem consente e a quem o paciente pode ser entregue. É a informação
+    // que a folha carrega até a beira do leito — e a única forma de a
+    // enfermagem do turno da noite saber a quem NÃO entregar a criança.
+    // Acompanhante aparece com o rótulo dele: quem só acompanha não recebe
+    // alta, e o papel impresso é o que impede a confusão no corredor.
+    responsaveis: (Array.isArray(responsaveis) ? responsaveis : [])
+      .filter(r => r?.ativo !== false && String(r?.nome ?? "").trim())
+      .map(r => ({
+        nome: String(r.nome).trim(),
+        vinculo: VINCULO_POR_CHAVE[r.vinculo]?.label || r.vinculo || "",
+        papel: PAPEIS[r.papel]?.label || r.papel || "",
+        cpf: r.cpf ? formatarCPF(r.cpf) : "",
+        telefone: r.telefone || "",
+        recebeAlta: !!r.recebe_alta,
+      })),
     identificadores: conf.identificadores,
     pulseira: { estado: conf.estado, selo: conf.selo, aviso: conf.aviso },
     rodape: {

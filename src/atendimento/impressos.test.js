@@ -300,6 +300,32 @@ describe("ficha do atendimento", () => {
     expect(f.rodape.impressoPor).toBe("—");
   });
 
+  it("imprime o responsável com o papel — é o que impede entregar a criança a quem só acompanha", () => {
+    const f = dadosDaFicha({
+      ...base,
+      responsaveis: [
+        { nome: "Maria da Silva", vinculo: "mae", papel: "representante", cpf: "52998224725", recebe_alta: true, consente: true },
+        { nome: "Vizinha", vinculo: "outro", papel: "acompanhante", recebe_alta: false },
+      ],
+    });
+    expect(f.responsaveis).toHaveLength(2);
+    expect(f.responsaveis[0]).toMatchObject({ nome: "Maria da Silva", vinculo: "Mãe", papel: "Representante legal", recebeAlta: true });
+    expect(f.responsaveis[1]).toMatchObject({ papel: "Acompanhante", recebeAlta: false });
+    expect(f.responsaveis[0].cpf).toBe("529.982.247-25");
+  });
+
+  it("responsável desligado não sai no papel de hoje", () => {
+    const f = dadosDaFicha({
+      ...base,
+      responsaveis: [{ nome: "Ex-guardião", papel: "representante", ativo: false }],
+    });
+    expect(f.responsaveis).toEqual([]);
+  });
+
+  it("sem responsável a seção não existe, em vez de sair vazia", () => {
+    expect(dadosDaFicha(base).responsaveis).toEqual([]);
+  });
+
   it("carrega o estado da pulseira junto — é o mesmo balcão", () => {
     const f = dadosDaFicha({ ...base, paciente: { prontuario: "1" } });
     expect(f.pulseira.estado).toBe("insuficiente");
