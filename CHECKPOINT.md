@@ -1,17 +1,44 @@
-# 📍 Ponto de restauração — checkpoint-v51
+# 📍 Ponto de restauração — checkpoint-v52
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v51` (anteriores: `checkpoint-v50` … `checkpoint-v1`)
-- **Data:** 2026-07-29 · `main` em `26fcd25`
+- **Tag Git mais recente:** `checkpoint-v52` (anteriores: `checkpoint-v51` … `checkpoint-v1`)
+- **Data:** 2026-07-30 · `main` em `aac545d`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v50 para cá: **PR #43** (Atendimento Fase 2 — ficha + Tabelas — Adauam),
-  **PR #45** (agenda do ambulatório — Adauam) e **PR #47** (NSP Fase 2b — RCA + plano de ação).
+  vai ao ar). Da v51 para cá: **PR #49** (Atendimento — ciclo de vida — Adauam),
+  **PR #50** (Atendimento — aba Consultas — Adauam) e **PR #51** (NSP Fase 2c —
+  indicadores automáticos + 6 Metas).
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v52 (desde a v51 — PRs #49, #50 e #51): NSP Fase 2c (indicadores + 6 Metas) + Atendimento (ciclo de vida, Consultas)
+
+### 🛡️ NSP — indicadores automáticos + 6 Metas Internacionais — PR #51 (Tier 1, Fase 2c)
+- **Aba "Indicadores":** indicadores de segurança **puxados automaticamente dos módulos, sem
+  digitação** — **LPP adquirida** (marcador POA da Fase 1a), **quedas** (com destaque das que
+  tiveram dano), **erro de medicação**, **near-miss ratio**, **ações atrasadas** e **taxa de
+  fechamento** do plano de ação (Fase 2b). Densidade por 1000 pacientes-dia no motor.
+- **Aba "Metas de segurança":** as **6 Metas Internacionais de Segurança do Paciente** (OMS/JCI)
+  com **farol** (verde/amarelo/vermelho) contra um alvo. As **automáticas** saem dos módulos
+  (identificação, medicamentos de alta vigilância, quedas+LPP); **higiene das mãos, comunicação e
+  cirurgia segura** vêm de **auditoria periódica** (numerador ÷ denominador → adesão %).
+- **⚙️ Alvos editáveis pelo ADM Master:** os cortes de cada meta (`nsp_meta_faixas`) são editáveis
+  na tela e nascem **"em validação"** — a equipe valida contra o protocolo do HNSN. As auditorias
+  ficam em `nsp_meta_medicoes` (append-only, autoria congelada).
+- Motor puro `src/clinico/nsp.js` (`farol`, `metasSeguranca`, `indicadoresSeguranca` ampliado).
+  Migração `migracao-nsp-metas.sql` (`nsp_meta_faixas` + `nsp_meta_medicoes`), nos 2 bancos.
+
+### 🚪 Atendimento — ciclo de vida + Consultas — PRs #49 e #50 (Adauam)
+- **Ciclo de vida do atendimento (PR #49):** **encerrar, corrigir e cancelar** o atendimento —
+  fecha o fluxo da recepção/ambulatório. Migração `migracao-atendimento-ciclo.sql`.
+- **Aba "Consultas" (PR #50):** **pesquisa de atendimentos** — busca/consulta dos atendimentos
+  registrados.
+
+**773 testes + build verdes.** **Próximo do Tier 1: Fase 2d** — protocolos gerenciados,
+capacitações, comunicação, relatórios/NOTIVISA e assistente AI do NSP.
 
 ## 🆕 Novidades da v51 (desde a v50 — PRs #43, #45 e #47): NSP Fase 2b + Atendimento (ficha, tabelas, agenda)
 
