@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-07-29 · `main` em `26fcd25` (checkpoint-v51) · zero PRs abertos.
+**Atualizado em:** 2026-07-30 · `main` em `aac545d` (checkpoint-v52) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **701 testes**. Três merecem atenção especial:
+`npm test` roda **773 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -125,7 +125,11 @@ módulo com barra lateral própria (RDC 36/2013), **notificação de incidentes 
 qualquer tela** (anônima), com classe/tipo/grau de dano (OMS), matriz de risco, dashboard,
 **análise de causa raiz** (5 porquês / Ishikawa / fatores de Londres) e **plano de ação 5W2H**
 com cobrança de fechamento. O **Atendimento** ganhou a **ficha** (fonte pagadora +
-classificação), a tela **Tabelas** (catálogos sem SQL) e a **agenda** do ambulatório.
+classificação), a tela **Tabelas** (catálogos sem SQL) e a **agenda** do ambulatório. O NSP
+fechou a **Fase 2c**: **indicadores automáticos** de segurança (LPP adquirida, quedas, erro de
+medicação — sem digitação) e as **6 Metas Internacionais** com **farol** e alvos editáveis pelo
+ADM Master (auditoria de higiene/comunicação/cirurgia). E o **Atendimento** ganhou o **ciclo de
+vida** (encerrar/corrigir/cancelar) e a aba **Consultas** (pesquisa de atendimentos).
 
 **Ainda não há paciente real no sistema.**
 
