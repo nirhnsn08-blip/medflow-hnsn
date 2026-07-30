@@ -21,6 +21,7 @@ import { camposDaFicha, DOMINIOS } from "./ficha.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
+import { camposDaProducao } from "./producao.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -585,6 +586,45 @@ async function patchAgendamento(sb, id, campos, user) {
   });
   if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar a agenda." };
   return { ok: true, agendamento: r[0] };
+}
+
+// ── PRODUÇÃO DO AMBULATÓRIO (tabela agregada `atendimentos`) ─
+
+/** O que já está gravado na agregada para um dia. */
+export async function carregarProducaoGravada(sb, data) {
+  const dia = String(data ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return [];
+  const r = await sb(`atendimentos?data=eq.${dia}&select=*`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Grava a produção apurada de uma especialidade num dia.
+ *
+ * `on_conflict=data,especialidade` é o mesmo upsert que o formulário manual
+ * do Ambulatório usa — de propósito. Duas rotas gravando a MESMA linha é o
+ * que faz a conciliação valer alguma coisa; se esta escrevesse noutro
+ * lugar, o painel continuaria lendo o número digitado e nada teria mudado.
+ *
+ * O upsert substitui a linha inteira, então `camposDaProducao` carrega
+ * `emergencias` do que já estava lá. Sem isso, conciliar a agenda zeraria o
+ * número que alguém digitou olhando o Pronto-Socorro.
+ *
+ * `atendimentos` NÃO tem `updated_at` (só `created_at`). Mandar o campo
+ * faria o PostgREST recusar a linha inteira — em silêncio, como sempre.
+ */
+export async function gravarProducao(sb, { data, especialidadeId, apurada, gravadaAnterior }, user) {
+  if (!especialidadeId) return { ok: false, motivo: "Especialidade sem correspondência no painel do Ambulatório." };
+  const corpo = camposDaProducao({ data, especialidadeId, apurada, gravadaAnterior });
+  const r = await sb("atendimentos?on_conflict=data,especialidade", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado — confirme que seu perfil permite lançar produção do ambulatório." };
+  }
+  return { ok: true, linha: r[0] };
 }
 
 // ── MANUTENÇÃO DOS CATÁLOGOS ────────────────────────────────

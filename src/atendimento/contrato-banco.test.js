@@ -31,6 +31,7 @@ import {
   encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
   historicoDoPaciente, agendamentosFuturos, atendimentosDoPeriodo, atendimentoPorNumero,
+  carregarProducaoGravada, gravarProducao,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -168,6 +169,25 @@ describe("escritas da recepção", () => {
     expect(chamadas).toHaveLength(1);
     conferirEscrita(chamadas[0]);
   });
+
+  it("gravar produção do ambulatório grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await gravarProducao(sb, {
+      data: "2026-07-29", especialidadeId: "ortopedia",
+      apurada: { ofertadas: 12, realizadas: 9, primeiras: 5, retornos: 4, faltas: 2, livres: 1 },
+      gravadaAnterior: { emergencias: 3 },
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    // `atendimentos` só tem `created_at`. `updated_at` faria o PostgREST
+    // recusar a linha inteira em silêncio — que é o defeito que este
+    // arquivo inteiro existe para impedir.
+    expect(corpo).not.toHaveProperty("updated_at");
+    // E o número que a agenda não apura precisa chegar ao corpo, senão o
+    // upsert zera o que alguém digitou olhando o Pronto-Socorro.
+    expect(corpo.emergencias).toBe(3);
+  });
 });
 
 describe("leituras da recepção", () => {
@@ -206,6 +226,13 @@ describe("leituras da recepção", () => {
     await carregarCatalogos(sb);
     expect(chamadas).toHaveLength(4);
     for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("a produção gravada do dia consulta colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarProducaoGravada(sb, "2026-07-29");
+    expect(chamadas).toHaveLength(1);
+    conferirLeitura(chamadas[0]);
   });
 
   it("a lista de profissionais consulta colunas reais", async () => {

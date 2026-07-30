@@ -34,7 +34,9 @@ import {
   carregarAgendaDoDia, marcarAgendamento, confirmarPresenca, registrarFalta,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes,
+  carregarProducaoGravada, gravarProducao,
 } from "./dados.js";
+import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -78,15 +80,17 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
   const [verAbertos, setVerAbertos] = useState(false);
+  const [producaoGravada, setProducaoGravada] = useState([]);
 
   const recarregarDia = useCallback(async () => {
     setCarregando(true);
-    const [g, b, a] = await Promise.all([
+    const [g, b, a, p] = await Promise.all([
       carregarGrades(sb),
       carregarBloqueios(sb, { de: data, ate: data }),
       carregarAgendaDoDia(sb, data),
+      carregarProducaoGravada(sb, data),
     ]);
-    setGrades(g); setBloqueios(b); setAgendamentos(a);
+    setGrades(g); setBloqueios(b); setAgendamentos(a); setProducaoGravada(p);
     setAmbAbertos(await listarAmbulatoriaisAbertos(sb));
     setCarregando(false);
   }, [sb, data]);
@@ -124,6 +128,32 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const aplicaveis = gradesDoDia(grades, data);
   const producao = producaoDoDia({ grades, data, agendamentos, bloqueios });
   const bloqueioGeral = bloqueioDoDia(bloqueios, data, {});
+  const conciliacao = conciliarProducao({
+    grades, agendamentos, bloqueios, data,
+    gravado: producaoGravada, catalogoEspecialidades: catalogos.especialidade || [],
+  });
+
+  /**
+   * Grava a produção apurada de uma especialidade na agregada.
+   *
+   * Uma linha por clique, de propósito. "Gravar tudo" pareceria mais
+   * prático e faria alguém substituir sete números sem olhar nenhum — que é
+   * exatamente a diferença entre conciliar e sobrescrever.
+   */
+  async function gravarLinha(linha) {
+    if (!canEdit || busy) return;
+    const v = validarGravacao(linha);
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    setBusy(true);
+    const r = await gravarProducao(sb, {
+      data, especialidadeId: linha.id,
+      apurada: linha.apurada, gravadaAnterior: linha.gravada,
+    }, currentUser);
+    setBusy(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({ tom: "ok", texto: `Produção de ${linha.label} gravada no painel do Ambulatório.` });
+    setProducaoGravada(await carregarProducaoGravada(sb, data));
+  }
 
   // ── ações ──
   async function marcar() {
@@ -234,7 +264,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[["dia", "Dia"], ["grade", "Grade e bloqueios"]].map(([k, l]) => (
+        {[["dia", "Dia"], ["grade", "Grade e bloqueios"],
+          ["producao", conciliacao.divergentes ? `Produção (${conciliacao.divergentes})` : "Produção"]].map(([k, l]) => (
           <button key={k} onClick={() => { setVista(k); setMsg(null); }}
             style={{ ...btn(vista === k ? "#22d3ee" : "var(--surface-2)", vista === k),
                      color: vista === k ? "#000" : "var(--text)" }}>{l}</button>
@@ -693,6 +724,104 @@ export default function Agenda({ sb, currentUser, canEdit }) {
               </div>
             ))}
           </div>
+        </>
+      )}
+
+      {/* ══════════ PRODUÇÃO — conciliação com o painel do Ambulatório ══════════ */}
+      {vista === "producao" && (
+        <>
+          <div style={cartao}>
+            <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ width: 170 }}>
+                <label style={lbl}>Dia</label>
+                <input type="date" value={data} onChange={e => setData(e.target.value)} style={inp} />
+              </div>
+              <button onClick={() => setData(hojeISO())} style={{ ...btn("var(--surface-2)", false), color: "var(--text)", marginBottom: 2 }}>Hoje</button>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.55 }}>
+              O painel do Ambulatório lê números <strong>digitados à mão</strong>. Aqui eles são apurados da
+              agenda e comparados com o que está gravado. Gravar substitui o digitado pelo apurado —
+              <strong> uma especialidade por vez, olhando a diferença</strong>. Emergências não aparecem:
+              não passam pela agenda, então o número gravado é preservado como está.
+            </div>
+          </div>
+
+          {conciliacao.semCorrespondencia.length > 0 && (
+            <div style={{ ...cartao, borderLeft: "4px solid #d97706" }}>
+              <div style={rotulo}>Sem correspondência no painel</div>
+              {conciliacao.semCorrespondencia.map(s => (
+                <div key={s.especialidadeCod} style={{ fontSize: 12.5, marginBottom: 4 }}>
+                  <strong>{s.nome}</strong> — {s.apurada.realizadas} realizada(s), {s.apurada.ofertadas} ofertada(s).
+                </div>
+              ))}
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                O painel do Ambulatório tem cinco especialidades pactuadas, e esta não é nenhuma delas.
+                A produção existe e não tem onde ser gravada — melhor dizer isso do que gravar numa chave
+                que nenhuma tela lê.
+              </div>
+            </div>
+          )}
+
+          <div style={cartao}>
+            <div style={rotulo}>Apurado da agenda × gravado no painel</div>
+            {carregando ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>carregando…</div>
+            ) : conciliacao.linhas.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                Nenhuma especialidade com grade ou agendamento em {data}.
+              </div>
+            ) : conciliacao.linhas.map(l => (
+              <div key={l.especialidadeCod} style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 7 }}>
+                  <strong style={{ fontSize: 13 }}>{l.label}</strong>
+                  {l.bloqueado && <span style={{ fontSize: 11, color: "#f43f5e" }}>dia bloqueado</span>}
+                  <span style={{ fontSize: 11.5, color: l.divergente ? "#d97706" : "var(--text-muted)" }}>
+                    {!l.gravada ? "ainda não lançado no painel"
+                      : l.divergente ? `${l.divergencias.length} número(s) diferentes` : "confere"}
+                  </span>
+                  {canEdit && l.divergente && (
+                    <button onClick={() => gravarLinha(l)} disabled={busy}
+                      style={{ ...btn("#0d9488", !busy), marginLeft: "auto", color: "#fff" }}>
+                      {l.gravada ? "Substituir pelo apurado" : "Lançar no painel"}
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(96px, 1fr))", gap: 7 }}>
+                  {CAMPOS_APURAVEIS.map(c => {
+                    const div = l.divergencias.find(d => d.campo === c);
+                    return (
+                      <div key={c} style={{ background: "var(--surface-2)", border: "1px solid var(--border)",
+                                            borderLeft: `3px solid ${div ? "#d97706" : "var(--border)"}`,
+                                            borderRadius: 8, padding: "7px 10px" }}>
+                        <div style={{ fontSize: 9.5, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{c}</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "JetBrains Mono, monospace" }}>
+                          {l.apurada[c]}
+                        </div>
+                        <div style={{ fontSize: 10, color: div ? "#d97706" : "var(--text-muted)" }}>
+                          {l.gravada ? `painel: ${l.gravada[c] ?? 0}` : "painel: —"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {conciliacao.orfas.length > 0 && (
+            <div style={cartao}>
+              <div style={rotulo}>Lançado à mão, sem agenda neste dia</div>
+              {conciliacao.orfas.map(o => (
+                <div key={o.id} style={{ fontSize: 12.5, marginBottom: 4 }}>
+                  <strong>{o.label}</strong> — {o.gravada.realizadas ?? 0} realizada(s), {o.gravada.ofertadas ?? 0} ofertada(s).
+                </div>
+              ))}
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.5 }}>
+                Não é zerado nem sugerido para correção: pode ser produção legítima que não passou pela
+                agenda, e apagar destruiria o único registro que existe dela.
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
