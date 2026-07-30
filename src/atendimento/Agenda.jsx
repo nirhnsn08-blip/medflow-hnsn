@@ -26,6 +26,10 @@ import {
   horariosDaGrade, cotasSomadas,
 } from "./agenda.js";
 import {
+  DESFECHOS_AMBULATORIAL, validarEncerramento, STATUS_ATENDIMENTO,
+} from "./ciclo.js";
+import {
+  listarAmbulatoriaisAbertos, encerrarAtendimento,
   carregarGrades, salvarGrade, alternarAtivoGrade, carregarBloqueios, salvarBloqueio,
   carregarAgendaDoDia, marcarAgendamento, confirmarPresenca, registrarFalta,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
@@ -72,6 +76,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const [marcando, setMarcando] = useState(null); // { grade, origem }
   const [buscaPac, setBuscaPac] = useState("");
   const [achados, setAchados] = useState([]);
+  const [ambAbertos, setAmbAbertos] = useState([]);
+  const [verAbertos, setVerAbertos] = useState(false);
 
   const recarregarDia = useCallback(async () => {
     setCarregando(true);
@@ -81,8 +87,32 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       carregarAgendaDoDia(sb, data),
     ]);
     setGrades(g); setBloqueios(b); setAgendamentos(a);
+    setAmbAbertos(await listarAmbulatoriaisAbertos(sb));
     setCarregando(false);
   }, [sb, data]);
+
+  /**
+   * Encerra um ambulatorial que ficou preso aberto.
+   *
+   * O desfecho é PERGUNTADO, nunca deduzido. Encerrar em massa como
+   * "atendido" escolheria um dado assistencial que ninguém conferiu — e
+   * quem sabe se o paciente foi atendido ou desistiu é quem estava lá.
+   */
+  async function encerrar(a) {
+    if (!canEdit) return;
+    const opcoes = DESFECHOS_AMBULATORIAL.map((d, i) => `${i + 1} - ${d.label}`).join("\n");
+    const escolha = prompt(`Como terminou o atendimento #${a.id} (reg. ${a.prontuario})?\n\n${opcoes}\n\nDigite o número:`);
+    if (escolha === null) return;
+    const d = DESFECHOS_AMBULATORIAL[Number(escolha) - 1];
+    const v = validarEncerramento({ atendimento: a, desfecho: d?.chave });
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    setBusy(true);
+    const r = await encerrarAtendimento(sb, a.id, d.chave, null, currentUser);
+    setBusy(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({ tom: "ok", texto: `Atendimento #${a.id} encerrado como "${d.label}".` });
+    recarregarDia();
+  }
 
   useEffect(() => { recarregarDia(); }, [recarregarDia]);
 
@@ -215,6 +245,48 @@ export default function Agenda({ sb, currentUser, canEdit }) {
         <div style={{ ...cartao, borderLeft: `4px solid ${msg.tom === "erro" ? "#f43f5e" : "#34d399"}`,
                       background: msg.tom === "erro" ? "#f43f5e10" : "#34d39910", fontSize: 13 }}>
           {msg.texto}
+        </div>
+      )}
+
+      {/* ── PENDÊNCIA DE ENCERRAMENTO ── */}
+      {ambAbertos.length > 0 && (
+        <div style={{ ...cartao, borderLeft: "4px solid #d97706" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: 13 }}>
+              {ambAbertos.length} atendimento(s) ambulatorial(is) aguardando encerramento
+            </strong>
+            <button onClick={() => setVerAbertos(v => !v)}
+              style={{ ...btn("#d97706"), marginLeft: "auto", color: "#fff" }}>
+              {verAbertos ? "Ocultar" : "Ver lista"}
+            </button>
+          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7, lineHeight: 1.5 }}>
+            Consulta que não é encerrada continua contando como atendimento em aberto — e faz o aviso de
+            duplicidade disparar na próxima visita do paciente. Aviso que sempre dispara é aviso que
+            ninguém lê.
+          </div>
+          {verAbertos && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 10 }}>
+              {ambAbertos.map(a => (
+                <div key={a.id} style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
+                                         background: "var(--surface-2)", border: "1px solid var(--border)",
+                                         borderRadius: 8, padding: "8px 11px" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, minWidth: 52 }}>#{a.id}</span>
+                  <span style={{ fontSize: 12.5, minWidth: 90 }}>reg. {a.prontuario}</span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {a.especialidade_cod ? espec(a.especialidade_cod) : "—"} · {STATUS_ATENDIMENTO[a.status]?.label || a.status}
+                    {" · desde "}{new Date(a.chegada_em).toLocaleDateString("pt-BR")}
+                  </span>
+                  {canEdit && (
+                    <button onClick={() => encerrar(a)} disabled={busy}
+                      style={{ ...btn("#0d9488", !busy), marginLeft: "auto", color: "#fff", padding: "4px 10px", fontSize: 11 }}>
+                      Encerrar
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

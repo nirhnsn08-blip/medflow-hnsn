@@ -32,10 +32,15 @@ import {
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
   listarAguardandoIdentificacao, concluirIdentificacao,
   carregarCatalogos, carregarProfissionais,
+  carregarAtendimento, corrigirAtendimento, cancelarAtendimento,
+  contarRegistrosClinicos,
 } from "./dados.js";
 import {
   DOMINIOS, exigenciasDoConvenio, conferirFicha, tipoDoConvenio,
 } from "./ficha.js";
+import {
+  STATUS_ATENDIMENTO, validarCorrecao, validarCancelamento,
+} from "./ciclo.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -129,6 +134,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [profissionais, setProfissionais] = useState([]);
   const [ficha, setFicha] = useState({});
   const [medicoUser, setMedicoUser] = useState("");
+  const [corrigindo, setCorrigindo] = useState(null);   // { atendimento, campos }
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const setFi = (k, v) => setFicha(p => ({ ...p, [k]: v }));
@@ -176,7 +182,75 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setPaciente(null); setAbertos([]); setCadastrando(null);
     setResultados([]); setBuscou(false); setTermo(""); setMsg(null);
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
-    setFicha({}); setMedicoUser("");
+    setFicha({}); setMedicoUser(""); setCorrigindo(null);
+  }
+
+  /**
+   * Abre a correção com os valores ATUAIS do atendimento.
+   *
+   * Carrega do banco em vez de usar o que a lista trouxe: a lista traz só o
+   * suficiente para mostrar a linha, e um formulário aberto em branco
+   * gravaria `null` em cima do que já estava certo.
+   */
+  async function abrirCorrecao(a) {
+    if (!canEdit) return;
+    setMsg(null);
+    const completo = await carregarAtendimento(sb, a.id);
+    if (!completo) { setMsg({ tom: "erro", texto: "Não foi possível carregar este atendimento." }); return; }
+    setCorrigindo({
+      atendimento: completo,
+      campos: {
+        convenio_id: completo.convenio_id ?? "", plano_id: completo.plano_id ?? "",
+        carteira: completo.carteira ?? "", guia_numero: completo.guia_numero ?? "",
+        autorizacao_senha: completo.autorizacao_senha ?? "",
+        tipo_atendimento_cod: completo.tipo_atendimento_cod ?? "",
+        especialidade_cod: completo.especialidade_cod ?? "",
+        procedimento_cod: completo.procedimento_cod ?? "",
+        cid: completo.cid ?? "", queixa: completo.queixa ?? "",
+      },
+    });
+  }
+
+  async function salvarCorrecao() {
+    if (!canEdit || busy || !corrigindo) return;
+    const v = validarCorrecao({ atendimento: corrigindo.atendimento, campos: corrigindo.campos });
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    if (v.avisos.length && !confirm(v.avisos.join("\n\n") + "\n\nSeguir?")) return;
+    setBusy(true);
+    const r = await corrigirAtendimento(sb, corrigindo.atendimento.id, corrigindo.campos, currentUser);
+    setBusy(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setCorrigindo(null);
+    setMsg({ tom: "ok", texto: `Atendimento #${r.atendimento.id} corrigido.` });
+    setAbertos(await atendimentosAbertos(sb, paciente.prontuario));
+  }
+
+  /**
+   * Cancela — depois de contar o que está pendurado no atendimento.
+   *
+   * A contagem vem ANTES de pedir o motivo: se o atendimento já tem
+   * evolução ou prescrição, ele aconteceu, e cancelar deixaria registro
+   * clínico órfão. Melhor recusar antes de a pessoa digitar a justificativa.
+   */
+  async function cancelarEste(a) {
+    if (!canEdit) return;
+    setMsg(null);
+    const clinicos = await contarRegistrosClinicos(sb, a.id);
+    const previa = validarCancelamento({ atendimento: a, motivo: "conferencia previa", registrosClinicos: clinicos });
+    if (!previa.ok) { setMsg({ tom: "erro", texto: previa.erros.join(" ") }); return; }
+
+    const motivo = prompt("Por que este atendimento está sendo cancelado?\n\nA justificativa fica gravada com seu nome — é o que alguém vai ler numa auditoria.");
+    if (motivo === null) return;
+    const v = validarCancelamento({ atendimento: a, motivo, registrosClinicos: clinicos });
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    if (v.avisos.length && !confirm(v.avisos.join("\n\n") + "\n\nSeguir?")) return;
+
+    setBusy(true);
+    const r = await cancelarAtendimento(sb, a.id, motivo, currentUser);
+    setBusy(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({ tom: "ok", texto: `Atendimento #${a.id} cancelado.` });
+    setAbertos(await atendimentosAbertos(sb, paciente.prontuario));
   }
 
   /** Cadastro novo: o número vem do BANCO, não da cabeça de quem atende. */
@@ -610,10 +684,80 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
             <div style={{ ...cartao, borderLeft: "4px solid #d97706" }}>
               <div style={rotulo}>Atendimentos em aberto deste paciente</div>
               {abertos.map(a => (
-                <div key={a.id} style={{ fontSize: 12.5, padding: "5px 0", color: "var(--text-muted)" }}>
-                  #{a.id} · {String(a.status || "").replace(/_/g, " ")} · desde {new Date(a.chegada_em).toLocaleString("pt-BR")}
+                <div key={a.id} style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
+                                         fontSize: 12.5, padding: "6px 0", color: "var(--text-muted)" }}>
+                  <span>#{a.id} · {STATUS_ATENDIMENTO[a.status]?.label || a.status} · {a.tipo_atendimento || "emergência"} · desde {new Date(a.chegada_em).toLocaleString("pt-BR")}</span>
+                  {canEdit && (
+                    <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                      <button onClick={() => abrirCorrecao(a)}
+                        style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 10px", fontSize: 11 }}>Corrigir</button>
+                      <button onClick={() => cancelarEste(a)}
+                        style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 10px", fontSize: 11 }}>Cancelar</button>
+                    </span>
+                  )}
                 </div>
               ))}
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+                Corrigir muda o dado administrativo. Cancelar não apaga — marca o atendimento como
+                não-válido, com motivo e autor. Paciente errado se resolve cancelando e abrindo outro.
+              </div>
+            </div>
+          )}
+
+          {/* ── CORREÇÃO ── */}
+          {corrigindo && (
+            <div style={{ ...cartao, borderLeft: "4px solid #6366f1" }}>
+              <div style={rotulo}>Corrigir atendimento #{corrigindo.atendimento.id}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                <CampoCatalogo label="Convênio" lista={cat.convenios} campoValor="id"
+                  valor={corrigindo.campos.convenio_id}
+                  onChange={v => setCorrigindo(p => ({ ...p, campos: { ...p.campos, convenio_id: v, plano_id: "" } }))} />
+                <div>
+                  <label style={lbl}>Carteira</label>
+                  <input value={corrigindo.campos.carteira ?? ""} style={inp}
+                    onChange={e => setCorrigindo(p => ({ ...p, campos: { ...p.campos, carteira: e.target.value } }))} />
+                </div>
+                <div>
+                  <label style={lbl}>Nº da guia</label>
+                  <input value={corrigindo.campos.guia_numero ?? ""} style={inp}
+                    onChange={e => setCorrigindo(p => ({ ...p, campos: { ...p.campos, guia_numero: e.target.value } }))} />
+                </div>
+                <div>
+                  <label style={lbl}>Senha de autorização</label>
+                  <input value={corrigindo.campos.autorizacao_senha ?? ""} style={inp}
+                    onChange={e => setCorrigindo(p => ({ ...p, campos: { ...p.campos, autorizacao_senha: e.target.value } }))} />
+                </div>
+                <CampoCatalogo label="Tipo de atendimento" lista={cat.tipo_atendimento}
+                  valor={corrigindo.campos.tipo_atendimento_cod}
+                  onChange={v => setCorrigindo(p => ({ ...p, campos: { ...p.campos, tipo_atendimento_cod: v } }))} />
+                <CampoCatalogo label="Especialidade" lista={cat.especialidade}
+                  valor={corrigindo.campos.especialidade_cod}
+                  onChange={v => setCorrigindo(p => ({ ...p, campos: { ...p.campos, especialidade_cod: v } }))} />
+                <CampoCatalogo label="Procedimento" lista={cat.procedimentos}
+                  valor={corrigindo.campos.procedimento_cod}
+                  onChange={v => setCorrigindo(p => ({ ...p, campos: { ...p.campos, procedimento_cod: v } }))} />
+                <div>
+                  <label style={lbl}>CID</label>
+                  <input value={corrigindo.campos.cid ?? ""} style={inp}
+                    onChange={e => setCorrigindo(p => ({ ...p, campos: { ...p.campos, cid: e.target.value } }))} />
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={lbl}>Queixa relatada</label>
+                  <input value={corrigindo.campos.queixa ?? ""} style={inp}
+                    onChange={e => setCorrigindo(p => ({ ...p, campos: { ...p.campos, queixa: e.target.value } }))} />
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 10 }}>
+                Só dado administrativo. Classificação de risco, sinais vitais e desfecho são registro
+                assistencial — corrigem-se por novo registro, não por edição.
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={salvarCorrecao} disabled={busy} style={btn("#22d3ee", !busy)}>
+                  {busy ? "Salvando…" : "Salvar correção"}
+                </button>
+                <button onClick={() => setCorrigindo(null)}
+                  style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>Cancelar</button>
+              </div>
             </div>
           )}
         </>

@@ -19,6 +19,7 @@
 import { filtroBuscaPacientes, normalizarProntuario, dadosNaoIdentificado } from "./recepcao.js";
 import { camposDaFicha, DOMINIOS } from "./ficha.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
+import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -97,7 +98,7 @@ export async function criarPacienteNaoIdentificado(sb, dados, user) {
 export async function atendimentosAbertos(sb, prontuario) {
   const p = normalizarProntuario(prontuario);
   if (!p) return [];
-  const r = await sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}&status=neq.finalizado&select=id,prontuario,iniciais,status,chegada_em,classificacao&order=chegada_em.desc`);
+  const r = await sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}&${FILTRO_ATENDIMENTO_ABERTO}&select=id,prontuario,iniciais,status,chegada_em,classificacao,tipo_atendimento&order=chegada_em.desc`);
   return Array.isArray(r) ? r : [];
 }
 
@@ -204,6 +205,105 @@ export async function carregarProfissionais(sb) {
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
   return lista.filter(p => p.categoria && p.categoria !== "administrativo");
+}
+
+// ── CICLO DE VIDA DO ATENDIMENTO ────────────────────────────
+
+/**
+ * Quantos registros clínicos estão pendurados neste atendimento.
+ *
+ * É o número que decide se cancelar é possível. Cancelar um atendimento com
+ * evolução ou prescrição deixaria registro clínico órfão, apontando para um
+ * episódio que o sistema passa a negar.
+ *
+ * Conta com `HEAD` + `count=exact`: não traz o conteúdo clínico para a
+ * tela da recepção, que não tem direito de ler prontuário (COFEN 754/2024,
+ * art. 6º). Só a quantidade.
+ */
+export async function contarRegistrosClinicos(sb, atendimentoId) {
+  if (!atendimentoId) return 0;
+  const alvos = [
+    `ps_registros?atendimento_id=eq.${atendimentoId}&select=id`,
+    `ps_prescricao_itens?atendimento_id=eq.${atendimentoId}&select=id`,
+    `ps_administracoes?atendimento_id=eq.${atendimentoId}&select=id`,
+  ];
+  const rs = await Promise.all(alvos.map(a => sb(a).catch(() => null)));
+  return rs.reduce((s, r) => s + (Array.isArray(r) ? r.length : 0), 0);
+}
+
+/**
+ * Encerra o atendimento ambulatorial.
+ *
+ * Reusa `desfecho` + `desfecho_em` + `status`, que já existiam para o PS —
+ * assim tudo que já sabia ler "atendimento fechado" passa a funcionar sem
+ * mudança. Inventar um campo novo de encerramento só para o ambulatório
+ * criaria dois jeitos de estar fechado, e alguma tela leria só um deles.
+ */
+export async function encerrarAtendimento(sb, id, desfecho, observacao, user) {
+  return patchAtendimento(sb, id, {
+    desfecho,
+    desfecho_em: new Date().toISOString(),
+    status: "finalizado",
+    ...(observacao ? { observacao: String(observacao).trim() } : {}),
+  }, user);
+}
+
+/** Corrige o dado administrativo. `campos` já vem filtrado por `camposDaCorrecao`. */
+export async function corrigirAtendimento(sb, id, campos, user) {
+  const corpo = camposDaCorrecao(campos);
+  if (!Object.keys(corpo).length) return { ok: false, motivo: "Nada a corrigir." };
+  return patchAtendimento(sb, id, corpo, user);
+}
+
+/**
+ * Cancela — com motivo e autor congelados.
+ *
+ * Não é `delete`. Apagar levaria embora a prova de que alguém esteve no
+ * balcão, e deixaria agendamento e saída de estoque apontando para o vazio.
+ */
+export async function cancelarAtendimento(sb, id, motivo, user) {
+  return patchAtendimento(sb, id, {
+    status: "cancelado",
+    cancelado_motivo: String(motivo ?? "").trim(),
+    cancelado_em: new Date().toISOString(),
+    cancelado_por: user?.name || null,
+  }, user);
+}
+
+/**
+ * A lista de trabalho do encerramento: ambulatoriais que ficaram abertos.
+ *
+ * Existe pelo mesmo motivo da lista de identificação pendente — pendência
+ * que não aparece em lugar nenhum não é pendência, é esquecimento. E aqui a
+ * pendência tem efeito colateral: cada um destes faz o aviso de duplicidade
+ * disparar na próxima visita do paciente.
+ */
+export async function listarAmbulatoriaisAbertos(sb, { limite = 200 } = {}) {
+  const r = await sb(
+    `ps_atendimentos?tipo_atendimento=eq.ambulatorial&${FILTRO_ATENDIMENTO_ABERTO}` +
+    `&select=id,prontuario,iniciais,status,chegada_em,especialidade_cod,tipo_atendimento_cod,agendamento_id` +
+    `&order=chegada_em&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/** Um atendimento, com a ficha inteira — para a tela de correção. */
+export async function carregarAtendimento(sb, id) {
+  if (!id) return null;
+  const r = await sb(`ps_atendimentos?id=eq.${encodeURIComponent(id)}&select=*`);
+  return Array.isArray(r) && r.length ? r[0] : null;
+}
+
+async function patchAtendimento(sb, id, campos, user) {
+  if (!id) return { ok: false, motivo: "Atendimento inválido." };
+  const r = await sb(`ps_atendimentos?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...campos, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi alterado. Confirme que a migração `migracao-atendimento-ciclo.sql` foi aplicada e que seu perfil permite editar atendimento." };
+  }
+  return { ok: true, atendimento: r[0] };
 }
 
 // ── AGENDA DO AMBULATÓRIO ───────────────────────────────────

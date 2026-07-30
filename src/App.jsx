@@ -57,6 +57,11 @@ import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
 import Atendimento from "./atendimento/Atendimento.jsx";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 import { carregarPaciente } from "./atendimento/dados.js";
+// "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
+// como `status !== "finalizado"` em três pontos daqui — e o status
+// 'cancelado', criado depois, vazaria por todos eles: o Paciente 360
+// passaria a dizer "está no PS agora (cancelado)".
+import { atendimentoAberto, FILTRO_ATENDIMENTO_ABERTO } from "./atendimento/ciclo.js";
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -2950,7 +2955,7 @@ const PS_DESFECHOS = {
 // da coluna existir não têm tipo, e todos eles são do PS.
 const SO_EMERGENCIA = "or=(tipo_atendimento.eq.emergencia,tipo_atendimento.is.null)";
 async function loadPsAtendimentos() {
-  const rows = await sbFetch(`ps_atendimentos?status=neq.finalizado&${SO_EMERGENCIA}&select=*&order=chegada_em`);
+  const rows = await sbFetch(`ps_atendimentos?${FILTRO_ATENDIMENTO_ABERTO}&${SO_EMERGENCIA}&select=*&order=chegada_em`);
   return Array.isArray(rows) ? rows : [];
 }
 async function loadPsFinalizadosHoje() {
@@ -3502,7 +3507,7 @@ function montarTimeline(d) {
 // Sentinela: alertas automáticos sobre o paciente
 function sentinelaPaciente(d) {
   const alertas = [];
-  d.ps.filter(a => a.status !== "finalizado").forEach(a => alertas.push({ cor: "#f97316", texto: `Paciente está no PS agora (${a.status.replace(/_/g, " ")})` }));
+  d.ps.filter(atendimentoAberto).forEach(a => alertas.push({ cor: "#f97316", texto: `Paciente está no PS agora (${a.status.replace(/_/g, " ")})` }));
   d.leitoAtual.forEach(l => {
     const s = sinalLeito(l.data_internacao, l.dias_previstos);
     if (s.restam != null && s.restam < 0) alertas.push({ cor: "#f43f5e", texto: `Internação ${Math.abs(s.restam)}d além da previsão de alta (leito ${l.identificacao})` });
@@ -3525,7 +3530,7 @@ function resumoLocalPaciente(prontuario, dados, timeline, alertas) {
   const frases = [];
 
   // Situação atual
-  const psAberto = dados.ps.find(a => a.status !== "finalizado");
+  const psAberto = dados.ps.find(atendimentoAberto);
   if (dados.leitoAtual.length) {
     const l = dados.leitoAtual[0];
     const desde = l.data_internacao ? new Date(l.data_internacao + "T00:00:00").toLocaleDateString("pt-BR") : null;

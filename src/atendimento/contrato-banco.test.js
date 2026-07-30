@@ -28,6 +28,8 @@ import {
   carregarBloqueios, salvarBloqueio, carregarAgendaDoDia,
   marcarAgendamento, confirmarPresenca, registrarFalta, cancelarAgendamento,
   vincularPacienteAoAgendamento,
+  encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
+  listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -209,6 +211,95 @@ describe("leituras da recepção", () => {
     const { sb, chamadas } = espiao([]);
     await carregarProfissionais(sb);
     conferirLeitura(chamadas[0]);
+  });
+});
+
+describe("ciclo de vida do atendimento", () => {
+  it("encerrar grava em coluna real e fecha o status", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await encerrarAtendimento(sb, 72, "atendido", "consulta realizada", USER);
+    expect(r.ok).toBe(true);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.status).toBe("finalizado");
+    expect(corpo.desfecho).toBe("atendido");
+    expect(corpo.desfecho_em).toBeTruthy();
+  });
+
+  it("corrigir grava só coluna administrativa, nunca o paciente", async () => {
+    const { sb, chamadas } = espiao();
+    await corrigirAtendimento(sb, 72, {
+      convenio_id: 2, carteira: "998877", cid: "I10",
+      // as duas abaixo têm que ser descartadas pelo filtro
+      prontuario: "200002", classificacao: "vermelho",
+    }, USER);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.convenio_id).toBe(2);
+    expect(corpo.prontuario).toBeUndefined();
+    expect(corpo.classificacao).toBeUndefined();
+  });
+
+  it("correção só com campo proibido não chega a gravar", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await corrigirAtendimento(sb, 72, { prontuario: "200002" }, USER);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("cancelar congela motivo, momento e autor", async () => {
+    const { sb, chamadas } = espiao();
+    await cancelarAtendimento(sb, 72, "aberto em duplicidade por engano", USER);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.status).toBe("cancelado");
+    expect(corpo.cancelado_motivo).toBe("aberto em duplicidade por engano");
+    expect(corpo.cancelado_em).toBeTruthy();
+    // `usuario` é sobrescrito a cada update; `cancelado_por` congela quem foi.
+    expect(corpo.cancelado_por).toBe(USER.name);
+  });
+
+  it("as leituras do ciclo consultam colunas reais", async () => {
+    for (const acao of [
+      sb => listarAmbulatoriaisAbertos(sb),
+      sb => carregarAtendimento(sb, 72),
+    ]) {
+      const { sb, chamadas } = espiao([]);
+      await acao(sb);
+      conferirLeitura(chamadas[0]);
+    }
+  });
+
+  it("a contagem de registros clínicos olha as três tabelas do PEP", async () => {
+    const { sb, chamadas } = espiao([{ id: 1 }, { id: 2 }]);
+    const n = await contarRegistrosClinicos(sb, 72);
+    expect(chamadas).toHaveLength(3);
+    for (const c of chamadas) conferirLeitura(c);
+    expect(n).toBe(6);
+  });
+
+  it("sem atendimento, a contagem é zero e não consulta nada", async () => {
+    const { sb, chamadas } = espiao();
+    expect(await contarRegistrosClinicos(sb, null)).toBe(0);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("a lista de ambulatoriais abertos exclui finalizado E cancelado", async () => {
+    // Era o `neq.finalizado` que deixava o cancelado passar por aberto.
+    const { sb, chamadas } = espiao([]);
+    await listarAmbulatoriaisAbertos(sb);
+    expect(chamadas[0].recurso).toContain("finalizado");
+    expect(chamadas[0].recurso).toContain("cancelado");
+    expect(chamadas[0].recurso).toContain("tipo_atendimento=eq.ambulatorial");
+  });
+
+  it("silêncio do banco não passa por sucesso", async () => {
+    for (const resposta of [null, []]) {
+      const { sb } = espiao(resposta);
+      expect((await encerrarAtendimento(sb, 72, "atendido", null, USER)).ok).toBe(false);
+      expect((await cancelarAtendimento(sb, 72, "motivo suficiente", USER)).ok).toBe(false);
+      expect((await corrigirAtendimento(sb, 72, { cid: "I10" }, USER)).ok).toBe(false);
+    }
   });
 });
 
