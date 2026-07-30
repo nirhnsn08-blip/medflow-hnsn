@@ -4,6 +4,7 @@ import {
   matrizRisco, exigeRCA, notificacaoCompulsoria, temDano,
   resumoIncidentes, indicadoresSeguranca, farol, metasSeguranca, rotuloTipo, rotuloClasse,
   filtrarPorMes, incidentesCompulsorios, fichaNotivisa, relatorioNsp,
+  STATUS_PROTOCOLO, PROTOCOLOS_BASICOS, protocoloRevisaoVencida, resumoProtocolos,
   ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
   acaoAtrasada, resumoAcoes, temRcaConcluida, incidentesAguardandoRca,
 } from "./nsp.js";
@@ -275,5 +276,35 @@ describe("relatórios / NOTIVISA (Fase 2d)", () => {
     expect(rel.indicadores.quedas).toBe(1);
     expect(rel.plano.total).toBe(2);
     expect(rel.metas).toHaveLength(6);
+  });
+});
+
+describe("protocolos de segurança (Fase 2d)", () => {
+  it("catálogo: 3 status e os 6 protocolos básicos ligados às metas", () => {
+    expect(STATUS_PROTOCOLO.map(s => s.v)).toEqual(["vigente", "em_revisao", "suspenso"]);
+    expect(PROTOCOLOS_BASICOS).toHaveLength(6);
+    expect(PROTOCOLOS_BASICOS.every(b => b.meta)).toBe(true);
+  });
+  it("protocoloRevisaoVencida: revisão no passado e não suspenso", () => {
+    const hoje = new Date(2026, 6, 29);
+    expect(protocoloRevisaoVencida({ revisao_em: "2026-07-01", status: "vigente" }, hoje)).toBe(true);
+    expect(protocoloRevisaoVencida({ revisao_em: "2026-08-15", status: "vigente" }, hoje)).toBe(false);
+    expect(protocoloRevisaoVencida({ revisao_em: "2026-07-01", status: "suspenso" }, hoje)).toBe(false);
+    expect(protocoloRevisaoVencida({ status: "vigente" }, hoje)).toBe(false);  // sem data
+  });
+  it("resumoProtocolos: totais, revisão vencida e cobertura dos 6 básicos", () => {
+    const hoje = new Date(2026, 6, 29);
+    const protos = [
+      { chave: "ident", status: "vigente", revisao_em: "2027-01-01" },
+      { chave: "higiene", status: "em_revisao", revisao_em: "2026-07-01" },  // vencida
+      { chave: null, status: "vigente", titulo: "Protocolo extra" },
+    ];
+    const r = resumoProtocolos(protos, hoje);
+    expect(r.total).toBe(3);
+    expect(r.vigentes).toBe(2);
+    expect(r.emRevisao).toBe(1);
+    expect(r.revisaoVencida).toBe(1);
+    expect(r.basicosFaltando).toContain("Cirurgia segura");
+    expect(r.basicosFaltando).not.toContain("Identificação do paciente");
   });
 });

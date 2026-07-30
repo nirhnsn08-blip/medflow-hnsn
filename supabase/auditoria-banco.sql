@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 82 tabelas, 1298 colunas.
+-- Cobertura atual: 83 tabelas, 1313 colunas.
 -- ============================================================
 
 with
@@ -55,6 +55,7 @@ tabelas(nome, origem) as (values
   ('nsp_incidentes','nsp-incidentes'),
   ('nsp_meta_faixas','nsp-metas'),
   ('nsp_meta_medicoes','nsp-metas'),
+  ('nsp_protocolos','nsp-protocolos'),
   ('nsp_rca','nsp-rca-plano'),
   ('pacientes','schema'),
   ('pep_acessos','pep-acessos'),
@@ -620,6 +621,21 @@ colunas(tabela, coluna, origem) as (values
   ('nsp_meta_medicoes','observacao','nsp-metas'),
   ('nsp_meta_medicoes','registrado_por','nsp-metas'),
   ('nsp_meta_medicoes','registro_conselho','nsp-metas'),
+  ('nsp_protocolos','ativo','nsp-protocolos'),
+  ('nsp_protocolos','chave','nsp-protocolos'),
+  ('nsp_protocolos','conteudo','nsp-protocolos'),
+  ('nsp_protocolos','criado_em','nsp-protocolos'),
+  ('nsp_protocolos','id','nsp-protocolos'),
+  ('nsp_protocolos','meta','nsp-protocolos'),
+  ('nsp_protocolos','referencia','nsp-protocolos'),
+  ('nsp_protocolos','responsavel','nsp-protocolos'),
+  ('nsp_protocolos','revisao_em','nsp-protocolos'),
+  ('nsp_protocolos','status','nsp-protocolos'),
+  ('nsp_protocolos','titulo','nsp-protocolos'),
+  ('nsp_protocolos','updated_at','nsp-protocolos'),
+  ('nsp_protocolos','usuario','nsp-protocolos'),
+  ('nsp_protocolos','validado','nsp-protocolos'),
+  ('nsp_protocolos','versao','nsp-protocolos'),
   ('nsp_rca','barreiras','nsp-rca-plano'),
   ('nsp_rca','categoria','nsp-rca-plano'),
   ('nsp_rca','causa_raiz','nsp-rca-plano'),
