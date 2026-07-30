@@ -41,6 +41,7 @@ import {
 import {
   STATUS_ATENDIMENTO, validarCorrecao, validarCancelamento,
 } from "./ciclo.js";
+import Impressos from "./Impressos.jsx";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -135,6 +136,8 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [ficha, setFicha] = useState({});
   const [medicoUser, setMedicoUser] = useState("");
   const [corrigindo, setCorrigindo] = useState(null);   // { atendimento, campos }
+  // { paciente, atendimento } — a etapa de impressão, depois de abrir.
+  const [imprimindo, setImprimindo] = useState(null);
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const setFi = (k, v) => setFicha(p => ({ ...p, [k]: v }));
@@ -182,7 +185,20 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setPaciente(null); setAbertos([]); setCadastrando(null);
     setResultados([]); setBuscou(false); setTermo(""); setMsg(null);
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
-    setFicha({}); setMedicoUser(""); setCorrigindo(null);
+    setFicha({}); setMedicoUser(""); setCorrigindo(null); setImprimindo(null);
+  }
+
+  /**
+   * Abre a impressão de um atendimento que já existe.
+   *
+   * Recarrega do banco pelo mesmo motivo da correção: a lista traz só o
+   * suficiente para desenhar a linha, e uma pulseira impressa a partir dela
+   * sairia sem convênio, sem especialidade e sem a hora certa de chegada.
+   */
+  async function imprimirDe(a) {
+    setMsg(null);
+    const completo = await carregarAtendimento(sb, a.id);
+    setImprimindo({ paciente, atendimento: completo || a, origem: "lista" });
   }
 
   /**
@@ -326,8 +342,12 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
     const nome = comoExibir(paciente) || paciente.iniciais;
-    recomecar();
-    setMsg({ tom: "ok", texto: `Atendimento aberto para ${nome} (reg. ${r.atendimento.prontuario}). O paciente está na fila de triagem do Pronto-Socorro.` });
+    // NÃO recomeça aqui. A tela vai para a impressão, que é o último passo
+    // do balcão: paciente que sai sem pulseira volta identificado só pela
+    // memória de quem o recebeu. Quem fecha a impressão é que libera a tela
+    // para o próximo.
+    setImprimindo({ paciente, atendimento: r.atendimento, origem: "abertura" });
+    setMsg({ tom: "ok", texto: `Atendimento #${r.atendimento.id} aberto para ${nome} (reg. ${r.atendimento.prontuario}). O paciente está na fila de triagem do Pronto-Socorro — imprima a pulseira antes de ele sair do balcão.` });
   }
 
   async function marcarIdentificado(p) {
@@ -369,8 +389,22 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
         </div>
       )}
 
+      {/* ── IMPRESSÃO — pulseira e ficha, o último passo do balcão ── */}
+      {imprimindo && (
+        <Impressos
+          paciente={imprimindo.paciente}
+          atendimento={imprimindo.atendimento}
+          catalogos={cat}
+          convenio={(cat.convenios || []).find(c => String(c.id) === String(imprimindo.atendimento?.convenio_id)) || null}
+          plano={(cat.planos || []).find(p => String(p.id) === String(imprimindo.atendimento?.plano_id)) || null}
+          procedimento={(cat.procedimentos || []).find(p => p.codigo === imprimindo.atendimento?.procedimento_cod) || null}
+          currentUser={currentUser}
+          onFechar={imprimindo.origem === "abertura" ? recomecar : () => setImprimindo(null)}
+        />
+      )}
+
       {/* ── PENDÊNCIAS DE IDENTIFICAÇÃO ── */}
-      {pendentes.length > 0 && (
+      {!imprimindo && pendentes.length > 0 && (
         <div style={{ ...cartao, borderLeft: "4px solid #d97706" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <strong style={{ fontSize: 13 }}>
@@ -402,7 +436,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
       )}
 
       {/* ── 1. PROCURAR ── */}
-      {!paciente && !cadastrando && (
+      {!imprimindo && !paciente && !cadastrando && (
         <div style={cartao}>
           <div style={rotulo}>1. Procure o paciente antes de cadastrar</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -450,7 +484,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
       )}
 
       {/* ── 2. CADASTRO (paciente novo ou completando o que falta) ── */}
-      {cadastrando && (
+      {!imprimindo && cadastrando && (
         <div style={cartao}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
             <div style={rotulo}>2. Cadastro do paciente</div>
@@ -477,7 +511,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
       )}
 
       {/* ── 3. PACIENTE ESCOLHIDO + ABERTURA ── */}
-      {paciente && (
+      {!imprimindo && paciente && (
         <>
           <div style={cartao}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
@@ -687,8 +721,15 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 <div key={a.id} style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
                                          fontSize: 12.5, padding: "6px 0", color: "var(--text-muted)" }}>
                   <span>#{a.id} · {STATUS_ATENDIMENTO[a.status]?.label || a.status} · {a.tipo_atendimento || "emergência"} · desde {new Date(a.chegada_em).toLocaleString("pt-BR")}</span>
+                  {/* Imprimir não depende de `canEdit`: reimprimir pulseira
+                      não altera nada, e quem só consulta precisa poder
+                      repor a que rasgou. */}
+                  <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                    <button onClick={() => imprimirDe(a)}
+                      style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 10px", fontSize: 11 }}>Imprimir</button>
+                  </span>
                   {canEdit && (
-                    <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                    <span style={{ display: "flex", gap: 6 }}>
                       <button onClick={() => abrirCorrecao(a)}
                         style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 10px", fontSize: 11 }}>Corrigir</button>
                       <button onClick={() => cancelarEste(a)}
