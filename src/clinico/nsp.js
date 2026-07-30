@@ -392,3 +392,40 @@ export function relatorioNsp({ incidentes, acoes, lppAdquiridas, medicoes, faixa
     metas: metasSeguranca({ incidentes, lppAdquiridas, medicoes, faixas }),
   };
 }
+
+// ── Protocolos gerenciados de segurança — os 6 básicos do PNSP ──
+
+export const STATUS_PROTOCOLO = [
+  { v: "vigente",    l: "Vigente",    nivel: "verde" },
+  { v: "em_revisao", l: "Em revisão", nivel: "amarelo" },
+  { v: "suspenso",   l: "Suspenso",   nivel: "cinza" },
+];
+
+// Os 6 protocolos básicos de segurança do paciente (PNSP), ligados às 6 Metas.
+export const PROTOCOLOS_BASICOS = [
+  { chave: "ident",      meta: "identificacao",   titulo: "Identificação do paciente" },
+  { chave: "cir_segura", meta: "cirurgia_segura", titulo: "Cirurgia segura" },
+  { chave: "higiene",    meta: "higiene_maos",    titulo: "Higiene das mãos" },
+  { chave: "quedas",     meta: "quedas_lpp",      titulo: "Prevenção de quedas" },
+  { chave: "lpp",        meta: "quedas_lpp",      titulo: "Prevenção de lesão por pressão" },
+  { chave: "medicam",    meta: "medicamentos",    titulo: "Segurança medicamentosa" },
+];
+
+/** Protocolo com revisão vencida: tem data de revisão no passado e não está suspenso. */
+export function protocoloRevisaoVencida(proto, hoje = new Date()) {
+  if (!proto || !proto.revisao_em || proto.status === "suspenso") return false;
+  return new Date(proto.revisao_em + "T23:59:59") < hoje;
+}
+
+/** Panorama dos protocolos: totais, revisões vencidas e cobertura dos 6 básicos. */
+export function resumoProtocolos(protocolos, hoje = new Date()) {
+  const lista = arr(protocolos).filter(p => p && p.ativo !== false);
+  const cobertos = new Set(lista.map(p => p.chave).filter(Boolean));
+  return {
+    total: lista.length,
+    vigentes: lista.filter(p => (p.status || "em_revisao") === "vigente").length,
+    emRevisao: lista.filter(p => (p.status || "em_revisao") === "em_revisao").length,
+    revisaoVencida: lista.filter(p => protocoloRevisaoVencida(p, hoje)).length,
+    basicosFaltando: PROTOCOLOS_BASICOS.filter(b => !cobertos.has(b.chave)).map(b => b.titulo),
+  };
+}
