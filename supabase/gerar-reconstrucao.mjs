@@ -83,6 +83,7 @@ const ORDEM = [
   "migracao-nsp-rca-plano.sql",
   "migracao-atendimento-ciclo.sql",
   "migracao-nsp-metas.sql",
+  "migracao-nsp-protocolos.sql",
   "migracao-atendimento-responsavel.sql",
   "migracao-atendimento-faturamento.sql",
 ];

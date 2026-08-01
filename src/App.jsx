@@ -34,6 +34,7 @@ import { montarChecagemSae } from "./clinico/sae.js";
 import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
          indicadoresSeguranca, farol, metasSeguranca, relatorioNsp, fichaNotivisa,
+         METAS as NSP_METAS, STATUS_PROTOCOLO, protocoloRevisaoVencida, resumoProtocolos,
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
@@ -1838,6 +1839,29 @@ async function registrarMetaMedicao(med, user) {
     }),
   });
   return Array.isArray(res) ? res[0] : res;
+}
+// ── NSP Fase 2d: protocolos gerenciados de segurança ──
+async function loadProtocolos() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_protocolos?select=*&order=criado_em").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+// Cria/edita protocolo — só ADM/canEdit (a tela restringe). Upsert por id, é configuração.
+async function salvarProtocolo(proto, user) {
+  if (!USE_SUPABASE) return;
+  const body = {
+    meta: proto.meta || null, titulo: proto.titulo, versao: proto.versao || null,
+    responsavel: proto.responsavel || null, conteudo: proto.conteudo || null,
+    referencia: proto.referencia || null, revisao_em: proto.revisao_em || null,
+    status: proto.status || "em_revisao", validado: !!proto.validado, ativo: proto.ativo !== false,
+    usuario: user?.name || null, updated_at: new Date().toISOString(),
+  };
+  if (proto.id) body.id = proto.id;
+  if (proto.chave) body.chave = proto.chave;
+  await sbFetch("nsp_protocolos?on_conflict=id", {
+    method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(body),
+  });
 }
 async function upsertLeitoRemote(leito, user) {
   if (!USE_SUPABASE) return;
@@ -10429,8 +10453,8 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // Barra lateral própria (padrão dos outros módulos). Nesta fase são
 // funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
 // Consultar incidente (2a); Análise de causas e Plano de ação (2b);
-// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA (2d).
-// Protocolos, Capacitações, Comunicação e Assistente AI: restante da 2d.
+// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA e Protocolos (2d).
+// Capacitações, Comunicação e Assistente AI: restante da 2d.
 // ═══════════════════════════════════════════════════════════
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
@@ -10624,11 +10648,14 @@ function NSPPage({ currentUser, canEdit }) {
   const [medicoes, setMedicoes] = useState([]);
   const [metaEdit, setMetaEdit] = useState(null);
   const [medForm, setMedForm] = useState(null);
+  const [protocolos, setProtocolos] = useState([]);
+  const [protoForm, setProtoForm] = useState(null);
 
   function recarregar() {
     loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq);
     loadRcas().then(setRcas); loadAcoes().then(setAcoes);
     loadMetaFaixas().then(setFaixasMeta); loadMetaMedicoes().then(setMedicoes);
+    loadProtocolos().then(setProtocolos);
   }
   useEffect(() => { if (USE_SUPABASE) recarregar(); }, []);
 
@@ -10639,6 +10666,7 @@ function NSPPage({ currentUser, canEdit }) {
   const metas = metasSeguranca({ incidentes, lppAdquiridas: lppAdq, medicoes, faixas: faixasMeta });
   const farolCor = { verde: "#34d399", amarelo: "#f5b301", vermelho: "#f43f5e", cinza: "#8891a5" };
   const farolTxt = { verde: "No alvo", amarelo: "Alerta", vermelho: "Fora do alvo", cinza: "Sem leitura" };
+  const protoResumo = resumoProtocolos(protocolos);
   const filaRca = incidentesAguardandoRca(incidentes, rcas);
   const risco = matrizRisco(form.probabilidade, form.gravidade);
   const filtrados = incidentes.filter(i =>
@@ -10680,6 +10708,10 @@ function NSPPage({ currentUser, canEdit }) {
   async function salvarMedicao() {
     if (busy || !medForm || !medForm.meta || !medForm.competencia || !(Number(medForm.denominador) > 0)) return;
     setBusy(true); await registrarMetaMedicao(medForm, currentUser); setBusy(false); setMedForm(null); recarregar();
+  }
+  async function salvarProto() {
+    if (busy || !protoForm || !(protoForm.titulo || "").trim()) return;
+    setBusy(true); await salvarProtocolo(protoForm, currentUser); setBusy(false); setProtoForm(null); recarregar();
   }
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -11077,7 +11109,79 @@ function NSPPage({ currentUser, canEdit }) {
             })}
           </div>
         </>)}
-        {sub === "protocolos"   && <Placeholder fase="2d" />}
+        {sub === "protocolos" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Os protocolos básicos de segurança do paciente (PNSP), ligados às 6 Metas. Cada um tem versão, responsável e data de revisão — o núcleo cobra a revisão vencida.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
+            <Card label="Protocolos" valor={protoResumo.total} cor="#22d3ee" />
+            <Card label="Vigentes" valor={protoResumo.vigentes} cor={protoResumo.vigentes ? "#34d399" : "var(--text)"} />
+            <Card label="Em revisão" valor={protoResumo.emRevisao} cor={protoResumo.emRevisao ? "#f5b301" : "#34d399"} />
+            <Card label="Revisão vencida" valor={protoResumo.revisaoVencida} cor={protoResumo.revisaoVencida ? "#f43f5e" : "#34d399"} sub="cobrar atualização" />
+          </div>
+          {protoResumo.basicosFaltando.length > 0 && (
+            <div style={{ ...card, borderLeft: "3px solid #fb923c" }}>
+              <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>Faltam cadastrar: <strong>{protoResumo.basicosFaltando.join(" · ")}</strong></span>
+            </div>
+          )}
+          {canEdit && !protoForm && <button onClick={() => setProtoForm({ titulo: "", meta: "", versao: "1.0", responsavel: "", revisao_em: "", status: "em_revisao", conteudo: "", referencia: "", validado: false })} style={{ ...btnPrimario(true), marginBottom: 14 }}>+ Novo protocolo</button>}
+
+          {protoForm && (
+            <div style={card}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{protoForm.id ? "Editar protocolo" : "Novo protocolo"}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+                <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Título *</label><input value={protoForm.titulo} onChange={e => setProtoForm(p => ({ ...p, titulo: e.target.value }))} style={inp} autoFocus /></div>
+                <div><label style={lbl}>Meta vinculada</label>
+                  <select value={protoForm.meta || ""} onChange={e => setProtoForm(p => ({ ...p, meta: e.target.value }))} style={inp}>
+                    <option value="">— nenhuma —</option>
+                    {NSP_METAS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Versão</label><input value={protoForm.versao || ""} onChange={e => setProtoForm(p => ({ ...p, versao: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Responsável</label><input value={protoForm.responsavel || ""} onChange={e => setProtoForm(p => ({ ...p, responsavel: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Próxima revisão</label><input type="date" value={protoForm.revisao_em || ""} onChange={e => setProtoForm(p => ({ ...p, revisao_em: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Status</label>
+                  <select value={protoForm.status || "em_revisao"} onChange={e => setProtoForm(p => ({ ...p, status: e.target.value }))} style={inp}>
+                    {STATUS_PROTOCOLO.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}><label style={lbl}>Conteúdo / passos</label><textarea value={protoForm.conteudo || ""} onChange={e => setProtoForm(p => ({ ...p, conteudo: e.target.value }))} rows={5} style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} placeholder={"1. …\n2. …"} /></div>
+              <div style={{ marginTop: 10 }}><label style={lbl}>Referência / fonte</label><input value={protoForm.referencia || ""} onChange={e => setProtoForm(p => ({ ...p, referencia: e.target.value }))} style={inp} placeholder="Diretriz, ano, sociedade…" /></div>
+              {currentUser?.role === "adm_master" && <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-3)", marginTop: 10 }}><input type="checkbox" checked={!!protoForm.validado} onChange={e => setProtoForm(p => ({ ...p, validado: e.target.checked }))} /> Validado (sai de "em validação")</label>}
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={salvarProto} disabled={busy || !(protoForm.titulo || "").trim()} style={btnPrimario(!busy && !!(protoForm.titulo || "").trim())}>Salvar</button>
+                <button onClick={() => setProtoForm(null)} style={btnGhost}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {protocolos.filter(p => p.ativo !== false).length === 0 ? <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Nenhum protocolo cadastrado ainda.</div> :
+              protocolos.filter(p => p.ativo !== false).map(p => {
+                const vencida = protocoloRevisaoVencida(p);
+                const st = STATUS_PROTOCOLO.find(s => s.v === (p.status || "em_revisao")) || {};
+                const metaL = (NSP_METAS.find(m => m.v === p.meta) || {}).l;
+                return (
+                  <div key={p.id} style={card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.titulo}{p.versao ? <span style={{ color: "var(--text-muted)", fontWeight: 400, fontSize: 12 }}> · v{p.versao}</span> : null}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{metaL ? `Meta: ${metaL}` : "Sem meta vinculada"}{p.responsavel ? ` · Resp.: ${p.responsavel}` : ""}</div>
+                      </div>
+                      <Pill c={NSP_COR[st.nivel] || "#8891a5"} t={st.l || p.status} />
+                      {!p.validado && <Pill c="#f5b301" t="em validação" />}
+                      {canEdit && <button onClick={() => setProtoForm({ ...p })} style={btnGhostMini}>Editar</button>}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 11.5, color: vencida ? "#f43f5e" : "var(--text-3)", fontWeight: vencida ? 700 : 400 }}>
+                      {p.revisao_em ? (vencida ? `⚠ Revisão vencida em ${new Date(p.revisao_em).toLocaleDateString("pt-BR")}` : `Próxima revisão: ${new Date(p.revisao_em).toLocaleDateString("pt-BR")}`) : "Sem data de revisão definida"}
+                    </div>
+                    {p.conteudo && <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{p.conteudo}</div>}
+                  </div>
+                );
+              })}
+          </div>
+        </>)}
         {sub === "capacitacoes" && <Placeholder fase="2d" />}
         {sub === "comunicacao"  && <Placeholder fase="2d" />}
         {sub === "relatorios"   && <NspRelatorioView incidentes={incidentes} acoes={acoes} lppAdq={lppAdq} medicoes={medicoes} faixas={faixasMeta} />}
