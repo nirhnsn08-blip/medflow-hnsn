@@ -1,19 +1,20 @@
 # 📄 Contexto do Projeto — Valentrax / MedFlow HNSN
 
 > Resumo de referência para onboarding rápido de novos colaboradores (humanos ou IA).
-> Atualizado em 2026-07-23 (PEP fases 1 a 3).
+> Atualizado em 2026-08-01 (módulo Atendimento completo; NSP Fase 2d).
 
 ## O que é
 
 Plataforma web de gestão operacional hospitalar (HIS enxuto) construída para o
 **Hospital Nossa Senhora de Navegantes**. Centraliza: ambulatório, giro/ocupação de
 leitos, pronto-socorro (triagem Manchester), bloco cirúrgico, SCIH (controle de
-infecção), farmácia clínica, **estoque & compras** e o **prontuário eletrônico do
-paciente (PEP)**, com BI e indicadores.
+infecção), farmácia clínica, **estoque & compras**, o **prontuário eletrônico do
+paciente (PEP)**, o **Núcleo de Segurança do Paciente (NSP)** e o **Atendimento**
+(recepção, agenda do ambulatório, consultas e faturamento), com BI e indicadores.
 
 **⚠️ Ainda NÃO há paciente real no sistema.** O banco principal está povoado com
 dados de teste e de configuração; nenhum atendimento real foi registrado até
-2026-07-23. Isso importa para calibrar risco: escrita acidental hoje é sujeira de
+2026-08-01. Isso importa para calibrar risco: escrita acidental hoje é sujeira de
 dado, não incidente com dado de paciente. A partir do primeiro paciente real, as
 regras mudam — ver "Dívidas".
 
@@ -29,9 +30,14 @@ LGPD). Hoje há dois bancos: o principal (`riuvyxppixeclxudsgpv`) e o de teste
 
 ## Stack
 
-React 18 + Vite 5 (JS/JSX, **sem TypeScript**) · Recharts · Supabase (Auth +
-PostgreSQL + REST + Edge Functions em Deno) · deploy automático na Vercel · CI no
+React 18 + Vite 7 (JS/JSX, **sem TypeScript**) · Recharts · Vitest 3 · Supabase (Auth
++ PostgreSQL + REST + Edge Functions em Deno) · deploy automático na Vercel · CI no
 GitHub valida o build · Edge Function opcional de resumo clínico com Claude.
+
+O bundle é dividido em chunks (`react`, `charts`, `vendor` e o código do app), para
+as bibliotecas ficarem em cache do navegador entre um deploy e outro. O chunk do app
+ainda passa de 700 kB — é o `App.jsx`, e o aviso do build serve de lembrete de que a
+modularização dele continua pendente.
 
 ## Arquitetura
 
