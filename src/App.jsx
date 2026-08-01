@@ -57,6 +57,7 @@ import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
 import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
 import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
 import Atendimento from "./atendimento/Atendimento.jsx";
+import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 import { carregarPaciente } from "./atendimento/dados.js";
 // "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
@@ -185,14 +186,12 @@ async function sbFetch(path, opts = {}, _jaRenovou = false) {
 // ═══════════════════════════════════════════════════════════
 // DADOS MESTRES
 // ═══════════════════════════════════════════════════════════
-const SPECS = [
-  // Cores categóricas validadas (contraste + daltonismo) nos temas claro e escuro
-  { id: "cirurgia_geral", label: "Cirurgia Geral", metaM: 360,  metaA: 4320, meta1a: 1320, color: "#0d9488" },
-  { id: "oftalmologia",   label: "Oftalmologia",   metaM: 240,  metaA: 2880, meta1a: 864,  color: "#3b82f6" },
-  { id: "ginecologia",    label: "Ginecologia",    metaM: 240,  metaA: 2880, meta1a: 864,  color: "#d97706" },
-  { id: "urologia",       label: "Urologia",       metaM: 240,  metaA: 2880, meta1a: 864,  color: "#6366f1" },
-  { id: "ortopedia",      label: "Ortopedia",      metaM: 387,  metaA: 4644, meta1a: 1394, color: "#e11d48" },
-];
+// A lista saiu daqui para `src/ambulatorio/especialidades.js` quando ganhou
+// um segundo leitor: a conciliação da agenda, que precisa saber para qual
+// chave gravar a produção apurada. Duas cópias fariam uma ganhar
+// especialidade nova e a outra não — e o número gravado sumiria numa chave
+// que nenhuma tela lê.
+const SPECS = ESPECIALIDADES;
 const MONTHS      = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 

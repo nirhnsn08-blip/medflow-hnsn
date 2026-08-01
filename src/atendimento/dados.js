@@ -21,6 +21,9 @@ import { camposDaFicha, DOMINIOS } from "./ficha.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
+import { camposDaProducao } from "./producao.js";
+import { camposDoResponsavel } from "./responsavel.js";
+import { camposDaConta, camposDoItem } from "./faturamento.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -464,6 +467,21 @@ export async function carregarAgendaDoDia(sb, data) {
 }
 
 /**
+ * Os agendamentos de um período — a base do relatório do mês.
+ *
+ * `data` é coluna DATE (dia civil, sem hora), então `lte` no último dia
+ * está certo aqui. A regra do "lt no dia seguinte" vale para as colunas de
+ * TIMESTAMP, como `chegada_em`, onde quem chegou 23:59:30 ficaria de fora
+ * da própria data.
+ */
+export async function carregarAgendamentosDoPeriodo(sb, { de, ate, limite = 3000 } = {}) {
+  if (!de || !ate) return [];
+  const r = await sb(`ag_agendamentos?data=gte.${encodeURIComponent(de)}&data=lte.${encodeURIComponent(ate)}` +
+    `&select=${CAMPOS_AGENDAMENTO}&order=data,hora&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
  * Marca uma vaga.
  *
  * A conferência da REGRA (vaga da regulação, cota esgotada, horário tomado)
@@ -585,6 +603,242 @@ async function patchAgendamento(sb, id, campos, user) {
   });
   if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar a agenda." };
   return { ok: true, agendamento: r[0] };
+}
+
+// ── FATURAMENTO — a conta do atendimento ────────────────────
+
+const CAMPOS_CONTA = [
+  "id", "atendimento_id", "prontuario", "convenio_id", "plano_id", "via",
+  "competencia", "status", "fechada_em", "fechada_por", "observacao", "criado_em",
+].join(",");
+
+const CAMPOS_ITEM = [
+  "id", "conta_id", "tipo", "codigo", "descricao", "quantidade",
+  "valor_unitario", "valor_total", "executante", "executante_cbo",
+  "data_execucao", "cobrar_do_paciente", "observacao", "cancelado", "criado_em",
+].join(",");
+
+/** A conta viva de um atendimento, ou `null`. Cancelada não conta. */
+export async function carregarConta(sb, atendimentoId) {
+  if (!atendimentoId) return null;
+  const r = await sb(`at_contas?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&status=neq.cancelada&select=${CAMPOS_CONTA}&order=criado_em.desc&limit=1`);
+  return Array.isArray(r) && r.length ? r[0] : null;
+}
+
+export async function carregarItensDaConta(sb, contaId) {
+  if (!contaId) return [];
+  const r = await sb(`at_conta_itens?conta_id=eq.${encodeURIComponent(contaId)}` +
+    `&select=${CAMPOS_ITEM}&order=criado_em`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Abre a conta de um atendimento.
+ *
+ * O índice único parcial do banco (`at_contas_atend_unica`) é a última
+ * linha de defesa: duas telas abrindo conta ao mesmo tempo para o mesmo
+ * episódio fariam o atendimento ser transmitido duas vezes, e validação de
+ * tela nenhuma impede isso.
+ */
+export async function abrirConta(sb, dados, user) {
+  const corpo = camposDaConta(dados);
+  if (!corpo.atendimento_id) return { ok: false, motivo: "Conta sem atendimento não é gravada." };
+  const r = await sb("at_contas", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Se este atendimento já tem conta aberta, o banco recusou a segunda — recarregue. Confirme também que a migração `migracao-atendimento-faturamento.sql` foi aplicada." };
+  }
+  return { ok: true, conta: r[0] };
+}
+
+export async function acrescentarItem(sb, dados, user) {
+  const corpo = camposDoItem(dados);
+  if (!corpo.conta_id) return { ok: false, motivo: "Item sem conta não é gravado." };
+  const r = await sb("at_conta_itens", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      ...corpo,
+      cobrar_do_paciente: dados.cobrar_do_paciente === true,
+      usuario: user?.name || null, updated_at: new Date().toISOString(),
+    }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Se o item foi marcado para cobrança do paciente numa conta do SUS, o banco recusou — e recusou certo: atendimento SUS não pode ser cobrado do paciente." };
+  }
+  return { ok: true, item: r[0] };
+}
+
+/** Cancela um item — não apaga. A diferença entre a conta de ontem e a de hoje precisa ter explicação. */
+export async function cancelarItem(sb, id, user) {
+  if (!id) return { ok: false, motivo: "Item inválido." };
+  const r = await sb(`at_conta_itens?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ cancelado: true, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado." };
+  return { ok: true, item: r[0] };
+}
+
+/** Fecha a conta na competência. A validação é de `validarFechamento`. */
+export async function fecharConta(sb, id, { via, competencia }, user) {
+  return patchConta(sb, id, {
+    status: "fechada", via: via || null, competencia: competencia || null,
+    fechada_em: new Date().toISOString(), fechada_por: user?.name || null,
+  }, user);
+}
+
+/**
+ * Reabre uma conta fechada.
+ *
+ * `faturada` não reabre: a partir dela existe remessa transmitida, e mexer
+ * no que já foi enviado faz a conta e o arquivo contarem histórias
+ * diferentes. Correção depois disso é glosa, que é outro fluxo.
+ */
+export async function reabrirConta(sb, id, user) {
+  return patchConta(sb, id, { status: "aberta", fechada_em: null, fechada_por: null }, user);
+}
+
+export async function marcarContaFaturada(sb, id, user) {
+  return patchConta(sb, id, { status: "faturada" }, user);
+}
+
+async function patchConta(sb, id, campos, user) {
+  if (!id) return { ok: false, motivo: "Conta inválida." };
+  const r = await sb(`at_contas?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...campos, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite editar faturamento." };
+  }
+  return { ok: true, conta: r[0] };
+}
+
+/** As contas de uma competência — a lista de trabalho do faturamento. */
+export async function contasDaCompetencia(sb, competencia, { status, limite = 500 } = {}) {
+  if (!competencia) return [];
+  const extra = status ? `&status=eq.${encodeURIComponent(status)}` : "";
+  const r = await sb(`at_contas?competencia=eq.${encodeURIComponent(competencia)}${extra}` +
+    `&select=${CAMPOS_CONTA}&order=criado_em.desc&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+// ── RESPONSÁVEL DO EPISÓDIO ─────────────────────────────────
+
+const CAMPOS_RESPONSAVEL = [
+  "id", "atendimento_id", "prontuario", "nome", "cpf", "data_nascimento",
+  "telefone", "vinculo", "papel", "documento_judicial", "consente",
+  "recebe_alta", "observacao", "ativo", "usuario", "criado_em",
+].join(",");
+
+/** Os responsáveis de um atendimento. */
+export async function carregarResponsaveis(sb, atendimentoId) {
+  if (!atendimentoId) return [];
+  const r = await sb(`at_responsaveis?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&select=${CAMPOS_RESPONSAVEL}&order=criado_em.desc`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Os responsáveis registrados nos episódios ANTERIORES deste paciente.
+ *
+ * Serve para a tela oferecer "copiar do episódio anterior" — a mãe da
+ * criança é a mesma toda visita, e obrigar a redigitar é como se acaba
+ * registrando "mãe" sem CPF às pressas. Copiar CRIA UMA LINHA NOVA no
+ * episódio de hoje: consentimento é ato no tempo, e reaproveitar a linha
+ * antiga faria o registro de hoje reescrever a história de ontem.
+ */
+export async function responsaveisAnteriores(sb, prontuario, { limite = 10 } = {}) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const r = await sb(`at_responsaveis?prontuario=eq.${encodeURIComponent(p)}&ativo=is.true` +
+    `&select=${CAMPOS_RESPONSAVEL}&order=criado_em.desc&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Grava um responsável.
+ *
+ * `camposDoResponsavel` deriva `consente` e `recebe_alta` do papel — a tela
+ * não escolhe. O banco confere de novo, por CHECK: acompanhante com poder
+ * de consentir é recusado lá também.
+ */
+export async function salvarResponsavel(sb, dados, user) {
+  const corpo = camposDoResponsavel(dados);
+  if (!corpo.nome) return { ok: false, motivo: "Responsável sem nome não é gravado." };
+  const r = await sb("at_responsaveis", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. Confirme que a migração `migracao-atendimento-responsavel.sql` foi aplicada neste banco e que seu perfil permite editar atendimento." };
+  }
+  return { ok: true, responsavel: r[0] };
+}
+
+/**
+ * Desliga um responsável — não apaga.
+ *
+ * A pessoa que consentiu em março consentiu, e apagar a linha faria o
+ * consentimento daquele dia deixar de ter autor. `ativo = false` tira das
+ * listas de hoje e preserva o que foi feito.
+ */
+export async function desativarResponsavel(sb, id, user) {
+  if (!id) return { ok: false, motivo: "Registro inválido." };
+  const r = await sb(`at_responsaveis?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ativo: false, usuario: user?.name || null, updated_at: new Date().toISOString() }),
+  });
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Nada foi alterado." };
+  return { ok: true, responsavel: r[0] };
+}
+
+// ── PRODUÇÃO DO AMBULATÓRIO (tabela agregada `atendimentos`) ─
+
+/** O que já está gravado na agregada para um dia. */
+export async function carregarProducaoGravada(sb, data) {
+  const dia = String(data ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return [];
+  const r = await sb(`atendimentos?data=eq.${dia}&select=*`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Grava a produção apurada de uma especialidade num dia.
+ *
+ * `on_conflict=data,especialidade` é o mesmo upsert que o formulário manual
+ * do Ambulatório usa — de propósito. Duas rotas gravando a MESMA linha é o
+ * que faz a conciliação valer alguma coisa; se esta escrevesse noutro
+ * lugar, o painel continuaria lendo o número digitado e nada teria mudado.
+ *
+ * O upsert substitui a linha inteira, então `camposDaProducao` carrega
+ * `emergencias` do que já estava lá. Sem isso, conciliar a agenda zeraria o
+ * número que alguém digitou olhando o Pronto-Socorro.
+ *
+ * `atendimentos` NÃO tem `updated_at` (só `created_at`). Mandar o campo
+ * faria o PostgREST recusar a linha inteira — em silêncio, como sempre.
+ */
+export async function gravarProducao(sb, { data, especialidadeId, apurada, gravadaAnterior }, user) {
+  if (!especialidadeId) return { ok: false, motivo: "Especialidade sem correspondência no painel do Ambulatório." };
+  const corpo = camposDaProducao({ data, especialidadeId, apurada, gravadaAnterior });
+  const r = await sb("atendimentos?on_conflict=data,especialidade", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado — confirme que seu perfil permite lançar produção do ambulatório." };
+  }
+  return { ok: true, linha: r[0] };
 }
 
 // ── MANUTENÇÃO DOS CATÁLOGOS ────────────────────────────────

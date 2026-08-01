@@ -31,6 +31,10 @@ import {
   encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
   historicoDoPaciente, agendamentosFuturos, atendimentosDoPeriodo, atendimentoPorNumero,
+  carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
+  carregarResponsaveis, responsaveisAnteriores, salvarResponsavel, desativarResponsavel,
+  carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, cancelarItem,
+  fecharConta, reabrirConta, contasDaCompetencia,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -60,6 +64,19 @@ it("a auditoria foi lida (o parser não quebrou em silêncio)", () => {
   expect(COLUNAS.ps_atendimentos?.has("convenio_id")).toBe(true);
   expect(COLUNAS.ps_atendimentos?.has("medico_cbo")).toBe(true);
   expect(COLUNAS.profiles?.has("cbo")).toBe(true);
+  // Responsável do episódio: se a auditoria não foi regenerada depois da
+  // migração, o contrato conferiria contra um banco sem a tabela e o teste
+  // de escrita falharia por "tabela não existe" em vez de acusar o que
+  // interessa.
+  expect(COLUNAS.at_responsaveis?.has("papel")).toBe(true);
+  expect(COLUNAS.at_responsaveis?.has("documento_judicial")).toBe(true);
+  expect(COLUNAS.at_responsaveis?.has("recebe_alta")).toBe(true);
+  // Faturamento: idem — sem regenerar a auditoria, o contrato conferiria
+  // contra um banco sem as tabelas da conta.
+  expect(COLUNAS.at_contas?.has("competencia")).toBe(true);
+  expect(COLUNAS.at_conta_itens?.has("valor_total")).toBe(true);
+  expect(COLUNAS.at_conta_itens?.has("cobrar_do_paciente")).toBe(true);
+  expect(COLUNAS.at_procedimentos?.has("via_sus")).toBe(true);
 });
 
 // O padrão só vale quando NADA é passado. Um `= [...]` na assinatura
@@ -168,6 +185,82 @@ describe("escritas da recepção", () => {
     expect(chamadas).toHaveLength(1);
     conferirEscrita(chamadas[0]);
   });
+
+  it("abrir conta grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await abrirConta(sb, {
+      atendimento_id: 77, prontuario: "100042", convenio_id: 1, plano_id: 2,
+      via: "bpa", competencia: "2026-07",
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+  });
+
+  it("acrescentar item grava só em coluna que existe, com o valor congelado", async () => {
+    const { sb, chamadas } = espiao();
+    await acrescentarItem(sb, {
+      conta_id: 9, tipo: "material", descricao: "Gaze", codigo: "MAT-01",
+      quantidade: 4, valor_unitario: 1.25, executante: "Dr. João",
+      executante_cbo: "225125", data_execucao: "2026-07-30",
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    // O total vai gravado: a tabela de preço muda, a conta de março não.
+    expect(corpo.valor_total).toBe(5);
+    expect(corpo.cobrar_do_paciente).toBe(false);
+  });
+
+  it("cancelar item, fechar e reabrir conta gravam só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await cancelarItem(sb, 3, USER);
+    await fecharConta(sb, 9, { via: "bpa", competencia: "2026-07" }, USER);
+    await reabrirConta(sb, 9, USER);
+    expect(chamadas).toHaveLength(3);
+    for (const c of chamadas) conferirEscrita(c);
+  });
+
+  it("gravar responsável do episódio grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await salvarResponsavel(sb, {
+      atendimento_id: 77, prontuario: "100042", nome: "Maria da Silva",
+      cpf: "529.982.247-25", data_nascimento: "1980-05-02", telefone: "51999998888",
+      vinculo: "mae", papel: "representante", observacao: "trouxe a criança",
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    // O poder vem do papel, nunca do que a tela mandou.
+    expect(corpo.consente).toBe(true);
+    expect(corpo.recebe_alta).toBe(true);
+    expect(corpo.cpf).toBe("52998224725");
+  });
+
+  it("desativar responsável grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await desativarResponsavel(sb, 5, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+  });
+
+  it("gravar produção do ambulatório grava só em coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await gravarProducao(sb, {
+      data: "2026-07-29", especialidadeId: "ortopedia",
+      apurada: { ofertadas: 12, realizadas: 9, primeiras: 5, retornos: 4, faltas: 2, livres: 1 },
+      gravadaAnterior: { emergencias: 3 },
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    // `atendimentos` só tem `created_at`. `updated_at` faria o PostgREST
+    // recusar a linha inteira em silêncio — que é o defeito que este
+    // arquivo inteiro existe para impedir.
+    expect(corpo).not.toHaveProperty("updated_at");
+    // E o número que a agenda não apura precisa chegar ao corpo, senão o
+    // upsert zera o que alguém digitou olhando o Pronto-Socorro.
+    expect(corpo.emergencias).toBe(3);
+  });
 });
 
 describe("leituras da recepção", () => {
@@ -206,6 +299,37 @@ describe("leituras da recepção", () => {
     await carregarCatalogos(sb);
     expect(chamadas).toHaveLength(4);
     for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("a conta e seus itens consultam colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarConta(sb, 77);
+    await carregarItensDaConta(sb, 9);
+    await contasDaCompetencia(sb, "2026-07", { status: "fechada" });
+    expect(chamadas).toHaveLength(3);
+    for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("os responsáveis do episódio consultam colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarResponsaveis(sb, 77);
+    await responsaveisAnteriores(sb, "100042");
+    expect(chamadas).toHaveLength(2);
+    for (const c of chamadas) conferirLeitura(c);
+  });
+
+  it("os agendamentos do mês consultam colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarAgendamentosDoPeriodo(sb, { de: "2026-07-01", ate: "2026-07-31" });
+    expect(chamadas).toHaveLength(1);
+    conferirLeitura(chamadas[0]);
+  });
+
+  it("a produção gravada do dia consulta colunas reais", async () => {
+    const { sb, chamadas } = espiao([]);
+    await carregarProducaoGravada(sb, "2026-07-29");
+    expect(chamadas).toHaveLength(1);
+    conferirLeitura(chamadas[0]);
   });
 
   it("a lista de profissionais consulta colunas reais", async () => {
