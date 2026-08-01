@@ -4,7 +4,34 @@
 // de "JWT expired". A parte de rede fica no App.jsx; aqui só a decisão.
 
 import { describe, it, expect } from "vitest";
-import { precisaRenovar, ehFalhaDeCracha, deveTentarRenovar } from "./sessao.js";
+import { precisaRenovar, ehFalhaDeCracha, deveTentarRenovar, exigeCracha } from "./sessao.js";
+
+describe("exigeCracha — gravação anônima não sai", () => {
+  it("toda escrita exige crachá de usuário", () => {
+    for (const m of ["POST", "PATCH", "PUT", "DELETE", "post", "patch"]) {
+      expect(exigeCracha(m), m).toBe(true);
+    }
+  });
+
+  it("leitura pode tentar sem crachá — o 401 dela se cura pela renovação", () => {
+    expect(exigeCracha("GET")).toBe(false);
+    expect(exigeCracha("get")).toBe(false);
+    // sem método informado, `sbFetch` trata como GET
+    expect(exigeCracha(undefined)).toBe(false);
+    expect(exigeCracha(null)).toBe(false);
+    expect(exigeCracha("")).toBe(false);
+  });
+
+  it("é a trava para o 401 que MENTE: RLS diz 'violates', e 'violates' desliga a renovação", () => {
+    // Esta é a interação exata que enchia o console de erro de permissão
+    // quando o problema era sessão. Com a escrita barrada antes de sair, a
+    // combinação abaixo deixa de acontecer.
+    const corpoRls = 'new row violates row-level security policy for table "atendimentos"';
+    expect(ehFalhaDeCracha(corpoRls)).toBe(false);            // não renovaria…
+    expect(deveTentarRenovar(401, true, false, corpoRls)).toBe(false);
+    expect(exigeCracha("POST")).toBe(true);                   // …por isso nem sai
+  });
+});
 
 describe("precisaRenovar", () => {
   const agoraMs = 1_700_000_000_000; // instante fixo (ms)

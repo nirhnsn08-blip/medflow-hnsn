@@ -47,3 +47,23 @@ export function deveTentarRenovar(status, temTokenUsuario, jaTentou, corpo) {
   if (!temTokenUsuario || jaTentou) return false;
   return ehFalhaDeCracha(corpo);
 }
+
+// Esta chamada pode sair SEM crachá de usuário (só com a apikey anônima)?
+//
+// LEITURA pode tentar: se o crachá acabou de vencer, o 401 que volta é
+// tratado como falha de crachá, a sessão é renovada e a chamada repetida —
+// o caminho já existe e se cura sozinho.
+//
+// ESCRITA NÃO PODE, e é uma regra e não uma otimização. Toda política de
+// escrita deste banco exige `public.my_role()`, que é NULO para o anônimo:
+// a gravação anônima é fracasso garantido. Pior, ela falha DE UM JEITO QUE
+// MENTE — o Postgres responde 401 com "new row violates row-level security
+// policy", e `ehFalhaDeCracha` (acima) trata qualquer corpo com "violates"
+// como defeito ESTRUTURAL. Resultado: a renovação não é tentada, e o
+// console acusa problema de permissão quando o problema era sessão.
+//
+// Foi exatamente isso que fez uma pilha de erros de RLS aparecer no console
+// e quase virar um bug reportado que não existia. Não enviar é melhor do
+// que enviar para falhar mentindo.
+export const exigeCracha = metodo =>
+  String(metodo || "GET").toUpperCase() !== "GET";
