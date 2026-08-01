@@ -23,7 +23,7 @@ import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
-import { precisaRenovar, deveTentarRenovar } from "./acesso/sessao.js";
+import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
 import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "./clinico/pediatria.js";
 // Triagem obstétrica — sugestão por discriminadores + PA (pré-eclâmpsia).
@@ -141,6 +141,26 @@ async function sbFetch(path, opts = {}, _jaRenovou = false) {
   const metodo = opts.method || "GET";
   const alvo = String(path).split("?")[0];      // nome da tabela, sem os filtros
   const tinhaToken = !!AUTH_TOKEN;              // chamada feita como usuário logado?
+
+  // GRAVAÇÃO SEM CRACHÁ NÃO SAI. Ver `exigeCracha` (acesso/sessao.js): toda
+  // política de escrita exige `my_role()`, nulo para o anônimo — então a
+  // chamada só pode falhar, e falha MENTINDO ("violates row-level security
+  // policy" quando o problema é sessão).
+  //
+  // Antes de desistir, tenta renovar: o `refresh_token` pode estar vivo no
+  // localStorage mesmo com o `AUTH_TOKEN` ainda nulo em memória (é a corrida
+  // que acontece no carregamento da página). Aí a gravação segue normal, com
+  // o crachá novo.
+  if (exigeCracha(metodo) && !tinhaToken) {
+    if (!_jaRenovou && await renovarSessao()) return sbFetch(path, opts, true);
+    registrarFalhaSb({
+      alvo, metodo, status: 401,
+      detalhe: "Sessão não está ativa — a gravação NÃO foi enviada. Entre de novo antes de refazer o registro.",
+    });
+    avisarSessaoExpirada();
+    return null;
+  }
+
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...opts,
