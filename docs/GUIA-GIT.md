@@ -3,6 +3,10 @@
 > Guia rápido para as duas pessoas que desenvolvem o Valentrax trabalharem juntas
 > **sem quebrar a produção do hospital**. Leia uma vez inteiro; depois use a
 > "Rotina diária" e a "Consulta rápida" do fim.
+>
+> 👉 Este guia trata de **mover código com segurança**. O que define **um trabalho
+> pronto** — arquitetura em camadas, as armadilhas que já custaram caro, quando
+> bloquear e quando avisar — está em [`MODELO-DE-TRABALHO.md`](MODELO-DE-TRABALHO.md).
 
 ---
 

@@ -2,6 +2,10 @@
 
 > Resumo de referência para onboarding rápido de novos colaboradores (humanos ou IA).
 > Atualizado em 2026-08-01 (módulo Atendimento completo; NSP Fase 2d).
+>
+> **Trilha de leitura:** este arquivo (o quê e por quê) →
+> [`MODELO-DE-TRABALHO.md`](MODELO-DE-TRABALHO.md) (como se constrói, e o que é
+> "pronto") → [`GUIA-GIT.md`](GUIA-GIT.md) (como se publica sem quebrar o hospital).
 
 ## O que é
 
