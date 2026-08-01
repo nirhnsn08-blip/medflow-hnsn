@@ -1,18 +1,60 @@
-# 📍 Ponto de restauração — checkpoint-v52
+# 📍 Ponto de restauração — checkpoint-v53
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v52` (anteriores: `checkpoint-v51` … `checkpoint-v1`)
-- **Data:** 2026-07-30 · `main` em `aac545d`
+- **Tag Git mais recente:** `checkpoint-v53` (anteriores: `checkpoint-v52` … `checkpoint-v1`)
+- **Data:** 2026-08-01 · `main` em `39e8111`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v51 para cá: **PR #49** (Atendimento — ciclo de vida — Adauam),
-  **PR #50** (Atendimento — aba Consultas — Adauam) e **PR #51** (NSP Fase 2c —
-  indicadores automáticos + 6 Metas).
+  vai ao ar). Da v52 para cá: **PR #53** (NSP Fase 2d — relatórios + ficha NOTIVISA),
+  **PR #55** (NSP — protocolos) e **PR #54** (Atendimento — os cinco itens que
+  faltavam no módulo — Adauam).
+- **937 testes** · **86 tabelas / 1363 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v53 (desde a v52 — PRs #53, #54 e #55)
+
+### 🏥 Atendimento — os cinco itens que faltavam — PR #54 (Adauam)
+O módulo passa a ter **5 abas** (Recepção, Agenda, Consultas, **Faturamento**, Tabelas).
+
+- **Pulseira de identificação + ficha impressa** (`impressos.js`) — regras do PNSP
+  (Portaria MS 529/2013): mínimo de **2 identificadores**; **localização nunca
+  identifica** (leito, quarto e box mudam durante a internação); identificador é
+  atributo da **pessoa** — o prontuário conta, o nº do atendimento não. **Iniciais não
+  são identificador**: "J.S.M." é abreviatura, que o PNSP proíbe, e "NÃO IDENTIFICADO"
+  identifica ninguém. Nada de clínico vai para o pulso. A impressão **nunca é
+  bloqueada**: falta de identificador vira carimbo na própria pulseira.
+- **Conciliação da produção** (`producao.js`, aba na Agenda) — os números do painel do
+  Ambulatório eram digitados à mão e podiam divergir da agenda. Agora são apurados e
+  comparados campo a campo, e gravados **sob comando, uma especialidade por clique**.
+  `emergencias` não é apurável (não passa pela agenda) e é preservada no upsert.
+- **Relatório mensal do ambulatório** — produção por especialidade, absenteísmo,
+  ofertadas × realizadas, divisão por dono da vaga. O absenteísmo sai dos **totais do
+  mês**, nunca da média dos percentuais diários.
+- **Responsável do episódio** (`at_responsaveis`) — quem consente e a quem o paciente
+  pode ser entregue. **Capacidade não se deduz:** curador, tutor e guardião exigem o
+  número do processo (Lei 13.146/2015), checado na regra pura, na tela e por **CHECK no
+  banco**. Acompanhante não consente nem recebe alta (ECA art. 12; Estatuto do Idoso
+  art. 16). Idade desconhecida **não vira maioridade**.
+- **Faturamento — fundação** (`at_contas`, `at_conta_itens`) — a conta do episódio, com
+  a via (BPA/APAC/AIH/TISS/direta), fechamento por competência e dinheiro em **centavos
+  inteiros**. **SUS não cobra do paciente**, recusado em três camadas. **Não gera
+  remessa** de propósito: BPA, SISAIH01 e o XML do TISS têm layout versionado e
+  homologação — o arquivo vem quando alguém tiver em mãos o layout que o HNSN transmite.
+- Migrações `migracao-atendimento-responsavel.sql` e `migracao-atendimento-faturamento.sql`,
+  rodadas nos 2 bancos. `SPECS` saiu do `App.jsx` para `src/ambulatorio/especialidades.js`.
+
+### 🔧 Saneamento — build e dependências
+- **Bundle dividido**: era um arquivo único de ~1,8 MB, rebaixado inteiro a cada deploy.
+  Agora `react`, `charts` (recharts) e `vendor` são chunks próprios — **~540 kB (29%)
+  ficam em cache do navegador entre publicações**. Não é split por rota (isso exige
+  mexer no `App.jsx`); é metade do ganho pela fração do risco.
+- **Vite 5 → 7 e Vitest 2 → 3**, upgrade controlado: fecha a vulnerabilidade do esbuild
+  (`npm audit` = **0 vulnerabilidades**, era 5). Conferido com os 937 testes, o build, o
+  dev server em modo demo e o build de produção no navegador.
 
 ## 🆕 Novidades da v52 (desde a v51 — PRs #49, #50 e #51): NSP Fase 2c (indicadores + 6 Metas) + Atendimento (ciclo de vida, Consultas)
 

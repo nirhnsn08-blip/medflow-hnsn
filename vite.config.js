@@ -20,4 +20,35 @@ export default defineConfig(({ mode }) => ({
     port: mode === 'demo' ? 5174 : 5173,
     strictPort: true,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // O bundle era UM arquivo de ~1,8 MB, rebaixado inteiro a cada
+        // deploy. Como o `App.jsx` muda quase todo dia e as bibliotecas
+        // quase nunca, o hospital rebaixava React e recharts de novo a cada
+        // publicação — em conexão ruim, isso é a diferença entre a tela
+        // abrir e a recepcionista achar que travou.
+        //
+        // Separar por biblioteca deixa os vendors em cache do navegador
+        // entre um deploy e outro. Não é code-splitting por rota (isso
+        // exigiria mexer no App.jsx, que é território compartilhado) — é a
+        // metade do ganho pela fração do risco.
+        // Por CAMINHO, e não por nome de pacote: a forma declarativa
+        // (`{ react: ['react'] }`) produziu um chunk de 0,03 kB porque o
+        // React já tinha sido puxado para dentro do chunk principal pelo
+        // grafo de imports. Testar o `id` pega a árvore inteira.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (/[\\/]node_modules[\\/](recharts|d3-|victory|decimal)/.test(id)) return 'charts';
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler|use-sync-external-store)[\\/]/.test(id)) return 'react';
+          return 'vendor';
+        },
+      },
+    },
+    // O aviso padrão dispara em 500 kB e apontava para o bundle único.
+    // Com os vendors separados, o que sobra é o código do app; manter o
+    // aviso num teto que ele ainda ultrapassa serve de lembrete de que a
+    // modularização do App.jsx continua pendente.
+    chunkSizeWarningLimit: 700,
+  },
 }))
