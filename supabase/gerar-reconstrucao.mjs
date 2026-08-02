@@ -86,6 +86,10 @@ const ORDEM = [
   "migracao-nsp-protocolos.sql",
   "migracao-atendimento-responsavel.sql",
   "migracao-atendimento-faturamento.sql",
+  // Por último de propósito: reescreve as políticas de SELECT de TODAS as
+  // tabelas criadas acima. Num banco novo, ela é o que impede o hospital
+  // de nascer com a leitura aberta a qualquer login.
+  "migracao-rls-leitura.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM

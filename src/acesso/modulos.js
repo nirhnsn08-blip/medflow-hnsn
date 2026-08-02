@@ -13,17 +13,19 @@
 // mais qual é qual. Aqui o perfil é o caso geral; o desvio daquela pessoa
 // específica é uma EXCEÇÃO no usuário (ver permissoes.js), não um perfil novo.
 //
-// ⚠️ LIMITE DESTA FASE — LEIA ANTES DE CONFIAR
-// Isto controla o que aparece na TELA. Não é, ainda, controle de acesso ao
-// DADO: as políticas de SELECT do banco continuam `using (true)`, então
-// qualquer usuário autenticado alcança qualquer tabela pela API REST,
-// independentemente do que escondermos aqui.
+// ONDE ISTO VALE — LEIA ANTES DE CONFIAR
+// Este catálogo decide o que aparece na TELA. O acesso ao DADO passou a
+// ser decidido pelo MESMO perfil desde `supabase/migracao-rls-leitura.sql`:
+// as políticas de SELECT do banco chamam `public.pode_ver(<módulo>)`, e o
+// mapa de qual módulo lê qual tabela está em `src/acesso/mapa-tabelas.js`.
+// Tirar um módulo daqui passou a tirar também a leitura pela API REST.
 //
-// Ou seja: hoje isto é organização e redução de ruído — não é barreira.
-// A barreira exige apertar o RLS por tabela (fase 3), e isso só se faz
-// depois de medir quem realmente acessa o quê, senão tira acesso de quem
-// tem direito no meio do plantão. Enquanto a fase 3 não chega, NÃO
-// apresentar este módulo ao hospital como "os dados estão segregados".
+// Duas coisas que ele ainda NÃO faz, e que não se deve prometer ao
+// hospital como se fizesse:
+//   • não filtra LINHA — quem alcança `pacientes` alcança todos os
+//     pacientes, não só os do seu setor;
+//   • não decide ESCRITA — insert/update/delete continuam olhando o
+//     `role` (adm_master/adm_silver), não o módulo.
 //
 // Base normativa que orienta a matriz:
 //   COFEN 754/2024, art. 6º — nível de segurança distinto entre informação
@@ -49,8 +51,7 @@ export const NIVEL_LABEL = {
  * Os módulos do sistema, na ordem em que aparecem no menu.
  *
  * `clinico: true` marca o que contém dado assistencial identificável — é o
- * recorte que a COFEN 754/2024 art. 6º manda separar do administrativo, e
- * é por onde a fase 3 (RLS de verdade) vai começar.
+ * recorte que a COFEN 754/2024 art. 6º manda separar do administrativo.
  *
  * `exigeMaster: true` é trava ANTI-TRANCAMENTO: por mais restrito que seja
  * o perfil, um adm_master nunca perde a porta de volta para consertar o

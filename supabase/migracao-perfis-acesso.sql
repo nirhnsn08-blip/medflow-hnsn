@@ -29,6 +29,10 @@
 -- tem direito no meio do plantão. Até lá, NÃO apresentar isto ao hospital
 -- como "os dados estão segregados".
 --
+-- ✅ A FASE 3 CHEGOU: `migracao-rls-leitura.sql` amarra a leitura de cada
+--    tabela ao módulo do perfil, usando as três tabelas criadas aqui. Rode
+--    esta migração ANTES daquela — lá as funções leem daqui.
+--
 -- Aditiva e idempotente: só `create table if not exists` / `add column if
 -- not exists` / `on conflict do nothing`. Pode rodar duas vezes.
 -- ═══════════════════════════════════════════════════════════
