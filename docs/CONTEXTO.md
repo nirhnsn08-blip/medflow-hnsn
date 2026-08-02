@@ -6,6 +6,9 @@
 > **Trilha de leitura:** este arquivo (o quê e por quê) →
 > [`MODELO-DE-TRABALHO.md`](MODELO-DE-TRABALHO.md) (como se constrói, e o que é
 > "pronto") → [`GUIA-GIT.md`](GUIA-GIT.md) (como se publica sem quebrar o hospital).
+>
+> Para visão de produto — módulos, modelo de dados, integrações, requisitos e plano
+> comercial —, ver [`DOCUMENTACAO.md`](DOCUMENTACAO.md).
 
 ## O que é
 
