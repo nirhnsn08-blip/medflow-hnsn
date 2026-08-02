@@ -49,13 +49,28 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('recepcao',           'nsp', 'escrita'),
   ('diretor_tecnico',    'nsp', 'escrita'),
   -- Acompanham o indicador (leitura)
-  ('gestao',             'nsp', 'leitura')
+  ('gestao',             'nsp', 'leitura'),
+  -- TI e Provisório: o seed de `migracao-perfis-acesso.sql` SEMPRE declarou
+  -- estes dois com NSP, mas os bancos rodaram aquela migração antes de o
+  -- módulo existir — e `on conflict do nothing` nunca volta para inserir
+  -- linha nova. Resultado: o arquivo dizia uma coisa e o banco tinha outra,
+  -- em silêncio, desde então. Descoberto percorrendo a tela: o adm_master
+  -- não via "Segurança do Paciente" no menu.
+  --
+  -- ⚠️ O Provisório é o que segura a equipe inteira hoje. Sem esta linha,
+  --    fechar o RLS tiraria o NSP de TODO MUNDO de uma vez.
+  ('ti',                 'nsp', 'escrita'),
+  ('provisorio',         'nsp', 'escrita')
 on conflict (perfil_chave, modulo) do nothing;
 
 
 -- ═══════════════════════════════════════════════════════════
 -- CONFERÊNCIA — rode junto.
--- Esperado: 13 linhas, e a coluna "situacao" toda ✅.
+-- Esperado: 15 linhas, e a coluna "situacao" toda ✅.
+--
+-- Para conferir a matriz INTEIRA (não só o NSP) contra o catálogo do
+-- código, rode `supabase/conferencia-perfis.sql`. Foi ele que apareceu
+-- depois deste susto: o arquivo estava certo e o banco atrasado.
 -- ═══════════════════════════════════════════════════════════
 select pa.chave as perfil,
        pa.nome,
@@ -67,5 +82,6 @@ select pa.chave as perfil,
     on pp.perfil_chave = pa.chave and pp.modulo = 'nsp'
  where pa.chave in ('medico','enfermeiro','enfermeiro_scih','tecnico_enfermagem',
                     'fisioterapeuta','nutricionista','assistente_social','nir',
-                    'farmaceutico','aux_farmacia','recepcao','diretor_tecnico','gestao')
+                    'farmaceutico','aux_farmacia','recepcao','diretor_tecnico','gestao',
+                    'ti','provisorio')
  order by situacao desc, pa.chave;

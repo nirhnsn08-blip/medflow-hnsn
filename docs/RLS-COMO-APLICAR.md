@@ -13,7 +13,8 @@ testes que impedem tabela nova de entrar sem classificação.
 
 | Ordem | Arquivo | O que faz |
 |---|---|---|
-| 1º | `supabase/migracao-perfis-nsp.sql` | Dá **Segurança do Paciente** aos perfis assistenciais. Notificar incidente é dever de quem presta o cuidado (RDC 36/2013, art. 8º) e nenhum perfil tinha o módulo — com a leitura fechada, isso viraria impedimento de verdade. |
+| 1º | `supabase/migracao-perfis-nsp.sql` | Dá **Segurança do Paciente** aos perfis assistenciais, **e a `ti` e `provisorio`**. Notificar incidente é dever de quem presta o cuidado (RDC 36/2013, art. 8º) e nenhum perfil tinha o módulo — com a leitura fechada, isso viraria impedimento de verdade. |
+| — | `supabase/conferencia-perfis.sql` | Só leitura. Confere a matriz inteira do banco contra o catálogo do código. |
 | 2º | `supabase/migracao-rls-leitura.sql` | Fecha a leitura por módulo. |
 
 Primeiro as chaves certas, depois a fechadura — o contrário deixaria a equipe sem o
@@ -41,17 +42,21 @@ concede todos os módulos. O aperto vale pessoa por pessoa, conforme a TI reclas
 ### 1. Rodar no DEMO
 
 1. Abra o painel do **demo** → **SQL Editor** → **New query**.
-2. Cole `supabase/migracao-perfis-nsp.sql` inteiro → **Run**. Esperado: **13 linhas,
+2. Cole `supabase/migracao-perfis-nsp.sql` inteiro → **Run**. Esperado: **15 linhas,
    todas `✅ ok`**. Se alguma vier `❌ ficou de fora`, pare e me avise qual.
-3. **New query** de novo. Cole `supabase/migracao-rls-leitura.sql` inteiro → **Run**.
-4. Leia a saída, nesta ordem:
-   - a aba **Messages** deve mostrar `N politica(s) FOR ALL convertida(s).` e
-     `86 tabela(s) com politica de leitura por modulo.`;
-   - a **primeira consulta** de conferência (`tabela_ainda_aberta`) deve vir **vazia**.
-     Se vier alguma linha, é tabela lendo `using (true)` sem autorização do mapa —
-     pare e me avise qual;
-   - a **terceira** lista quem está sem perfil. Quem aparecer ali não lê mais nada:
-     classifique em **Usuários e Perfis**.
+3. **New query** → cole `supabase/conferencia-perfis.sql` → **Run**. É somente leitura:
+   compara a matriz inteira do banco com o catálogo do código. Esperado: **nenhuma
+   linha `❌ FALTA NO BANCO`**. Foi ele que pegou `ti.nsp` e `provisorio.nsp` faltando
+   nos dois bancos — grants que o seed declarava havia semanas e que
+   `on conflict do nothing` nunca insere num banco já migrado.
+4. **New query** → cole `supabase/migracao-rls-leitura.sql` inteiro → **Run**.
+5. Leia a saída:
+   - a tabela de resultado (`situacao · item · detalhe`) tem que vir **sem nenhuma
+     linha começando com `❌`**. `❌ LEITURA AINDA ABERTA` é tabela lendo `using (true)`
+     sem autorização do mapa; `❌ USUARIO SEM PERFIL` é gente que não lê mais nada e
+     precisa ser classificada em **Usuários e Perfis**;
+   - na aba **Messages**, `N politica(s) FOR ALL convertida(s).` e
+     `86 tabela(s) com politica de leitura por modulo.`
 
 ### 2. Provar que fechou de verdade (no demo)
 
