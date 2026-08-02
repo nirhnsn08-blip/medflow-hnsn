@@ -86,6 +86,9 @@ const ORDEM = [
   "migracao-nsp-protocolos.sql",
   "migracao-atendimento-responsavel.sql",
   "migracao-atendimento-faturamento.sql",
+  // Redundante num banco novo (o seed de perfis-acesso já traz os grants de
+  // NSP), mas fica na ordem porque é o que os bancos JÁ existentes rodaram.
+  "migracao-perfis-nsp.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima. Num banco novo, ela é o que impede o hospital
   // de nascer com a leitura aberta a qualquer login.

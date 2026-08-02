@@ -190,41 +190,45 @@ on conflict (chave) do nothing;
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Médico
   ('medico','overview','leitura'),('medico','atendimento','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
-  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),
+  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),('medico','nsp','escrita'),
   ('medico','paciente','escrita'),('medico','farmacia','leitura'),('medico','print','leitura'),
   -- Enfermeiro
   ('enfermeiro','overview','leitura'),('enfermeiro','atendimento','escrita'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
-  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),
+  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),('enfermeiro','nsp','escrita'),
   ('enfermeiro','paciente','escrita'),('enfermeiro','farmacia','leitura'),('enfermeiro','suprimentos','leitura'),
   ('enfermeiro','print','leitura'),
   -- Enfermeiro SCIH
   ('enfermeiro_scih','overview','leitura'),('enfermeiro_scih','ps','leitura'),('enfermeiro_scih','bloco','leitura'),
-  ('enfermeiro_scih','leitos','leitura'),('enfermeiro_scih','scih','escrita'),('enfermeiro_scih','paciente','escrita'),
+  ('enfermeiro_scih','leitos','leitura'),('enfermeiro_scih','scih','escrita'),('enfermeiro_scih','nsp','escrita'),
+  ('enfermeiro_scih','paciente','escrita'),
   ('enfermeiro_scih','farmacia','leitura'),('enfermeiro_scih','print','leitura'),
   -- Técnico de enfermagem
   ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','atendimento','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
-  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),
+  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),('tecnico_enfermagem','nsp','escrita'),
   ('tecnico_enfermagem','scih','leitura'),('tecnico_enfermagem','paciente','escrita'),
   -- Fisioterapeuta
-  ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),
+  ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),('fisioterapeuta','nsp','escrita'),
   ('fisioterapeuta','leitos','leitura'),('fisioterapeuta','paciente','escrita'),
   -- Nutricionista
-  ('nutricionista','overview','leitura'),('nutricionista','leitos','leitura'),('nutricionista','paciente','escrita'),
+  ('nutricionista','overview','leitura'),('nutricionista','leitos','leitura'),('nutricionista','nsp','escrita'),
+  ('nutricionista','paciente','escrita'),
   -- Assistente social
-  ('assistente_social','overview','leitura'),('assistente_social','ambulatorio','leitura'),
+  ('assistente_social','overview','leitura'),('assistente_social','ambulatorio','leitura'),('assistente_social','nsp','escrita'),
   ('assistente_social','leitos','leitura'),('assistente_social','paciente','escrita'),
   -- NIR / Regulação de Leitos
-  ('nir','overview','leitura'),('nir','ps','leitura'),('nir','bloco','leitura'),
+  ('nir','overview','leitura'),('nir','ps','leitura'),('nir','bloco','leitura'),('nir','nsp','escrita'),
   ('nir','leitos','escrita'),('nir','print','leitura'),
   -- Farmacêutico
   ('farmaceutico','overview','leitura'),('farmaceutico','ps','leitura'),('farmaceutico','leitos','leitura'),
-  ('farmaceutico','scih','leitura'),('farmaceutico','farmacia','escrita'),('farmaceutico','controlados','escrita'),
+  ('farmaceutico','scih','leitura'),('farmaceutico','nsp','escrita'),
+  ('farmaceutico','farmacia','escrita'),('farmaceutico','controlados','escrita'),
   ('farmaceutico','suprimentos','leitura'),('farmaceutico','paciente','leitura'),('farmaceutico','print','leitura'),
   -- Auxiliar de farmácia
+  ('aux_farmacia','nsp','escrita'),
   ('aux_farmacia','farmacia','escrita'),('aux_farmacia','controlados','leitura'),('aux_farmacia','suprimentos','leitura'),
   -- Recepção
   ('recepcao','overview','leitura'),('recepcao','atendimento','escrita'),('recepcao','ambulatorio','escrita'),('recepcao','ps','escrita'),
-  ('recepcao','leitos','leitura'),
+  ('recepcao','leitos','leitura'),('recepcao','nsp','escrita'),
   -- Faturamento
   ('faturamento','overview','leitura'),('faturamento','atendimento','leitura'),('faturamento','ambulatorio','leitura'),
   ('faturamento','leitos','leitura'),('faturamento','print','leitura'),
@@ -234,13 +238,14 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('matriz','overview','leitura'),('matriz','suprimentos','leitura'),
   -- Gestão
   ('gestao','overview','leitura'),('gestao','atendimento','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
-  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),
+  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),('gestao','nsp','leitura'),
   ('gestao','farmacia','leitura'),('gestao','suprimentos','leitura'),('gestao','print','leitura'),
   ('gestao','auditoria','leitura'),
   -- Diretor técnico
   ('diretor_tecnico','overview','leitura'),('diretor_tecnico','atendimento','leitura'),('diretor_tecnico','ambulatorio','leitura'),
   ('diretor_tecnico','ps','escrita'),('diretor_tecnico','bloco','leitura'),('diretor_tecnico','leitos','leitura'),
-  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
+  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),
+  ('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
   ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
   -- TI

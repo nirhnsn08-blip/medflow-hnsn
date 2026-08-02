@@ -230,9 +230,10 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
    agora com o nome certo, é mais estreito:
    - **Quais módulos o perfil de cada cargo precisa?** Decisão **clínica**, da
      enfermeira, não técnica — e agora ela tem efeito real sobre o dado, não só sobre
-     o menu. Duas lacunas já visíveis na matriz atual: nenhum perfil assistencial tem
-     **Segurança do Paciente** (`nsp`), embora notificar incidente seja dever de todos
-     (RDC 36/2013); e nenhum tem **Auditoria**, nem o enfermeiro responsável.
+     o menu. A lacuna do **NSP** foi fechada (`migracao-perfis-nsp.sql`: notificar é
+     dever de quem presta o cuidado, RDC 36/2013 art. 8º — todo perfil assistencial
+     ganhou `nsp` em escrita, gestão em leitura). Continua em aberto a **Auditoria**:
+     hoje só TI, gestão e diretor técnico a enxergam.
    - **Filtro por linha** (só os pacientes do meu setor) — depende de `profiles.setor`
      confiável e de decidir o que acontece com quem cobre outra ala no plantão.
    - **Escrita por módulo** — `insert/update/delete` ainda olham só o `role`. As

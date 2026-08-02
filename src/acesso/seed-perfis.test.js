@@ -76,6 +76,38 @@ describe("o seed não inventa nada", () => {
   });
 });
 
+// ── A migração avulsa do NSP ────────────────────────────────
+// `migracao-perfis-nsp.sql` existe porque os dois bancos já rodaram o seed
+// e re-executá-lo recriaria as políticas `for all` que o RLS de leitura
+// desarma. O preço de ter dois arquivos concedendo a mesma coisa é este
+// teste: eles não podem divergir.
+describe("os grants de NSP da migração avulsa", () => {
+  const SQL_NSP = fs.readFileSync(
+    path.join(process.cwd(), "supabase", "migracao-perfis-nsp.sql"), "utf8");
+
+  const nspNaAvulsa = {};
+  for (const [, perfil, nivel] of SQL_NSP.matchAll(/\('([a-z_]+)',\s*'nsp',\s*'(leitura|escrita)'\)/g))
+    nspNaAvulsa[perfil] = nivel;
+
+  const nspNoCodigo = Object.fromEntries(
+    PERFIS_MODELO.filter(p => p.grants.nsp && p.chave !== "ti").map(p => [p.chave, p.grants.nsp]));
+
+  it("o parser leu o arquivo", () => {
+    expect(Object.keys(nspNaAvulsa).length).toBeGreaterThan(5);
+  });
+
+  it("batem com o catálogo do código, perfil por perfil", () => {
+    expect(Object.keys(nspNaAvulsa).sort()).toEqual(Object.keys(nspNoCodigo).sort());
+    for (const [perfil, nivel] of Object.entries(nspNoCodigo))
+      expect(nspNaAvulsa[perfil], perfil).toBe(nivel);
+  });
+
+  it("notificar é escrita para quem presta cuidado (RDC 36/2013, art. 8º)", () => {
+    for (const perfil of ["medico", "enfermeiro", "tecnico_enfermagem", "farmaceutico", "recepcao"])
+      expect(nspNaAvulsa[perfil], perfil).toBe("escrita");
+  });
+});
+
 describe("o perfil provisório da migração", () => {
   it("existe — sem ele a equipe abriria o sistema vazio no dia seguinte", () => {
     expect(perfisNoSql.has("provisorio")).toBe(true);

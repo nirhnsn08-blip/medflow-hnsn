@@ -72,6 +72,11 @@ export const MODULOS = [
   { chave: "leitos",       label: "Giro de Leitos",     grupo: "Assistencial", clinico: true },
   { chave: "scih",         label: "SCIH",               grupo: "Assistencial", clinico: true },
   { chave: "nsp",          label: "Segurança do Paciente", grupo: "Assistencial", clinico: true,
+    // Este é o único módulo que quase todo perfil recebe em ESCRITA, e é de
+    // propósito: notificar incidente é dever de quem presta o cuidado (RDC
+    // 36/2013, art. 8º), não atribuição do núcleo. Núcleo é quem INVESTIGA.
+    // Sem isso, o incidente vira conversa de corredor e o indicador mente por
+    // baixo — subnotificação parece segurança.
     nota: "Núcleo de Segurança do Paciente (RDC 36/2013). Notificação de incidentes e eventos adversos." },
   { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Assistencial", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
@@ -116,42 +121,42 @@ export const PERFIS_MODELO = [
     chave: "medico", nome: "Médico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Assistência médica: prescreve, evolui, dá alta.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
-                leitos: "escrita", scih: "leitura", paciente: "escrita", farmacia: "leitura",
+                leitos: "escrita", scih: "leitura", nsp: "escrita", paciente: "escrita", farmacia: "leitura",
                 print: "leitura" }),
   },
   {
     chave: "enfermeiro", nome: "Enfermeiro(a)", categoria: "enfermeiro", role: "adm_silver",
     descricao: "Processo de Enfermagem completo, gestão de leitos e do cuidado.",
     grants: p({ overview: "leitura", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "leitura",
-                leitos: "escrita", scih: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "escrita", scih: "escrita", nsp: "escrita", paciente: "escrita", farmacia: "leitura",
                 suprimentos: "leitura", print: "leitura" }),
   },
   {
     chave: "enfermeiro_scih", nome: "Enfermeiro(a) — SCIH", categoria: "enfermeiro", role: "adm_silver",
     descricao: "Controle de infecção: vigilância, culturas, indicadores.",
     grants: p({ overview: "leitura", ps: "leitura", bloco: "leitura", leitos: "leitura",
-                scih: "escrita", paciente: "escrita", farmacia: "leitura", print: "leitura" }),
+                scih: "escrita", nsp: "escrita", paciente: "escrita", farmacia: "leitura", print: "leitura" }),
   },
   {
     chave: "tecnico_enfermagem", nome: "Técnico(a) de Enfermagem", categoria: "tecnico_enfermagem", role: "adm_silver",
     descricao: "Anotação de enfermagem, checagem de medicação e sinais vitais. O que pode registrar é limitado pela categoria (COFEN 736/2024).",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", leitos: "escrita",
-                scih: "leitura", paciente: "escrita" }),
+                scih: "leitura", nsp: "escrita", paciente: "escrita" }),
   },
   {
     chave: "fisioterapeuta", nome: "Fisioterapeuta", categoria: "fisioterapeuta", role: "adm_silver",
     descricao: "Evolução de fisioterapia no prontuário.",
-    grants: p({ overview: "leitura", ps: "leitura", leitos: "leitura", paciente: "escrita" }),
+    grants: p({ overview: "leitura", ps: "leitura", leitos: "leitura", nsp: "escrita", paciente: "escrita" }),
   },
   {
     chave: "nutricionista", nome: "Nutricionista", categoria: "nutricionista", role: "adm_silver",
     descricao: "Avaliação e evolução nutricional.",
-    grants: p({ overview: "leitura", leitos: "leitura", paciente: "escrita" }),
+    grants: p({ overview: "leitura", leitos: "leitura", nsp: "escrita", paciente: "escrita" }),
   },
   {
     chave: "assistente_social", nome: "Assistente Social", categoria: "assistente_social", role: "adm_silver",
     descricao: "Avaliação social, apoio à alta.",
-    grants: p({ overview: "leitura", ambulatorio: "leitura", leitos: "leitura", paciente: "escrita" }),
+    grants: p({ overview: "leitura", ambulatorio: "leitura", leitos: "leitura", nsp: "escrita", paciente: "escrita" }),
   },
   {
     // Regulação interna: trabalha a fila de leito e aloca. Vê o PS e o Bloco só
@@ -159,14 +164,14 @@ export const PERFIS_MODELO = [
     // Leitos, e NÃO abre prontuário — regular leito não é ato assistencial.
     chave: "nir", nome: "NIR / Regulação de Leitos", categoria: "enfermeiro", role: "adm_silver",
     descricao: "Regulação interna: fila de internação, vagas e alocação de leitos. Não acessa prontuário.",
-    grants: p({ overview: "leitura", ps: "leitura", bloco: "leitura", leitos: "escrita", print: "leitura" }),
+    grants: p({ overview: "leitura", ps: "leitura", bloco: "leitura", leitos: "escrita", nsp: "escrita", print: "leitura" }),
   },
 
   // ── Farmácia ─────────────────────────────────────────────
   {
     chave: "farmaceutico", nome: "Farmacêutico(a)", categoria: "farmaceutico", role: "adm_silver",
     descricao: "Farmácia clínica, dispensação, controlados e intervenção farmacêutica.",
-    grants: p({ overview: "leitura", ps: "leitura", leitos: "leitura", scih: "leitura",
+    grants: p({ overview: "leitura", ps: "leitura", leitos: "leitura", scih: "leitura", nsp: "escrita",
                 farmacia: "escrita", controlados: "escrita", suprimentos: "leitura",
                 paciente: "leitura", print: "leitura" }),
   },
@@ -175,14 +180,17 @@ export const PERFIS_MODELO = [
     descricao: "Dispensação e estoque da farmácia. Não acessa prontuário.",
     // Controlados só em leitura: a escrituração do livro é responsabilidade
     // do farmacêutico responsável técnico (Portaria 344/98).
-    grants: p({ farmacia: "escrita", controlados: "leitura", suprimentos: "leitura" }),
+    // NSP em escrita: erro de dispensação e quase-falha de medicamento são o
+    // tipo de incidente que só quem manuseia enxerga (RDC 36/2013, art. 8º).
+    grants: p({ nsp: "escrita", farmacia: "escrita", controlados: "leitura", suprimentos: "leitura" }),
   },
 
   // ── Administrativos e apoio ──────────────────────────────
   {
     chave: "recepcao", nome: "Recepção / Admissão", categoria: "administrativo", role: "adm_silver",
     descricao: "Cadastro, chegada e agendamento. NÃO acessa prontuário (COFEN 754/2024, art. 6º).",
-    grants: p({ overview: "leitura", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", leitos: "leitura" }),
+    grants: p({ overview: "leitura", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", leitos: "leitura",
+                nsp: "escrita" }),
   },
   {
     chave: "faturamento", nome: "Faturamento", categoria: "administrativo", role: "analista",
@@ -207,14 +215,14 @@ export const PERFIS_MODELO = [
     chave: "gestao", nome: "Gestão / Diretoria", categoria: "administrativo", role: "analista",
     descricao: "Indicadores e BI de todos os módulos. Gestão trabalha com número agregado — não precisa de prontuário individual.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "leitura", bloco: "leitura",
-                leitos: "leitura", scih: "leitura", farmacia: "leitura", suprimentos: "leitura",
+                leitos: "leitura", scih: "leitura", nsp: "leitura", farmacia: "leitura", suprimentos: "leitura",
                 print: "leitura", auditoria: "leitura" }),
   },
   {
     chave: "diretor_tecnico", nome: "Diretor(a) Técnico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º): acessa tudo do assistencial e a trilha de auditoria.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", bloco: "leitura",
-                leitos: "leitura", scih: "leitura", paciente: "escrita", farmacia: "leitura",
+                leitos: "leitura", scih: "leitura", nsp: "escrita", paciente: "escrita", farmacia: "leitura",
                 controlados: "leitura", suprimentos: "leitura", print: "leitura", auditoria: "escrita" }),
   },
   {
