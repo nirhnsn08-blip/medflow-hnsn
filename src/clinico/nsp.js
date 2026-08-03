@@ -459,3 +459,29 @@ export function resumoCapacitacoes(capacitacoes, hoje = new Date()) {
     metasSemCapacitacao: METAS.filter(m => !cobertas.has(m.v)).map(m => m.l),
   };
 }
+
+// ── Comunicação — mural de comunicados de segurança do NSP ──
+
+export const TIPO_COMUNICADO = [
+  { v: "alerta",          l: "Alerta de segurança", nivel: "vermelho" },
+  { v: "licao_aprendida", l: "Lição aprendida",     nivel: "azul" },
+  { v: "informativo",     l: "Informativo",         nivel: "amarelo" },
+];
+
+export const PRIORIDADE_COMUNICADO = [
+  { v: "alta",  l: "Alta",  nivel: "vermelho" },
+  { v: "media", l: "Média", nivel: "amarelo" },
+  { v: "baixa", l: "Baixa", nivel: "azul" },
+];
+
+/** Panorama do mural: ativos, alertas ativos e lições aprendidas. */
+export function resumoComunicados(comunicados) {
+  const lista = arr(comunicados).filter(c => c && c.ativo !== false);
+  const ativos = lista.filter(c => (c.status || "ativo") === "ativo");
+  return {
+    total: lista.length,
+    ativos: ativos.length,
+    alertasAtivos: ativos.filter(c => c.tipo === "alerta").length,
+    licoes: lista.filter(c => c.tipo === "licao_aprendida").length,
+  };
+}

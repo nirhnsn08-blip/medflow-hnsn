@@ -6,6 +6,7 @@ import {
   filtrarPorMes, incidentesCompulsorios, fichaNotivisa, relatorioNsp,
   STATUS_PROTOCOLO, PROTOCOLOS_BASICOS, protocoloRevisaoVencida, resumoProtocolos,
   STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
+  TIPO_COMUNICADO, PRIORIDADE_COMUNICADO, resumoComunicados,
   ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
   acaoAtrasada, resumoAcoes, temRcaConcluida, incidentesAguardandoRca,
 } from "./nsp.js";
@@ -337,5 +338,26 @@ describe("capacitações (Fase 2d)", () => {
     expect(r.vencidas).toBe(1);
     expect(r.metasSemCapacitacao).toContain("Comunicação efetiva");
     expect(r.metasSemCapacitacao).not.toContain("Higiene das mãos");
+  });
+});
+
+describe("comunicação (Fase 2d)", () => {
+  it("catálogos: tipos e prioridades", () => {
+    expect(TIPO_COMUNICADO.map(t => t.v)).toEqual(["alerta", "licao_aprendida", "informativo"]);
+    expect(PRIORIDADE_COMUNICADO.map(p => p.v)).toEqual(["alta", "media", "baixa"]);
+  });
+  it("resumoComunicados: ativos, alertas ativos e lições", () => {
+    const coms = [
+      { tipo: "alerta", status: "ativo" },
+      { tipo: "alerta", status: "arquivado" },
+      { tipo: "licao_aprendida", status: "ativo" },
+      { tipo: "informativo", status: "ativo" },
+      { tipo: "informativo", status: "ativo", ativo: false },  // inativo → fora
+    ];
+    const r = resumoComunicados(coms);
+    expect(r.total).toBe(4);
+    expect(r.ativos).toBe(3);
+    expect(r.alertasAtivos).toBe(1);
+    expect(r.licoes).toBe(1);
   });
 });

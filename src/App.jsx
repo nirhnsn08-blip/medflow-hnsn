@@ -36,6 +36,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          indicadoresSeguranca, farol, metasSeguranca, relatorioNsp, fichaNotivisa,
          METAS as NSP_METAS, STATUS_PROTOCOLO, protocoloRevisaoVencida, resumoProtocolos,
          STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
+         TIPO_COMUNICADO, PRIORIDADE_COMUNICADO, resumoComunicados,
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
@@ -1903,6 +1904,28 @@ async function salvarCapacitacao(cap, user) {
   };
   if (cap.id) body.id = cap.id;
   await sbFetch("nsp_capacitacoes?on_conflict=id", {
+    method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(body),
+  });
+}
+// ── NSP Fase 2d: comunicação (mural de comunicados de segurança) ──
+async function loadComunicados() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_comunicados?select=*&order=criado_em.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function salvarComunicado(com, user) {
+  if (!USE_SUPABASE) return;
+  const body = {
+    titulo: com.titulo, tipo: com.tipo || "informativo", prioridade: com.prioridade || "media",
+    conteudo: com.conteudo || null, publico_alvo: com.publico_alvo || null,
+    data: com.data || null, incidente_id: com.incidente_id || null,
+    status: com.status || "ativo", ativo: com.ativo !== false,
+    autor: com.autor || user?.name || null,
+    usuario: user?.name || null, updated_at: new Date().toISOString(),
+  };
+  if (com.id) body.id = com.id;
+  await sbFetch("nsp_comunicados?on_conflict=id", {
     method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
     body: JSON.stringify(body),
   });
@@ -10497,8 +10520,8 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // Barra lateral própria (padrão dos outros módulos). Nesta fase são
 // funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
 // Consultar incidente (2a); Análise de causas e Plano de ação (2b);
-// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA, Protocolos e Capacitações (2d).
-// Comunicação e Assistente AI: restante da 2d.
+// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA, Protocolos, Capacitações e Comunicação (2d).
+// Assistente AI: último item da 2d.
 // ═══════════════════════════════════════════════════════════
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
@@ -10696,6 +10719,8 @@ function NSPPage({ currentUser, canEdit }) {
   const [protoForm, setProtoForm] = useState(null);
   const [capacitacoes, setCapacitacoes] = useState([]);
   const [capForm, setCapForm] = useState(null);
+  const [comunicados, setComunicados] = useState([]);
+  const [comForm, setComForm] = useState(null);
 
   function recarregar() {
     loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq);
@@ -10703,6 +10728,7 @@ function NSPPage({ currentUser, canEdit }) {
     loadMetaFaixas().then(setFaixasMeta); loadMetaMedicoes().then(setMedicoes);
     loadProtocolos().then(setProtocolos);
     loadCapacitacoes().then(setCapacitacoes);
+    loadComunicados().then(setComunicados);
   }
   useEffect(() => { if (USE_SUPABASE) recarregar(); }, []);
 
@@ -10715,6 +10741,7 @@ function NSPPage({ currentUser, canEdit }) {
   const farolTxt = { verde: "No alvo", amarelo: "Alerta", vermelho: "Fora do alvo", cinza: "Sem leitura" };
   const protoResumo = resumoProtocolos(protocolos);
   const capResumo = resumoCapacitacoes(capacitacoes);
+  const comResumo = resumoComunicados(comunicados);
   const filaRca = incidentesAguardandoRca(incidentes, rcas);
   const risco = matrizRisco(form.probabilidade, form.gravidade);
   const filtrados = incidentes.filter(i =>
@@ -10764,6 +10791,10 @@ function NSPPage({ currentUser, canEdit }) {
   async function salvarCap() {
     if (busy || !capForm || !(capForm.tema || "").trim()) return;
     setBusy(true); await salvarCapacitacao(capForm, currentUser); setBusy(false); setCapForm(null); recarregar();
+  }
+  async function salvarCom() {
+    if (busy || !comForm || !(comForm.titulo || "").trim()) return;
+    setBusy(true); await salvarComunicado(comForm, currentUser); setBusy(false); setComForm(null); recarregar();
   }
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -11308,7 +11339,79 @@ function NSPPage({ currentUser, canEdit }) {
               })}
           </div>
         </>)}
-        {sub === "comunicacao"  && <Placeholder fase="2d" />}
+        {sub === "comunicacao" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Mural de comunicados do NSP para a equipe: alertas de segurança, lições aprendidas (que podem nascer de um incidente) e informativos.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 14 }}>
+            <Card label="Comunicados" valor={comResumo.total} cor="#22d3ee" sub={`${comResumo.ativos} ativos`} />
+            <Card label="Alertas ativos" valor={comResumo.alertasAtivos} cor={comResumo.alertasAtivos ? "#f43f5e" : "#34d399"} />
+            <Card label="Lições aprendidas" valor={comResumo.licoes} cor="#38bdf8" />
+          </div>
+          {canEdit && !comForm && <button onClick={() => setComForm({ titulo: "", tipo: "informativo", prioridade: "media", conteudo: "", publico_alvo: "", data: "", incidente_id: "", status: "ativo" })} style={{ ...btnPrimario(true), marginBottom: 14 }}>+ Novo comunicado</button>}
+
+          {comForm && (
+            <div style={card}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{comForm.id ? "Editar comunicado" : "Novo comunicado"}</div>
+              <div style={{ marginBottom: 10 }}><label style={lbl}>Título *</label><input value={comForm.titulo} onChange={e => setComForm(p => ({ ...p, titulo: e.target.value }))} style={inp} autoFocus /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                <div><label style={lbl}>Tipo</label>
+                  <select value={comForm.tipo || "informativo"} onChange={e => setComForm(p => ({ ...p, tipo: e.target.value }))} style={inp}>
+                    {TIPO_COMUNICADO.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Prioridade</label>
+                  <select value={comForm.prioridade || "media"} onChange={e => setComForm(p => ({ ...p, prioridade: e.target.value }))} style={inp}>
+                    {PRIORIDADE_COMUNICADO.map(pr => <option key={pr.v} value={pr.v}>{pr.l}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Data</label><input type="date" value={comForm.data || ""} onChange={e => setComForm(p => ({ ...p, data: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Público-alvo</label><input value={comForm.publico_alvo || ""} onChange={e => setComForm(p => ({ ...p, publico_alvo: e.target.value }))} style={inp} placeholder="Ex.: toda a equipe" /></div>
+                <div><label style={lbl}>Status</label>
+                  <select value={comForm.status || "ativo"} onChange={e => setComForm(p => ({ ...p, status: e.target.value }))} style={inp}>
+                    <option value="ativo">Ativo</option>
+                    <option value="arquivado">Arquivado</option>
+                  </select>
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Incidente de origem (opcional)</label>
+                  <select value={comForm.incidente_id || ""} onChange={e => setComForm(p => ({ ...p, incidente_id: e.target.value }))} style={inp}>
+                    <option value="">— nenhum —</option>
+                    {incidentes.slice(0, 50).map(inc => <option key={inc.id} value={inc.id}>{rotuloTipo(inc.tipo)} — {(inc.descricao || "").slice(0, 40)}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div style={{ marginTop: 10 }}><label style={lbl}>Conteúdo</label><textarea value={comForm.conteudo || ""} onChange={e => setComForm(p => ({ ...p, conteudo: e.target.value }))} rows={4} style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} /></div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={salvarCom} disabled={busy || !(comForm.titulo || "").trim()} style={btnPrimario(!busy && !!(comForm.titulo || "").trim())}>Publicar</button>
+                <button onClick={() => setComForm(null)} style={btnGhost}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {comunicados.filter(c => c.ativo !== false).length === 0 ? <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Nenhum comunicado publicado ainda.</div> :
+              comunicados.filter(c => c.ativo !== false).map(c => {
+                const tp = TIPO_COMUNICADO.find(t => t.v === c.tipo) || {};
+                const pr = PRIORIDADE_COMUNICADO.find(x => x.v === c.prioridade) || {};
+                const arquivado = (c.status || "ativo") === "arquivado";
+                return (
+                  <div key={c.id} style={{ ...card, opacity: arquivado ? 0.6 : 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <Pill c={NSP_COR[tp.nivel] || "#8891a5"} t={tp.l || c.tipo} />
+                      <div style={{ flex: 1, minWidth: 160 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.titulo}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{c.data ? new Date(c.data).toLocaleDateString("pt-BR") : (c.criado_em ? new Date(c.criado_em).toLocaleDateString("pt-BR") : "")}{c.publico_alvo ? ` · ${c.publico_alvo}` : ""}{c.autor ? ` · ${c.autor}` : ""}</div>
+                      </div>
+                      <Pill c={NSP_COR[pr.nivel] || "#8891a5"} t={`prior.: ${pr.l || c.prioridade}`} />
+                      {arquivado && <Pill c="#8891a5" t="arquivado" />}
+                      {canEdit && <button onClick={() => setComForm({ ...c })} style={btnGhostMini}>Editar</button>}
+                    </div>
+                    {c.conteudo && <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-3)", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{c.conteudo}</div>}
+                  </div>
+                );
+              })}
+          </div>
+        </>)}
         {sub === "relatorios"   && <NspRelatorioView incidentes={incidentes} acoes={acoes} lppAdq={lppAdq} medicoes={medicoes} faixas={faixasMeta} />}
         {sub === "assistente"   && <Placeholder fase="2d" />}
       </div>
