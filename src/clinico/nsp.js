@@ -429,3 +429,33 @@ export function resumoProtocolos(protocolos, hoje = new Date()) {
     basicosFaltando: PROTOCOLOS_BASICOS.filter(b => !cobertos.has(b.chave)).map(b => b.titulo),
   };
 }
+
+// ── Capacitações — treinamentos da equipe em segurança do paciente ──
+
+export const STATUS_CAPACITACAO = [
+  { v: "planejado", l: "Planejado", nivel: "amarelo" },
+  { v: "realizado", l: "Realizado", nivel: "verde" },
+  { v: "cancelado", l: "Cancelado", nivel: "cinza" },
+];
+
+/** Capacitação com recorrência vencida: próxima prevista no passado e não cancelada. */
+export function capacitacaoVencida(cap, hoje = new Date()) {
+  if (!cap || !cap.proxima_em || cap.status === "cancelado") return false;
+  return new Date(cap.proxima_em + "T23:59:59") < hoje;
+}
+
+/** Panorama das capacitações: totais, horas, participantes, vencidas e cobertura por meta. */
+export function resumoCapacitacoes(capacitacoes, hoje = new Date()) {
+  const lista = arr(capacitacoes).filter(c => c && c.ativo !== false);
+  const realizadas = lista.filter(c => (c.status || "planejado") === "realizado");
+  const cobertas = new Set(realizadas.map(c => c.meta).filter(Boolean));
+  return {
+    total: lista.length,
+    realizadas: realizadas.length,
+    planejadas: lista.filter(c => (c.status || "planejado") === "planejado").length,
+    horas: +realizadas.reduce((s, c) => s + (Number(c.carga_horaria) || 0), 0).toFixed(1),
+    participantes: realizadas.reduce((s, c) => s + (Number(c.participantes) || 0), 0),
+    vencidas: lista.filter(c => capacitacaoVencida(c, hoje)).length,
+    metasSemCapacitacao: METAS.filter(m => !cobertas.has(m.v)).map(m => m.l),
+  };
+}
