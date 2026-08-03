@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment, Component } from "react";
 import {
   BarChart, Bar, LineChart, Line,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Legend, ComposedChart, Area
@@ -136,7 +136,8 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
 // A falha continua indo para o console. É só o alarme na tela que se cala,
 // e só para 404 (tabela inexistente) — 401/403 continuam gritando, porque
 // aí é permissão, não migração pendente.
-const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas", "ps_faixas_obstetricas"]);
+const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas", "ps_faixas_obstetricas",
+  "nsp_meta_faixas", "nsp_meta_medicoes", "nsp_protocolos", "nsp_capacitacoes", "nsp_comunicados"]);
 
 async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;
@@ -10700,6 +10701,28 @@ function NspRelatorioView({ incidentes, acoes, lppAdq, medicoes, faixas }) {
   );
 }
 
+// Blindagem: um erro de render em QUALQUER módulo mostra a mensagem na tela (e
+// deixa o resto do app funcionando), em vez de derrubar tudo numa tela branca.
+// `key={active}` reseta o limite ao trocar de módulo.
+class LimiteErro extends Component {
+  constructor(props) { super(props); this.state = { erro: null }; }
+  static getDerivedStateFromError(erro) { return { erro }; }
+  componentDidCatch(erro, info) { console.error("[Valentrax] erro de render no módulo:", erro, info); }
+  render() {
+    if (this.state.erro) {
+      const e = this.state.erro;
+      return (
+        <div style={{ padding: 24, fontFamily: "Inter, sans-serif", color: "var(--text)", overflow: "auto", height: "100%", boxSizing: "border-box" }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#f43f5e", marginBottom: 8 }}>Este módulo teve um erro ao abrir</div>
+          <div style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 12 }}>O resto do sistema continua funcionando — é só trocar de módulo na barra lateral. Se puder, copie o texto abaixo e mande para o suporte.</div>
+          <pre style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: 14, fontSize: 12, whiteSpace: "pre-wrap", overflowX: "auto", maxHeight: "55vh", color: "#fca5a5", margin: 0 }}>{String(e && e.message ? e.message : e)}{"\n\n"}{String((e && e.stack) || "").split("\n").slice(0, 14).join("\n")}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function NSPPage({ currentUser, canEdit }) {
   const [sub, setSub] = useState("visao");
   const [incidentes, setIncidentes] = useState([]);
@@ -16624,6 +16647,7 @@ export default function App() {
 
         {/* CONTENT */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <LimiteErro key={active}>
           {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
           {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
@@ -16640,6 +16664,7 @@ export default function App() {
           {active === "import"    && canImport   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
           {active === "supabase"  && canSupabase && <SupabasePage />}
           {active === "users"     && canUsers    && <UsersPage currentUser={currentUser} />}
+          </LimiteErro>
         </div>
       </div>
     </div>
