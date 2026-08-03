@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 86 tabelas, 1363 colunas.
+-- Cobertura atual: 87 tabelas, 1378 colunas.
 -- ============================================================
 
 with
@@ -54,6 +54,7 @@ tabelas(nome, origem) as (values
   ('leitos_saidas','schema'),
   ('leitos_turnover','schema'),
   ('nsp_acoes','nsp-rca-plano'),
+  ('nsp_capacitacoes','nsp-capacitacoes'),
   ('nsp_incidente_eventos','nsp-incidentes'),
   ('nsp_incidentes','nsp-incidentes'),
   ('nsp_meta_faixas','nsp-metas'),
@@ -608,6 +609,21 @@ colunas(tabela, coluna, origem) as (values
   ('nsp_acoes','registro_conselho','nsp-rca-plano'),
   ('nsp_acoes','responsavel','nsp-rca-plano'),
   ('nsp_acoes','status','nsp-rca-plano'),
+  ('nsp_capacitacoes','ativo','nsp-capacitacoes'),
+  ('nsp_capacitacoes','carga_horaria','nsp-capacitacoes'),
+  ('nsp_capacitacoes','criado_em','nsp-capacitacoes'),
+  ('nsp_capacitacoes','data','nsp-capacitacoes'),
+  ('nsp_capacitacoes','facilitador','nsp-capacitacoes'),
+  ('nsp_capacitacoes','id','nsp-capacitacoes'),
+  ('nsp_capacitacoes','meta','nsp-capacitacoes'),
+  ('nsp_capacitacoes','observacao','nsp-capacitacoes'),
+  ('nsp_capacitacoes','participantes','nsp-capacitacoes'),
+  ('nsp_capacitacoes','proxima_em','nsp-capacitacoes'),
+  ('nsp_capacitacoes','publico_alvo','nsp-capacitacoes'),
+  ('nsp_capacitacoes','status','nsp-capacitacoes'),
+  ('nsp_capacitacoes','tema','nsp-capacitacoes'),
+  ('nsp_capacitacoes','updated_at','nsp-capacitacoes'),
+  ('nsp_capacitacoes','usuario','nsp-capacitacoes'),
   ('nsp_incidente_eventos','categoria','nsp-incidentes'),
   ('nsp_incidente_eventos','criado_em','nsp-incidentes'),
   ('nsp_incidente_eventos','de_status','nsp-incidentes'),

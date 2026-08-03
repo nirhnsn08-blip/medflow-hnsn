@@ -35,6 +35,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
          indicadoresSeguranca, farol, metasSeguranca, relatorioNsp, fichaNotivisa,
          METAS as NSP_METAS, STATUS_PROTOCOLO, protocoloRevisaoVencida, resumoProtocolos,
+         STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
@@ -1879,6 +1880,29 @@ async function salvarProtocolo(proto, user) {
   if (proto.id) body.id = proto.id;
   if (proto.chave) body.chave = proto.chave;
   await sbFetch("nsp_protocolos?on_conflict=id", {
+    method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify(body),
+  });
+}
+// ── NSP Fase 2d: capacitações (treinamentos em segurança) ──
+async function loadCapacitacoes() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("nsp_capacitacoes?select=*&order=criado_em.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function salvarCapacitacao(cap, user) {
+  if (!USE_SUPABASE) return;
+  const numOrNull = v => (v === "" || v == null ? null : Number(v));
+  const body = {
+    tema: cap.tema, meta: cap.meta || null, data: cap.data || null,
+    carga_horaria: numOrNull(cap.carga_horaria), facilitador: cap.facilitador || null,
+    publico_alvo: cap.publico_alvo || null, participantes: numOrNull(cap.participantes),
+    status: cap.status || "planejado", proxima_em: cap.proxima_em || null,
+    observacao: cap.observacao || null, ativo: cap.ativo !== false,
+    usuario: user?.name || null, updated_at: new Date().toISOString(),
+  };
+  if (cap.id) body.id = cap.id;
+  await sbFetch("nsp_capacitacoes?on_conflict=id", {
     method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
     body: JSON.stringify(body),
   });
@@ -10473,8 +10497,8 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // Barra lateral própria (padrão dos outros módulos). Nesta fase são
 // funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
 // Consultar incidente (2a); Análise de causas e Plano de ação (2b);
-// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA e Protocolos (2d).
-// Capacitações, Comunicação e Assistente AI: restante da 2d.
+// Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA, Protocolos e Capacitações (2d).
+// Comunicação e Assistente AI: restante da 2d.
 // ═══════════════════════════════════════════════════════════
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
@@ -10670,12 +10694,15 @@ function NSPPage({ currentUser, canEdit }) {
   const [medForm, setMedForm] = useState(null);
   const [protocolos, setProtocolos] = useState([]);
   const [protoForm, setProtoForm] = useState(null);
+  const [capacitacoes, setCapacitacoes] = useState([]);
+  const [capForm, setCapForm] = useState(null);
 
   function recarregar() {
     loadIncidentes().then(setIncidentes); loadLppAdquiridas().then(setLppAdq);
     loadRcas().then(setRcas); loadAcoes().then(setAcoes);
     loadMetaFaixas().then(setFaixasMeta); loadMetaMedicoes().then(setMedicoes);
     loadProtocolos().then(setProtocolos);
+    loadCapacitacoes().then(setCapacitacoes);
   }
   useEffect(() => { if (USE_SUPABASE) recarregar(); }, []);
 
@@ -10687,6 +10714,7 @@ function NSPPage({ currentUser, canEdit }) {
   const farolCor = { verde: "#34d399", amarelo: "#f5b301", vermelho: "#f43f5e", cinza: "#8891a5" };
   const farolTxt = { verde: "No alvo", amarelo: "Alerta", vermelho: "Fora do alvo", cinza: "Sem leitura" };
   const protoResumo = resumoProtocolos(protocolos);
+  const capResumo = resumoCapacitacoes(capacitacoes);
   const filaRca = incidentesAguardandoRca(incidentes, rcas);
   const risco = matrizRisco(form.probabilidade, form.gravidade);
   const filtrados = incidentes.filter(i =>
@@ -10732,6 +10760,10 @@ function NSPPage({ currentUser, canEdit }) {
   async function salvarProto() {
     if (busy || !protoForm || !(protoForm.titulo || "").trim()) return;
     setBusy(true); await salvarProtocolo(protoForm, currentUser); setBusy(false); setProtoForm(null); recarregar();
+  }
+  async function salvarCap() {
+    if (busy || !capForm || !(capForm.tema || "").trim()) return;
+    setBusy(true); await salvarCapacitacao(capForm, currentUser); setBusy(false); setCapForm(null); recarregar();
   }
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
@@ -11202,7 +11234,80 @@ function NSPPage({ currentUser, canEdit }) {
               })}
           </div>
         </>)}
-        {sub === "capacitacoes" && <Placeholder fase="2d" />}
+        {sub === "capacitacoes" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
+            Educação permanente em segurança do paciente. Registre os treinamentos e vincule à Meta — o núcleo mostra a cobertura e cobra a recorrência vencida.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 10, marginBottom: 14 }}>
+            <Card label="Capacitações" valor={capResumo.total} cor="#22d3ee" sub={`${capResumo.realizadas} realizadas`} />
+            <Card label="Horas realizadas" valor={capResumo.horas} cor="#818cf8" />
+            <Card label="Participantes" valor={capResumo.participantes} cor="#34d399" />
+            <Card label="Recorrência vencida" valor={capResumo.vencidas} cor={capResumo.vencidas ? "#f43f5e" : "#34d399"} sub="repetir treinamento" />
+          </div>
+          {capResumo.metasSemCapacitacao.length > 0 && (
+            <div style={{ ...card, borderLeft: "3px solid #fb923c" }}>
+              <span style={{ fontSize: 12.5, color: "var(--text-3)" }}>Metas sem capacitação realizada: <strong>{capResumo.metasSemCapacitacao.join(" · ")}</strong></span>
+            </div>
+          )}
+          {canEdit && !capForm && <button onClick={() => setCapForm({ tema: "", meta: "", data: "", carga_horaria: "", facilitador: "", publico_alvo: "", participantes: "", status: "planejado", proxima_em: "", observacao: "" })} style={{ ...btnPrimario(true), marginBottom: 14 }}>+ Nova capacitação</button>}
+
+          {capForm && (
+            <div style={card}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{capForm.id ? "Editar capacitação" : "Nova capacitação"}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+                <div style={{ gridColumn: "1 / -1" }}><label style={lbl}>Tema *</label><input value={capForm.tema} onChange={e => setCapForm(p => ({ ...p, tema: e.target.value }))} style={inp} autoFocus /></div>
+                <div><label style={lbl}>Meta vinculada</label>
+                  <select value={capForm.meta || ""} onChange={e => setCapForm(p => ({ ...p, meta: e.target.value }))} style={inp}>
+                    <option value="">— nenhuma —</option>
+                    {NSP_METAS.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Data</label><input type="date" value={capForm.data || ""} onChange={e => setCapForm(p => ({ ...p, data: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Carga horária (h)</label><input type="number" min="0" step="0.5" value={capForm.carga_horaria} onChange={e => setCapForm(p => ({ ...p, carga_horaria: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Facilitador</label><input value={capForm.facilitador || ""} onChange={e => setCapForm(p => ({ ...p, facilitador: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Público-alvo</label><input value={capForm.publico_alvo || ""} onChange={e => setCapForm(p => ({ ...p, publico_alvo: e.target.value }))} style={inp} placeholder="Ex.: enfermagem" /></div>
+                <div><label style={lbl}>Participantes</label><input type="number" min="0" value={capForm.participantes} onChange={e => setCapForm(p => ({ ...p, participantes: e.target.value }))} style={inp} /></div>
+                <div><label style={lbl}>Status</label>
+                  <select value={capForm.status || "planejado"} onChange={e => setCapForm(p => ({ ...p, status: e.target.value }))} style={inp}>
+                    {STATUS_CAPACITACAO.map(s => <option key={s.v} value={s.v}>{s.l}</option>)}
+                  </select>
+                </div>
+                <div><label style={lbl}>Próxima prevista</label><input type="date" value={capForm.proxima_em || ""} onChange={e => setCapForm(p => ({ ...p, proxima_em: e.target.value }))} style={inp} /></div>
+              </div>
+              <div style={{ marginTop: 10 }}><label style={lbl}>Observação</label><input value={capForm.observacao || ""} onChange={e => setCapForm(p => ({ ...p, observacao: e.target.value }))} style={inp} /></div>
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={salvarCap} disabled={busy || !(capForm.tema || "").trim()} style={btnPrimario(!busy && !!(capForm.tema || "").trim())}>Salvar</button>
+                <button onClick={() => setCapForm(null)} style={btnGhost}>Cancelar</button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 10 }}>
+            {capacitacoes.filter(c => c.ativo !== false).length === 0 ? <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Nenhuma capacitação registrada ainda.</div> :
+              capacitacoes.filter(c => c.ativo !== false).map(c => {
+                const vencida = capacitacaoVencida(c);
+                const st = STATUS_CAPACITACAO.find(s => s.v === (c.status || "planejado")) || {};
+                const metaL = (NSP_METAS.find(m => m.v === c.meta) || {}).l;
+                return (
+                  <div key={c.id} style={card}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 180 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{c.tema}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
+                          {c.data ? new Date(c.data).toLocaleDateString("pt-BR") : "sem data"}{c.carga_horaria ? ` · ${c.carga_horaria}h` : ""}{c.participantes ? ` · ${c.participantes} particip.` : ""}{metaL ? ` · ${metaL}` : ""}
+                        </div>
+                      </div>
+                      <Pill c={NSP_COR[st.nivel] || "#8891a5"} t={st.l || c.status} />
+                      {canEdit && <button onClick={() => setCapForm({ ...c })} style={btnGhostMini}>Editar</button>}
+                    </div>
+                    {(c.facilitador || c.publico_alvo) && <div style={{ marginTop: 6, fontSize: 11.5, color: "var(--text-3)" }}>{c.facilitador ? `Facilitador: ${c.facilitador}` : ""}{c.facilitador && c.publico_alvo ? " · " : ""}{c.publico_alvo ? `Público: ${c.publico_alvo}` : ""}</div>}
+                    {c.proxima_em && <div style={{ marginTop: 6, fontSize: 11.5, color: vencida ? "#f43f5e" : "var(--text-3)", fontWeight: vencida ? 700 : 400 }}>{vencida ? `⚠ Recorrência vencida em ${new Date(c.proxima_em).toLocaleDateString("pt-BR")}` : `Próxima prevista: ${new Date(c.proxima_em).toLocaleDateString("pt-BR")}`}</div>}
+                    {c.observacao && <div style={{ marginTop: 6, fontSize: 12, color: "var(--text-3)", lineHeight: 1.5 }}>{c.observacao}</div>}
+                  </div>
+                );
+              })}
+          </div>
+        </>)}
         {sub === "comunicacao"  && <Placeholder fase="2d" />}
         {sub === "relatorios"   && <NspRelatorioView incidentes={incidentes} acoes={acoes} lppAdq={lppAdq} medicoes={medicoes} faixas={faixasMeta} />}
         {sub === "assistente"   && <Placeholder fase="2d" />}

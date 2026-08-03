@@ -5,6 +5,7 @@ import {
   resumoIncidentes, indicadoresSeguranca, farol, metasSeguranca, rotuloTipo, rotuloClasse,
   filtrarPorMes, incidentesCompulsorios, fichaNotivisa, relatorioNsp,
   STATUS_PROTOCOLO, PROTOCOLOS_BASICOS, protocoloRevisaoVencida, resumoProtocolos,
+  STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
   ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
   acaoAtrasada, resumoAcoes, temRcaConcluida, incidentesAguardandoRca,
 } from "./nsp.js";
@@ -306,5 +307,35 @@ describe("protocolos de segurança (Fase 2d)", () => {
     expect(r.revisaoVencida).toBe(1);
     expect(r.basicosFaltando).toContain("Cirurgia segura");
     expect(r.basicosFaltando).not.toContain("Identificação do paciente");
+  });
+});
+
+describe("capacitações (Fase 2d)", () => {
+  it("catálogo: 3 status", () => {
+    expect(STATUS_CAPACITACAO.map(s => s.v)).toEqual(["planejado", "realizado", "cancelado"]);
+  });
+  it("capacitacaoVencida: próxima prevista no passado e não cancelada", () => {
+    const hoje = new Date(2026, 6, 29);
+    expect(capacitacaoVencida({ proxima_em: "2026-07-01", status: "realizado" }, hoje)).toBe(true);
+    expect(capacitacaoVencida({ proxima_em: "2026-12-01", status: "realizado" }, hoje)).toBe(false);
+    expect(capacitacaoVencida({ proxima_em: "2026-07-01", status: "cancelado" }, hoje)).toBe(false);
+    expect(capacitacaoVencida({ status: "realizado" }, hoje)).toBe(false);
+  });
+  it("resumoCapacitacoes: horas, participantes, vencidas e metas sem capacitação", () => {
+    const hoje = new Date(2026, 6, 29);
+    const caps = [
+      { meta: "higiene_maos", status: "realizado", carga_horaria: 2, participantes: 20, proxima_em: "2027-01-01" },
+      { meta: "quedas_lpp", status: "realizado", carga_horaria: 1.5, participantes: 15, proxima_em: "2026-07-01" },  // vencida
+      { meta: "identificacao", status: "planejado", carga_horaria: 2, participantes: 0 },
+    ];
+    const r = resumoCapacitacoes(caps, hoje);
+    expect(r.total).toBe(3);
+    expect(r.realizadas).toBe(2);
+    expect(r.planejadas).toBe(1);
+    expect(r.horas).toBe(3.5);
+    expect(r.participantes).toBe(35);
+    expect(r.vencidas).toBe(1);
+    expect(r.metasSemCapacitacao).toContain("Comunicação efetiva");
+    expect(r.metasSemCapacitacao).not.toContain("Higiene das mãos");
   });
 });
