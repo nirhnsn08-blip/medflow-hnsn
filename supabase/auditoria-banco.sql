@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 87 tabelas, 1378 colunas.
+-- Cobertura atual: 88 tabelas, 1392 colunas.
 -- ============================================================
 
 with
@@ -55,6 +55,7 @@ tabelas(nome, origem) as (values
   ('leitos_turnover','schema'),
   ('nsp_acoes','nsp-rca-plano'),
   ('nsp_capacitacoes','nsp-capacitacoes'),
+  ('nsp_comunicados','nsp-comunicados'),
   ('nsp_incidente_eventos','nsp-incidentes'),
   ('nsp_incidentes','nsp-incidentes'),
   ('nsp_meta_faixas','nsp-metas'),
@@ -624,6 +625,20 @@ colunas(tabela, coluna, origem) as (values
   ('nsp_capacitacoes','tema','nsp-capacitacoes'),
   ('nsp_capacitacoes','updated_at','nsp-capacitacoes'),
   ('nsp_capacitacoes','usuario','nsp-capacitacoes'),
+  ('nsp_comunicados','ativo','nsp-comunicados'),
+  ('nsp_comunicados','autor','nsp-comunicados'),
+  ('nsp_comunicados','conteudo','nsp-comunicados'),
+  ('nsp_comunicados','criado_em','nsp-comunicados'),
+  ('nsp_comunicados','data','nsp-comunicados'),
+  ('nsp_comunicados','id','nsp-comunicados'),
+  ('nsp_comunicados','incidente_id','nsp-comunicados'),
+  ('nsp_comunicados','prioridade','nsp-comunicados'),
+  ('nsp_comunicados','publico_alvo','nsp-comunicados'),
+  ('nsp_comunicados','status','nsp-comunicados'),
+  ('nsp_comunicados','tipo','nsp-comunicados'),
+  ('nsp_comunicados','titulo','nsp-comunicados'),
+  ('nsp_comunicados','updated_at','nsp-comunicados'),
+  ('nsp_comunicados','usuario','nsp-comunicados'),
   ('nsp_incidente_eventos','categoria','nsp-incidentes'),
   ('nsp_incidente_eventos','criado_em','nsp-incidentes'),
   ('nsp_incidente_eventos','de_status','nsp-incidentes'),
