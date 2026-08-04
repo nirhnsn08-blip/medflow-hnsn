@@ -83,7 +83,7 @@ um `adm_master` apaga pela API.
 ### Maturidade — declaração explícita
 
 - ✅ **Publicado e em uso operacional** no HNSN, com deploy contínuo.
-- ✅ **940 testes automatizados**, CI bloqueando merge.
+- ✅ **1.007 testes automatizados**, CI bloqueando merge.
 - ⚠️ **Ainda não há registro de paciente real no banco.** A base está povoada com
   dados de teste e de configuração. O sistema é usado para operação e validação; a
   virada para dado real depende dos itens em [Limitações](#10-limitações-conhecidas).
@@ -98,7 +98,7 @@ um `adm_master` apaga pela API.
 |---|---|
 | Front-end | React 18 · Vite 7 · JavaScript/JSX (sem TypeScript) |
 | Gráficos | Recharts |
-| Testes | Vitest 3 — 940 testes, 33 arquivos |
+| Testes | Vitest 3 — 1.007 testes, 34 arquivos |
 | Banco de dados | PostgreSQL (Supabase) |
 | Autenticação | Supabase Auth (JWT, refresh automático) |
 | API | PostgREST (REST gerado do schema) |
@@ -135,7 +135,7 @@ clicava em salvar, nada era gravado, e passou por code review, build e 99 testes
 | `src/pacientes/` | Identidade do paciente, cadastro |
 | `src/ambulatorio/` | Especialidades pactuadas e metas |
 | `src/util/` | Datas e formatação |
-| `supabase/` | 57 arquivos SQL: schema base + migrações incrementais + geradores |
+| `supabase/` | 58 arquivos SQL: schema base + migrações incrementais + geradores |
 
 ### Segurança
 
@@ -155,9 +155,15 @@ clicava em salvar, nada era gravado, e passou por code review, build e 99 testes
   da rede, com mensagem que diz a verdade ("a gravação NÃO foi enviada").
 - **Chave `service_role` nunca vai para o front-end.** Operações privilegiadas ficam em
   Edge Functions.
-- ⚠️ **Limitação atual:** as políticas de `SELECT` são `using (true)` para usuários
-  autenticados. O menu esconde módulos, mas **não é barreira de acesso ao dado**. Ver
-  [Limitações](#10-limitações-conhecidas).
+- **A leitura do banco obedece ao perfil.** Cada tabela tem política de `SELECT` que
+  chama `public.pode_ver(<módulo>)`: tirar um módulo do perfil tira também o acesso pela
+  API, não só o item do menu. Recepção, faturamento e almoxarifado não alcançam o
+  prontuário nem por fora da tela (COFEN 754/2024, art. 6º). O mapa de qual módulo lê
+  qual tabela é versionado (`src/acesso/mapa-tabelas.js`) e um teste impede que tabela
+  nova entre sem classificação.
+- ⚠️ **Duas ressalvas, declaradas:** o RLS **não filtra linha** (quem abre o prontuário
+  abre o de qualquer paciente, não só os do seu setor) e a **escrita** ainda é decidida
+  por papel de sistema, não por módulo. Ver [Limitações](#10-limitações-conhecidas).
 
 ---
 
@@ -516,9 +522,9 @@ hospital transmite hoje e ciclo de homologação.
 | **Disponibilidade** | Vercel + Supabase gerenciados; sem SLA contratado |
 | **Desempenho** | Bundle dividido em chunks; ~29% em cache entre deploys. Teste de carga com 60 pacientes fictícios em ~40 telas sem falha |
 | **Escalabilidade** | 1 banco PostgreSQL por hospital (isolamento físico). ⚠️ Ver [Limitações](#10-limitações-conhecidas) |
-| **Segurança** | RLS em todas as tabelas; JWT; `service_role` fora do front. ⚠️ `SELECT` ainda não segregado por papel |
+| **Segurança** | RLS em todas as tabelas; leitura segregada por módulo do perfil; JWT; `service_role` fora do front. ⚠️ Sem filtro por linha |
 | **Auditabilidade** | Append-only clínico; autoria congelada; log de acesso ao prontuário |
-| **Manutenibilidade** | 940 testes; CI bloqueante; contrato código↔banco automatizado. ⚠️ `App.jsx` com ~15 mil linhas é dívida ativa |
+| **Manutenibilidade** | 1.007 testes; CI bloqueante; contrato código↔banco automatizado. ⚠️ `App.jsx` com ~15 mil linhas é dívida ativa |
 | **Compatibilidade** | Navegador moderno (Chrome, Edge, Firefox, Safari). Sem app nativo |
 | **Backup** | PITR do Supabase (dados) + `reconstruir-banco.sql` (estrutura) |
 | **LGPD** | Isolamento por hospital; minimização na listagem; log de acesso. ⚠️ Ver Limitações |
@@ -537,7 +543,7 @@ hospital transmite hoje e ciclo de homologação.
 ### Ciclo de desenvolvimento
 
 - **Branch + Pull Request** para toda mudança; ninguém commita direto na `main`.
-- **CI obrigatório**: validação de SQL, 940 testes e build antes de qualquer merge.
+- **CI obrigatório**: validação de SQL, 1.007 testes e build antes de qualquer merge.
 - **Ambiente de homologação real**: cada PR gera preview automático apontando para o
   banco de teste, com faixa de alerta na tela identificando o ambiente.
 - **Checkpoints versionados** (tags Git) como pontos de restauração.
@@ -617,7 +623,7 @@ isso — além de testável, ficou destacável.
 ### Diferenciais de venda
 
 1. **Regras normativas brasileiras implementadas e testadas** — não é software genérico traduzido.
-2. **Segurança clínica verificável** — 940 testes automatizados, com as regras críticas travadas em três camadas (tela, lógica, banco).
+2. **Segurança clínica verificável** — 1.007 testes automatizados, com as regras críticas travadas em três camadas (tela, lógica, banco).
 3. **Rastreabilidade** — append-only clínico, autoria congelada, log de acesso ao prontuário.
 4. **Implantação rápida** — 1 banco por hospital provisionado por script; sem servidor local.
 5. **Construído dentro de um hospital**, com enfermeira na modelagem.
@@ -642,7 +648,8 @@ qualquer forma, e que determinam o esforço real de uma implantação.
 
 | # | Limitação | Impacto | Situação |
 |---|---|---|---|
-| 1 | **`SELECT` do RLS não segregado por papel** — qualquer usuário autenticado lê qualquer tabela pela API; o menu esconde, mas não barra | **Alto** — não apresentar como "acesso segregado" | Prazo definido: antes do primeiro paciente real. Exige antes um modo de observação e um mecanismo de quebra-vidro, para a equipe não passar a compartilhar senha |
+| 1 | **RLS sem filtro por linha** — a leitura já é segregada por módulo (perfil), mas quem alcança um módulo alcança todos os registros dele: não existe "só os pacientes do meu setor" | **Médio** | Depende de lotação confiável em `profiles.setor` e de decidir o que acontece com quem cobre outra ala. A segregação por módulo está no ar (`migracao-rls-leitura.sql`) |
+| 1b | **Escrita ainda decidida por papel de sistema**, não por módulo — um `adm_silver` de qualquer cargo grava onde a tela deixar | **Médio** | As funções (`pode_editar`) já estão no banco; falta reescrever as políticas de `insert/update/delete` |
 | 2 | **Sem geração de remessa de faturamento** (BPA/AIH/TISS) | **Alto** para hospital SUS que dependa disso | Modelo de dados pronto; falta o layout do hospital + homologação |
 | 3 | **Sem interoperabilidade** (HL7/FHIR/RNDS) | **Alto** para rede ou hospital com laboratório integrado | Não iniciado |
 | 4 | **`App.jsx` com ~15 mil linhas** | **Médio** — atrasa desenvolvimento paralelo e impede code-splitting por rota | Modularização em andamento; 7 domínios já extraídos |
@@ -661,8 +668,8 @@ qualquer forma, e que determinam o esforço real de uma implantação.
 | **Produto** | Valentrax — Healthcare Operations |
 | **Repositório** | `github.com/nirhnsn08-blip/medflow-hnsn` |
 | **Versão de referência** | `main` @ `e3a128b` (2026-08-01) |
-| **Testes** | 940 automatizados, 33 arquivos |
+| **Testes** | 1.007 automatizados, 34 arquivos |
 | **Banco** | 86 tabelas · 1.363 colunas · RLS em todas |
-| **Módulos SQL** | 57 arquivos (schema + migrações + geradores) |
+| **Módulos SQL** | 58 arquivos (schema + migrações + geradores) |
 | **Vulnerabilidades de dependência** | 0 |
 | **Implantação de referência** | Hospital Nossa Senhora de Navegantes |

@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 53 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 56 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (53 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (56 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/53 — schema.sql
+-- │ 01/56 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/53 — migracao-farmacia-faseA.sql
+-- │ 02/56 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1240,7 +1240,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/53 — migracao-farmacia-seed.sql
+-- │ 03/56 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1450,7 +1450,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/53 — migracao-farmacia-faseB.sql
+-- │ 04/56 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1491,7 +1491,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/53 — migracao-farmacia-clinica-fase1.sql
+-- │ 05/56 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1616,7 +1616,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/53 — migracao-farmacia-clinica-fase2.sql
+-- │ 06/56 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1738,7 +1738,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/53 — migracao-farmacia-clinica-fase3.sql
+-- │ 07/56 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1806,7 +1806,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/53 — migracao-farmacia-preparo.sql
+-- │ 08/56 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1840,7 +1840,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/53 — migracao-farmacia-custos.sql
+-- │ 09/56 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1853,7 +1853,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/53 — migracao-farmacia-nao-padronizados.sql
+-- │ 10/56 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1892,7 +1892,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/53 — migracao-farmacia-intervencoes.sql
+-- │ 11/56 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -1931,7 +1931,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/53 — migracao-leitos-kanban-metas.sql
+-- │ 12/56 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -1960,7 +1960,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/53 — migracao-leitos-saida-setor.sql
+-- │ 13/56 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -1986,7 +1986,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/53 — migracao-suprimentos-faseA.sql
+-- │ 14/56 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2124,7 +2124,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/53 — migracao-suprimentos-faseB.sql
+-- │ 15/56 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2176,7 +2176,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/53 — migracao-suprimentos-seed.sql
+-- │ 16/56 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2332,7 +2332,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/53 — migracao-suprimentos-faseC.sql
+-- │ 17/56 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2389,7 +2389,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/53 — migracao-suprimentos-inventario.sql
+-- │ 18/56 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2451,7 +2451,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/53 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 19/56 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2468,7 +2468,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/53 — migracao-suprimentos-cotacao.sql
+-- │ 20/56 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2516,7 +2516,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/53 — migracao-ps-salas.sql
+-- │ 21/56 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2565,7 +2565,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/53 — migracao-ps-salas-censo.sql
+-- │ 22/56 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2645,7 +2645,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/53 — migracao-ps-origem-elo.sql
+-- │ 23/56 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2685,7 +2685,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/53 — migracao-ps-checagem-medicacao.sql
+-- │ 24/56 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2738,7 +2738,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/53 — migracao-pep-fase1.sql
+-- │ 25/56 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3536,7 +3536,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/53 — migracao-pep-acessos.sql
+-- │ 26/56 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3602,7 +3602,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/53 — migracao-pep-sinais-spo2.sql
+-- │ 27/56 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3634,7 +3634,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/53 — migracao-pep-categoria-profissional.sql
+-- │ 28/56 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3688,7 +3688,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/53 — migracao-pep-perfis-update.sql
+-- │ 29/56 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3727,7 +3727,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/53 — migracao-pep-fase3.sql
+-- │ 30/56 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4037,7 +4037,7 @@ order by c.relname;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 31/53 — migracao-perfis-acesso.sql
+-- │ 31/56 — migracao-perfis-acesso.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS DE ACESSO — o cargo vira um pacote de permissões
@@ -4069,6 +4069,10 @@ order by c.relname;
 -- quem realmente acessa o quê. Apertar SELECT no escuro tira acesso de quem
 -- tem direito no meio do plantão. Até lá, NÃO apresentar isto ao hospital
 -- como "os dados estão segregados".
+--
+-- ✅ A FASE 3 CHEGOU: `migracao-rls-leitura.sql` amarra a leitura de cada
+--    tabela ao módulo do perfil, usando as três tabelas criadas aqui. Rode
+--    esta migração ANTES daquela — lá as funções leem daqui.
 --
 -- Aditiva e idempotente: só `create table if not exists` / `add column if
 -- not exists` / `on conflict do nothing`. Pode rodar duas vezes.
@@ -4227,41 +4231,45 @@ on conflict (chave) do nothing;
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Médico
   ('medico','overview','leitura'),('medico','atendimento','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
-  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),
+  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),('medico','nsp','escrita'),
   ('medico','paciente','escrita'),('medico','farmacia','leitura'),('medico','print','leitura'),
   -- Enfermeiro
   ('enfermeiro','overview','leitura'),('enfermeiro','atendimento','escrita'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
-  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),
+  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),('enfermeiro','nsp','escrita'),
   ('enfermeiro','paciente','escrita'),('enfermeiro','farmacia','leitura'),('enfermeiro','suprimentos','leitura'),
   ('enfermeiro','print','leitura'),
   -- Enfermeiro SCIH
   ('enfermeiro_scih','overview','leitura'),('enfermeiro_scih','ps','leitura'),('enfermeiro_scih','bloco','leitura'),
-  ('enfermeiro_scih','leitos','leitura'),('enfermeiro_scih','scih','escrita'),('enfermeiro_scih','paciente','escrita'),
+  ('enfermeiro_scih','leitos','leitura'),('enfermeiro_scih','scih','escrita'),('enfermeiro_scih','nsp','escrita'),
+  ('enfermeiro_scih','paciente','escrita'),
   ('enfermeiro_scih','farmacia','leitura'),('enfermeiro_scih','print','leitura'),
   -- Técnico de enfermagem
   ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','atendimento','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
-  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),
+  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),('tecnico_enfermagem','nsp','escrita'),
   ('tecnico_enfermagem','scih','leitura'),('tecnico_enfermagem','paciente','escrita'),
   -- Fisioterapeuta
-  ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),
+  ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),('fisioterapeuta','nsp','escrita'),
   ('fisioterapeuta','leitos','leitura'),('fisioterapeuta','paciente','escrita'),
   -- Nutricionista
-  ('nutricionista','overview','leitura'),('nutricionista','leitos','leitura'),('nutricionista','paciente','escrita'),
+  ('nutricionista','overview','leitura'),('nutricionista','leitos','leitura'),('nutricionista','nsp','escrita'),
+  ('nutricionista','paciente','escrita'),
   -- Assistente social
-  ('assistente_social','overview','leitura'),('assistente_social','ambulatorio','leitura'),
+  ('assistente_social','overview','leitura'),('assistente_social','ambulatorio','leitura'),('assistente_social','nsp','escrita'),
   ('assistente_social','leitos','leitura'),('assistente_social','paciente','escrita'),
   -- NIR / Regulação de Leitos
-  ('nir','overview','leitura'),('nir','ps','leitura'),('nir','bloco','leitura'),
+  ('nir','overview','leitura'),('nir','ps','leitura'),('nir','bloco','leitura'),('nir','nsp','escrita'),
   ('nir','leitos','escrita'),('nir','print','leitura'),
   -- Farmacêutico
   ('farmaceutico','overview','leitura'),('farmaceutico','ps','leitura'),('farmaceutico','leitos','leitura'),
-  ('farmaceutico','scih','leitura'),('farmaceutico','farmacia','escrita'),('farmaceutico','controlados','escrita'),
+  ('farmaceutico','scih','leitura'),('farmaceutico','nsp','escrita'),
+  ('farmaceutico','farmacia','escrita'),('farmaceutico','controlados','escrita'),
   ('farmaceutico','suprimentos','leitura'),('farmaceutico','paciente','leitura'),('farmaceutico','print','leitura'),
   -- Auxiliar de farmácia
+  ('aux_farmacia','nsp','escrita'),
   ('aux_farmacia','farmacia','escrita'),('aux_farmacia','controlados','leitura'),('aux_farmacia','suprimentos','leitura'),
   -- Recepção
   ('recepcao','overview','leitura'),('recepcao','atendimento','escrita'),('recepcao','ambulatorio','escrita'),('recepcao','ps','escrita'),
-  ('recepcao','leitos','leitura'),
+  ('recepcao','leitos','leitura'),('recepcao','nsp','escrita'),
   -- Faturamento
   ('faturamento','overview','leitura'),('faturamento','atendimento','leitura'),('faturamento','ambulatorio','leitura'),
   ('faturamento','leitos','leitura'),('faturamento','print','leitura'),
@@ -4271,18 +4279,19 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('matriz','overview','leitura'),('matriz','suprimentos','leitura'),
   -- Gestão
   ('gestao','overview','leitura'),('gestao','atendimento','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
-  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),
+  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),('gestao','nsp','leitura'),
   ('gestao','farmacia','leitura'),('gestao','suprimentos','leitura'),('gestao','print','leitura'),
   ('gestao','auditoria','leitura'),
   -- Diretor técnico
   ('diretor_tecnico','overview','leitura'),('diretor_tecnico','atendimento','leitura'),('diretor_tecnico','ambulatorio','leitura'),
   ('diretor_tecnico','ps','escrita'),('diretor_tecnico','bloco','leitura'),('diretor_tecnico','leitos','leitura'),
-  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
+  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),
+  ('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
   ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
   -- TI
   ('ti','overview','escrita'),('ti','atendimento','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
-  ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','nsp','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
+  ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','nsp','escrita'),('ti','protocolos','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
   ('ti','controlados','escrita'),('ti','suprimentos','escrita'),('ti','print','escrita'),
   ('ti','auditoria','escrita'),('ti','import','escrita'),('ti','supabase','escrita'),('ti','users','escrita')
 on conflict (perfil_chave, modulo) do nothing;
@@ -4308,7 +4317,7 @@ on conflict (chave) do nothing;
 
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('provisorio','overview','escrita'),('provisorio','atendimento','escrita'),('provisorio','ambulatorio','escrita'),('provisorio','ps','escrita'),
-  ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),('provisorio','nsp','escrita'),
+  ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),('provisorio','nsp','escrita'),('provisorio','protocolos','escrita'),
   ('provisorio','paciente','escrita'),('provisorio','farmacia','escrita'),('provisorio','controlados','escrita'),
   ('provisorio','suprimentos','escrita'),('provisorio','print','escrita'),('provisorio','auditoria','escrita'),
   ('provisorio','import','escrita'),('provisorio','supabase','escrita')
@@ -4331,7 +4340,7 @@ select p.chave, p.nome, count(pp.modulo) as modulos,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 32/53 — migracao-leitos-nir-regulacao.sql
+-- │ 32/56 — migracao-leitos-nir-regulacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"
@@ -4372,7 +4381,7 @@ select 'regulação NIR ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 33/53 — migracao-suprimentos-aprovacao.sql
+-- │ 33/56 — migracao-suprimentos-aprovacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Aprovação de pedidos de compra pela matriz
@@ -4407,7 +4416,7 @@ select 'aprovação de compras ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 34/53 — migracao-ps-comorbidades.sql
+-- │ 34/56 — migracao-ps-comorbidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Comorbidades na triagem
@@ -4433,7 +4442,7 @@ select 'comorbidades ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 35/53 — migracao-ps-triagem-tipo.sql
+-- │ 35/56 — migracao-ps-triagem-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)
@@ -4469,7 +4478,7 @@ select 'triagem_tipo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 36/53 — migracao-ps-faixas-pediatricas.sql
+-- │ 36/56 — migracao-ps-faixas-pediatricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)
@@ -4538,7 +4547,7 @@ select 'ps_faixas_pediatricas ok — ' || count(*) || ' faixas' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 37/53 — migracao-ps-faixas-obstetricas.sql
+-- │ 37/56 — migracao-ps-faixas-obstetricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)
@@ -4604,7 +4613,7 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 38/53 — migracao-enf-escalas-lpp.sql
+-- │ 38/56 — migracao-enf-escalas-lpp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)
@@ -4731,7 +4740,7 @@ select 'enf: escalas/lpp/faixas ok — ' || count(*) || ' cortes semeados' as re
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 39/53 — migracao-enf-sae.sql
+-- │ 39/56 — migracao-enf-sae.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)
@@ -4947,7 +4956,7 @@ select 'enf SAE: catálogo semeado — ' || count(*) || ' itens (' ||
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 40/53 — migracao-pacientes-identificacao.sql
+-- │ 40/56 — migracao-pacientes-identificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário
@@ -5141,7 +5150,7 @@ from public.pacientes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 41/53 — migracao-atendimento-recepcao.sql
+-- │ 41/56 — migracao-atendimento-recepcao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital
@@ -5479,7 +5488,7 @@ select last_value as ultimo_prontuario_emitido from public.prontuario_seq;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 42/53 — migracao-atendimento-fk.sql
+-- │ 42/56 — migracao-atendimento-fk.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)
@@ -5588,7 +5597,7 @@ select exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 43/53 — migracao-nsp-incidentes.sql
+-- │ 43/56 — migracao-nsp-incidentes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes
@@ -5678,7 +5687,7 @@ select 'NSP: nsp_incidentes + nsp_incidente_eventos ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 44/53 — migracao-atendimento-fase2.sql
+-- │ 44/56 — migracao-atendimento-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde
@@ -5985,7 +5994,7 @@ select 'dominios cadastrados pelo hospital', count(*)::text from public.at_domin
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 45/53 — migracao-atendimento-agenda.sql
+-- │ 45/56 — migracao-atendimento-agenda.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia
@@ -6207,7 +6216,7 @@ select 'trava de vaga unica instalada', (exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 46/53 — migracao-nsp-rca-plano.sql
+-- │ 46/56 — migracao-nsp-rca-plano.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)
@@ -6284,7 +6293,7 @@ select 'NSP: nsp_rca + nsp_acoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 47/53 — migracao-atendimento-ciclo.sql
+-- │ 47/56 — migracao-atendimento-ciclo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro
@@ -6371,7 +6380,7 @@ select 'atendimentos cancelados ate agora', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 48/53 — migracao-nsp-metas.sql
+-- │ 48/56 — migracao-nsp-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)
@@ -6446,7 +6455,7 @@ select 'NSP: nsp_meta_faixas (' || (select count(*) from public.nsp_meta_faixas)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 49/53 — migracao-nsp-protocolos.sql
+-- │ 49/56 — migracao-nsp-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Protocolos gerenciados de segurança (Fase 2d)
@@ -6500,7 +6509,7 @@ select 'NSP: nsp_protocolos ok — ' || count(*) || ' protocolos' as resultado f
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 50/53 — migracao-atendimento-responsavel.sql
+-- │ 50/56 — migracao-atendimento-responsavel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta
@@ -6668,7 +6677,7 @@ select 'politicas RLS (esperado 2)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 51/53 — migracao-atendimento-faturamento.sql
+-- │ 51/56 — migracao-atendimento-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — a conta do atendimento (fundação)
@@ -6912,7 +6921,7 @@ select 'politicas RLS (esperado 4)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 52/53 — migracao-nsp-capacitacoes.sql
+-- │ 52/56 — migracao-nsp-capacitacoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Capacitações em segurança do paciente (Fase 2d)
@@ -6955,7 +6964,7 @@ select 'NSP: nsp_capacitacoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 53/53 — migracao-nsp-comunicados.sql
+-- │ 53/56 — migracao-nsp-comunicados.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Comunicação / mural de segurança (Fase 2d)
@@ -6993,6 +7002,695 @@ create index if not exists nsp_comunicados_status_idx on public.nsp_comunicados 
 
 -- Verificação
 select 'NSP: nsp_comunicados ok' as resultado;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 54/56 — migracao-protocolos.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)
+--
+-- Linhas de cuidado tempo-dependentes ("tempo é tecido"): sepse, IAM, AVC, TEV.
+-- Cada protocolo = GATILHO (acende do que já existe: NEWS/triagem) → BUNDLE com
+-- RELÓGIO (passos com alvo em minutos) → INDICADORES porta→ação, POR SETOR.
+--
+-- Modelo (refino da Laura: "cada setor assistencial tem o seu protocolo"):
+--   • prot_catalogo     — TEMPLATE clínico comum, editável ("em validação"). A
+--                         Sepse é a Sepse (bundle ILAS 1h); passos/alvos ficam em
+--                         jsonb para o ADM Master ajustar na tela sem migração.
+--   • prot_setor        — INSTÂNCIA por setor: cada setor liga o seu protocolo e
+--                         ajusta o que é dele (janela, alvos, responsável).
+--   • prot_ativacoes    — ACIONAMENTO por paciente/setor (append-only), com os
+--                         carimbos de tempo. O relógio corre de acionado_em.
+--   • prot_bundle_itens — PASSOS executados/checados de uma ativação (append-only);
+--                         feito_em de cada passo alimenta os KPIs porta→ação.
+--
+-- DIFERENCIAL: o gatilho acende sozinho (NEWS ≥ 5 com foco infeccioso) e cutuca
+-- onde o paciente está — não espera alguém "abrir" o protocolo.
+--
+-- Aditiva e idempotente. Rodar no SQL Editor — DEMO primeiro, depois HNSN.
+-- ON CONFLICT DO NOTHING: reexecutar não sobrescreve edições da equipe.
+-- ═══════════════════════════════════════════════════════════
+
+-- 1) TEMPLATE clínico comum (editável, "em validação")
+create table if not exists public.prot_catalogo (
+  id           uuid primary key default gen_random_uuid(),
+  chave        text not null,             -- slug do protocolo (sepse|iam|avc|tev) — seed idempotente
+  titulo       text not null,
+  categoria    text,                      -- sepse|cardiologico|neurologico|tromboembolismo
+  gatilho      jsonb,                     -- ex.: {"tipo":"news","min":5,"obs":"..."}
+  passos       jsonb not null default '[]'::jsonb,  -- [{chave,rotulo,alvo_min,ordem,critico}]
+  janela_min   int,                       -- alvo total do bundle (ex.: 60 = pacote de 1h)
+  referencia   text,                      -- diretriz / fonte (ILAS, SSC, AHA…)
+  status       text not null default 'em_validacao',  -- em_validacao | vigente | suspenso
+  ativo        boolean not null default true,
+  validado     boolean not null default false,
+  usuario      text,
+  criado_em    timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create unique index if not exists prot_catalogo_chave_idx on public.prot_catalogo (chave);
+
+-- 2) INSTÂNCIA por setor assistencial (cada setor tem o seu)
+create table if not exists public.prot_setor (
+  id             uuid primary key default gen_random_uuid(),
+  setor          text not null,           -- setores.nome (setor assistencial)
+  protocolo      text not null,           -- prot_catalogo.chave
+  ativo          boolean not null default true,
+  janela_min     int,                     -- override do alvo total (null = usa o do template)
+  passos_over    jsonb,                   -- override dos alvos por passo (null = usa o template)
+  responsavel    text,                    -- quem responde pelo protocolo naquele setor
+  validado       boolean not null default false,   -- "em validação" até a equipe do setor confirmar
+  usuario        text,
+  criado_em      timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create unique index if not exists prot_setor_uk on public.prot_setor (setor, protocolo);
+
+-- 3) ACIONAMENTO por paciente/setor (append-only — o relógio corre daqui)
+create table if not exists public.prot_ativacoes (
+  id            uuid primary key default gen_random_uuid(),
+  numero        bigint generated always as identity,  -- número humano (PROT-<numero>)
+  protocolo     text not null,            -- prot_catalogo.chave
+  setor         text,                     -- onde o paciente está
+  prontuario    text,
+  episodio_id   uuid,
+  paciente_nome text,                     -- iniciais / rótulo curto
+  leito         text,
+  gatilho_ref   jsonb,                    -- snapshot congelado do gatilho (ex.: {"news":6,"fc":118,...})
+  acionado_por  text,
+  acionado_em   timestamptz not null default now(),   -- t0 do relógio
+  status        text not null default 'ativa',        -- ativa | concluida | cancelada | expirada
+  encerrado_em  timestamptz,
+  desfecho      text,                     -- confirmado | descartado | transferido | obito
+  motivo        text,
+  criado_em     timestamptz not null default now()
+);
+create index if not exists prot_ativ_status_idx on public.prot_ativacoes (status, acionado_em desc);
+create index if not exists prot_ativ_setor_idx  on public.prot_ativacoes (setor, acionado_em desc);
+create index if not exists prot_ativ_pront_idx  on public.prot_ativacoes (prontuario, acionado_em desc);
+
+-- 4) PASSOS do bundle executados/checados (append-only)
+create table if not exists public.prot_bundle_itens (
+  id           uuid primary key default gen_random_uuid(),
+  ativacao_id  uuid not null,
+  passo        text not null,             -- prot_catalogo.passos[].chave (lactato|hemocultura|atb|...)
+  rotulo       text,
+  feito        boolean not null default true,
+  nao_aplica   boolean not null default false,   -- justificadamente não se aplica
+  valor        text,                      -- ex.: valor do lactato, nome do ATB
+  obs          text,
+  feito_por    text,
+  feito_em     timestamptz not null default now(),
+  criado_em    timestamptz not null default now()
+);
+create index if not exists prot_item_ativ_idx on public.prot_bundle_itens (ativacao_id, feito_em);
+
+-- ── Seed do template da Sepse (rascunho "em validação" — ILAS / Surviving Sepsis) ──
+-- Pacote de 1 hora. Passos e alvos são editáveis na tela pelo ADM Master.
+insert into public.prot_catalogo (chave, titulo, categoria, gatilho, passos, janela_min, referencia, status) values
+  ('sepse',
+   'Sepse e choque séptico — pacote de 1 hora',
+   'sepse',
+   '{"tipo":"news","min":5,"obs":"NEWS >= 5 com suspeita de foco infeccioso"}'::jsonb,
+   '[
+      {"chave":"lactato",     "rotulo":"Coletar lactato sérico",                                  "alvo_min":30, "ordem":1, "critico":true},
+      {"chave":"hemocultura", "rotulo":"Coletar 2 hemoculturas ANTES do antibiótico",             "alvo_min":45, "ordem":2, "critico":true},
+      {"chave":"atb",         "rotulo":"Antibiótico de amplo espectro EV",                        "alvo_min":60, "ordem":3, "critico":true},
+      {"chave":"cristaloide", "rotulo":"Cristaloide 30 mL/kg se hipotensão ou lactato >= 4",      "alvo_min":60, "ordem":4, "critico":true},
+      {"chave":"vasopressor", "rotulo":"Vasopressor se PAM < 65 após volume",                     "alvo_min":60, "ordem":5, "critico":false},
+      {"chave":"reavaliar",   "rotulo":"Reavaliar lactato e perfusão",                            "alvo_min":120,"ordem":6, "critico":false}
+    ]'::jsonb,
+   60,
+   'ILAS (Instituto Latino-Americano de Sepse) / Surviving Sepsis Campaign',
+   'em_validacao')
+on conflict (chave) do nothing;
+
+-- Verificação
+select 'PROTOCOLOS: prot_catalogo + prot_setor + prot_ativacoes + prot_bundle_itens ok — '
+       || (select count(*) from public.prot_catalogo) || ' template(s)' as resultado;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 55/56 — migracao-perfis-nsp.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS
+--
+-- O QUE RESOLVE
+-- O módulo NSP nasceu depois da matriz de perfis e não foi acrescentado a
+-- nenhum deles. Resultado: **nenhum perfil assistencial enxergava
+-- Segurança do Paciente** — nem médico, nem enfermeiro, nem o farmacêutico.
+-- Só TI e o perfil Provisório. Enquanto o RLS era `using (true)` isso era só
+-- um item faltando no menu; com a leitura fechada por módulo
+-- (`migracao-rls-leitura.sql`), passa a ser impedimento de verdade.
+--
+-- POR QUE ESCRITA, E NÃO LEITURA
+-- Notificar incidente é dever de quem presta o cuidado (RDC 36/2013,
+-- art. 8º); o núcleo é quem INVESTIGA. Um sistema em que só o núcleo
+-- notifica produz subnotificação — e subnotificação parece segurança no
+-- indicador, que é o pior jeito de errar.
+--
+-- Quem manuseia medicamento entra junto (farmacêutico e auxiliar): erro de
+-- dispensação e quase-falha são o tipo de incidente que só quem manuseia
+-- enxerga. A recepção também: queda na sala de espera é evento adverso.
+--
+-- Almoxarifado, matriz e faturamento ficam de fora — não têm contato
+-- assistencial. Se alguém desses precisar, é exceção individual
+-- (`usuarios_permissoes`), com motivo, não perfil novo.
+--
+-- ⚠️ ESTA MIGRAÇÃO EXISTE PARA OS BANCOS QUE JÁ RODARAM
+--    `migracao-perfis-acesso.sql`. O seed daquele arquivo também foi
+--    atualizado (é o que um banco novo usa), mas **não o rode de novo só
+--    por causa disto**: ele recria as políticas `for all`, que o
+--    `migracao-rls-leitura.sql` desarma — reabrindo a leitura em silêncio.
+--    Este arquivo aqui só insere linhas; não toca em política nenhuma.
+--
+-- Aditiva e idempotente: `on conflict do nothing`. Pode rodar duas vezes.
+-- Não altera quem já tem o módulo por exceção individual.
+-- ═══════════════════════════════════════════════════════════
+
+insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
+  -- Notificam (escrita)
+  ('medico',             'nsp', 'escrita'),
+  ('enfermeiro',         'nsp', 'escrita'),
+  ('enfermeiro_scih',    'nsp', 'escrita'),
+  ('tecnico_enfermagem', 'nsp', 'escrita'),
+  ('fisioterapeuta',     'nsp', 'escrita'),
+  ('nutricionista',      'nsp', 'escrita'),
+  ('assistente_social',  'nsp', 'escrita'),
+  ('nir',                'nsp', 'escrita'),
+  ('farmaceutico',       'nsp', 'escrita'),
+  ('aux_farmacia',       'nsp', 'escrita'),
+  ('recepcao',           'nsp', 'escrita'),
+  ('diretor_tecnico',    'nsp', 'escrita'),
+  -- Acompanham o indicador (leitura)
+  ('gestao',             'nsp', 'leitura'),
+  -- TI e Provisório: o seed de `migracao-perfis-acesso.sql` SEMPRE declarou
+  -- estes dois com NSP, mas os bancos rodaram aquela migração antes de o
+  -- módulo existir — e `on conflict do nothing` nunca volta para inserir
+  -- linha nova. Resultado: o arquivo dizia uma coisa e o banco tinha outra,
+  -- em silêncio, desde então. Descoberto percorrendo a tela: o adm_master
+  -- não via "Segurança do Paciente" no menu.
+  --
+  -- ⚠️ O Provisório é o que segura a equipe inteira hoje. Sem esta linha,
+  --    fechar o RLS tiraria o NSP de TODO MUNDO de uma vez.
+  ('ti',                 'nsp', 'escrita'),
+  ('provisorio',         'nsp', 'escrita')
+on conflict (perfil_chave, modulo) do nothing;
+
+
+-- ═══════════════════════════════════════════════════════════
+-- CONFERÊNCIA — rode junto.
+-- Esperado: 15 linhas, e a coluna "situacao" toda ✅.
+--
+-- Para conferir a matriz INTEIRA (não só o NSP) contra o catálogo do
+-- código, rode `supabase/conferencia-perfis.sql`. Foi ele que apareceu
+-- depois deste susto: o arquivo estava certo e o banco atrasado.
+-- ═══════════════════════════════════════════════════════════
+select pa.chave as perfil,
+       pa.nome,
+       coalesce(pp.nivel, '(sem acesso)') as nsp,
+       case when pp.nivel is null then '❌ ficou de fora' else '✅ ok' end as situacao,
+       (select count(*) from public.profiles pr where pr.perfil = pa.chave) as pessoas
+  from public.perfis_acesso pa
+  left join public.perfis_permissoes pp
+    on pp.perfil_chave = pa.chave and pp.modulo = 'nsp'
+ where pa.chave in ('medico','enfermeiro','enfermeiro_scih','tecnico_enfermagem',
+                    'fisioterapeuta','nutricionista','assistente_social','nir',
+                    'farmaceutico','aux_farmacia','recepcao','diretor_tecnico','gestao',
+                    'ti','provisorio')
+ order by situacao desc, pa.chave;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 56/56 — migracao-rls-leitura.sql
+-- └────────────────────────────────────────────────────────────
+-- ============================================================
+-- Valentrax — RLS DE LEITURA: quem lê cada tabela
+--
+-- ⚠️ ARQUIVO GERADO — não edite à mão.
+--    Regenere com:  node supabase/gerar-rls.mjs
+--    A fonte é src/acesso/mapa-tabelas.js.
+--
+-- O QUE MUDA
+-- Antes: toda política de SELECT era `using (true)` para `authenticated`.
+-- Qualquer usuário logado lia qualquer tabela pela API REST — inclusive
+-- `pacientes` (nome completo, CPF, CNS, nome da mãe, endereço) e todo o
+-- prontuário. O menu escondia o módulo; o dado continuava alcançável.
+-- Depois: a leitura passa pelo MESMO perfil que monta o menu.
+--
+-- É ADITIVO E REVERSÍVEL (ver "VOLTAR ATRÁS" no fim do arquivo). Não cria,
+-- não altera e não apaga nenhuma tabela, coluna ou linha.
+--
+-- ⚠️ RODE NO DEMO PRIMEIRO. Depois no principal, ANTES do merge do código.
+--    Na prática o código nem depende dele: quem publica a barreira é este
+--    SQL. Rodar sozinho já fecha o acesso.
+--
+-- QUEM NÃO PERDE NADA HOJE
+-- Todo mundo ainda está no perfil "Provisório", que concede todos os
+-- módulos. Ou seja: aplicar isto agora NÃO tira acesso de ninguém — ele
+-- passa a valer sozinho, pessoa por pessoa, conforme a TI reclassifica.
+-- É a ordem certa: fechar a porta antes de distribuir as chaves.
+--
+-- ⚠️ SE ALGUÉM REEXECUTAR UMA MIGRAÇÃO ANTIGA, RODE ESTA DE NOVO.
+--    As migrações antigas recriam a política `for select ... using (true)`
+--    e a `for all` que a PARTE 2 desarma — reabrindo a leitura em silêncio.
+--    Esta é idempotente: rodar duas vezes não faz mal.
+-- ============================================================
+
+-- Resolver `my_role()` sem prefixo é preciso na PARTE 2, que recria
+-- políticas a partir do texto que o próprio Postgres devolve.
+set search_path = public, extensions, pg_temp;
+
+
+-- ════════════════════════════════════════════════════════════
+-- PARTE 1/4 — AS FUNÇÕES DE PERMISSÃO
+--
+-- Espelham `src/acesso/permissoes.js`, nesta ordem: perfil → exceção
+-- individual → travas. `security definer` porque a função precisa ler
+-- `profiles` e `perfis_permissoes` por baixo do RLS delas.
+-- ════════════════════════════════════════════════════════════
+
+-- O nível efetivo desta pessoa neste módulo: nenhum | leitura | escrita.
+create or replace function public.meu_nivel(p_modulo text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $meu_nivel$
+  with me as (
+    select id, role, perfil from public.profiles where id = auth.uid()
+  ),
+  bruto as (
+    select coalesce(
+      -- 1) a exceção individual manda (serve para AMPLIAR e para REDUZIR)
+      (select up.nivel from public.usuarios_permissoes up, me
+        where up.user_id = me.id and up.modulo = p_modulo),
+      -- 2) o pacote do cargo
+      (select pp.nivel from public.perfis_permissoes pp, me
+        where pp.perfil_chave = me.perfil and pp.modulo = p_modulo),
+      -- 3) sem perfil é sem acesso — falha FECHADA
+      'nenhum'
+    ) as nivel
+  )
+  select case
+    -- Trava anti-trancamento: Usuários e Perfis é sempre, e só, do
+    -- adm_master. Sem isto, um perfil configurado errado tranca o
+    -- administrador do lado de fora e só se resolve pelo painel.
+    when p_modulo = 'users' then
+      case when (select role from me) = 'adm_master' then 'escrita' else 'nenhum' end
+    -- Teto do visualizador: nunca escreve, tenha o perfil que tiver.
+    when (select role from me) = 'visualizador' and (select nivel from bruto) = 'escrita' then
+      'leitura'
+    else (select nivel from bruto)
+  end
+$meu_nivel$;
+
+-- Pode ABRIR o módulo? (leitura ou escrita)
+create or replace function public.pode_ver(p_modulo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_ver$
+  select public.meu_nivel(p_modulo) in ('leitura', 'escrita')
+$pode_ver$;
+
+-- Pode abrir ALGUM destes? Uma tela lê tabela de vizinho por bom motivo:
+-- o Giro de Leitos monta o mapa de risco com as escalas de enfermagem, o
+-- Paciente 360 junta PS, leito, SCIH e PEP na mesma consulta.
+create or replace function public.pode_ver_algum(variadic p_modulos text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_ver_algum$
+  select exists (select 1 from unnest(p_modulos) m where public.pode_ver(m))
+$pode_ver_algum$;
+
+-- Pode LANÇAR no módulo? Ainda não é usada por política nenhuma — a
+-- escrita continua decidida por `role`. Fica pronta para a fase seguinte.
+create or replace function public.pode_editar(p_modulo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_editar$
+  select public.meu_nivel(p_modulo) = 'escrita'
+$pode_editar$;
+
+
+-- ════════════════════════════════════════════════════════════
+-- PARTE 2/4 — DESARMAR AS POLÍTICAS "FOR ALL"
+--
+-- ISTO É O QUE FAZ A PARTE 3 VALER ALGUMA COISA. Treze tabelas têm uma
+-- política `for all to authenticated using (my_role() in
+-- ('adm_master','adm_silver'))`. "FOR ALL" inclui SELECT, e políticas
+-- permissivas se SOMAM: bastaria essa para qualquer adm_silver — médico,
+-- enfermeiro, recepção, quase todo mundo — continuar lendo a tabela
+-- inteira, por cima da política nova. A porta nova ficaria ao lado de uma
+-- porta velha destrancada.
+--
+-- Aqui cada FOR ALL vira três políticas (insert/update/delete) com a
+-- MESMA condição de antes. Ninguém ganha nem perde direito de escrita;
+-- só o SELECT sai de dentro delas.
+--
+-- Roda sobre o que o BANCO tem de fato, não sobre uma lista — assim
+-- alcança também a política que a Laura tenha criado no meio do caminho.
+-- ════════════════════════════════════════════════════════════
+do $converter$
+declare
+  p record;
+  q text;
+  w text;
+  qtd int := 0;
+begin
+  -- Tabela temporária: alterar o catálogo no meio de um cursor sobre o
+  -- próprio catálogo é pedir surpresa. Materializa antes, mexe depois.
+  -- (Os apelidos fogem de `n`/`t`/`p` de propósito: apelido igual a
+  -- variável do PL/pgSQL vira "ambiguous column reference" em execução.)
+  create temp table _rls_forall on commit drop as
+    select c.relname::text as tabela,
+           pol.polname::text as nome,
+           pg_get_expr(pol.polqual,      pol.polrelid) as usando,
+           pg_get_expr(pol.polwithcheck, pol.polrelid) as checando,
+           case when pol.polroles = '{0}'::oid[] then 'public'
+                else (select string_agg(quote_ident(r.rolname), ', ')
+                        from pg_roles r where r.oid = any(pol.polroles)) end as papeis
+      from pg_policy pol
+      join pg_class c      on c.oid = pol.polrelid
+      join pg_namespace ns on ns.oid = c.relnamespace and ns.nspname = 'public'
+     where pol.polcmd = '*';
+
+  for p in select * from _rls_forall loop
+    q := coalesce(p.usando, 'true');
+    w := coalesce(p.checando, q);
+    -- IDEMPOTENCIA: apaga a FOR ALL de origem E os tres alvos, com IF
+    -- EXISTS. Sem isto, uma segunda passada colide ("policy ..._ins already
+    -- exists") quando a FOR ALL foi recriada por um re-run da migracao de
+    -- origem (a de perfis-acesso e re-rodada de vez em quando). Apagar antes
+    -- de criar converge a partir de qualquer estado.
+    execute format('drop policy if exists %I on public.%I', p.nome, p.tabela);
+    execute format('drop policy if exists %I on public.%I', left(p.nome, 55) || '_ins', p.tabela);
+    execute format('drop policy if exists %I on public.%I', left(p.nome, 55) || '_upd', p.tabela);
+    execute format('drop policy if exists %I on public.%I', left(p.nome, 55) || '_del', p.tabela);
+    execute format('create policy %I on public.%I for insert to %s with check (%s)',
+                   left(p.nome, 55) || '_ins', p.tabela, p.papeis, w);
+    execute format('create policy %I on public.%I for update to %s using (%s) with check (%s)',
+                   left(p.nome, 55) || '_upd', p.tabela, p.papeis, q, w);
+    execute format('create policy %I on public.%I for delete to %s using (%s)',
+                   left(p.nome, 55) || '_del', p.tabela, p.papeis, q);
+    qtd := qtd + 1;
+    raise notice 'FOR ALL desarmada: % (%) -> insert/update/delete', p.tabela, p.nome;
+  end loop;
+
+  raise notice '% politica(s) FOR ALL convertida(s).', qtd;
+  drop table _rls_forall;
+end
+$converter$;
+
+
+-- ════════════════════════════════════════════════════════════
+-- PARTE 3/4 — A POLÍTICA DE LEITURA DE CADA TABELA
+--
+-- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
+-- a mesma coisa em português. 23 das 92 tabelas ficam abertas a
+-- qualquer autenticado — são catálogo, referência e configuração, sem
+-- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
+-- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
+--
+-- Toda política de SELECT anterior da tabela é apagada antes (os nomes
+-- variam: atend_select, cidref_select, saidas_select…).
+--
+-- ⚠️ ESCRITA: ligar o RLS numa tabela que NÃO tinha política de escrita
+-- trancaria a escrita — RLS ligado sem política nega tudo. Várias tabelas
+-- (todo o NSP, a enfermagem SAE/escalas/LPP, as faixas de triagem) viviam
+-- com RLS DESLIGADO, ou seja, escrita aberta a qualquer login. Este PR
+-- fecha LEITURA e promete não mexer em escrita: então, onde não havia
+-- política de escrita, recriamos a escrita ABERTA que existia. Apertar
+-- escrita por papel é fase própria — a função `pode_editar` já está pronta
+-- para ela. (Tabela com `for all` não cai aqui: a PARTE 2 já a converteu em
+-- insert/update/delete com a condição de papel original.)
+-- ════════════════════════════════════════════════════════════
+do $leitura$
+declare
+  t record;
+  pol record;
+  qtd int := 0;
+  reabriu int := 0;
+  faltando text[] := '{}';
+begin
+  for t in
+    select * from (values
+      ('ag_agendamentos', 'public.pode_ver_algum(''atendimento'')'),                                  -- atendimento
+      ('ag_bloqueios', 'public.pode_ver_algum(''atendimento'')'),                                     -- atendimento
+      ('ag_grades', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
+      ('at_conta_itens', 'public.pode_ver_algum(''atendimento'')'),                                   -- atendimento
+      ('at_contas', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
+      ('at_convenios', 'true'),                                                                       -- todos os autenticados
+      ('at_dominios', 'true'),                                                                        -- todos os autenticados
+      ('at_planos', 'true'),                                                                          -- todos os autenticados
+      ('at_procedimentos', 'true'),                                                                   -- todos os autenticados
+      ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
+      ('atendimentos', 'public.pode_ver_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
+      ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
+      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
+      ('cc_salas', 'true'),                                                                           -- todos os autenticados
+      ('cid_referencia', 'true'),                                                                     -- todos os autenticados
+      ('enf_escala_faixas', 'true'),                                                                  -- todos os autenticados
+      ('enf_escalas', 'public.pode_ver_algum(''paciente'', ''leitos'')'),                             -- paciente, leitos
+      ('enf_lesao_pressao', 'public.pode_ver_algum(''paciente'', ''leitos'', ''nsp'')'),              -- paciente, leitos, nsp
+      ('enf_sae_catalogo', 'true'),                                                                   -- todos os autenticados
+      ('enf_sae_checagem', 'public.pode_ver_algum(''paciente'', ''leitos'')'),                        -- paciente, leitos
+      ('enf_sae_diagnosticos', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
+      ('enf_sae_historico', 'public.pode_ver_algum(''paciente'')'),                                   -- paciente
+      ('enf_sae_prescricao_itens', 'public.pode_ver_algum(''paciente'', ''leitos'')'),                -- paciente, leitos
+      ('enf_sae_prescricoes', 'public.pode_ver_algum(''paciente'', ''leitos'')'),                     -- paciente, leitos
+      ('farm_incompat_y', 'true'),                                                                    -- todos os autenticados
+      ('farm_interacoes', 'true'),                                                                    -- todos os autenticados
+      ('farm_intervencoes', 'public.pode_ver_algum(''farmacia'')'),                                   -- farmacia
+      ('farm_lotes', 'public.pode_ver_algum(''farmacia'')'),                                          -- farmacia
+      ('farm_medicamentos', 'true'),                                                                  -- todos os autenticados
+      ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
+      ('farm_nao_padronizados', 'public.pode_ver_algum(''farmacia'')'),                               -- farmacia
+      ('farm_preparo', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                                -- farmacia, ps
+      ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
+      ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
+      ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
+      ('nsp_acoes', 'public.pode_ver_algum(''nsp'')'),                                                -- nsp
+      ('nsp_capacitacoes', 'public.pode_ver_algum(''nsp'')'),                                         -- nsp
+      ('nsp_comunicados', 'public.pode_ver_algum(''nsp'')'),                                          -- nsp
+      ('nsp_incidente_eventos', 'public.pode_ver_algum(''nsp'')'),                                    -- nsp
+      ('nsp_incidentes', 'public.pode_ver_algum(''nsp'')'),                                           -- nsp
+      ('nsp_meta_faixas', 'true'),                                                                    -- todos os autenticados
+      ('nsp_meta_medicoes', 'public.pode_ver_algum(''nsp'')'),                                        -- nsp
+      ('nsp_protocolos', 'true'),                                                                     -- todos os autenticados
+      ('nsp_rca', 'public.pode_ver_algum(''nsp'')'),                                                  -- nsp
+      ('pacientes', 'public.pode_ver_algum(''atendimento'', ''ambulatorio'', ''ps'', ''paciente'')'), -- atendimento, ambulatorio, ps, paciente
+      ('pep_acessos', 'public.pode_ver_algum(''auditoria'')'),                                        -- auditoria
+      ('pep_administracoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
+      ('pep_alergias', 'public.pode_ver_algum(''paciente'')'),                                        -- paciente
+      ('pep_anamneses', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_anotacoes_enfermagem', 'public.pode_ver_algum(''paciente'')'),                            -- paciente
+      ('pep_aprazamentos', 'public.pode_ver_algum(''paciente'')'),                                    -- paciente
+      ('pep_condicoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_episodios', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_evolucoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_medicamentos_uso', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
+      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'')'),                              -- paciente
+      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
+      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'')'),                                     -- paciente
+      ('pep_reconciliacao_itens', 'public.pode_ver_algum(''paciente'')'),                             -- paciente
+      ('pep_reconciliacoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
+      ('pep_sinais_vitais', 'public.pode_ver_algum(''paciente'')'),                                   -- paciente
+      ('pep_sumarios_alta', 'public.pode_ver_algum(''paciente'')'),                                   -- paciente
+      ('perfis_acesso', 'true'),                                                                      -- todos os autenticados
+      ('perfis_permissoes', 'true'),                                                                  -- todos os autenticados
+      ('profiles', 'true'),                                                                           -- todos os autenticados
+      ('prot_ativacoes', 'public.pode_ver_algum(''protocolos'', ''ps'', ''paciente'')'),              -- protocolos, ps, paciente
+      ('prot_bundle_itens', 'public.pode_ver_algum(''protocolos'', ''ps'', ''paciente'')'),           -- protocolos, ps, paciente
+      ('prot_catalogo', 'true'),                                                                      -- todos os autenticados
+      ('prot_setor', 'true'),                                                                         -- todos os autenticados
+      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'')'),                           -- ps, paciente
+      ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'')'), -- ps, atendimento, ambulatorio, paciente
+      ('ps_faixas_obstetricas', 'true'),                                                              -- todos os autenticados
+      ('ps_faixas_pediatricas', 'true'),                                                              -- todos os autenticados
+      ('ps_prescricao_itens', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),           -- ps, paciente, farmacia
+      ('ps_protocolos', 'true'),                                                                      -- todos os autenticados
+      ('ps_registros', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),                  -- ps, paciente, farmacia
+      ('ps_salas', 'public.pode_ver_algum(''ps'')'),                                                  -- ps
+      ('ps_sinais', 'public.pode_ver_algum(''ps'', ''paciente'')'),                                   -- ps, paciente
+      ('scih_casos', 'public.pode_ver_algum(''scih'', ''paciente'')'),                                -- scih, paciente
+      ('scih_germes', 'true'),                                                                        -- todos os autenticados
+      ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
+      ('setores', 'true'),                                                                            -- todos os autenticados
+      ('solicitacoes', 'public.pode_ver_algum(''ps'', ''leitos'')'),                                  -- ps, leitos
+      ('sup_cotacoes', 'public.pode_ver_algum(''suprimentos'')'),                                     -- suprimentos
+      ('sup_fornecedores', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                   -- suprimentos, farmacia
+      ('sup_inventarios', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
+      ('sup_itens', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                          -- suprimentos, farmacia
+      ('sup_lotes', 'public.pode_ver_algum(''suprimentos'')'),                                        -- suprimentos
+      ('sup_movimentos', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
+      ('sup_pedidos', 'public.pode_ver_algum(''suprimentos'')'),                                      -- suprimentos
+      ('sup_requisicoes', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
+      ('usuarios_permissoes', 'public.pode_ver_algum(''users'') or user_id = auth.uid()')             -- users, @proprio
+    ) as v(tabela, cond)
+  loop
+    if not exists (
+      select 1 from information_schema.tables
+       where table_schema = 'public' and table_name = t.tabela
+    ) then
+      faltando := faltando || t.tabela;
+      continue;
+    end if;
+
+    execute format('alter table public.%I enable row level security', t.tabela);
+
+    for pol in
+      select antiga.polname
+        from pg_policy antiga
+        join pg_class c      on c.oid = antiga.polrelid
+        join pg_namespace ns on ns.oid = c.relnamespace and ns.nspname = 'public'
+       where c.relname = t.tabela and antiga.polcmd = 'r'
+    loop
+      execute format('drop policy %I on public.%I', pol.polname, t.tabela);
+    end loop;
+
+    execute format('create policy %I on public.%I for select to authenticated using (%s)',
+                   t.tabela || '_leitura', t.tabela, t.cond);
+    qtd := qtd + 1;
+
+    -- Preserva a escrita aberta: só quando a tabela não tem NENHUMA política
+    -- de escrita (insert/update/delete/all). Se tiver, foi a PARTE 2 ou a
+    -- migração da tabela que a definiu — não encostar. O guard também torna
+    -- isto idempotente: na segunda passada as três já existem e o bloco pula.
+    if not exists (
+      select 1 from pg_policy pw
+        join pg_class cw      on cw.oid = pw.polrelid
+        join pg_namespace nw  on nw.oid = cw.relnamespace and nw.nspname = 'public'
+       where cw.relname = t.tabela and pw.polcmd in ('a','w','d','*')
+    ) then
+      execute format('create policy %I on public.%I for insert to authenticated with check (true)',
+                     t.tabela || '_escrita_ins', t.tabela);
+      execute format('create policy %I on public.%I for update to authenticated using (true) with check (true)',
+                     t.tabela || '_escrita_upd', t.tabela);
+      execute format('create policy %I on public.%I for delete to authenticated using (true)',
+                     t.tabela || '_escrita_del', t.tabela);
+      reabriu := reabriu + 1;
+    end if;
+  end loop;
+
+  raise notice '% tabela(s) com politica de leitura por modulo.', qtd;
+  raise notice '% tabela(s) sem escrita propria: escrita aberta preservada.', reabriu;
+  if array_length(faltando, 1) > 0 then
+    raise notice 'PULADAS (nao existem neste banco): %', array_to_string(faltando, ', ');
+  end if;
+end
+$leitura$;
+
+
+-- ════════════════════════════════════════════════════════════
+-- PARTE 4/4 — CONFERÊNCIA
+--
+-- Uma consulta só, de propósito: o SQL Editor mostra o resultado da
+-- ÚLTIMA consulta, então três selects separados esconderiam justamente os
+-- dois primeiros, que são os que acusam problema. Os ❌ vêm no topo.
+-- ════════════════════════════════════════════════════════════
+with esperadas_abertas(tabela) as (values
+  ('at_convenios'),
+  ('at_dominios'),
+  ('at_planos'),
+  ('at_procedimentos'),
+  ('cc_salas'),
+  ('cid_referencia'),
+  ('enf_escala_faixas'),
+  ('enf_sae_catalogo'),
+  ('farm_incompat_y'),
+  ('farm_interacoes'),
+  ('farm_medicamentos'),
+  ('nsp_meta_faixas'),
+  ('nsp_protocolos'),
+  ('perfis_acesso'),
+  ('perfis_permissoes'),
+  ('profiles'),
+  ('prot_catalogo'),
+  ('prot_setor'),
+  ('ps_faixas_obstetricas'),
+  ('ps_faixas_pediatricas'),
+  ('ps_protocolos'),
+  ('scih_germes'),
+  ('setores')
+),
+politicas as (
+  select c.relname::text as tabela,
+         pol.polname::text as politica,
+         pol.polcmd as cmd,
+         coalesce(pg_get_expr(pol.polqual, pol.polrelid), 'true') as condicao
+    from pg_policy pol
+    join pg_class c      on c.oid = pol.polrelid
+    join pg_namespace ns on ns.oid = c.relnamespace and ns.nspname = 'public'
+),
+-- ❌ Leitura ainda aberta em tabela que o mapa NÃO autorizou. Zero linha
+--    é o resultado certo.
+aberta_indevida as (
+  select 0 as ord, '❌ LEITURA AINDA ABERTA' as situacao, tabela as item,
+         politica || ' — ' || condicao as detalhe
+    from politicas
+   where cmd in ('r', '*')
+     and condicao in ('true', '(true)')
+     and tabela not in (select tabela from esperadas_abertas)
+),
+-- ❌ Alguém sem perfil não lê mais NADA (falha fechada, de propósito).
+--    Classifique essas pessoas em Usuários e Perfis.
+sem_perfil as (
+  select 1, '❌ USUARIO SEM PERFIL', coalesce(username, '(sem username)'),
+         coalesce(nome, '') || ' · ' || coalesce(role, '')
+    from public.profiles where perfil is null
+),
+-- ✅ O retrato final: quem lê cada tabela.
+retrato as (
+  select 2, case when condicao in ('true', '(true)')
+                 then '✅ catalogo (todos)' else '✅ por modulo' end,
+         tabela, condicao
+    from politicas where cmd = 'r'
+)
+select situacao, item, detalhe from (
+  select * from aberta_indevida
+  union all select * from sem_perfil
+  union all select * from retrato
+) tudo
+order by ord, situacao, item;
+
+
+-- ════════════════════════════════════════════════════════════
+-- VOLTAR ATRÁS
+--
+-- Se alguma tela essencial esvaziar em pleno plantão e não der tempo de
+-- achar a causa, isto devolve a leitura como estava antes (aberta a
+-- qualquer autenticado) sem tocar em dado nenhum:
+--
+--   do $$
+--   declare t record;
+--   begin
+--     for t in select c.relname from pg_policy p
+--                join pg_class c on c.oid = p.polrelid
+--                join pg_namespace n on n.oid = c.relnamespace
+--               where n.nspname = 'public' and p.polname = c.relname || '_leitura'
+--     loop
+--       execute format('drop policy %I on public.%I', t.relname || '_leitura', t.relname);
+--       execute format('create policy %I on public.%I for select to authenticated using (true)',
+--                      t.relname || '_leitura', t.relname);
+--     end loop;
+--   end $$;
+--
+-- Reabrir é o último recurso, não o primeiro: quase sempre o certo é
+-- acrescentar o módulo que falta ao perfil da pessoa, na tela de Usuários.
+-- ============================================================
 
 
 -- ════════════════════════════════════════════════════════════

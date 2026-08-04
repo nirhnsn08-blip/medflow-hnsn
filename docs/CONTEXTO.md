@@ -66,12 +66,17 @@ modularização dele continua pendente.
   clicava em salvar e nada era gravado.
 - Acesso ao Supabase via `fetch` REST direto (apikey anon + JWT do usuário logado).
 - Fallback para `localStorage` quando offline — mas **o login exige Supabase**.
-- **58 tabelas / 872 colunas** (auditoria gerada por `gerar-auditoria.mjs`), **todas com RLS ativo
-  e com política** — nenhuma acessível sem login. Mas o controle por papel
-  (`adm_master`, `adm_silver`, `analista`, `visualizador`, via `my_role()`) vale
-  **só para a escrita**: as políticas de `SELECT` são `using (true)`, então
-  **qualquer usuário autenticado lê qualquer tabela**, inclusive um `visualizador`.
-  Ver "Decisões em aberto".
+- **86 tabelas / 1.363 colunas** (auditoria gerada por `gerar-auditoria.mjs`), **todas com
+  RLS ativo e com política** — nenhuma acessível sem login.
+- **A leitura é decidida pelo perfil desde `migracao-rls-leitura.sql`.** Cada tabela tem
+  uma política de `SELECT` que chama `public.pode_ver(<módulo>)`; o mapa de qual módulo lê
+  qual tabela é `src/acesso/mapa-tabelas.js`, e `mapa-tabelas.test.js` impede que tabela
+  nova entre sem classificação. 21 das 86 tabelas continuam abertas a qualquer
+  autenticado **por decisão declarada** — são catálogo e referência, sem dado de paciente
+  (CID, medicamentos, faixas, domínios, setores, perfis).
+- A **escrita** ainda é decidida por papel (`adm_master`, `adm_silver`, `analista`,
+  `visualizador`, via `my_role()`), não por módulo. E o RLS **não filtra linha**: quem
+  alcança `pacientes` alcança todos os pacientes, não só os do seu setor.
 
 ### Os três eixos de permissão
 
@@ -115,14 +120,21 @@ identidade da pessoa**.
 - **Travas que nenhum perfil derruba:** `adm_master` nunca perde a tela de Usuários
   (anti-trancamento); `visualizador` nunca escreve.
 
-> ### ⚠️ Isto controla o MENU, não o dado — ainda
-> As políticas de `SELECT` continuam abertas a qualquer usuário autenticado. Quem
-> souber usar a API alcança o que o menu esconde. **Não apresentar ao hospital como
-> "acesso segregado".** A barreira real é apertar o RLS por tabela, e ela exige antes:
-> (1) **modo sombra** — observar por ~2 semanas quem acessa o quê, sem bloquear nada, e
-> (2) **quebra-vidro** no ar — botão de acesso de emergência com justificativa e
-> revisão. Sem o quebra-vidro, travar o acesso faz a equipe compartilhar senha, e aí a
-> trilha de auditoria inteira perde valor (COFEN 754/2024, art. 2º, §2º).
+> ### ✅ Isto controla o menu **e** o dado
+> Tirar um módulo do perfil tira também a leitura pela API REST — as políticas de
+> `SELECT` chamam `public.pode_ver(<módulo>)`. Recepção, faturamento e almoxarifado não
+> alcançam o prontuário nem por dentro do banco. **Duas ressalvas honestas, que não se
+> deve prometer ao hospital como se estivessem resolvidas:**
+> 1. **Não há filtro por linha.** Quem abre o Paciente 360 abre qualquer paciente, não
+>    só os do seu setor. Uma trava por lotação depende de `profiles.setor` confiável.
+> 2. **A leitura negada aparece como lista vazia, não como "sem permissão"** — o
+>    PostgREST devolve 200 com `[]`. Onde o zero possa ser lido como número real
+>    (indicador, painel), a tela precisa conferir a permissão e escrever "sem acesso".
+>    Hoje isso só alcança o perfil **Matriz** (tem Visão Geral, não tem Giro de Leitos).
+>
+> O que **não** entrou, por decisão: quebra-vidro e modo sombra. A migração é segura sem
+> eles porque a equipe inteira ainda está no perfil **Provisório**, que concede todos os
+> módulos — o aperto vale pessoa por pessoa, conforme a TI reclassifica.
 
 **O perfil "Provisório":** a migração colocou nele todo mundo que já existia, para
 ninguém perder acesso da noite para o dia (quem era `adm_master` virou **TI**). Ele
@@ -213,15 +225,21 @@ Sem o `.env` o app roda em modo `localStorage` e **não passa da tela de login**
 
 ## Decisões em aberto
 
-0. **Quem pode ver o quê?** Hoje qualquer usuário autenticado lê todas as tabelas
-   (política de `SELECT` = `using (true)`). Nada está aberto sem login, então não
-   é vazamento externo — mas um `visualizador` enxerga o mesmo que um
-   `adm_master`. Apertar isso é decisão **clínica**, não técnica: precisa da
-   enfermeira definindo o que cada papel legitimamente precisa ver, antes de
-   qualquer mudança. Mexer no `SELECT` sem esse acordo tira acesso de quem tem
-   direito, no meio do plantão.
-   Caso pontual junto: `auditoria` aceita `INSERT` de qualquer autenticado
-   (`with check (true)`) — enfraquece o valor probatório da trilha.
+0. ~~**Quem pode ver o quê?**~~ **RESOLVIDO** — `supabase/migracao-rls-leitura.sql`
+   amarrou a leitura de cada tabela ao módulo do perfil. O que continua em aberto,
+   agora com o nome certo, é mais estreito:
+   - **Quais módulos o perfil de cada cargo precisa?** Decisão **clínica**, da
+     enfermeira, não técnica — e agora ela tem efeito real sobre o dado, não só sobre
+     o menu. A lacuna do **NSP** foi fechada (`migracao-perfis-nsp.sql`: notificar é
+     dever de quem presta o cuidado, RDC 36/2013 art. 8º — todo perfil assistencial
+     ganhou `nsp` em escrita, gestão em leitura). Continua em aberto a **Auditoria**:
+     hoje só TI, gestão e diretor técnico a enxergam.
+   - **Filtro por linha** (só os pacientes do meu setor) — depende de `profiles.setor`
+     confiável e de decidir o que acontece com quem cobre outra ala no plantão.
+   - **Escrita por módulo** — `insert/update/delete` ainda olham só o `role`. As
+     funções `public.pode_editar()` já estão no banco, sem uso.
+   - Caso pontual que segue de pé: `auditoria` aceita `INSERT` de qualquer autenticado
+     (`with check (true)`) — enfraquece o valor probatório da trilha.
 
 ## Perguntas em aberto
 

@@ -88,6 +88,17 @@ const ORDEM = [
   "migracao-atendimento-faturamento.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
+  // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não
+  // o pôs na ORDEM nem regerou este script — a trava do gerador teria
+  // quebrado ao subir um banco novo. Entra aqui, na posição cronológica.
+  "migracao-protocolos.sql",
+  // Redundante num banco novo (o seed de perfis-acesso já traz os grants de
+  // NSP), mas fica na ordem porque é o que os bancos JÁ existentes rodaram.
+  "migracao-perfis-nsp.sql",
+  // Por último de propósito: reescreve as políticas de SELECT de TODAS as
+  // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
+  // banco novo, é o que impede o hospital de nascer com a leitura aberta.
+  "migracao-rls-leitura.sql",
 ];
 
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM

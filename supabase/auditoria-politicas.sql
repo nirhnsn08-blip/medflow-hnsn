@@ -16,10 +16,15 @@
 -- (`polqual` é sempre nulo nela). Conferir o campo errado gera falso
 -- positivo em toda política de INSERT do banco.
 --
--- Estado conhecido em 2026-07-21: várias políticas de SELECT estão como
--- `using (true)` para `authenticated`. Nenhuma é PUBLIC. Ver "Decisões em
--- aberto" em docs/CONTEXTO.md antes de mexer — apertar SELECT em produção
--- tira acesso de quem tem direito legítimo.
+-- Estado esperado depois de `migracao-rls-leitura.sql`: as tabelas que
+-- ainda aparecerem aqui em SELECT devem ser SÓ catálogo e referência —
+-- convênios, domínios, CID, medicamentos, faixas, protocolos, setores,
+-- perfis. Nenhuma com prontuário, iniciais, CPF ou CID de paciente.
+--
+-- Se aparecer aqui uma tabela `pep_*`, `pacientes`, `leitos`, `ps_*` ou
+-- `enf_*` de paciente, a migração não pegou nela — confira a PARTE 4 do
+-- próprio arquivo, que aponta o caso direto. A lista autorizada de
+-- tabelas abertas vive em `src/acesso/mapa-tabelas.js`.
 -- ============================================================
 
 select
