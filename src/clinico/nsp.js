@@ -429,3 +429,120 @@ export function resumoProtocolos(protocolos, hoje = new Date()) {
     basicosFaltando: PROTOCOLOS_BASICOS.filter(b => !cobertos.has(b.chave)).map(b => b.titulo),
   };
 }
+
+// ── Capacitações — treinamentos da equipe em segurança do paciente ──
+
+export const STATUS_CAPACITACAO = [
+  { v: "planejado", l: "Planejado", nivel: "amarelo" },
+  { v: "realizado", l: "Realizado", nivel: "verde" },
+  { v: "cancelado", l: "Cancelado", nivel: "cinza" },
+];
+
+/** Capacitação com recorrência vencida: próxima prevista no passado e não cancelada. */
+export function capacitacaoVencida(cap, hoje = new Date()) {
+  if (!cap || !cap.proxima_em || cap.status === "cancelado") return false;
+  return new Date(cap.proxima_em + "T23:59:59") < hoje;
+}
+
+/** Panorama das capacitações: totais, horas, participantes, vencidas e cobertura por meta. */
+export function resumoCapacitacoes(capacitacoes, hoje = new Date()) {
+  const lista = arr(capacitacoes).filter(c => c && c.ativo !== false);
+  const realizadas = lista.filter(c => (c.status || "planejado") === "realizado");
+  const cobertas = new Set(realizadas.map(c => c.meta).filter(Boolean));
+  return {
+    total: lista.length,
+    realizadas: realizadas.length,
+    planejadas: lista.filter(c => (c.status || "planejado") === "planejado").length,
+    horas: +realizadas.reduce((s, c) => s + (Number(c.carga_horaria) || 0), 0).toFixed(1),
+    participantes: realizadas.reduce((s, c) => s + (Number(c.participantes) || 0), 0),
+    vencidas: lista.filter(c => capacitacaoVencida(c, hoje)).length,
+    metasSemCapacitacao: METAS.filter(m => !cobertas.has(m.v)).map(m => m.l),
+  };
+}
+
+// ── Comunicação — mural de comunicados de segurança do NSP ──
+
+export const TIPO_COMUNICADO = [
+  { v: "alerta",          l: "Alerta de segurança", nivel: "vermelho" },
+  { v: "licao_aprendida", l: "Lição aprendida",     nivel: "azul" },
+  { v: "informativo",     l: "Informativo",         nivel: "amarelo" },
+];
+
+export const PRIORIDADE_COMUNICADO = [
+  { v: "alta",  l: "Alta",  nivel: "vermelho" },
+  { v: "media", l: "Média", nivel: "amarelo" },
+  { v: "baixa", l: "Baixa", nivel: "azul" },
+];
+
+/** Panorama do mural: ativos, alertas ativos e lições aprendidas. */
+export function resumoComunicados(comunicados) {
+  const lista = arr(comunicados).filter(c => c && c.ativo !== false);
+  const ativos = lista.filter(c => (c.status || "ativo") === "ativo");
+  return {
+    total: lista.length,
+    ativos: ativos.length,
+    alertasAtivos: ativos.filter(c => c.tipo === "alerta").length,
+    licoes: lista.filter(c => c.tipo === "licao_aprendida").length,
+  };
+}
+
+// ── Assistente local do NSP — roteador de intenções por palavra-chave ──
+
+export const NSP_ASSIST_AJUDA = "Posso responder sobre: panorama do núcleo, ações atrasadas do plano, análises de causa (RCA) pendentes, metas fora do alvo, protocolos com revisão vencida, capacitações, comunicados e notificações compulsórias (NOTIVISA). Pergunte à vontade.";
+
+const normNsp = s => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+/**
+ * Assistente local e gratuito do NSP: responde por palavra-chave a partir dos
+ * dados que já existem (nada sai do navegador). Puro/testável — a tela só faz
+ * o chat. Retorna a resposta em texto.
+ */
+export function responderAssistenteNsp(pergunta, { incidentes, acoes, rcas, faixas, medicoes, lppAdquiridas, protocolos, capacitacoes, comunicados } = {}) {
+  const s = normNsp(pergunta);
+  const has = (...ks) => ks.some(k => s.includes(k));
+  if (!s || s === "?" || has("ajuda", "o que voce", "o que posso", "comando", "pode responder")) return NSP_ASSIST_AJUDA;
+  if (s === "oi" || s === "ola" || has("bom dia", "boa tarde", "boa noite", "obrigad", "valeu", "tudo bem")) return "Olá! " + NSP_ASSIST_AJUDA;
+
+  const resumo = resumoIncidentes(incidentes);
+  const plano = resumoAcoes(acoes);
+  const fila = incidentesAguardandoRca(incidentes, rcas);
+  const metas = metasSeguranca({ incidentes, lppAdquiridas, medicoes, faixas });
+  const proto = resumoProtocolos(protocolos);
+  const cap = resumoCapacitacoes(capacitacoes);
+  const com = resumoComunicados(comunicados);
+  const compuls = incidentesCompulsorios(incidentes);
+
+  if (has("atrasad", "cobrar", "plano", "acao", "5w2h")) {
+    return `Plano de ação: ${plano.abertas} aberta(s), ${plano.atrasadas} atrasada(s), taxa de fechamento ${plano.taxaFechamento ?? "—"}%.`;
+  }
+  if (has("rca", "causa raiz", "analise", "investig", "5 porque", "ishikawa")) {
+    return fila.length ? `${fila.length} incidente(s) aguardando análise de causa raiz (evento adverso / never event / dano moderado+).` : "Nenhuma análise de causa raiz pendente. 👍";
+  }
+  if (has("meta", "farol", "alvo")) {
+    const fora = metas.filter(m => m.farol === "vermelho");
+    const alerta = metas.filter(m => m.farol === "amarelo");
+    return `Metas de segurança: ${fora.length} fora do alvo${fora.length ? " (" + fora.map(m => m.label).join(", ") + ")" : ""}, ${alerta.length} em alerta.`;
+  }
+  if (has("protocolo", "revis", "pop")) {
+    return `Protocolos: ${proto.total} cadastrado(s), ${proto.revisaoVencida} com revisão vencida.${proto.basicosFaltando.length ? " Faltam cadastrar: " + proto.basicosFaltando.join(", ") + "." : " Os 6 básicos estão cadastrados."}`;
+  }
+  if (has("capacita", "treinamento", "educa")) {
+    return `Capacitações: ${cap.realizadas} realizada(s), ${cap.horas}h, ${cap.participantes} participante(s).${cap.metasSemCapacitacao.length ? " Metas sem treino: " + cap.metasSemCapacitacao.join(", ") + "." : ""}`;
+  }
+  if (has("comunica", "aviso", "licao", "mural", "informativo")) {
+    return `Comunicados: ${com.ativos} ativo(s), ${com.alertasAtivos} alerta(s) de segurança, ${com.licoes} lição(ões) aprendida(s).`;
+  }
+  if (has("notivisa", "compuls", "anvisa", "never", "obito")) {
+    return compuls.length ? `${compuls.length} notificação(ões) compulsória(s) (never event / óbito). Gere a ficha do NOTIVISA na aba Relatórios.` : "Nenhuma notificação compulsória no momento.";
+  }
+  if (has("lpp", "pressao", "queda")) {
+    return `LPP adquirida (POA): ${lppAdquiridas || 0}. Quedas notificadas: ${resumo.porTipo?.queda || 0}.`;
+  }
+  if (has("dano", "adverso", "near", "grave")) {
+    return `Com dano: ${resumo.comDano} · never events: ${resumo.neverEvents} · near-miss ratio: ${resumo.nearMissRatio ?? "—"}.`;
+  }
+  if (has("panorama", "resumo", "geral", "situacao", "como esta", "como anda", "visao")) {
+    return `Panorama do NSP:\n• Incidentes: ${resumo.total} (${resumo.comDano} com dano, ${resumo.neverEvents} never event, ${resumo.abertas} aberto(s))\n• Plano de ação: ${plano.atrasadas} atrasada(s) de ${plano.total}\n• Análises pendentes (RCA): ${fila.length}\n• Notificações compulsórias (NOTIVISA): ${compuls.length}`;
+  }
+  return "Não entendi bem. " + NSP_ASSIST_AJUDA;
+}

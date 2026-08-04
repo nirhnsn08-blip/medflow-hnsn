@@ -5,6 +5,9 @@ import {
   resumoIncidentes, indicadoresSeguranca, farol, metasSeguranca, rotuloTipo, rotuloClasse,
   filtrarPorMes, incidentesCompulsorios, fichaNotivisa, relatorioNsp,
   STATUS_PROTOCOLO, PROTOCOLOS_BASICOS, protocoloRevisaoVencida, resumoProtocolos,
+  STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
+  TIPO_COMUNICADO, PRIORIDADE_COMUNICADO, resumoComunicados,
+  responderAssistenteNsp, NSP_ASSIST_AJUDA,
   ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
   acaoAtrasada, resumoAcoes, temRcaConcluida, incidentesAguardandoRca,
 } from "./nsp.js";
@@ -306,5 +309,86 @@ describe("protocolos de segurança (Fase 2d)", () => {
     expect(r.revisaoVencida).toBe(1);
     expect(r.basicosFaltando).toContain("Cirurgia segura");
     expect(r.basicosFaltando).not.toContain("Identificação do paciente");
+  });
+});
+
+describe("capacitações (Fase 2d)", () => {
+  it("catálogo: 3 status", () => {
+    expect(STATUS_CAPACITACAO.map(s => s.v)).toEqual(["planejado", "realizado", "cancelado"]);
+  });
+  it("capacitacaoVencida: próxima prevista no passado e não cancelada", () => {
+    const hoje = new Date(2026, 6, 29);
+    expect(capacitacaoVencida({ proxima_em: "2026-07-01", status: "realizado" }, hoje)).toBe(true);
+    expect(capacitacaoVencida({ proxima_em: "2026-12-01", status: "realizado" }, hoje)).toBe(false);
+    expect(capacitacaoVencida({ proxima_em: "2026-07-01", status: "cancelado" }, hoje)).toBe(false);
+    expect(capacitacaoVencida({ status: "realizado" }, hoje)).toBe(false);
+  });
+  it("resumoCapacitacoes: horas, participantes, vencidas e metas sem capacitação", () => {
+    const hoje = new Date(2026, 6, 29);
+    const caps = [
+      { meta: "higiene_maos", status: "realizado", carga_horaria: 2, participantes: 20, proxima_em: "2027-01-01" },
+      { meta: "quedas_lpp", status: "realizado", carga_horaria: 1.5, participantes: 15, proxima_em: "2026-07-01" },  // vencida
+      { meta: "identificacao", status: "planejado", carga_horaria: 2, participantes: 0 },
+    ];
+    const r = resumoCapacitacoes(caps, hoje);
+    expect(r.total).toBe(3);
+    expect(r.realizadas).toBe(2);
+    expect(r.planejadas).toBe(1);
+    expect(r.horas).toBe(3.5);
+    expect(r.participantes).toBe(35);
+    expect(r.vencidas).toBe(1);
+    expect(r.metasSemCapacitacao).toContain("Comunicação efetiva");
+    expect(r.metasSemCapacitacao).not.toContain("Higiene das mãos");
+  });
+});
+
+describe("comunicação (Fase 2d)", () => {
+  it("catálogos: tipos e prioridades", () => {
+    expect(TIPO_COMUNICADO.map(t => t.v)).toEqual(["alerta", "licao_aprendida", "informativo"]);
+    expect(PRIORIDADE_COMUNICADO.map(p => p.v)).toEqual(["alta", "media", "baixa"]);
+  });
+  it("resumoComunicados: ativos, alertas ativos e lições", () => {
+    const coms = [
+      { tipo: "alerta", status: "ativo" },
+      { tipo: "alerta", status: "arquivado" },
+      { tipo: "licao_aprendida", status: "ativo" },
+      { tipo: "informativo", status: "ativo" },
+      { tipo: "informativo", status: "ativo", ativo: false },  // inativo → fora
+    ];
+    const r = resumoComunicados(coms);
+    expect(r.total).toBe(4);
+    expect(r.ativos).toBe(3);
+    expect(r.alertasAtivos).toBe(1);
+    expect(r.licoes).toBe(1);
+  });
+});
+
+describe("assistente local do NSP (Fase 2d)", () => {
+  const dados = {
+    incidentes: [
+      { tipo: "queda", classe: "evento_adverso", grau_dano: "moderado", status: "em_analise" },
+      { tipo: "medicacao", classe: "never_event", grau_dano: "grave", status: "nova" },
+    ],
+    acoes: [{ status: "pendente", prazo: "2020-01-01" }],
+    rcas: [], faixas: [], medicoes: [], lppAdquiridas: 3,
+    protocolos: [{ chave: "ident", status: "vigente" }],
+    capacitacoes: [{ status: "realizado", carga_horaria: 2, participantes: 10, meta: "higiene_maos" }],
+    comunicados: [{ tipo: "alerta", status: "ativo" }],
+  };
+  it("ajuda quando vazio, '?' ou 'ajuda'", () => {
+    expect(responderAssistenteNsp("", dados)).toBe(NSP_ASSIST_AJUDA);
+    expect(responderAssistenteNsp("?", dados)).toBe(NSP_ASSIST_AJUDA);
+    expect(responderAssistenteNsp("ajuda", dados)).toBe(NSP_ASSIST_AJUDA);
+  });
+  it("panorama traz incidentes, RCA pendente e compulsórias", () => {
+    const r = responderAssistenteNsp("me dá um panorama", dados);
+    expect(r).toContain("Incidentes: 2");
+    expect(r).toContain("Análises pendentes (RCA): 2");
+    expect(r).toContain("(NOTIVISA): 1");
+  });
+  it("responde por tema (aceita acentos)", () => {
+    expect(responderAssistenteNsp("protocolos com revisão vencida", dados)).toContain("Protocolos:");
+    expect(responderAssistenteNsp("como estão as capacitações", dados)).toContain("Capacitações:");
+    expect(responderAssistenteNsp("tem algo pro NOTIVISA?", dados)).toContain("compulsória");
   });
 });

@@ -78,6 +78,8 @@ export const MODULOS = [
     // Sem isso, o incidente vira conversa de corredor e o indicador mente por
     // baixo — subnotificação parece segurança.
     nota: "Núcleo de Segurança do Paciente (RDC 36/2013). Notificação de incidentes e eventos adversos." },
+  { chave: "protocolos",   label: "Protocolos Clínicos", grupo: "Assistencial", clinico: true,
+    nota: "Protocolos gerenciados tempo-dependentes (sepse, IAM, AVC, TEV): gatilho por NEWS/triagem, bundle com relógio e indicadores porta→ação, por setor assistencial." },
   { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Assistencial", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
   { chave: "farmacia",     label: "Farmácia",           grupo: "Apoio" },
@@ -230,7 +232,7 @@ export const PERFIS_MODELO = [
     descricao: "Administra o sistema: cria usuários, configura perfis, importa e acessa o banco. Não tem competência clínica.",
     sistema: true,   // não pode ser apagado — é a porta de volta
     grants: p({ overview: "escrita", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
-                leitos: "escrita", scih: "escrita", nsp: "escrita", paciente: "escrita", farmacia: "escrita",
+                leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "escrita",
                 controlados: "escrita", suprimentos: "escrita", print: "escrita",
                 auditoria: "escrita", import: "escrita", supabase: "escrita", users: "escrita" }),
   },

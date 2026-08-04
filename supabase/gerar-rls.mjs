@@ -262,14 +262,24 @@ $converter$;
 -- \`farm_medicamentos\` desligaria o motor de alertas dentro do PS e do PEP.
 --
 -- Toda política de SELECT anterior da tabela é apagada antes (os nomes
--- variam: atend_select, cidref_select, saidas_select…). As de escrita
--- não são tocadas.
+-- variam: atend_select, cidref_select, saidas_select…).
+--
+-- ⚠️ ESCRITA: ligar o RLS numa tabela que NÃO tinha política de escrita
+-- trancaria a escrita — RLS ligado sem política nega tudo. Várias tabelas
+-- (todo o NSP, a enfermagem SAE/escalas/LPP, as faixas de triagem) viviam
+-- com RLS DESLIGADO, ou seja, escrita aberta a qualquer login. Este PR
+-- fecha LEITURA e promete não mexer em escrita: então, onde não havia
+-- política de escrita, recriamos a escrita ABERTA que existia. Apertar
+-- escrita por papel é fase própria — a função \`pode_editar\` já está pronta
+-- para ela. (Tabela com \`for all\` não cai aqui: a PARTE 2 já a converteu em
+-- insert/update/delete com a condição de papel original.)
 -- ════════════════════════════════════════════════════════════
 do $leitura$
 declare
   t record;
   pol record;
   qtd int := 0;
+  reabriu int := 0;
   faltando text[] := '{}';
 begin
   for t in
@@ -300,9 +310,29 @@ ${linhas.join("\n")}
     execute format('create policy %I on public.%I for select to authenticated using (%s)',
                    t.tabela || '_leitura', t.tabela, t.cond);
     qtd := qtd + 1;
+
+    -- Preserva a escrita aberta: só quando a tabela não tem NENHUMA política
+    -- de escrita (insert/update/delete/all). Se tiver, foi a PARTE 2 ou a
+    -- migração da tabela que a definiu — não encostar. O guard também torna
+    -- isto idempotente: na segunda passada as três já existem e o bloco pula.
+    if not exists (
+      select 1 from pg_policy pw
+        join pg_class cw      on cw.oid = pw.polrelid
+        join pg_namespace nw  on nw.oid = cw.relnamespace and nw.nspname = 'public'
+       where cw.relname = t.tabela and pw.polcmd in ('a','w','d','*')
+    ) then
+      execute format('create policy %I on public.%I for insert to authenticated with check (true)',
+                     t.tabela || '_escrita_ins', t.tabela);
+      execute format('create policy %I on public.%I for update to authenticated using (true) with check (true)',
+                     t.tabela || '_escrita_upd', t.tabela);
+      execute format('create policy %I on public.%I for delete to authenticated using (true)',
+                     t.tabela || '_escrita_del', t.tabela);
+      reabriu := reabriu + 1;
+    end if;
   end loop;
 
   raise notice '% tabela(s) com politica de leitura por modulo.', qtd;
+  raise notice '% tabela(s) sem escrita propria: escrita aberta preservada.', reabriu;
   if array_length(faltando, 1) > 0 then
     raise notice 'PULADAS (nao existem neste banco): %', array_to_string(faltando, ', ');
   end if;

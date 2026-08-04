@@ -137,6 +137,10 @@ export const MAPA_TABELAS = {
 
   // ── Segurança do paciente ─────────────────────────────────
   nsp_acoes:                ["nsp"],
+  // Capacitação da equipe e comunicados de segurança — cultura de segurança,
+  // sem dado de paciente. Ficam no módulo NSP (do PR #67 da Laura).
+  nsp_capacitacoes:         ["nsp"],
+  nsp_comunicados:          ["nsp"],
   nsp_incidente_eventos:    ["nsp"],
   nsp_incidentes:           ["nsp"],
   nsp_meta_medicoes:        ["nsp"],
@@ -174,6 +178,16 @@ export const MAPA_TABELAS = {
   // Exceção individual: a pessoa lê a DELA (o app resolve a própria
   // permissão no boot); a lista inteira é do módulo de Usuários.
   usuarios_permissoes:      ["users", PROPRIO],
+
+  // ── Protocolos clínicos gerenciados (PR #67 da Laura) ─────
+  // O catálogo do protocolo e a configuração por setor são referência, sem
+  // paciente. A ATIVAÇÃO e o bundle executado são de um paciente concreto
+  // (prontuário, episódio, valores clínicos) — e a ativação aparece no PS e
+  // no prontuário, não só no módulo de Protocolos.
+  prot_catalogo:            [TODOS],
+  prot_setor:               [TODOS],
+  prot_ativacoes:           ["protocolos", "ps", "paciente"],
+  prot_bundle_itens:        ["protocolos", "ps", "paciente"],
 
   // ── Pronto-socorro ────────────────────────────────────────
   // O ciclo do atendimento é o mesmo objeto da Recepção e do Ambulatório
@@ -228,6 +242,7 @@ export const SENSIVEIS = new Set([
   "pep_prescricao_eventos", "pep_prescricao_itens", "pep_prescricoes",
   "pep_reconciliacao_itens", "pep_reconciliacoes", "pep_sinais_vitais",
   "pep_sumarios_alta",
+  "prot_ativacoes", "prot_bundle_itens",
   "ps_administracoes", "ps_atendimentos", "ps_prescricao_itens",
   "ps_registros", "ps_salas", "ps_sinais",
   "scih_casos", "solicitacoes",

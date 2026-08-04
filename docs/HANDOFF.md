@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-07-30 · `main` em `aac545d` (checkpoint-v52) · zero PRs abertos.
+**Atualizado em:** 2026-08-03 · `main` em `a92fe54` (checkpoint-v53) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **773 testes**. Três merecem atenção especial:
+`npm test` roda **948 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -130,6 +130,13 @@ fechou a **Fase 2c**: **indicadores automáticos** de segurança (LPP adquirida,
 medicação — sem digitação) e as **6 Metas Internacionais** com **farol** e alvos editáveis pelo
 ADM Master (auditoria de higiene/comunicação/cirurgia). E o **Atendimento** ganhou o **ciclo de
 vida** (encerrar/corrigir/cancelar) e a aba **Consultas** (pesquisa de atendimentos).
+Por fim, o **NSP fechou a Fase 2d e está completo (2a–2d)**: **relatório mensal + ficha
+NOTIVISA** (compulsórias prontas para transmitir), **protocolos gerenciados** (os 6 básicos
+do PNSP, revisão vencida cobrada), **capacitações** (cobertura por meta), **mural de
+comunicação** (alerta / lição aprendida / informativo) e um **Assistente AI local e gratuito**
+(chat sobre os dados do NSP, nada sai do navegador) — com o módulo **blindado por error
+boundary** (um erro nunca derruba o app). O **Atendimento** também ganhou a **fundação do
+faturamento** (conta do episódio por competência, em centavos; SUS não cobra do paciente).
 
 **Ainda não há paciente real no sistema.**
 
