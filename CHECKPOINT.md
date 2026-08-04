@@ -4,18 +4,53 @@ Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
 - **Tag Git mais recente:** `checkpoint-v53` (anteriores: `checkpoint-v52` … `checkpoint-v1`)
-- **Data:** 2026-08-01 · `main` em `39e8111`
+- **Data:** 2026-08-03 · `main` em `a92fe54`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v52 para cá: **PR #53** (NSP Fase 2d — relatórios + ficha NOTIVISA),
-  **PR #55** (NSP — protocolos) e **PR #54** (Atendimento — os cinco itens que
-  faltavam no módulo — Adauam).
-- **937 testes** · **86 tabelas / 1363 colunas** · build limpo.
+  vai ao ar). Da v52 para cá o **NSP fechou a Fase 2d** — e com ela o módulo inteiro:
+  relatórios/NOTIVISA (**#53**), protocolos (**#55**), capacitações (**#61**),
+  comunicação (**#62**), blindagem contra tela-branca (**#63**+**#64**) e o
+  **Assistente AI (#65)**. Em paralelo: **Atendimento** — faturamento + os cinco itens
+  que faltavam (**#54**, Adauam), **saneamento** (bundle dividido + Vite 7, **#56**) e o
+  **fix do crachá/401** (**#58**).
+- **948 testes** · **88 tabelas / 1392 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
 
-## 🆕 Novidades da v53 (desde a v52 — PRs #53, #54 e #55)
+## 🆕 Novidades da v53 (desde a v52): NSP Fase 2d completa (fecha o módulo) + Atendimento (faturamento) + saneamento
+
+### 🛡️ NSP — Fase 2d completa: o Núcleo de Segurança do Paciente fechou — PRs #53, #55, #61, #62, #63/#64 e #65
+Com a 2d, o módulo NSP (Fases 2a–2d) está **completo**. Todos os blocos leem os dados que
+já existem — nada é digitado duas vezes.
+
+- **Relatórios + ficha NOTIVISA (PR #53):** relatório mensal do NSP **apurado
+  automaticamente** dos módulos (RDC 36/2013), imprimível/PDF, com a seção **NOTIVISA**
+  listando as notificações compulsórias (never event / óbito) e a **ficha pronta** para
+  transmitir. Motor `relatorioNsp` / `incidentesCompulsorios` / `fichaNotivisa`. **Sem
+  migração.**
+- **Protocolos gerenciados (PR #55):** os **6 protocolos básicos** do PNSP ligados às
+  metas, geridos como documentos (versão / responsável / revisão / conteúdo / status),
+  com **revisão vencida cobrada**, editáveis pelo ADM Master e nascendo **"em validação"**.
+  Motor `resumoProtocolos` / `protocoloRevisaoVencida`. Migração `migracao-nsp-protocolos.sql`.
+- **Capacitações (PR #61):** registro de treinamentos ligados às metas, **cobertura por
+  meta** e **recorrência vencida cobrada**. Motor `resumoCapacitacoes` / `capacitacaoVencida`.
+  Migração `migracao-nsp-capacitacoes.sql`.
+- **Comunicação / mural de segurança (PR #62):** mural de comunicados (**alerta / lição
+  aprendida / informativo**) com prioridade, público-alvo e **origem opcional em
+  incidente/RCA** — fecha o ciclo aprender→comunicar. Motor `resumoComunicados`. Migração
+  `migracao-nsp-comunicados.sql`.
+- **Blindagem do módulo (PRs #63 e #64):** o NSP dava **tela branca** ao abrir (`Card` não
+  definido no `NSPPage`, bug latente desde a 2a). Corrigido (#64 define `Card`) e **blindado**
+  com um **error boundary `LimiteErro` por módulo** (#63): um erro num módulo nunca mais
+  derruba o app — mostra a mensagem e o resto do sistema segue. `TABELAS_OPCIONAIS` passou a
+  cobrir as tabelas do NSP.
+- **Assistente AI (PR #65):** o último item da 2d — um **chat local e gratuito** que responde
+  sobre o NSP a partir dos dados que já existem (panorama, ações atrasadas, RCA pendente,
+  metas fora do alvo, protocolos, capacitações, comunicados, NOTIVISA). **Nada sai do
+  navegador**: roteador por palavra-chave `responderAssistenteNsp` (puro/testável) + a tela
+  `NspAssistenteView` no padrão do assistente do Giro de Leitos. **Sem migração.**
+- **Migrações da 2d (protocolos, capacitações, comunicados) rodadas nos 2 bancos** (demo + HNSN).
 
 ### 🏥 Atendimento — os cinco itens que faltavam — PR #54 (Adauam)
 O módulo passa a ter **5 abas** (Recepção, Agenda, Consultas, **Faturamento**, Tabelas).
