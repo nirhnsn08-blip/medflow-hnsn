@@ -235,7 +235,15 @@ begin
   for p in select * from _rls_forall loop
     q := coalesce(p.usando, 'true');
     w := coalesce(p.checando, q);
-    execute format('drop policy %I on public.%I', p.nome, p.tabela);
+    -- IDEMPOTENCIA: apaga a FOR ALL de origem E os tres alvos, com IF
+    -- EXISTS. Sem isto, uma segunda passada colide ("policy ..._ins already
+    -- exists") quando a FOR ALL foi recriada por um re-run da migracao de
+    -- origem (a de perfis-acesso e re-rodada de vez em quando). Apagar antes
+    -- de criar converge a partir de qualquer estado.
+    execute format('drop policy if exists %I on public.%I', p.nome, p.tabela);
+    execute format('drop policy if exists %I on public.%I', left(p.nome, 55) || '_ins', p.tabela);
+    execute format('drop policy if exists %I on public.%I', left(p.nome, 55) || '_upd', p.tabela);
+    execute format('drop policy if exists %I on public.%I', left(p.nome, 55) || '_del', p.tabela);
     execute format('create policy %I on public.%I for insert to %s with check (%s)',
                    left(p.nome, 55) || '_ins', p.tabela, p.papeis, w);
     execute format('create policy %I on public.%I for update to %s using (%s) with check (%s)',
