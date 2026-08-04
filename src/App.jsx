@@ -37,6 +37,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          METAS as NSP_METAS, STATUS_PROTOCOLO, protocoloRevisaoVencida, resumoProtocolos,
          STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
          TIPO_COMUNICADO, PRIORIDADE_COMUNICADO, resumoComunicados,
+         responderAssistenteNsp, NSP_ASSIST_AJUDA,
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
@@ -10723,6 +10724,45 @@ class LimiteErro extends Component {
   }
 }
 
+// ── NSP Fase 2d: Assistente AI — chat local e gratuito (nada sai do navegador) ──
+// Só a tela. Toda a inteligência vive em responderAssistenteNsp (nsp.js, puro/testável).
+function NspAssistenteView({ incidentes, acoes, rcas, faixas, medicoes, lppAdquiridas, protocolos, capacitacoes, comunicados }) {
+  const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do Núcleo de Segurança do Paciente. " + NSP_ASSIST_AJUDA }]);
+  const [q, setQ] = useState("");
+  const fimRef = useRef(null);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  function enviar(texto) {
+    const t = (texto != null ? texto : q).trim();
+    if (!t) return;
+    const resp = responderAssistenteNsp(t, { incidentes, acoes, rcas, faixas, medicoes, lppAdquiridas, protocolos, capacitacoes, comunicados });
+    setMsgs(m => [...m, { role: "u", text: t }, { role: "a", text: resp }]);
+    setQ("");
+  }
+  const sugestoes = ["Panorama", "Ações atrasadas", "RCA pendente", "Metas fora do alvo", "Protocolos", "Capacitações", "NOTIVISA"];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 200px)", minHeight: 360, maxWidth: 760 }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+        Assistente local e gratuito: responde a partir dos dados que já existem nos módulos do NSP. Nada é enviado para fora do navegador.
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, padding: "4px 2px 12px" }}>
+        {msgs.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "u" ? "flex-end" : "flex-start", maxWidth: "85%", background: m.role === "u" ? VX.royal : "var(--surface)", color: m.role === "u" ? "#fff" : "var(--text)", border: m.role === "u" ? "none" : "1px solid var(--border)", borderRadius: 12, padding: "9px 13px", fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.text}</div>
+        ))}
+        <div ref={fimRef} />
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {sugestoes.map(sg => <button key={sg} onClick={() => enviar(sg)} style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 99, padding: "4px 11px", fontSize: 11.5, cursor: "pointer" }}>{sg}</button>)}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === "Enter" && enviar()} placeholder="Pergunte sobre a segurança do paciente…" style={{ flex: 1, background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
+        <button onClick={() => enviar()} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Enviar</button>
+      </div>
+    </div>
+  );
+}
+
 function NSPPage({ currentUser, canEdit }) {
   const [sub, setSub] = useState("visao");
   const [incidentes, setIncidentes] = useState([]);
@@ -11443,7 +11483,7 @@ function NSPPage({ currentUser, canEdit }) {
           </div>
         </>)}
         {sub === "relatorios"   && <NspRelatorioView incidentes={incidentes} acoes={acoes} lppAdq={lppAdq} medicoes={medicoes} faixas={faixasMeta} />}
-        {sub === "assistente"   && <Placeholder fase="2d" />}
+        {sub === "assistente"   && <NspAssistenteView incidentes={incidentes} acoes={acoes} rcas={rcas} faixas={faixasMeta} medicoes={medicoes} lppAdquiridas={lppAdq} protocolos={protocolos} capacitacoes={capacitacoes} comunicados={comunicados} />}
       </div>
     </div>
   );
