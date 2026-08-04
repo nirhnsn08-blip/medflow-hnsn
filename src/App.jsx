@@ -41,6 +41,9 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
+// Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
+import { avaliarGatilhoSepse, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
+import { PROTOCOLOS_CATALOGO, PROT_DESFECHO } from "./clinico/protocolos-catalogo.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
@@ -138,7 +141,8 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
 // e só para 404 (tabela inexistente) — 401/403 continuam gritando, porque
 // aí é permissão, não migração pendente.
 const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas", "ps_faixas_obstetricas",
-  "nsp_meta_faixas", "nsp_meta_medicoes", "nsp_protocolos", "nsp_capacitacoes", "nsp_comunicados"]);
+  "nsp_meta_faixas", "nsp_meta_medicoes", "nsp_protocolos", "nsp_capacitacoes", "nsp_comunicados",
+  "prot_catalogo", "prot_setor", "prot_ativacoes", "prot_bundle_itens"]);
 
 async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;
@@ -11489,6 +11493,363 @@ function NSPPage({ currentUser, canEdit }) {
   );
 }
 
+// ═══════════════════════════════════════════════════════════
+// PROTOCOLOS CLÍNICOS GERENCIADOS — Tier 1 · Fase 3a (Sepse)
+//
+// Linhas de cuidado tempo-dependentes, POR SETOR assistencial (cada setor tem a
+// sua instância). Gatilho acende do NEWS; bundle com relógio; KPIs porta→ação.
+// Toda a lógica é pura e testável em src/clinico/protocolos.js — aqui só a tela
+// e a persistência. Tabelas blindadas (TABELAS_OPCIONAIS) + LimiteErro do router.
+// ═══════════════════════════════════════════════════════════
+async function loadProtCatalogo() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("prot_catalogo?select=*&order=criado_em").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadProtSetores() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("prot_setor?select=*").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadProtAtivacoes() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("prot_ativacoes?select=*&order=acionado_em.desc").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function loadProtItens() {
+  if (!USE_SUPABASE) return [];
+  const rows = await sbFetch("prot_bundle_itens?select=*&order=feito_em").catch(() => []);
+  return Array.isArray(rows) ? rows : [];
+}
+async function registrarAtivacaoProt(a, user) {
+  if (!USE_SUPABASE) return null;
+  const res = await sbFetch("prot_ativacoes", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      protocolo: a.protocolo, setor: a.setor || null, prontuario: a.prontuario || null,
+      paciente_nome: a.paciente_nome || null, leito: a.leito || null,
+      gatilho_ref: a.gatilho_ref || null, acionado_por: user?.name || null,
+    }),
+  });
+  return Array.isArray(res) ? res[0] : res;
+}
+async function checarPassoProt(item, user) {
+  if (!USE_SUPABASE) return null;
+  return await sbFetch("prot_bundle_itens", {
+    method: "POST",
+    body: JSON.stringify({
+      ativacao_id: item.ativacao_id, passo: item.passo, rotulo: item.rotulo || null,
+      feito: !item.nao_aplica, nao_aplica: !!item.nao_aplica,
+      valor: item.valor || null, obs: item.obs || null, feito_por: user?.name || null,
+    }),
+  });
+}
+async function encerrarAtivacaoProt(a, desfecho, motivo, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`prot_ativacoes?id=eq.${a.id}`, { method: "PATCH", body: JSON.stringify({
+    status: "concluida", desfecho: desfecho || null, motivo: motivo || null, encerrado_em: new Date().toISOString(),
+  }) });
+}
+async function upsertProtSetorRemote(inst, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch("prot_setor?on_conflict=setor,protocolo", {
+    method: "POST", headers: { Prefer: "resolution=merge-duplicates" },
+    body: JSON.stringify({
+      setor: inst.setor, protocolo: inst.protocolo, ativo: inst.ativo !== false,
+      janela_min: inst.janela_min ?? null, responsavel: inst.responsavel || null,
+      validado: !!inst.validado, usuario: user?.name || null, updated_at: new Date().toISOString(),
+    }),
+  });
+}
+async function patchCatalogoProt(t, patch, user) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`prot_catalogo?id=eq.${t.id}`, { method: "PATCH", body: JSON.stringify({ ...patch, usuario: user?.name || null, updated_at: new Date().toISOString() }) });
+}
+
+const PROT_NAV = [
+  { key: "visao",       label: "Visão geral",        icon: "shield" },
+  { key: "painel",      label: "Painel do setor",    icon: "activity" },
+  { key: "indicadores", label: "Indicadores",        icon: "chart" },
+  { key: "catalogo",    label: "Catálogo & setores", icon: "clipboard" },
+];
+const PROT_FAROL = { verde: "#34d399", amarelo: "#f5b301", vermelho: "#f43f5e" };
+
+function ProtocolosPage({ currentUser, canEdit }) {
+  const [sub, setSub] = useState("visao");
+  const [setoresNomes, setSetoresNomes] = useState([]);
+  const [setorSel, setSetorSel] = useState("");
+  const [catalogo, setCatalogo] = useState([]);
+  const [setores, setSetores] = useState([]);
+  const [ativacoes, setAtivacoes] = useState([]);
+  const [itens, setItens] = useState([]);
+  const [ativSel, setAtivSel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [agora, setAgora] = useState(Date.now());
+  const [gForm, setGForm] = useState({ paciente: "", prontuario: "", leito: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" });
+  const [passoVal, setPassoVal] = useState({});
+  const [abrirAcionar, setAbrirAcionar] = useState(false);
+  const isMaster = currentUser?.role === "adm_master";
+
+  function recarregar() {
+    loadProtCatalogo().then(setCatalogo);
+    loadProtSetores().then(setSetores);
+    loadProtAtivacoes().then(setAtivacoes);
+    loadProtItens().then(setItens);
+  }
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    recarregar();
+    loadSetoresFromSupabase().then(rows => { if (rows) setSetoresNomes(rows.map(r => r.nome).filter(Boolean)); });
+  }, []);
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 30000); return () => clearInterval(t); }, []);
+
+  const navAtual = PROT_NAV.find(n => n.key === sub) || PROT_NAV[0];
+  const templateDe = chave => catalogo.find(c => c.chave === chave) || PROTOCOLOS_CATALOGO.find(c => c.chave === chave) || null;
+  const instanciaDe = (setor, protocolo) => setores.find(s => s.setor === setor && s.protocolo === protocolo) || null;
+  const bundleDe = (protocolo, setor) => montarBundle(templateDe(protocolo), instanciaDe(setor, protocolo));
+  const itensMap = {}; for (const a of ativacoes) itensMap[a.id] = itens.filter(i => i.ativacao_id === a.id);
+  const filtroSetor = a => !setorSel || a.setor === setorSel;
+  const ativas = ativacoes.filter(a => (a.status || "ativa") === "ativa" && filtroSetor(a));
+  const sepseTpl = templateDe("sepse");
+  const sepseInst = setorSel ? instanciaDe(setorSel, "sepse") : null;
+  const gatilho = avaliarGatilhoSepse({ fr: +gForm.fr || undefined, fc: +gForm.fc || undefined, pa_sist: +gForm.pa_sist || undefined, spo2: +gForm.spo2 || undefined, temp: +gForm.temp || undefined, consciencia: gForm.consciencia }, {}, sepseTpl || undefined);
+  const ind = indicadoresProtocolo(ativacoes.filter(filtroSetor), itensMap, { janela_min: (sepseInst?.janela_min ?? sepseTpl?.janela_min ?? 60), passoAlvo: "atb" });
+
+  async function acionarSepse() {
+    if (busy || !canEdit) return;
+    setBusy(true);
+    await registrarAtivacaoProt({ protocolo: "sepse", setor: setorSel || null, prontuario: gForm.prontuario, paciente_nome: gForm.paciente, leito: gForm.leito,
+      gatilho_ref: { news: gatilho.score, fr: +gForm.fr || null, fc: +gForm.fc || null, pa_sist: +gForm.pa_sist || null, spo2: +gForm.spo2 || null, temp: +gForm.temp || null, consciencia: gForm.consciencia } }, currentUser);
+    setBusy(false); setGForm({ paciente: "", prontuario: "", leito: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" }); setAbrirAcionar(false); recarregar();
+  }
+  async function marcarPasso(a, passo, naoAplica) {
+    if (busy || !canEdit) return;
+    const k = a.id + passo.chave;
+    setBusy(true);
+    await checarPassoProt({ ativacao_id: a.id, passo: passo.chave, rotulo: passo.rotulo, valor: passoVal[k] || null, nao_aplica: !!naoAplica }, currentUser);
+    setBusy(false); setPassoVal(v => ({ ...v, [k]: "" })); recarregar();
+  }
+  async function encerrar(a, desfecho) {
+    if (busy || !canEdit) return;
+    setBusy(true); await encerrarAtivacaoProt(a, desfecho, null, currentUser); setBusy(false); setAtivSel(null); recarregar();
+  }
+  async function salvarInstancia(setor, patch) {
+    if (busy || !canEdit) return;
+    const cur = instanciaDe(setor, "sepse") || {};
+    setBusy(true);
+    await upsertProtSetorRemote({ setor, protocolo: "sepse", ativo: cur.ativo !== false, janela_min: cur.janela_min ?? null, responsavel: cur.responsavel || null, validado: cur.validado, ...patch }, currentUser);
+    setBusy(false); recarregar();
+  }
+
+  const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+  const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" };
+  const btnP = (on = true) => ({ background: on ? VX.turquesa : "#5b76a0", color: "#04222b", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: on ? "pointer" : "default" });
+  const btnG = { background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 12px", fontWeight: 600, fontSize: 12.5, cursor: "pointer" };
+  const Pill = ({ c, t }) => <span style={{ background: `${c}1f`, color: c, border: `1px solid ${c}66`, borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{t}</span>;
+  const fmtDur = m => m == null ? "—" : (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}` : `${m}min`);
+  const dataHora = d => d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+  const corPasso = s => s === "feito_no_alvo" ? PROT_FAROL.verde : s === "feito_fora" ? "#fb923c" : s === "estourado" ? PROT_FAROL.vermelho : s === "nao_aplica" ? "var(--text-muted)" : "var(--text-3)";
+
+  const setorSelect = (
+    <select value={setorSel} onChange={e => { setSetorSel(e.target.value); setAtivSel(null); }} style={{ ...inp, width: "auto", minWidth: 200 }}>
+      <option value="">Todos os setores</option>
+      {setoresNomes.map(n => <option key={n} value={n}>{n}</option>)}
+    </select>
+  );
+
+  const CardKpi = ({ label, valor, cor, sub: subt }) => (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor || "var(--border)"}`, borderRadius: 10, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: cor || "var(--text)", fontFamily: "JetBrains Mono, monospace", marginTop: 3 }}>{valor}</div>
+      {subt && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{subt}</div>}
+    </div>
+  );
+
+  const Checklist = ({ a }) => {
+    const bundle = bundleDe(a.protocolo, a.setor);
+    const est = estadoAtivacao(a, itensMap[a.id], bundle, agora);
+    return (
+      <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        {est.passos.map(p => {
+          const k = a.id + p.chave;
+          return (
+            <div key={p.chave} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ width: 10, height: 10, borderRadius: 999, background: corPasso(p.situacao), flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, color: p.feito ? "var(--text-muted)" : "var(--text)", textDecoration: p.feito ? "line-through" : "none" }}>{p.rotulo} {p.critico && <Pill c="#f43f5e" t="crítico" />}</div>
+                <div style={{ fontSize: 11, color: corPasso(p.situacao) }}>{p.situacao === "nao_aplica" ? "não se aplica" : p.feito ? `✓ ${fmtDur(p.decorrido_min)}${p.valor ? " · " + p.valor : ""}` : `${fmtDur(p.decorrido_min)} / alvo ${p.alvo_min}min${p.situacao === "estourado" ? " · ESTOUROU" : ""}`}</div>
+              </div>
+              {!p.feito && p.situacao !== "nao_aplica" && canEdit && (a.status || "ativa") === "ativa" && (<>
+                {(p.chave === "lactato" || p.chave === "atb") && <input value={passoVal[k] || ""} onChange={e => setPassoVal(v => ({ ...v, [k]: e.target.value }))} placeholder={p.chave === "lactato" ? "lactato" : "ATB"} style={{ ...inp, width: 90 }} />}
+                <button onClick={() => marcarPasso(a, p)} disabled={busy} style={btnP(!busy)}>Feito</button>
+                <button onClick={() => marcarPasso(a, p, true)} disabled={busy} style={btnG}>N/A</button>
+              </>)}
+            </div>
+          );
+        })}
+        {(a.status || "ativa") === "ativa" && canEdit && (
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Encerrar:</span>
+            {PROT_DESFECHO.map(d => <button key={d.v} onClick={() => encerrar(a, d.v)} disabled={busy} style={btnG}>{d.label}</button>)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+      <nav style={{ width: 210, minWidth: 210, background: "var(--bg-2)", borderRight: "1px solid var(--border)", padding: "1rem 0", overflowY: "auto", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
+          <Icon name="activity" size={16} /><span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>PROTOCOLOS CLÍNICOS</span>
+        </div>
+        {PROT_NAV.map(it => { const active = sub === it.key; return (
+          <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".5rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
+            <Icon name={it.icon} size={15} />{it.label}
+          </button>
+        ); })}
+      </nav>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <div style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{navAtual.label}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Protocolos gerenciados tempo-dependentes · por setor assistencial</div>
+          </div>
+          {sub !== "visao" && setorSelect}
+        </div>
+
+        {!USE_SUPABASE && <div style={card}>Conecte o banco para usar os protocolos.</div>}
+
+        {sub === "visao" && (<>
+          <div style={card}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 6 }}>Protocolos clínicos gerenciados</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", lineHeight: 1.6 }}>
+              Linhas de cuidado onde <strong>tempo é tecido</strong>: sepse, IAM, AVC e TEV. Cada protocolo <strong>acende sozinho</strong> a partir do que já existe (NEWS, discriminadores da triagem), abre um <strong>bundle com relógio</strong> (cada passo com alvo em minutos) e entrega os <strong>indicadores porta→ação</strong> sem digitação. Cada <strong>setor assistencial</strong> tem a sua instância — liga e ajusta o que é dele.
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+            <CardKpi label="Ativos agora" valor={ativacoes.filter(a => (a.status || "ativa") === "ativa").length} cor={VX.turquesa} sub="acionamentos em curso" />
+            <CardKpi label="Sepse (template)" valor={sepseTpl?.status === "vigente" ? "Vigente" : "Em validação"} cor={sepseTpl?.status === "vigente" ? PROT_FAROL.verde : PROT_FAROL.amarelo} sub="pacote de 1 hora (ILAS)" />
+            <CardKpi label="Setores com Sepse" valor={setores.filter(s => s.protocolo === "sepse" && s.ativo !== false).length} cor="#38bdf8" sub="instâncias ligadas" />
+          </div>
+          <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>
+            <strong>Fase 3a:</strong> Sepse ligada de ponta a ponta. IAM (porta→ECG), AVC (porta→TC) e TEV entram nas fases 3b–3d — já aparecem no Catálogo.
+          </div>
+        </>)}
+
+        {sub === "painel" && (<>
+          <div style={card}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: abrirAcionar ? 12 : 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>Sepse — acionar protocolo</div>
+              {canEdit && <button onClick={() => setAbrirAcionar(v => !v)} style={{ ...btnG, marginLeft: "auto" }}>{abrirAcionar ? "Fechar" : "＋ Acionar"}</button>}
+            </div>
+            {abrirAcionar && (<>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 10 }}>
+                <div><span style={lbl}>Paciente (iniciais)</span><input value={gForm.paciente} onChange={e => setGForm(f => ({ ...f, paciente: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>Prontuário</span><input value={gForm.prontuario} onChange={e => setGForm(f => ({ ...f, prontuario: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>Leito</span><input value={gForm.leito} onChange={e => setGForm(f => ({ ...f, leito: e.target.value }))} style={inp} /></div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>Sinais vitais (gatilho NEWS — opcional, apoia a decisão)</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(88px,1fr))", gap: 8, marginBottom: 10 }}>
+                <div><span style={lbl}>FR</span><input value={gForm.fr} onChange={e => setGForm(f => ({ ...f, fr: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>FC</span><input value={gForm.fc} onChange={e => setGForm(f => ({ ...f, fc: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>PA sist.</span><input value={gForm.pa_sist} onChange={e => setGForm(f => ({ ...f, pa_sist: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>SpO₂</span><input value={gForm.spo2} onChange={e => setGForm(f => ({ ...f, spo2: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>Temp</span><input value={gForm.temp} onChange={e => setGForm(f => ({ ...f, temp: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>Consc.</span><select value={gForm.consciencia} onChange={e => setGForm(f => ({ ...f, consciencia: e.target.value }))} style={inp}><option value="A">Alerta</option><option value="V">Voz</option><option value="D">Dor</option><option value="I">Inconsciente</option></select></div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Pill c={gatilho.aciona ? PROT_FAROL.vermelho : gatilho.score == null ? "var(--text-muted)" : PROT_FAROL.verde} t={gatilho.score == null ? "NEWS —" : `NEWS ${gatilho.score}`} />
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{gatilho.motivo}</span>
+                <button onClick={acionarSepse} disabled={busy || !canEdit} style={{ ...btnP(!busy && canEdit), marginLeft: "auto" }}>Acionar Sepse{setorSel ? ` · ${setorSel}` : ""}</button>
+              </div>
+            </>)}
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 800, margin: "4px 2px 10px" }}>Acionamentos ativos {setorSel && `· ${setorSel}`} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>({ativas.length})</span></div>
+          {!ativas.length && <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Nenhum protocolo ativo {setorSel ? "neste setor" : "no momento"}. Acione um acima quando o gatilho acender.</div>}
+          {ativas.map(a => {
+            const est = estadoAtivacao(a, itensMap[a.id], bundleDe(a.protocolo, a.setor), agora);
+            const aberta = ativSel === a.id;
+            return (
+              <div key={a.id} style={{ ...card, borderLeft: `4px solid ${PROT_FAROL[est.farol]}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <Pill c={PROT_FAROL[est.farol]} t={(a.protocolo || "").toUpperCase()} />
+                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{a.paciente_nome || a.prontuario || "Paciente"}</div>
+                  {a.leito && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>leito {a.leito}</span>}
+                  {a.setor && <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>· {a.setor}</span>}
+                  <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>acionado {dataHora(a.acionado_em)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 14, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>⏱ {fmtDur(est.decorrido_total)} decorrido{est.janela_min ? ` · janela ${est.janela_min}min` : ""}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-3)" }}>{est.completos}/{est.total} passos · {est.pct}%</span>
+                  {est.criticos_pendentes > 0 && <Pill c={PROT_FAROL.vermelho} t={`${est.criticos_pendentes} crítico(s) pendente(s)`} />}
+                  {est.dentro_janela && <Pill c={PROT_FAROL.verde} t="bundle no alvo" />}
+                  <button onClick={() => setAtivSel(aberta ? null : a.id)} style={{ ...btnG, marginLeft: "auto" }}>{aberta ? "Fechar" : "Conduzir"}</button>
+                </div>
+                {aberta && <Checklist a={a} />}
+              </div>
+            );
+          })}
+        </>)}
+
+        {sub === "indicadores" && (<>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Indicadores porta→ação da Sepse{setorSel ? ` no setor ${setorSel}` : " (todos os setores)"}, apurados dos carimbos de tempo — sem digitação.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+            <CardKpi label="Acionamentos" valor={ind.total} cor={VX.turquesa} sub={`${ind.ativas} ativo(s) · ${ind.concluidas} concluído(s)`} />
+            <CardKpi label="Porta → ATB (mediana)" valor={ind.tempoMedianoAlvo == null ? "—" : fmtDur(ind.tempoMedianoAlvo)} cor={ind.tempoMedianoAlvo != null && ind.tempoMedianoAlvo <= (ind.janela_min || 60) ? PROT_FAROL.verde : PROT_FAROL.vermelho} sub={`alvo ≤ ${ind.janela_min}min`} />
+            <CardKpi label="ATB no alvo" valor={ind.pctAlvoNoPrazo == null ? "—" : ind.pctAlvoNoPrazo + "%"} cor={ind.pctAlvoNoPrazo == null ? "var(--text-muted)" : ind.pctAlvoNoPrazo >= 80 ? PROT_FAROL.verde : ind.pctAlvoNoPrazo >= 50 ? PROT_FAROL.amarelo : PROT_FAROL.vermelho} sub="% dentro de 1h" />
+            <CardKpi label="Sepse confirmada" valor={ind.confirmados} cor="#38bdf8" sub="desfecho confirmado" />
+          </div>
+          <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Porta→ATB é o tempo do acionamento até o antibiótico (carimbo do passo "atb"). O relógio corre de <code>acionado_em</code>.</div>
+        </>)}
+
+        {sub === "catalogo" && (<>
+          {(() => {
+            const t = sepseTpl;
+            return (
+              <div style={card}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 800 }}>{t?.titulo || "Sepse — pacote de 1 hora"}</div>
+                  <Pill c={t?.status === "vigente" ? PROT_FAROL.verde : PROT_FAROL.amarelo} t={t?.status === "vigente" ? "vigente" : "em validação"} />
+                  {isMaster && t?.id && t.status !== "vigente" && <button onClick={() => patchCatalogoProt(t, { status: "vigente", validado: true }, currentUser).then(recarregar)} style={{ ...btnP(), marginLeft: "auto" }}>Validar template</button>}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{t?.referencia} · gatilho: NEWS ≥ {t?.gatilho?.min ?? 5} · janela {t?.janela_min ?? 60}min</div>
+                {(t?.passos || []).map(p => (
+                  <div key={p.chave} style={{ display: "flex", gap: 10, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5 }}>
+                    <span style={{ color: "var(--text-muted)", width: 20 }}>{p.ordem}</span>
+                    <span style={{ flex: 1 }}>{p.rotulo} {p.critico && <Pill c="#f43f5e" t="crítico" />}</span>
+                    <span style={{ color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>alvo {p.alvo_min}min</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+          <div style={{ fontSize: 13, fontWeight: 800, margin: "6px 2px 10px" }}>Instância por setor <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>— cada setor liga e ajusta a sua Sepse</span></div>
+          {!setoresNomes.length && <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Cadastre setores em Giro de Leitos → Setores para ligar o protocolo por setor.</div>}
+          {setoresNomes.map(nome => {
+            const inst = instanciaDe(nome, "sepse");
+            const ligado = inst ? inst.ativo !== false : false;
+            return (
+              <div key={nome} style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, minWidth: 120 }}>{nome}</div>
+                <button disabled={!canEdit || busy} onClick={() => salvarInstancia(nome, { ativo: !ligado })} style={{ background: ligado ? `${PROT_FAROL.verde}22` : "transparent", color: ligado ? PROT_FAROL.verde : "var(--text-3)", border: `1px solid ${ligado ? PROT_FAROL.verde : "var(--border)"}`, borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: canEdit ? "pointer" : "default" }}>{ligado ? "Ligado" : "Desligado"}</button>
+                {ligado && (<>
+                  <div><span style={lbl}>Janela (min)</span><input defaultValue={inst?.janela_min ?? ""} onBlur={e => { const v = e.target.value === "" ? null : +e.target.value; if (v !== (inst?.janela_min ?? null)) salvarInstancia(nome, { janela_min: v }); }} placeholder={String(sepseTpl?.janela_min ?? 60)} style={{ ...inp, width: 90 }} disabled={!canEdit} /></div>
+                  <div style={{ flex: 1, minWidth: 140 }}><span style={lbl}>Responsável</span><input defaultValue={inst?.responsavel || ""} onBlur={e => { if ((e.target.value || null) !== (inst?.responsavel || null)) salvarInstancia(nome, { responsavel: e.target.value }); }} style={inp} disabled={!canEdit} /></div>
+                  {inst && !inst.validado && <Pill c={PROT_FAROL.amarelo} t="em validação" />}
+                </>)}
+              </div>
+            );
+          })}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 // Notificação em 30s de qualquer tela (diferencial). Botão flutuante global,
 // disponível a todo usuário logado — cultura justa, não-punitiva, com anonimato.
 function NotificacaoRapida({ currentUser }) {
@@ -16703,6 +17064,7 @@ export default function App() {
           {active === "leitos"    && <LeitosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "nsp"       && <NSPPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "protocolos" && <ProtocolosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "suprimentos" && <SuprimentosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
