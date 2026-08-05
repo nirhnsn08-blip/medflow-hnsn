@@ -49,18 +49,34 @@ export const IAM = {
   ],
 };
 
-// Esboços para o catálogo (3c–3d) — só rótulo/gatilho; sem passos ainda.
+// AVC (Fase 3c) — pacote porta→TC + janela terapêutica.
+export const AVC = {
+  chave: "avc",
+  titulo: "AVC — porta→TC/trombólise",
+  categoria: "neurologico",
+  referencia: "AHA/ASA; Linha de Cuidado do AVC (Ministério da Saúde)",
+  janela_min: 25,
+  kpi_passo: "tc",
+  gatilho: { tipo: "queixa", termos: ["déficit neurológico", "fraqueza", "boca torta", "fala alterada"], obs: "Sugestão pela queixa; acionamento manual. Checar SEMPRE o início dos sintomas (janela)." },
+  janela_terapeutica: { trombolise_min: 270 }, // trombólise IV ≤ 4,5h
+  passos: [
+    { chave: "codigo_avc", rotulo: "Acionar código AVC + glicemia capilar",          alvo_min: 5,  ordem: 1, critico: false },
+    { chave: "tc",         rotulo: "TC de crânio sem contraste",                      alvo_min: 25, ordem: 2, critico: true },
+    { chave: "laudo",      rotulo: "Laudo da TC",                                     alvo_min: 45, ordem: 3, critico: true },
+    { chave: "nihss",      rotulo: "NIHSS (gravidade do déficit)",                    alvo_min: 20, ordem: 4, critico: false },
+    { chave: "reperfusao", rotulo: "Avaliar trombólise/trombectomia (porta→agulha)", alvo_min: 60, ordem: 5, critico: true },
+  ],
+};
+
+// Esboços para o catálogo (3d) — só rótulo/gatilho; sem passos ainda.
 export const ESBOCOS = [
-  { chave: "avc", titulo: "AVC — porta→TC/trombólise", categoria: "neurologico",
-    referencia: "AHA/ASA; Linha de Cuidado AVC (MS)", janela_min: 25, kpi_passo: "tc",
-    gatilho: { tipo: "discriminador", chave: "deficit_neurologico", obs: "Cincinnati + janela terapêutica" }, passos: [] },
   { chave: "tev", titulo: "Profilaxia de TEV no internado", categoria: "tromboembolismo",
     referencia: "Padua / Caprini; ACCP", janela_min: null, kpi_passo: null,
     gatilho: { tipo: "internacao", obs: "Avaliar todo internado × risco de sangramento" }, passos: [] },
 ];
 
-// Catálogo canônico completo (Sepse + IAM prontos + esboços).
-export const PROTOCOLOS_CATALOGO = [SEPSE, IAM, ...ESBOCOS];
+// Catálogo canônico completo (Sepse + IAM + AVC prontos + esboço TEV).
+export const PROTOCOLOS_CATALOGO = [SEPSE, IAM, AVC, ...ESBOCOS];
 
 export const PROT_STATUS = [
   { v: "ativa",     label: "Ativa",      nivel: "andamento" },

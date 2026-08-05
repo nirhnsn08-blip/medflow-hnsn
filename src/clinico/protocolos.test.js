@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  minutosEntre, avaliarGatilhoSepse, avaliarGatilhoDorToracica, montarBundle, estadoAtivacao,
-  tempoPortaAcao, indicadoresProtocolo, resumoPainelSetor,
+  minutosEntre, avaliarGatilhoSepse, avaliarGatilhoDorToracica, avaliarGatilhoAvc, janelaTerapeutica,
+  montarBundle, estadoAtivacao, tempoPortaAcao, indicadoresProtocolo, resumoPainelSetor,
 } from "./protocolos.js";
-import { SEPSE, IAM } from "./protocolos-catalogo.js";
+import { SEPSE, IAM, AVC } from "./protocolos-catalogo.js";
 
 const at = iso => new Date(iso).getTime();
 const T0 = "2026-08-03T10:00:00.000Z";
@@ -227,5 +227,46 @@ describe("bundle do IAM (Fase 3b)", () => {
     const ind = indicadoresProtocolo(ativacoes, itens, { janela_min: 10, passoAlvo: "ecg" });
     expect(ind.tempoMedianoAlvo).toBe(7);
     expect(ind.pctAlvoNoPrazo).toBe(100);
+  });
+});
+
+describe("avaliarGatilhoAvc", () => {
+  it("sugere para déficit neurológico (variações, sem acento/caixa)", () => {
+    expect(avaliarGatilhoAvc("Boca torta e fraqueza no braço").sugere).toBe(true);
+    expect(avaliarGatilhoAvc("fala enrolada súbita").sugere).toBe(true);
+    expect(avaliarGatilhoAvc("suspeita de AVC").sugere).toBe(true);
+  });
+  it("não sugere para queixa não neurológica", () => {
+    expect(avaliarGatilhoAvc("dor abdominal e vômito").sugere).toBe(false);
+  });
+});
+
+describe("janelaTerapeutica (AVC)", () => {
+  it("dentro da janela quando ≤ 4,5h do início", () => {
+    const j = janelaTerapeutica(T0, at(mais(120))); // 2h
+    expect(j.dentroTrombolise).toBe(true);
+    expect(j.farol).toBe("verde");
+    expect(j.decorrido_min).toBe(120);
+  });
+  it("fora da janela quando > 4,5h (270 min)", () => {
+    const j = janelaTerapeutica(T0, at(mais(300))); // 5h
+    expect(j.dentroTrombolise).toBe(false);
+    expect(j.farol).toBe("vermelho");
+  });
+  it("cinza quando o início não é conhecido", () => {
+    const j = janelaTerapeutica(null);
+    expect(j.conhecido).toBe(false);
+    expect(j.farol).toBe("cinza");
+  });
+});
+
+describe("bundle do AVC (Fase 3c)", () => {
+  it("monta o pacote porta→TC com a TC crítica em 25 min", () => {
+    const b = montarBundle(AVC);
+    expect(b.chave).toBe("avc");
+    const tc = b.passos.find(p => p.chave === "tc");
+    expect(tc.alvo_min).toBe(25);
+    expect(tc.critico).toBe(true);
+    expect(AVC.kpi_passo).toBe("tc");
   });
 });

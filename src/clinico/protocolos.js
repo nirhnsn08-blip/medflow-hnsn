@@ -60,6 +60,40 @@ export function avaliarGatilhoDorToracica(queixa) {
   return { sugere: false, termo: null, motivo: queixa ? "A queixa não menciona dor torácica." : "Informe a queixa para checar o gatilho." };
 }
 
+// Termos que, na queixa livre, sugerem déficit neurológico agudo (gatilho do AVC).
+const TERMOS_AVC = ["deficit", "fraqueza", "dormencia", "formigamento", "fala enrolada", "fala alterada", "disartria", "afasia", "boca torta", "desvio de rima", "hemiparesia", "hemiplegia", "paralisia facial", "confusao subita", "avc", "derrame"];
+
+/**
+ * Gatilho do protocolo de AVC — mesma ideia do IAM: sugestão por palavra-chave
+ * na queixa livre da triagem (o acionamento é manual). Puro/testável.
+ */
+export function avaliarGatilhoAvc(queixa) {
+  const s = (queixa || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const termo = TERMOS_AVC.find(t => s.includes(t));
+  if (termo) return { sugere: true, termo, motivo: `Queixa sugere déficit neurológico ("${termo}") — considerar protocolo de AVC: TC ≤ 25 min e checar a janela.` };
+  return { sugere: false, termo: null, motivo: queixa ? "A queixa não menciona déficit neurológico." : "Informe a queixa para checar o gatilho." };
+}
+
+/**
+ * Janela terapêutica do AVC a partir do início dos sintomas ("último visto bem")
+ * — o dado que decide a conduta. Trombólise IV até 4,5h (270 min). O relógio da
+ * janela corre do INÍCIO DOS SINTOMAS, não do acionamento. Puro/testável.
+ */
+export function janelaTerapeutica(inicioSintomas, agora = Date.now(), { trombolise_min = 270 } = {}) {
+  if (!inicioSintomas) return { conhecido: false, decorrido_min: null, dentroTrombolise: null, farol: "cinza", texto: "Início dos sintomas não informado (último visto bem)." };
+  const dec = minutosEntre(inicioSintomas, agora);
+  if (dec == null) return { conhecido: false, decorrido_min: null, dentroTrombolise: null, farol: "cinza", texto: "Início dos sintomas inválido." };
+  const dentro = dec >= 0 && dec <= trombolise_min;
+  const h = Math.floor(Math.abs(dec) / 60), m = Math.abs(dec) % 60;
+  return {
+    conhecido: true,
+    decorrido_min: dec,
+    dentroTrombolise: dentro,
+    farol: dec < 0 ? "cinza" : dentro ? "verde" : "vermelho",
+    texto: dec < 0 ? "Início dos sintomas no futuro — verifique." : `${h}h${String(m).padStart(2, "0")} desde o início — ${dentro ? "dentro da janela de trombólise (≤4,5h)" : "FORA da janela de trombólise (>4,5h)"}.`,
+  };
+}
+
 /**
  * Monta o bundle efetivo de uma instância de setor: os passos do template com
  * os alvos sobrescritos pelo setor (prot_setor.passos_over e janela_min).

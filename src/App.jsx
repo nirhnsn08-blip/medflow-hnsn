@@ -42,7 +42,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
 // Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
-import { avaliarGatilhoSepse, avaliarGatilhoDorToracica, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
+import { avaliarGatilhoSepse, avaliarGatilhoDorToracica, avaliarGatilhoAvc, janelaTerapeutica, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
 import { PROTOCOLOS_CATALOGO, PROT_DESFECHO } from "./clinico/protocolos-catalogo.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
@@ -11585,7 +11585,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const [ativSel, setAtivSel] = useState(null);
   const [busy, setBusy] = useState(false);
   const [agora, setAgora] = useState(Date.now());
-  const [gForm, setGForm] = useState({ paciente: "", prontuario: "", leito: "", queixa: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" });
+  const [gForm, setGForm] = useState({ paciente: "", prontuario: "", leito: "", queixa: "", inicio: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" });
   const [passoVal, setPassoVal] = useState({});
   const [abrirAcionar, setAbrirAcionar] = useState(false);
   const [protSel, setProtSel] = useState("sepse");
@@ -11617,17 +11617,18 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const instSel = setorSel ? instanciaDe(setorSel, protSel) : null;
   const kpiPasso = kpiPassoDe(protSel);
   const gatilhoSepse = avaliarGatilhoSepse({ fr: +gForm.fr || undefined, fc: +gForm.fc || undefined, pa_sist: +gForm.pa_sist || undefined, spo2: +gForm.spo2 || undefined, temp: +gForm.temp || undefined, consciencia: gForm.consciencia }, {}, templateDe("sepse") || undefined);
-  const gatilhoIam = avaliarGatilhoDorToracica(gForm.queixa);
+  const gatilhoQueixa = protSel === "avc" ? avaliarGatilhoAvc(gForm.queixa) : avaliarGatilhoDorToracica(gForm.queixa);
+  const janela = protSel === "avc" ? janelaTerapeutica(gForm.inicio || null, agora) : null;
   const ind = indicadoresProtocolo(ativacoes.filter(a => filtroSetor(a) && a.protocolo === protSel), itensMap, { janela_min: (instSel?.janela_min ?? tplSel?.janela_min ?? 60), passoAlvo: kpiPasso });
 
   async function acionar() {
     if (busy || !canEdit) return;
     const ref = protSel === "sepse"
       ? { news: gatilhoSepse.score, fr: +gForm.fr || null, fc: +gForm.fc || null, pa_sist: +gForm.pa_sist || null, spo2: +gForm.spo2 || null, temp: +gForm.temp || null, consciencia: gForm.consciencia }
-      : { queixa: gForm.queixa || null, sugere: gatilhoIam.sugere, termo: gatilhoIam.termo };
+      : { queixa: gForm.queixa || null, sugere: gatilhoQueixa.sugere, termo: gatilhoQueixa.termo, ...(protSel === "avc" ? { inicio_sintomas: gForm.inicio ? new Date(gForm.inicio).toISOString() : null } : {}) };
     setBusy(true);
     await registrarAtivacaoProt({ protocolo: protSel, setor: setorSel || null, prontuario: gForm.prontuario, paciente_nome: gForm.paciente, leito: gForm.leito, gatilho_ref: ref }, currentUser);
-    setBusy(false); setGForm({ paciente: "", prontuario: "", leito: "", queixa: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" }); setAbrirAcionar(false); recarregar();
+    setBusy(false); setGForm({ paciente: "", prontuario: "", leito: "", queixa: "", inicio: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" }); setAbrirAcionar(false); recarregar();
   }
   async function marcarPasso(a, passo, naoAplica) {
     if (busy || !canEdit) return;
@@ -11658,6 +11659,13 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const dataHora = d => d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const corPasso = s => s === "feito_no_alvo" ? PROT_FAROL.verde : s === "feito_fora" ? "#fb923c" : s === "estourado" ? PROT_FAROL.vermelho : s === "nao_aplica" ? "var(--text-muted)" : "var(--text-3)";
   const chipTgl = (on, c) => ({ background: on ? `${c}33` : "transparent", color: on ? c : "var(--text-3)", border: `1px solid ${on ? c : "var(--border)"}`, borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" });
+  const janelaAvc = a => {
+    if (a.protocolo !== "avc" || !a.gatilho_ref?.inicio_sintomas) return null;
+    const j = janelaTerapeutica(a.gatilho_ref.inicio_sintomas, agora);
+    if (!j.conhecido) return null;
+    const hm = `${Math.floor(j.decorrido_min / 60)}h${String(j.decorrido_min % 60).padStart(2, "0")}`;
+    return <Pill c={PROT_FAROL[j.farol] || "var(--text-muted)"} t={`janela ${hm}${j.dentroTrombolise ? " · trombólise" : " · fora"}`} />;
+  };
 
   const setorSelect = (
     <select value={setorSel} onChange={e => { setSetorSel(e.target.value); setAtivSel(null); }} style={{ ...inp, width: "auto", minWidth: 200 }}>
@@ -11776,16 +11784,27 @@ function ProtocolosPage({ currentUser, canEdit }) {
                   <div><span style={lbl}>Consc.</span><select value={gForm.consciencia} onChange={e => setGForm(f => ({ ...f, consciencia: e.target.value }))} style={inp}><option value="A">Alerta</option><option value="V">Voz</option><option value="D">Dor</option><option value="I">Inconsciente</option></select></div>
                 </div>
               </>) : (
-                <div style={{ marginBottom: 10 }}>
-                  <span style={lbl}>Queixa (a sugestão do gatilho lê daqui)</span>
-                  <input value={gForm.queixa} onChange={e => setGForm(f => ({ ...f, queixa: e.target.value }))} placeholder="ex.: dor torácica há 1h, opressiva, irradiando para o braço" style={inp} />
+                <div style={{ display: "grid", gridTemplateColumns: protSel === "avc" ? "1fr 1fr" : "1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <span style={lbl}>Queixa (a sugestão do gatilho lê daqui)</span>
+                    <input value={gForm.queixa} onChange={e => setGForm(f => ({ ...f, queixa: e.target.value }))} placeholder={protSel === "avc" ? "ex.: fraqueza no braço e boca torta" : "ex.: dor torácica há 1h, opressiva"} style={inp} />
+                  </div>
+                  {protSel === "avc" && (
+                    <div>
+                      <span style={lbl}>Início dos sintomas (último visto bem)</span>
+                      <input type="datetime-local" value={gForm.inicio} onChange={e => setGForm(f => ({ ...f, inicio: e.target.value }))} style={inp} />
+                    </div>
+                  )}
                 </div>
+              )}
+              {protSel === "avc" && janela?.conhecido && (
+                <div style={{ fontSize: 12, color: PROT_FAROL[janela.farol] || "var(--text-3)", marginBottom: 10, fontWeight: 700 }}>⏳ Janela terapêutica: {janela.texto}</div>
               )}
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 {protSel === "sepse"
                   ? <Pill c={gatilhoSepse.aciona ? PROT_FAROL.vermelho : gatilhoSepse.score == null ? "var(--text-muted)" : PROT_FAROL.verde} t={gatilhoSepse.score == null ? "NEWS —" : `NEWS ${gatilhoSepse.score}`} />
-                  : <Pill c={gatilhoIam.sugere ? PROT_FAROL.vermelho : "var(--text-muted)"} t={gatilhoIam.sugere ? "sugere IAM" : "sem sugestão"} />}
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{protSel === "sepse" ? gatilhoSepse.motivo : gatilhoIam.motivo}</span>
+                  : <Pill c={gatilhoQueixa.sugere ? PROT_FAROL.vermelho : "var(--text-muted)"} t={gatilhoQueixa.sugere ? `sugere ${protSel.toUpperCase()}` : "sem sugestão"} />}
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{protSel === "sepse" ? gatilhoSepse.motivo : gatilhoQueixa.motivo}</span>
                 <button onClick={acionar} disabled={busy || !canEdit} style={{ ...btnP(!busy && canEdit), marginLeft: "auto" }}>Acionar {protSel.toUpperCase()}{setorSel ? ` · ${setorSel}` : ""}</button>
               </div>
             </>)}
@@ -11810,6 +11829,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
                   <span style={{ fontSize: 12, color: "var(--text-3)" }}>{est.completos}/{est.total} passos · {est.pct}%</span>
                   {est.criticos_pendentes > 0 && <Pill c={PROT_FAROL.vermelho} t={`${est.criticos_pendentes} crítico(s) pendente(s)`} />}
                   {est.dentro_janela && <Pill c={PROT_FAROL.verde} t="bundle no alvo" />}
+                  {janelaAvc(a)}
                   <button onClick={() => setAtivSel(aberta ? null : a.id)} style={{ ...btnG, marginLeft: "auto" }}>{aberta ? "Fechar" : "Conduzir"}</button>
                 </div>
                 {aberta && <Checklist a={a} />}
