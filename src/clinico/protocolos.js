@@ -44,6 +44,22 @@ export function avaliarGatilhoSepse(sinais, ctx = {}, template = SEPSE) {
   return { ...base, aciona: true, motivo: `NEWS ${news.score} ≥ ${min}${ctx.suspeitaInfeccao ? " com suspeita de foco infeccioso" : " — confirmar foco infeccioso"}.` };
 }
 
+// Termos que, na queixa livre da triagem, sugerem dor torácica (gatilho do IAM).
+const TERMOS_DOR_TORACICA = ["dor toracica", "dor no peito", "dor no torax", "precordial", "precordialgia", "aperto no peito", "retroesternal", "dor no coracao"];
+
+/**
+ * Gatilho do protocolo de dor torácica / IAM. A queixa da triagem é TEXTO LIVRE
+ * (não há discriminador estruturado), então o gatilho é uma SUGESTÃO por
+ * palavra-chave: se a queixa menciona dor torácica, sugere abrir o protocolo
+ * (ECG ≤ 10 min). O acionamento em si é manual. Puro/testável.
+ */
+export function avaliarGatilhoDorToracica(queixa) {
+  const s = (queixa || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const termo = TERMOS_DOR_TORACICA.find(t => s.includes(t));
+  if (termo) return { sugere: true, termo, motivo: `Queixa sugere dor torácica ("${termo}") — considerar protocolo de IAM: ECG em ≤ 10 min.` };
+  return { sugere: false, termo: null, motivo: queixa ? "A queixa não menciona dor torácica." : "Informe a queixa para checar o gatilho." };
+}
+
 /**
  * Monta o bundle efetivo de uma instância de setor: os passos do template com
  * os alvos sobrescritos pelo setor (prot_setor.passos_over e janela_min).

@@ -19,6 +19,7 @@ export const SEPSE = {
   referencia: "ILAS (Instituto Latino-Americano de Sepse) / Surviving Sepsis Campaign",
   janela_min: 60,
   gatilho: { tipo: "news", min: 5, obs: "NEWS ≥ 5 com suspeita de foco infeccioso" },
+  kpi_passo: "atb",
   passos: [
     { chave: "lactato",     rotulo: "Coletar lactato sérico",                             alvo_min: 30,  ordem: 1, critico: true },
     { chave: "hemocultura", rotulo: "Coletar 2 hemoculturas ANTES do antibiótico",        alvo_min: 45,  ordem: 2, critico: true },
@@ -29,21 +30,37 @@ export const SEPSE = {
   ],
 };
 
-// Esboços para o catálogo (3b–3d) — só rótulo/gatilho; sem passos ainda.
+// Dor torácica / IAM (Fase 3b) — pacote porta→ECG.
+export const IAM = {
+  chave: "iam",
+  titulo: "Dor torácica / IAM — porta→ECG",
+  categoria: "cardiologico",
+  referencia: "AHA/ACC; Diretriz SBC de Síndromes Coronarianas Agudas",
+  janela_min: 10,
+  gatilho: { tipo: "queixa", termos: ["dor torácica", "precordial", "dor no peito"], obs: "ECG em ≤ 10 min da chegada; acionamento manual com sugestão pela queixa da triagem" },
+  kpi_passo: "ecg",
+  passos: [
+    { chave: "ecg",        rotulo: "ECG de 12 derivações",                                                alvo_min: 10, ordem: 1, critico: true },
+    { chave: "aas",        rotulo: "AAS 150–300 mg VO (mastigar), se sem contraindicação",                alvo_min: 10, ordem: 2, critico: true },
+    { chave: "troponina",  rotulo: "Coletar troponina",                                                   alvo_min: 20, ordem: 3, critico: true },
+    { chave: "monitor",    rotulo: "Monitorização + acesso venoso + O₂ se SpO₂ < 90",                     alvo_min: 10, ordem: 4, critico: false },
+    { chave: "reperfusao", rotulo: "Avaliar SCA: com supra de ST → reperfusão; sem supra → estratificar", alvo_min: 60, ordem: 5, critico: true },
+    { chave: "analgesia",  rotulo: "Analgesia / nitrato conforme protocolo",                              alvo_min: 30, ordem: 6, critico: false },
+  ],
+};
+
+// Esboços para o catálogo (3c–3d) — só rótulo/gatilho; sem passos ainda.
 export const ESBOCOS = [
-  { chave: "iam", titulo: "Dor torácica / IAM — porta→ECG", categoria: "cardiologico",
-    referencia: "AHA/ACC; Diretriz SBC de SCA", janela_min: 10,
-    gatilho: { tipo: "discriminador", chave: "dor_toracica", obs: "ECG em ≤ 10 min" }, passos: [] },
   { chave: "avc", titulo: "AVC — porta→TC/trombólise", categoria: "neurologico",
-    referencia: "AHA/ASA; Linha de Cuidado AVC (MS)", janela_min: 25,
+    referencia: "AHA/ASA; Linha de Cuidado AVC (MS)", janela_min: 25, kpi_passo: "tc",
     gatilho: { tipo: "discriminador", chave: "deficit_neurologico", obs: "Cincinnati + janela terapêutica" }, passos: [] },
   { chave: "tev", titulo: "Profilaxia de TEV no internado", categoria: "tromboembolismo",
-    referencia: "Padua / Caprini; ACCP", janela_min: null,
+    referencia: "Padua / Caprini; ACCP", janela_min: null, kpi_passo: null,
     gatilho: { tipo: "internacao", obs: "Avaliar todo internado × risco de sangramento" }, passos: [] },
 ];
 
-// Catálogo canônico completo (Sepse pronta + esboços).
-export const PROTOCOLOS_CATALOGO = [SEPSE, ...ESBOCOS];
+// Catálogo canônico completo (Sepse + IAM prontos + esboços).
+export const PROTOCOLOS_CATALOGO = [SEPSE, IAM, ...ESBOCOS];
 
 export const PROT_STATUS = [
   { v: "ativa",     label: "Ativa",      nivel: "andamento" },

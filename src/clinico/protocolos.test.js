@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  minutosEntre, avaliarGatilhoSepse, montarBundle, estadoAtivacao,
+  minutosEntre, avaliarGatilhoSepse, avaliarGatilhoDorToracica, montarBundle, estadoAtivacao,
   tempoPortaAcao, indicadoresProtocolo, resumoPainelSetor,
 } from "./protocolos.js";
-import { SEPSE } from "./protocolos-catalogo.js";
+import { SEPSE, IAM } from "./protocolos-catalogo.js";
 
 const at = iso => new Date(iso).getTime();
 const T0 = "2026-08-03T10:00:00.000Z";
@@ -183,5 +183,49 @@ describe("resumoPainelSetor", () => {
     expect(r.ativas).toBe(1);
     expect(r.estourando).toBe(1);          // a1 tem lactato/hemocultura estourados
     expect(r.criticosPendentes).toBe(4);   // lactato, hemocultura, atb, cristaloide
+  });
+});
+
+describe("avaliarGatilhoDorToracica", () => {
+  it("sugere quando a queixa menciona dor torácica", () => {
+    const g = avaliarGatilhoDorToracica("Dor torácica há 2h irradiando para o braço");
+    expect(g.sugere).toBe(true);
+    expect(g.termo).toBe("dor toracica");
+  });
+  it("pega variações e ignora acento/caixa", () => {
+    expect(avaliarGatilhoDorToracica("PRECORDIAL").sugere).toBe(true);
+    expect(avaliarGatilhoDorToracica("aperto no peito").sugere).toBe(true);
+    expect(avaliarGatilhoDorToracica("dor retroesternal").sugere).toBe(true);
+  });
+  it("não sugere para queixa não cardiológica", () => {
+    expect(avaliarGatilhoDorToracica("cefaleia e febre").sugere).toBe(false);
+  });
+  it("orienta quando não há queixa", () => {
+    const g = avaliarGatilhoDorToracica("");
+    expect(g.sugere).toBe(false);
+    expect(g.motivo).toMatch(/Informe a queixa/i);
+  });
+});
+
+describe("bundle do IAM (Fase 3b)", () => {
+  it("monta o pacote porta→ECG com o ECG crítico em 10 min", () => {
+    const b = montarBundle(IAM);
+    expect(b.chave).toBe("iam");
+    expect(b.janela_min).toBe(10);
+    expect(b.passos[0].chave).toBe("ecg");
+    expect(b.passos[0].alvo_min).toBe(10);
+    expect(b.passos[0].critico).toBe(true);
+  });
+  it("porta→ECG sai do carimbo do passo ecg", () => {
+    const a = { id: "i1", protocolo: "iam", acionado_em: T0 };
+    const itens = [{ passo: "ecg", feito: true, feito_em: mais(8) }];
+    expect(tempoPortaAcao(a, itens, "ecg")).toBe(8);
+  });
+  it("indicadores usam o passo-alvo do protocolo (ecg)", () => {
+    const ativacoes = [{ id: "i1", protocolo: "iam", status: "concluida", acionado_em: T0 }];
+    const itens = { i1: [{ passo: "ecg", feito: true, feito_em: mais(7) }] };
+    const ind = indicadoresProtocolo(ativacoes, itens, { janela_min: 10, passoAlvo: "ecg" });
+    expect(ind.tempoMedianoAlvo).toBe(7);
+    expect(ind.pctAlvoNoPrazo).toBe(100);
   });
 });

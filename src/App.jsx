@@ -42,7 +42,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
 // Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
-import { avaliarGatilhoSepse, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
+import { avaliarGatilhoSepse, avaliarGatilhoDorToracica, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
 import { PROTOCOLOS_CATALOGO, PROT_DESFECHO } from "./clinico/protocolos-catalogo.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
@@ -11585,9 +11585,10 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const [ativSel, setAtivSel] = useState(null);
   const [busy, setBusy] = useState(false);
   const [agora, setAgora] = useState(Date.now());
-  const [gForm, setGForm] = useState({ paciente: "", prontuario: "", leito: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" });
+  const [gForm, setGForm] = useState({ paciente: "", prontuario: "", leito: "", queixa: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" });
   const [passoVal, setPassoVal] = useState({});
   const [abrirAcionar, setAbrirAcionar] = useState(false);
+  const [protSel, setProtSel] = useState("sepse");
   const isMaster = currentUser?.role === "adm_master";
 
   function recarregar() {
@@ -11610,17 +11611,23 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const itensMap = {}; for (const a of ativacoes) itensMap[a.id] = itens.filter(i => i.ativacao_id === a.id);
   const filtroSetor = a => !setorSel || a.setor === setorSel;
   const ativas = ativacoes.filter(a => (a.status || "ativa") === "ativa" && filtroSetor(a));
-  const sepseTpl = templateDe("sepse");
-  const sepseInst = setorSel ? instanciaDe(setorSel, "sepse") : null;
-  const gatilho = avaliarGatilhoSepse({ fr: +gForm.fr || undefined, fc: +gForm.fc || undefined, pa_sist: +gForm.pa_sist || undefined, spo2: +gForm.spo2 || undefined, temp: +gForm.temp || undefined, consciencia: gForm.consciencia }, {}, sepseTpl || undefined);
-  const ind = indicadoresProtocolo(ativacoes.filter(filtroSetor), itensMap, { janela_min: (sepseInst?.janela_min ?? sepseTpl?.janela_min ?? 60), passoAlvo: "atb" });
+  const acionaveis = PROTOCOLOS_CATALOGO.filter(c => (c.passos || []).length);
+  const kpiPassoDe = chave => PROTOCOLOS_CATALOGO.find(c => c.chave === chave)?.kpi_passo || "atb";
+  const tplSel = templateDe(protSel);
+  const instSel = setorSel ? instanciaDe(setorSel, protSel) : null;
+  const kpiPasso = kpiPassoDe(protSel);
+  const gatilhoSepse = avaliarGatilhoSepse({ fr: +gForm.fr || undefined, fc: +gForm.fc || undefined, pa_sist: +gForm.pa_sist || undefined, spo2: +gForm.spo2 || undefined, temp: +gForm.temp || undefined, consciencia: gForm.consciencia }, {}, templateDe("sepse") || undefined);
+  const gatilhoIam = avaliarGatilhoDorToracica(gForm.queixa);
+  const ind = indicadoresProtocolo(ativacoes.filter(a => filtroSetor(a) && a.protocolo === protSel), itensMap, { janela_min: (instSel?.janela_min ?? tplSel?.janela_min ?? 60), passoAlvo: kpiPasso });
 
-  async function acionarSepse() {
+  async function acionar() {
     if (busy || !canEdit) return;
+    const ref = protSel === "sepse"
+      ? { news: gatilhoSepse.score, fr: +gForm.fr || null, fc: +gForm.fc || null, pa_sist: +gForm.pa_sist || null, spo2: +gForm.spo2 || null, temp: +gForm.temp || null, consciencia: gForm.consciencia }
+      : { queixa: gForm.queixa || null, sugere: gatilhoIam.sugere, termo: gatilhoIam.termo };
     setBusy(true);
-    await registrarAtivacaoProt({ protocolo: "sepse", setor: setorSel || null, prontuario: gForm.prontuario, paciente_nome: gForm.paciente, leito: gForm.leito,
-      gatilho_ref: { news: gatilho.score, fr: +gForm.fr || null, fc: +gForm.fc || null, pa_sist: +gForm.pa_sist || null, spo2: +gForm.spo2 || null, temp: +gForm.temp || null, consciencia: gForm.consciencia } }, currentUser);
-    setBusy(false); setGForm({ paciente: "", prontuario: "", leito: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" }); setAbrirAcionar(false); recarregar();
+    await registrarAtivacaoProt({ protocolo: protSel, setor: setorSel || null, prontuario: gForm.prontuario, paciente_nome: gForm.paciente, leito: gForm.leito, gatilho_ref: ref }, currentUser);
+    setBusy(false); setGForm({ paciente: "", prontuario: "", leito: "", queixa: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" }); setAbrirAcionar(false); recarregar();
   }
   async function marcarPasso(a, passo, naoAplica) {
     if (busy || !canEdit) return;
@@ -11635,9 +11642,9 @@ function ProtocolosPage({ currentUser, canEdit }) {
   }
   async function salvarInstancia(setor, patch) {
     if (busy || !canEdit) return;
-    const cur = instanciaDe(setor, "sepse") || {};
+    const cur = instanciaDe(setor, protSel) || {};
     setBusy(true);
-    await upsertProtSetorRemote({ setor, protocolo: "sepse", ativo: cur.ativo !== false, janela_min: cur.janela_min ?? null, responsavel: cur.responsavel || null, validado: cur.validado, ...patch }, currentUser);
+    await upsertProtSetorRemote({ setor, protocolo: protSel, ativo: cur.ativo !== false, janela_min: cur.janela_min ?? null, responsavel: cur.responsavel || null, validado: cur.validado, ...patch }, currentUser);
     setBusy(false); recarregar();
   }
 
@@ -11650,12 +11657,18 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const fmtDur = m => m == null ? "—" : (m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}` : `${m}min`);
   const dataHora = d => d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const corPasso = s => s === "feito_no_alvo" ? PROT_FAROL.verde : s === "feito_fora" ? "#fb923c" : s === "estourado" ? PROT_FAROL.vermelho : s === "nao_aplica" ? "var(--text-muted)" : "var(--text-3)";
+  const chipTgl = (on, c) => ({ background: on ? `${c}33` : "transparent", color: on ? c : "var(--text-3)", border: `1px solid ${on ? c : "var(--border)"}`, borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" });
 
   const setorSelect = (
     <select value={setorSel} onChange={e => { setSetorSel(e.target.value); setAtivSel(null); }} style={{ ...inp, width: "auto", minWidth: 200 }}>
       <option value="">Todos os setores</option>
       {setoresNomes.map(n => <option key={n} value={n}>{n}</option>)}
     </select>
+  );
+  const protChips = (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {acionaveis.map(c => <button key={c.chave} onClick={() => { setProtSel(c.chave); setAbrirAcionar(false); }} style={chipTgl(protSel === c.chave, VX.turquesa)} title={c.titulo}>{c.chave.toUpperCase()}</button>)}
+    </div>
   );
 
   const CardKpi = ({ label, valor, cor, sub: subt }) => (
@@ -11731,18 +11744,19 @@ function ProtocolosPage({ currentUser, canEdit }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
             <CardKpi label="Ativos agora" valor={ativacoes.filter(a => (a.status || "ativa") === "ativa").length} cor={VX.turquesa} sub="acionamentos em curso" />
-            <CardKpi label="Sepse (template)" valor={sepseTpl?.status === "vigente" ? "Vigente" : "Em validação"} cor={sepseTpl?.status === "vigente" ? PROT_FAROL.verde : PROT_FAROL.amarelo} sub="pacote de 1 hora (ILAS)" />
-            <CardKpi label="Setores com Sepse" valor={setores.filter(s => s.protocolo === "sepse" && s.ativo !== false).length} cor="#38bdf8" sub="instâncias ligadas" />
+            <CardKpi label="Protocolos prontos" valor={acionaveis.length} cor={PROT_FAROL.verde} sub={acionaveis.map(c => c.chave.toUpperCase()).join(" · ")} />
+            <CardKpi label="Instâncias ligadas" valor={setores.filter(s => s.ativo !== false).length} cor="#38bdf8" sub="protocolo × setor" />
           </div>
           <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>
-            <strong>Fase 3a:</strong> Sepse ligada de ponta a ponta. IAM (porta→ECG), AVC (porta→TC) e TEV entram nas fases 3b–3d — já aparecem no Catálogo.
+            <strong>No ar:</strong> Sepse (porta→ATB) e Dor torácica/IAM (porta→ECG). <strong>Próximo:</strong> AVC (porta→TC) e TEV — já aparecem no Catálogo.
           </div>
         </>)}
 
         {sub === "painel" && (<>
           <div style={card}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: abrirAcionar ? 12 : 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 800 }}>Sepse — acionar protocolo</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: abrirAcionar ? 12 : 0 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>Acionar protocolo</div>
+              {protChips}
               {canEdit && <button onClick={() => setAbrirAcionar(v => !v)} style={{ ...btnG, marginLeft: "auto" }}>{abrirAcionar ? "Fechar" : "＋ Acionar"}</button>}
             </div>
             {abrirAcionar && (<>
@@ -11751,19 +11765,28 @@ function ProtocolosPage({ currentUser, canEdit }) {
                 <div><span style={lbl}>Prontuário</span><input value={gForm.prontuario} onChange={e => setGForm(f => ({ ...f, prontuario: e.target.value }))} style={inp} /></div>
                 <div><span style={lbl}>Leito</span><input value={gForm.leito} onChange={e => setGForm(f => ({ ...f, leito: e.target.value }))} style={inp} /></div>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>Sinais vitais (gatilho NEWS — opcional, apoia a decisão)</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(88px,1fr))", gap: 8, marginBottom: 10 }}>
-                <div><span style={lbl}>FR</span><input value={gForm.fr} onChange={e => setGForm(f => ({ ...f, fr: e.target.value }))} style={inp} /></div>
-                <div><span style={lbl}>FC</span><input value={gForm.fc} onChange={e => setGForm(f => ({ ...f, fc: e.target.value }))} style={inp} /></div>
-                <div><span style={lbl}>PA sist.</span><input value={gForm.pa_sist} onChange={e => setGForm(f => ({ ...f, pa_sist: e.target.value }))} style={inp} /></div>
-                <div><span style={lbl}>SpO₂</span><input value={gForm.spo2} onChange={e => setGForm(f => ({ ...f, spo2: e.target.value }))} style={inp} /></div>
-                <div><span style={lbl}>Temp</span><input value={gForm.temp} onChange={e => setGForm(f => ({ ...f, temp: e.target.value }))} style={inp} /></div>
-                <div><span style={lbl}>Consc.</span><select value={gForm.consciencia} onChange={e => setGForm(f => ({ ...f, consciencia: e.target.value }))} style={inp}><option value="A">Alerta</option><option value="V">Voz</option><option value="D">Dor</option><option value="I">Inconsciente</option></select></div>
-              </div>
+              {protSel === "sepse" ? (<>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>Sinais vitais (gatilho NEWS — opcional, apoia a decisão)</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(88px,1fr))", gap: 8, marginBottom: 10 }}>
+                  <div><span style={lbl}>FR</span><input value={gForm.fr} onChange={e => setGForm(f => ({ ...f, fr: e.target.value }))} style={inp} /></div>
+                  <div><span style={lbl}>FC</span><input value={gForm.fc} onChange={e => setGForm(f => ({ ...f, fc: e.target.value }))} style={inp} /></div>
+                  <div><span style={lbl}>PA sist.</span><input value={gForm.pa_sist} onChange={e => setGForm(f => ({ ...f, pa_sist: e.target.value }))} style={inp} /></div>
+                  <div><span style={lbl}>SpO₂</span><input value={gForm.spo2} onChange={e => setGForm(f => ({ ...f, spo2: e.target.value }))} style={inp} /></div>
+                  <div><span style={lbl}>Temp</span><input value={gForm.temp} onChange={e => setGForm(f => ({ ...f, temp: e.target.value }))} style={inp} /></div>
+                  <div><span style={lbl}>Consc.</span><select value={gForm.consciencia} onChange={e => setGForm(f => ({ ...f, consciencia: e.target.value }))} style={inp}><option value="A">Alerta</option><option value="V">Voz</option><option value="D">Dor</option><option value="I">Inconsciente</option></select></div>
+                </div>
+              </>) : (
+                <div style={{ marginBottom: 10 }}>
+                  <span style={lbl}>Queixa (a sugestão do gatilho lê daqui)</span>
+                  <input value={gForm.queixa} onChange={e => setGForm(f => ({ ...f, queixa: e.target.value }))} placeholder="ex.: dor torácica há 1h, opressiva, irradiando para o braço" style={inp} />
+                </div>
+              )}
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <Pill c={gatilho.aciona ? PROT_FAROL.vermelho : gatilho.score == null ? "var(--text-muted)" : PROT_FAROL.verde} t={gatilho.score == null ? "NEWS —" : `NEWS ${gatilho.score}`} />
-                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{gatilho.motivo}</span>
-                <button onClick={acionarSepse} disabled={busy || !canEdit} style={{ ...btnP(!busy && canEdit), marginLeft: "auto" }}>Acionar Sepse{setorSel ? ` · ${setorSel}` : ""}</button>
+                {protSel === "sepse"
+                  ? <Pill c={gatilhoSepse.aciona ? PROT_FAROL.vermelho : gatilhoSepse.score == null ? "var(--text-muted)" : PROT_FAROL.verde} t={gatilhoSepse.score == null ? "NEWS —" : `NEWS ${gatilhoSepse.score}`} />
+                  : <Pill c={gatilhoIam.sugere ? PROT_FAROL.vermelho : "var(--text-muted)"} t={gatilhoIam.sugere ? "sugere IAM" : "sem sugestão"} />}
+                <span style={{ fontSize: 12, color: "var(--text-3)" }}>{protSel === "sepse" ? gatilhoSepse.motivo : gatilhoIam.motivo}</span>
+                <button onClick={acionar} disabled={busy || !canEdit} style={{ ...btnP(!busy && canEdit), marginLeft: "auto" }}>Acionar {protSel.toUpperCase()}{setorSel ? ` · ${setorSel}` : ""}</button>
               </div>
             </>)}
           </div>
@@ -11796,27 +11819,29 @@ function ProtocolosPage({ currentUser, canEdit }) {
         </>)}
 
         {sub === "indicadores" && (<>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Indicadores porta→ação da Sepse{setorSel ? ` no setor ${setorSel}` : " (todos os setores)"}, apurados dos carimbos de tempo — sem digitação.</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>{protChips}<span style={{ fontSize: 12, color: "var(--text-muted)" }}>porta→{kpiPasso.toUpperCase()} do {tplSel?.titulo || protSel.toUpperCase()}{setorSel ? ` · ${setorSel}` : " · todos os setores"}, dos carimbos de tempo (sem digitação).</span></div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
             <CardKpi label="Acionamentos" valor={ind.total} cor={VX.turquesa} sub={`${ind.ativas} ativo(s) · ${ind.concluidas} concluído(s)`} />
-            <CardKpi label="Porta → ATB (mediana)" valor={ind.tempoMedianoAlvo == null ? "—" : fmtDur(ind.tempoMedianoAlvo)} cor={ind.tempoMedianoAlvo != null && ind.tempoMedianoAlvo <= (ind.janela_min || 60) ? PROT_FAROL.verde : PROT_FAROL.vermelho} sub={`alvo ≤ ${ind.janela_min}min`} />
-            <CardKpi label="ATB no alvo" valor={ind.pctAlvoNoPrazo == null ? "—" : ind.pctAlvoNoPrazo + "%"} cor={ind.pctAlvoNoPrazo == null ? "var(--text-muted)" : ind.pctAlvoNoPrazo >= 80 ? PROT_FAROL.verde : ind.pctAlvoNoPrazo >= 50 ? PROT_FAROL.amarelo : PROT_FAROL.vermelho} sub="% dentro de 1h" />
-            <CardKpi label="Sepse confirmada" valor={ind.confirmados} cor="#38bdf8" sub="desfecho confirmado" />
+            <CardKpi label={`Porta → ${kpiPasso.toUpperCase()} (mediana)`} valor={ind.tempoMedianoAlvo == null ? "—" : fmtDur(ind.tempoMedianoAlvo)} cor={ind.tempoMedianoAlvo != null && ind.tempoMedianoAlvo <= (ind.janela_min || 60) ? PROT_FAROL.verde : PROT_FAROL.vermelho} sub={`alvo ≤ ${ind.janela_min}min`} />
+            <CardKpi label={`${kpiPasso.toUpperCase()} no alvo`} valor={ind.pctAlvoNoPrazo == null ? "—" : ind.pctAlvoNoPrazo + "%"} cor={ind.pctAlvoNoPrazo == null ? "var(--text-muted)" : ind.pctAlvoNoPrazo >= 80 ? PROT_FAROL.verde : ind.pctAlvoNoPrazo >= 50 ? PROT_FAROL.amarelo : PROT_FAROL.vermelho} sub="% dentro do alvo" />
+            <CardKpi label="Confirmados" valor={ind.confirmados} cor="#38bdf8" sub="desfecho confirmado" />
           </div>
-          <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Porta→ATB é o tempo do acionamento até o antibiótico (carimbo do passo "atb"). O relógio corre de <code>acionado_em</code>.</div>
+          <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Porta→{kpiPasso.toUpperCase()} é o tempo do acionamento até o passo "{kpiPasso}". O relógio corre de <code>acionado_em</code>.</div>
         </>)}
 
         {sub === "catalogo" && (<>
+          <div style={{ marginBottom: 12 }}>{protChips}</div>
           {(() => {
-            const t = sepseTpl;
+            const t = tplSel;
+            const gat = t?.gatilho?.tipo === "news" ? `NEWS ≥ ${t.gatilho.min ?? 5}` : t?.gatilho?.tipo === "queixa" ? "sugestão pela queixa da triagem" : (t?.gatilho?.obs || "—");
             return (
               <div style={card}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 800 }}>{t?.titulo || "Sepse — pacote de 1 hora"}</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 800 }}>{t?.titulo || protSel.toUpperCase()}</div>
                   <Pill c={t?.status === "vigente" ? PROT_FAROL.verde : PROT_FAROL.amarelo} t={t?.status === "vigente" ? "vigente" : "em validação"} />
                   {isMaster && t?.id && t.status !== "vigente" && <button onClick={() => patchCatalogoProt(t, { status: "vigente", validado: true }, currentUser).then(recarregar)} style={{ ...btnP(), marginLeft: "auto" }}>Validar template</button>}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{t?.referencia} · gatilho: NEWS ≥ {t?.gatilho?.min ?? 5} · janela {t?.janela_min ?? 60}min</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{t?.referencia} · gatilho: {gat} · janela {t?.janela_min ?? "—"}min</div>
                 {(t?.passos || []).map(p => (
                   <div key={p.chave} style={{ display: "flex", gap: 10, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5 }}>
                     <span style={{ color: "var(--text-muted)", width: 20 }}>{p.ordem}</span>
@@ -11824,20 +11849,21 @@ function ProtocolosPage({ currentUser, canEdit }) {
                     <span style={{ color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>alvo {p.alvo_min}min</span>
                   </div>
                 ))}
+                {!(t?.passos || []).length && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Template ainda sem passos — entra numa fase futura.</div>}
               </div>
             );
           })()}
-          <div style={{ fontSize: 13, fontWeight: 800, margin: "6px 2px 10px" }}>Instância por setor <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>— cada setor liga e ajusta a sua Sepse</span></div>
+          <div style={{ fontSize: 13, fontWeight: 800, margin: "6px 2px 10px" }}>Instância por setor <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>— cada setor liga e ajusta o seu {protSel.toUpperCase()}</span></div>
           {!setoresNomes.length && <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Cadastre setores em Giro de Leitos → Setores para ligar o protocolo por setor.</div>}
           {setoresNomes.map(nome => {
-            const inst = instanciaDe(nome, "sepse");
+            const inst = instanciaDe(nome, protSel);
             const ligado = inst ? inst.ativo !== false : false;
             return (
-              <div key={nome} style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+              <div key={protSel + nome} style={{ ...card, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, minWidth: 120 }}>{nome}</div>
                 <button disabled={!canEdit || busy} onClick={() => salvarInstancia(nome, { ativo: !ligado })} style={{ background: ligado ? `${PROT_FAROL.verde}22` : "transparent", color: ligado ? PROT_FAROL.verde : "var(--text-3)", border: `1px solid ${ligado ? PROT_FAROL.verde : "var(--border)"}`, borderRadius: 999, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: canEdit ? "pointer" : "default" }}>{ligado ? "Ligado" : "Desligado"}</button>
                 {ligado && (<>
-                  <div><span style={lbl}>Janela (min)</span><input defaultValue={inst?.janela_min ?? ""} onBlur={e => { const v = e.target.value === "" ? null : +e.target.value; if (v !== (inst?.janela_min ?? null)) salvarInstancia(nome, { janela_min: v }); }} placeholder={String(sepseTpl?.janela_min ?? 60)} style={{ ...inp, width: 90 }} disabled={!canEdit} /></div>
+                  <div><span style={lbl}>Janela (min)</span><input defaultValue={inst?.janela_min ?? ""} onBlur={e => { const v = e.target.value === "" ? null : +e.target.value; if (v !== (inst?.janela_min ?? null)) salvarInstancia(nome, { janela_min: v }); }} placeholder={String(tplSel?.janela_min ?? "")} style={{ ...inp, width: 90 }} disabled={!canEdit} /></div>
                   <div style={{ flex: 1, minWidth: 140 }}><span style={lbl}>Responsável</span><input defaultValue={inst?.responsavel || ""} onBlur={e => { if ((e.target.value || null) !== (inst?.responsavel || null)) salvarInstancia(nome, { responsavel: e.target.value }); }} style={inp} disabled={!canEdit} /></div>
                   {inst && !inst.validado && <Pill c={PROT_FAROL.amarelo} t="em validação" />}
                 </>)}
