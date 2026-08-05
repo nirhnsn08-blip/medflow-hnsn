@@ -123,14 +123,14 @@ export const PERFIS_MODELO = [
     chave: "medico", nome: "Médico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Assistência médica: prescreve, evolui, dá alta.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
-                leitos: "escrita", scih: "leitura", nsp: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "escrita", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
                 print: "leitura" }),
   },
   {
     chave: "enfermeiro", nome: "Enfermeiro(a)", categoria: "enfermeiro", role: "adm_silver",
     descricao: "Processo de Enfermagem completo, gestão de leitos e do cuidado.",
     grants: p({ overview: "leitura", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "leitura",
-                leitos: "escrita", scih: "escrita", nsp: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
                 suprimentos: "leitura", print: "leitura" }),
   },
   {
@@ -143,7 +143,7 @@ export const PERFIS_MODELO = [
     chave: "tecnico_enfermagem", nome: "Técnico(a) de Enfermagem", categoria: "tecnico_enfermagem", role: "adm_silver",
     descricao: "Anotação de enfermagem, checagem de medicação e sinais vitais. O que pode registrar é limitado pela categoria (COFEN 736/2024).",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", leitos: "escrita",
-                scih: "leitura", nsp: "escrita", paciente: "escrita" }),
+                scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita" }),
   },
   {
     chave: "fisioterapeuta", nome: "Fisioterapeuta", categoria: "fisioterapeuta", role: "adm_silver",
@@ -217,14 +217,14 @@ export const PERFIS_MODELO = [
     chave: "gestao", nome: "Gestão / Diretoria", categoria: "administrativo", role: "analista",
     descricao: "Indicadores e BI de todos os módulos. Gestão trabalha com número agregado — não precisa de prontuário individual.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "leitura", bloco: "leitura",
-                leitos: "leitura", scih: "leitura", nsp: "leitura", farmacia: "leitura", suprimentos: "leitura",
+                leitos: "leitura", scih: "leitura", nsp: "leitura", protocolos: "leitura", farmacia: "leitura", suprimentos: "leitura",
                 print: "leitura", auditoria: "leitura" }),
   },
   {
     chave: "diretor_tecnico", nome: "Diretor(a) Técnico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º): acessa tudo do assistencial e a trilha de auditoria.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", bloco: "leitura",
-                leitos: "leitura", scih: "leitura", nsp: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "leitura", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
                 controlados: "leitura", suprimentos: "leitura", print: "leitura", auditoria: "escrita" }),
   },
   {

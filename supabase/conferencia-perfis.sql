@@ -25,7 +25,7 @@
 --                        só não pode ser surpresa.
 --
 -- Resultado ideal: nenhuma linha ❌ e nenhuma ⚠️ inesperada.
--- Cobertura: 149 grants em 18 perfis.
+-- Cobertura: 154 grants em 18 perfis.
 -- ============================================================
 
 with esperado(perfil, modulo, nivel) as (values
@@ -50,6 +50,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('diretor_tecnico','overview','leitura'),
   ('diretor_tecnico','paciente','escrita'),
   ('diretor_tecnico','print','leitura'),
+  ('diretor_tecnico','protocolos','escrita'),
   ('diretor_tecnico','ps','escrita'),
   ('diretor_tecnico','scih','leitura'),
   ('diretor_tecnico','suprimentos','leitura'),
@@ -71,6 +72,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('enfermeiro','overview','leitura'),
   ('enfermeiro','paciente','escrita'),
   ('enfermeiro','print','leitura'),
+  ('enfermeiro','protocolos','escrita'),
   ('enfermeiro','ps','escrita'),
   ('enfermeiro','scih','escrita'),
   ('enfermeiro','suprimentos','leitura'),
@@ -103,6 +105,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('gestao','nsp','leitura'),
   ('gestao','overview','leitura'),
   ('gestao','print','leitura'),
+  ('gestao','protocolos','leitura'),
   ('gestao','ps','leitura'),
   ('gestao','scih','leitura'),
   ('gestao','suprimentos','leitura'),
@@ -117,6 +120,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('medico','overview','leitura'),
   ('medico','paciente','escrita'),
   ('medico','print','leitura'),
+  ('medico','protocolos','escrita'),
   ('medico','ps','escrita'),
   ('medico','scih','leitura'),
   ('nir','bloco','leitura'),
@@ -158,6 +162,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('tecnico_enfermagem','nsp','escrita'),
   ('tecnico_enfermagem','overview','leitura'),
   ('tecnico_enfermagem','paciente','escrita'),
+  ('tecnico_enfermagem','protocolos','escrita'),
   ('tecnico_enfermagem','ps','escrita'),
   ('tecnico_enfermagem','scih','leitura'),
   ('ti','ambulatorio','escrita'),
