@@ -17012,6 +17012,7 @@ export default function App() {
     ...(verModulo("leitos")      ? [{ id: "leitos",   icon: "bed", label: "Giro de Leitos", aviso: filaAviso.n ? filaAviso : null }] : []),
     ...(verModulo("scih")        ? [{ id: "scih",     icon: "shield", label: "SCIH" }]                : []),
     ...(verModulo("nsp")         ? [{ id: "nsp",      icon: "clipboard", label: "Segurança do Paciente" }] : []),
+    ...(verModulo("protocolos")  ? [{ id: "protocolos", icon: "activity", label: "Protocolos Clínicos" }] : []),
     ...(verModulo("farmacia")    ? [{ id: "farmacia", icon: "pill", label: "Farmácia" }]              : []),
     ...(verModulo("suprimentos") ? [{ id: "suprimentos", icon: "cart", label: "Estoque & Compras" }]  : []),
     ...(verModulo("paciente")    ? [{ id: "paciente", icon: "record", label: "Paciente 360" }]        : []),
