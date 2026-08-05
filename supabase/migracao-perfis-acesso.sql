@@ -190,11 +190,11 @@ on conflict (chave) do nothing;
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Médico
   ('medico','overview','leitura'),('medico','atendimento','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
-  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),('medico','nsp','escrita'),
+  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),('medico','nsp','escrita'),('medico','protocolos','escrita'),
   ('medico','paciente','escrita'),('medico','farmacia','leitura'),('medico','print','leitura'),
   -- Enfermeiro
   ('enfermeiro','overview','leitura'),('enfermeiro','atendimento','escrita'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
-  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),('enfermeiro','nsp','escrita'),
+  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),('enfermeiro','nsp','escrita'),('enfermeiro','protocolos','escrita'),
   ('enfermeiro','paciente','escrita'),('enfermeiro','farmacia','leitura'),('enfermeiro','suprimentos','leitura'),
   ('enfermeiro','print','leitura'),
   -- Enfermeiro SCIH
@@ -204,7 +204,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('enfermeiro_scih','farmacia','leitura'),('enfermeiro_scih','print','leitura'),
   -- Técnico de enfermagem
   ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','atendimento','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
-  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),('tecnico_enfermagem','nsp','escrita'),
+  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),('tecnico_enfermagem','nsp','escrita'),('tecnico_enfermagem','protocolos','escrita'),
   ('tecnico_enfermagem','scih','leitura'),('tecnico_enfermagem','paciente','escrita'),
   -- Fisioterapeuta
   ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),('fisioterapeuta','nsp','escrita'),
@@ -238,13 +238,13 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('matriz','overview','leitura'),('matriz','suprimentos','leitura'),
   -- Gestão
   ('gestao','overview','leitura'),('gestao','atendimento','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
-  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),('gestao','nsp','leitura'),
+  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),('gestao','nsp','leitura'),('gestao','protocolos','leitura'),
   ('gestao','farmacia','leitura'),('gestao','suprimentos','leitura'),('gestao','print','leitura'),
   ('gestao','auditoria','leitura'),
   -- Diretor técnico
   ('diretor_tecnico','overview','leitura'),('diretor_tecnico','atendimento','leitura'),('diretor_tecnico','ambulatorio','leitura'),
   ('diretor_tecnico','ps','escrita'),('diretor_tecnico','bloco','leitura'),('diretor_tecnico','leitos','leitura'),
-  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),
+  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),('diretor_tecnico','protocolos','escrita'),
   ('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
   ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
