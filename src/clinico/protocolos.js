@@ -94,6 +94,30 @@ export function janelaTerapeutica(inicioSintomas, agora = Date.now(), { tromboli
   };
 }
 
+// ── TEV (Fase 3d): profilaxia de tromboembolismo — avaliação, não bundle agudo ──
+export const PADUA_CORTE_ALTO = 4;
+
+/**
+ * Escore de Padua (risco de TEV no internado clínico). `marcadas` = chaves dos
+ * fatores presentes; `fatores` = definição [{chave, pontos}] (vem do template,
+ * editável). Alto risco a partir de 4 pontos. Puro/testável.
+ */
+export function escorePadua(marcadas, fatores = []) {
+  const set = new Set(marcadas || []);
+  const score = (fatores || []).filter(f => set.has(f.chave)).reduce((s, f) => s + (Number(f.pontos) || 0), 0);
+  return { score, alto: score >= PADUA_CORTE_ALTO };
+}
+
+/**
+ * Recomendação de profilaxia de TEV: risco de trombose (Padua) × risco de
+ * sangramento. Apoio à decisão — a conduta é do médico. Puro/testável.
+ */
+export function recomendacaoTev({ alto, sangramentoAlto } = {}) {
+  if (!alto) return { chave: "nao_rotina", label: "Profilaxia farmacológica não rotineira", detalhe: "Baixo risco (Padua < 4): estimular deambulação; profilaxia mecânica se imobilizado." };
+  if (sangramentoAlto) return { chave: "mecanica", label: "Profilaxia mecânica (compressão)", detalhe: "Alto risco de TEV + alto risco de sangramento: compressão pneumática / meia elástica; reavaliar a farmacológica quando o sangramento reduzir." };
+  return { chave: "farmacologica", label: "Profilaxia farmacológica", detalhe: "Alto risco de TEV, sem alto risco de sangramento: HBPM (enoxaparina) ou HNF, ajustada à função renal." };
+}
+
 /**
  * Monta o bundle efetivo de uma instância de setor: os passos do template com
  * os alvos sobrescritos pelo setor (prot_setor.passos_over e janela_min).

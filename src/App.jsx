@@ -42,7 +42,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
 // Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
-import { avaliarGatilhoSepse, avaliarGatilhoDorToracica, avaliarGatilhoAvc, janelaTerapeutica, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
+import { avaliarGatilhoSepse, avaliarGatilhoDorToracica, avaliarGatilhoAvc, janelaTerapeutica, escorePadua, recomendacaoTev, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
 import { PROTOCOLOS_CATALOGO, PROT_DESFECHO } from "./clinico/protocolos-catalogo.js";
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
@@ -11523,13 +11523,18 @@ async function loadProtItens() {
 }
 async function registrarAtivacaoProt(a, user) {
   if (!USE_SUPABASE) return null;
+  const body = {
+    protocolo: a.protocolo, setor: a.setor || null, prontuario: a.prontuario || null,
+    paciente_nome: a.paciente_nome || null, leito: a.leito || null,
+    gatilho_ref: a.gatilho_ref || null, acionado_por: user?.name || null,
+  };
+  // Avaliação (TEV) já nasce concluída, com a recomendação como desfecho.
+  if (a.status) body.status = a.status;
+  if (a.desfecho) body.desfecho = a.desfecho;
+  if (a.encerrado_em) body.encerrado_em = a.encerrado_em;
   const res = await sbFetch("prot_ativacoes", {
     method: "POST", headers: { Prefer: "return=representation" },
-    body: JSON.stringify({
-      protocolo: a.protocolo, setor: a.setor || null, prontuario: a.prontuario || null,
-      paciente_nome: a.paciente_nome || null, leito: a.leito || null,
-      gatilho_ref: a.gatilho_ref || null, acionado_por: user?.name || null,
-    }),
+    body: JSON.stringify(body),
   });
   return Array.isArray(res) ? res[0] : res;
 }
@@ -11589,6 +11594,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const [passoVal, setPassoVal] = useState({});
   const [abrirAcionar, setAbrirAcionar] = useState(false);
   const [protSel, setProtSel] = useState("sepse");
+  const [tevForm, setTevForm] = useState({ marcadas: [], sangramentoAlto: false });
   const isMaster = currentUser?.role === "adm_master";
 
   function recarregar() {
@@ -11620,6 +11626,12 @@ function ProtocolosPage({ currentUser, canEdit }) {
   const gatilhoQueixa = protSel === "avc" ? avaliarGatilhoAvc(gForm.queixa) : avaliarGatilhoDorToracica(gForm.queixa);
   const janela = protSel === "avc" ? janelaTerapeutica(gForm.inicio || null, agora) : null;
   const ind = indicadoresProtocolo(ativacoes.filter(a => filtroSetor(a) && a.protocolo === protSel), itensMap, { janela_min: (instSel?.janela_min ?? tplSel?.janela_min ?? 60), passoAlvo: kpiPasso });
+  // TEV é AVALIAÇÃO (escore de Padua), não bundle agudo.
+  const isAvaliacao = (PROTOCOLOS_CATALOGO.find(c => c.chave === protSel)?.tipo) === "avaliacao";
+  const paduaFatores = PROTOCOLOS_CATALOGO.find(c => c.chave === "tev")?.passos || [];
+  const padua = escorePadua(tevForm.marcadas, paduaFatores);
+  const recTev = recomendacaoTev({ alto: padua.alto, sangramentoAlto: tevForm.sangramentoAlto });
+  const avaliacoesTev = ativacoes.filter(a => a.protocolo === "tev" && filtroSetor(a));
 
   async function acionar() {
     if (busy || !canEdit) return;
@@ -11648,6 +11660,17 @@ function ProtocolosPage({ currentUser, canEdit }) {
     await upsertProtSetorRemote({ setor, protocolo: protSel, ativo: cur.ativo !== false, janela_min: cur.janela_min ?? null, responsavel: cur.responsavel || null, validado: cur.validado, ...patch }, currentUser);
     setBusy(false); recarregar();
   }
+  async function registrarAvaliacaoTev() {
+    if (busy || !canEdit) return;
+    setBusy(true);
+    await registrarAtivacaoProt({
+      protocolo: "tev", setor: setorSel || null, prontuario: gForm.prontuario, paciente_nome: gForm.paciente, leito: gForm.leito,
+      gatilho_ref: { padua: tevForm.marcadas, score: padua.score, alto: padua.alto, sangramento_alto: tevForm.sangramentoAlto, recomendacao: recTev.chave, rec_label: recTev.label },
+      status: "concluida", desfecho: recTev.chave, encerrado_em: new Date().toISOString(),
+    }, currentUser);
+    setBusy(false); setGForm(f => ({ ...f, paciente: "", prontuario: "", leito: "" })); setTevForm({ marcadas: [], sangramentoAlto: false }); setAbrirAcionar(false); recarregar();
+  }
+  const toggleFator = ch => setTevForm(f => ({ ...f, marcadas: f.marcadas.includes(ch) ? f.marcadas.filter(x => x !== ch) : [...f.marcadas, ch] }));
 
   const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
@@ -11756,15 +11779,62 @@ function ProtocolosPage({ currentUser, canEdit }) {
             <CardKpi label="Instâncias ligadas" valor={setores.filter(s => s.ativo !== false).length} cor="#38bdf8" sub="protocolo × setor" />
           </div>
           <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>
-            <strong>No ar:</strong> Sepse (porta→ATB) e Dor torácica/IAM (porta→ECG). <strong>Próximo:</strong> AVC (porta→TC) e TEV — já aparecem no Catálogo.
+            <strong>Fase 3 completa:</strong> Sepse (porta→ATB), Dor torácica/IAM (porta→ECG), AVC (porta→TC + janela terapêutica) e TEV (profilaxia — escore de Padua).
           </div>
         </>)}
 
         {sub === "painel" && (<>
+          <div style={{ marginBottom: 12 }}>{protChips}</div>
+
+          {isAvaliacao && (<>
+            <div style={card}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 800 }}>Avaliar TEV — escore de Padua</div>
+                <Pill c={padua.alto ? PROT_FAROL.vermelho : PROT_FAROL.verde} t={`Padua ${padua.score} · ${padua.alto ? "alto risco" : "baixo risco"}`} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 12 }}>
+                <div><span style={lbl}>Paciente (iniciais)</span><input value={gForm.paciente} onChange={e => setGForm(f => ({ ...f, paciente: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>Prontuário</span><input value={gForm.prontuario} onChange={e => setGForm(f => ({ ...f, prontuario: e.target.value }))} style={inp} /></div>
+                <div><span style={lbl}>Leito</span><input value={gForm.leito} onChange={e => setGForm(f => ({ ...f, leito: e.target.value }))} style={inp} /></div>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 6 }}>Fatores de risco (Padua) — marque os presentes</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 4, marginBottom: 12 }}>
+                {paduaFatores.map(f => { const on = tevForm.marcadas.includes(f.chave); return (
+                  <label key={f.chave} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, padding: "4px 6px", borderRadius: 6, cursor: "pointer", background: on ? `${VX.turquesa}14` : "transparent" }}>
+                    <input type="checkbox" checked={on} onChange={() => toggleFator(f.chave)} />
+                    <span style={{ flex: 1 }}>{f.rotulo}</span>
+                    <span style={{ color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>+{f.pontos}</span>
+                  </label>
+                ); })}
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 12, fontWeight: 600 }}>
+                <input type="checkbox" checked={tevForm.sangramentoAlto} onChange={e => setTevForm(f => ({ ...f, sangramentoAlto: e.target.checked }))} />
+                Alto risco de sangramento (contraindica a profilaxia farmacológica)
+              </label>
+              <div style={{ ...card, background: "var(--bg-2)", marginBottom: 12, borderLeft: `4px solid ${recTev.chave === "farmacologica" ? PROT_FAROL.verde : recTev.chave === "mecanica" ? "#fb923c" : "var(--text-muted)"}` }}>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>Recomendação: {recTev.label}</div>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 3 }}>{recTev.detalhe}</div>
+              </div>
+              <button onClick={registrarAvaliacaoTev} disabled={busy || !canEdit} style={btnP(!busy && canEdit)}>Registrar avaliação{setorSel ? ` · ${setorSel}` : ""}</button>
+            </div>
+
+            <div style={{ fontSize: 13, fontWeight: 800, margin: "4px 2px 10px" }}>Avaliações {setorSel && `· ${setorSel}`} <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>({avaliacoesTev.length})</span></div>
+            {!avaliacoesTev.length && <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Nenhuma avaliação de TEV {setorSel ? "neste setor" : ""} ainda.</div>}
+            {avaliacoesTev.slice(0, 20).map(a => { const g = a.gatilho_ref || {}; const rec = g.recomendacao; const cor = rec === "farmacologica" ? PROT_FAROL.verde : rec === "mecanica" ? "#fb923c" : "var(--text-muted)"; return (
+              <div key={a.id} style={{ ...card, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderLeft: `4px solid ${cor}`, marginBottom: 8 }}>
+                <Pill c={g.alto ? PROT_FAROL.vermelho : PROT_FAROL.verde} t={`Padua ${g.score ?? "—"}`} />
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{a.paciente_nome || a.prontuario || "Paciente"}</div>
+                {a.leito && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>leito {a.leito}</span>}
+                <span style={{ fontSize: 12, color: cor, fontWeight: 600 }}>{g.rec_label || rec || "—"}</span>
+                <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{dataHora(a.acionado_em)}</span>
+              </div>
+            ); })}
+          </>)}
+
+          {!isAvaliacao && (<>
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: abrirAcionar ? 12 : 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 800 }}>Acionar protocolo</div>
-              {protChips}
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>Acionar {protSel.toUpperCase()}</div>
               {canEdit && <button onClick={() => setAbrirAcionar(v => !v)} style={{ ...btnG, marginLeft: "auto" }}>{abrirAcionar ? "Fechar" : "＋ Acionar"}</button>}
             </div>
             {abrirAcionar && (<>
@@ -11836,17 +11906,27 @@ function ProtocolosPage({ currentUser, canEdit }) {
               </div>
             );
           })}
+          </>)}
         </>)}
 
         {sub === "indicadores" && (<>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>{protChips}<span style={{ fontSize: 12, color: "var(--text-muted)" }}>porta→{kpiPasso.toUpperCase()} do {tplSel?.titulo || protSel.toUpperCase()}{setorSel ? ` · ${setorSel}` : " · todos os setores"}, dos carimbos de tempo (sem digitação).</span></div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
-            <CardKpi label="Acionamentos" valor={ind.total} cor={VX.turquesa} sub={`${ind.ativas} ativo(s) · ${ind.concluidas} concluído(s)`} />
-            <CardKpi label={`Porta → ${kpiPasso.toUpperCase()} (mediana)`} valor={ind.tempoMedianoAlvo == null ? "—" : fmtDur(ind.tempoMedianoAlvo)} cor={ind.tempoMedianoAlvo != null && ind.tempoMedianoAlvo <= (ind.janela_min || 60) ? PROT_FAROL.verde : PROT_FAROL.vermelho} sub={`alvo ≤ ${ind.janela_min}min`} />
-            <CardKpi label={`${kpiPasso.toUpperCase()} no alvo`} valor={ind.pctAlvoNoPrazo == null ? "—" : ind.pctAlvoNoPrazo + "%"} cor={ind.pctAlvoNoPrazo == null ? "var(--text-muted)" : ind.pctAlvoNoPrazo >= 80 ? PROT_FAROL.verde : ind.pctAlvoNoPrazo >= 50 ? PROT_FAROL.amarelo : PROT_FAROL.vermelho} sub="% dentro do alvo" />
-            <CardKpi label="Confirmados" valor={ind.confirmados} cor="#38bdf8" sub="desfecho confirmado" />
-          </div>
-          <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Porta→{kpiPasso.toUpperCase()} é o tempo do acionamento até o passo "{kpiPasso}". O relógio corre de <code>acionado_em</code>.</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>{protChips}<span style={{ fontSize: 12, color: "var(--text-muted)" }}>{isAvaliacao ? `Avaliações de TEV (escore de Padua)${setorSel ? ` · ${setorSel}` : " · todos os setores"}.` : `porta→${kpiPasso.toUpperCase()} do ${tplSel?.titulo || protSel.toUpperCase()}${setorSel ? ` · ${setorSel}` : " · todos os setores"}, dos carimbos de tempo (sem digitação).`}</span></div>
+          {isAvaliacao ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+              <CardKpi label="Avaliações" valor={avaliacoesTev.length} cor={VX.turquesa} sub="internados avaliados" />
+              <CardKpi label="Alto risco" valor={avaliacoesTev.filter(a => a.gatilho_ref?.alto).length} cor={PROT_FAROL.vermelho} sub={`${avaliacoesTev.length ? Math.round(avaliacoesTev.filter(a => a.gatilho_ref?.alto).length / avaliacoesTev.length * 100) : 0}% (Padua ≥ 4)`} />
+              <CardKpi label="Prof. farmacológica" valor={avaliacoesTev.filter(a => a.gatilho_ref?.recomendacao === "farmacologica").length} cor={PROT_FAROL.verde} sub="recomendada" />
+              <CardKpi label="Prof. mecânica" valor={avaliacoesTev.filter(a => a.gatilho_ref?.recomendacao === "mecanica").length} cor="#fb923c" sub="risco de sangramento" />
+            </div>
+          ) : (<>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
+              <CardKpi label="Acionamentos" valor={ind.total} cor={VX.turquesa} sub={`${ind.ativas} ativo(s) · ${ind.concluidas} concluído(s)`} />
+              <CardKpi label={`Porta → ${kpiPasso.toUpperCase()} (mediana)`} valor={ind.tempoMedianoAlvo == null ? "—" : fmtDur(ind.tempoMedianoAlvo)} cor={ind.tempoMedianoAlvo != null && ind.tempoMedianoAlvo <= (ind.janela_min || 60) ? PROT_FAROL.verde : PROT_FAROL.vermelho} sub={`alvo ≤ ${ind.janela_min}min`} />
+              <CardKpi label={`${kpiPasso.toUpperCase()} no alvo`} valor={ind.pctAlvoNoPrazo == null ? "—" : ind.pctAlvoNoPrazo + "%"} cor={ind.pctAlvoNoPrazo == null ? "var(--text-muted)" : ind.pctAlvoNoPrazo >= 80 ? PROT_FAROL.verde : ind.pctAlvoNoPrazo >= 50 ? PROT_FAROL.amarelo : PROT_FAROL.vermelho} sub="% dentro do alvo" />
+              <CardKpi label="Confirmados" valor={ind.confirmados} cor="#38bdf8" sub="desfecho confirmado" />
+            </div>
+            <div style={{ ...card, marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>Porta→{kpiPasso.toUpperCase()} é o tempo do acionamento até o passo "{kpiPasso}". O relógio corre de <code>acionado_em</code>.</div>
+          </>)}
         </>)}
 
         {sub === "catalogo" && (<>
@@ -11864,9 +11944,9 @@ function ProtocolosPage({ currentUser, canEdit }) {
                 <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>{t?.referencia} · gatilho: {gat} · janela {t?.janela_min ?? "—"}min</div>
                 {(t?.passos || []).map(p => (
                   <div key={p.chave} style={{ display: "flex", gap: 10, alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 12.5 }}>
-                    <span style={{ color: "var(--text-muted)", width: 20 }}>{p.ordem}</span>
+                    <span style={{ color: "var(--text-muted)", width: 20 }}>{p.ordem ?? "•"}</span>
                     <span style={{ flex: 1 }}>{p.rotulo} {p.critico && <Pill c="#f43f5e" t="crítico" />}</span>
-                    <span style={{ color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>alvo {p.alvo_min}min</span>
+                    <span style={{ color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{p.alvo_min != null ? `alvo ${p.alvo_min}min` : p.pontos != null ? `+${p.pontos}` : ""}</span>
                   </div>
                 ))}
                 {!(t?.passos || []).length && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Template ainda sem passos — entra numa fase futura.</div>}
