@@ -1,22 +1,62 @@
-# 📍 Ponto de restauração — checkpoint-v53
+# 📍 Ponto de restauração — checkpoint-v54
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v53` (anteriores: `checkpoint-v52` … `checkpoint-v1`)
-- **Data:** 2026-08-03 · `main` em `a92fe54`
+- **Tag Git mais recente:** `checkpoint-v54` (anteriores: `checkpoint-v53` … `checkpoint-v1`)
+- **Data:** 2026-08-05 · `main` em `178af18`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v52 para cá o **NSP fechou a Fase 2d** — e com ela o módulo inteiro:
-  relatórios/NOTIVISA (**#53**), protocolos (**#55**), capacitações (**#61**),
-  comunicação (**#62**), blindagem contra tela-branca (**#63**+**#64**) e o
-  **Assistente AI (#65)**. Em paralelo: **Atendimento** — faturamento + os cinco itens
-  que faltavam (**#54**, Adauam), **saneamento** (bundle dividido + Vite 7, **#56**) e o
-  **fix do crachá/401** (**#58**).
-- **948 testes** · **88 tabelas / 1392 colunas** · build limpo.
+  vai ao ar). Da v53 para cá: a **Tier 1 Fase 3 completa** — o módulo **Protocolos
+  Clínicos Gerenciados** com os 4 protocolos tempo-dependentes (Sepse **#67**, Dor
+  torácica/IAM **#68**, AVC **#70**, TEV **#72**), o **item de menu que faltava** (**#71**)
+  e os **grants clínicos** do módulo (**#69**). E a **Fase 3 de segurança: RLS de
+  leitura por módulo** (**#60**), que fecha a exposição de SELECT `using(true)`.
+- **1065 testes** · **92 tabelas / 1444 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v54 (desde a v53): Protocolos Clínicos Gerenciados (Tier 1 Fase 3) + RLS de leitura por módulo
+
+### 🚑 Protocolos Clínicos Gerenciados — Tier 1 Fase 3 (PRs #67, #68, #70, #72, #71, #69)
+Módulo próprio **"Protocolos Clínicos"** (barra lateral, **por setor assistencial**) com as
+4 linhas de cuidado tempo-dependentes ("tempo é tecido"). Cada protocolo **acende do que já
+existe**, abre um **bundle com relógio** (cada passo com alvo em minutos, vermelho quando
+estoura) e entrega os **indicadores porta→ação** sem digitação. Diferencial: **template
+clínico comum + instância por setor** — cada setor liga e ajusta o que é dele.
+
+- **Sepse** (#67 — ILAS, pacote de 1h): gatilho por **NEWS ≥ 5** (reusa `scoreAlertaPrecoce`);
+  bundle lactato / hemocultura / ATB / cristaloide / vasopressor; indicador **porta→ATB**.
+- **Dor torácica / IAM** (#68): gatilho por **sugestão na queixa** (texto livre da triagem);
+  bundle **ECG ≤ 10 min** / AAS / troponina / reperfusão; indicador **porta→ECG**.
+- **AVC** (#70): gatilho por queixa; bundle código AVC / **TC ≤ 25 min** / laudo / NIHSS /
+  trombólise; **porta→TC** + **janela terapêutica** do início dos sintomas ("último visto bem",
+  trombólise ≤ 4,5h) — o dado mais decisivo do AVC.
+- **TEV** (#72): é **avaliação**, não evento agudo — **escore de Padua** (11 fatores) → alto
+  risco ≥ 4 → recomendação de profilaxia (farmacológica / mecânica) contra o risco de sangramento.
+- Motor puro `src/clinico/protocolos.js` (**+43 testes**) + `protocolos-catalogo.js`. Migração
+  `migracao-protocolos.sql` (4 tabelas `prot_*`) + um seed por protocolo. Blindado (error
+  boundary `LimiteErro` + `TABELAS_OPCIONAIS`).
+- **#71 — o item de menu que faltava:** o módulo foi registrado na 3a (grant, rota, componente),
+  mas **não entrou na lista fixa da barra lateral** (`App.jsx`, `sidebarItems`) — ficou
+  inacessível em produção até este fix de 1 linha. **Lição:** módulo novo top-level precisa
+  entrar no `sidebarItems`, não só em `MODULOS`.
+- **#69 — grants clínicos:** o módulo Protocolos concedido a médico / enfermeiro / técnico /
+  diretor técnico (escrita) e gestão (leitura), de forma focada (não espelha o NSP).
+
+### 🔒 RLS de leitura por módulo — Fase 3 de segurança (PR #60)
+O SELECT das tabelas deixou de ser `using(true)`: a leitura de cada tabela agora é **amarrada
+ao módulo do perfil** via `public.pode_ver(<módulo>)`, com o mapa único em
+`src/acesso/mapa-tabelas.js` → gerador `gerar-rls.mjs` → `migracao-rls-leitura.sql`;
+`mapa-tabelas.test.js` garante que nenhuma tabela ficou de fora. Fecha o risco antigo do
+`pacientes` (nome/CPF/nome da mãe/endereço) exposto a qualquer autenticado. **Ainda pendente:**
+filtro por **LINHA** (só os do meu setor) e RLS de **ESCRITA** (segue pelo `role`). Um merge de
+integração (`63885d7`) corrigiu de passagem uma regressão de escrita. **Regra p/ o futuro:**
+tabela nova precisa entrar no `mapa-tabelas.js` + rodar `gerar-rls.mjs`.
+
+**1065 testes + build verdes.** Com a Fase 3, faltam do **Tier 1** só os retoques; a grande
+frente seguinte é a **Fase 4 — Faturamento SUS**.
 
 ## 🆕 Novidades da v53 (desde a v52): NSP Fase 2d completa (fecha o módulo) + Atendimento (faturamento) + saneamento
 

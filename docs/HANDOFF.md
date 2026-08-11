@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-03 · `main` em `a92fe54` (checkpoint-v53) · zero PRs abertos.
+**Atualizado em:** 2026-08-05 · `main` em `178af18` (checkpoint-v54) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **948 testes**. Três merecem atenção especial:
+`npm test` roda **1065 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -137,6 +137,12 @@ comunicação** (alerta / lição aprendida / informativo) e um **Assistente AI 
 (chat sobre os dados do NSP, nada sai do navegador) — com o módulo **blindado por error
 boundary** (um erro nunca derruba o app). O **Atendimento** também ganhou a **fundação do
 faturamento** (conta do episódio por competência, em centavos; SUS não cobra do paciente).
+E o **Tier 1 fechou a Fase 3 — Protocolos Clínicos Gerenciados**: módulo próprio (por setor)
+com os 4 protocolos tempo-dependentes — **Sepse** (porta→ATB, gatilho NEWS), **Dor torácica/IAM**
+(porta→ECG), **AVC** (porta→TC + janela terapêutica) e **TEV** (profilaxia por escore de Padua) —
+cada um com gatilho, bundle-relógio e indicadores porta→ação. E entrou a **Fase 3 de segurança:
+RLS de leitura por módulo** (`pode_ver` + `mapa-tabelas.js`), que fecha a exposição de SELECT
+`using(true)` das tabelas sensíveis.
 
 **Ainda não há paciente real no sistema.**
 
@@ -144,11 +150,11 @@ faturamento** (conta do episódio por competência, em centavos; SUS não cobra 
 
 1. **Reclassificar a equipe** nos cargos certos — hoje quase todos estão no perfil
    "Provisório", que mantém o acesso antigo. Só depois disso desativar o Provisório.
-2. **Apertar o RLS de `pacientes` (URGENTE — antes do primeiro paciente real).** A
-   identificação completa (CFM 1.638, v49) fez a tabela expor nome/CPF/nome da mãe/
-   endereço, e a política de SELECT é `using(true)` (todo autenticado lê tudo). Depende de
-   **modo sombra + quebra-vidro** (ver [CONTEXTO.md](CONTEXTO.md)); hoje o controle de
-   acesso organiza o menu, **não** restringe o dado.
+2. **RLS de leitura por módulo NO AR (PR #60):** o SELECT de `pacientes` (e das demais tabelas
+   sensíveis) deixou de ser `using(true)` — a leitura passou a exigir o módulo do perfil
+   (`public.pode_ver` + `src/acesso/mapa-tabelas.js`). **Ainda pendente:** filtro por **LINHA**
+   (só os pacientes do meu setor — depende de lotação confiável em `profiles.setor`) e **RLS de
+   ESCRITA** (insert/update/delete seguem pelo `role`, não pelo módulo).
 3. **Modularizar o `App.jsx`** — dívida estrutural que trava o trabalho em paralelo.
 
 ---
