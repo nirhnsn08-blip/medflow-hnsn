@@ -92,7 +92,6 @@ export const MODULOS = [
   { chave: "auditoria",    label: "Auditoria",          grupo: "Gestão",
     nota: "Trilha de quem fez o quê. Quem é auditado não deveria administrar a própria trilha." },
   { chave: "import",       label: "Importar Dados",     grupo: "Sistema" },
-  { chave: "supabase",     label: "Banco de Dados",     grupo: "Sistema" },
   { chave: "users",        label: "Usuários e Perfis",  grupo: "Sistema", exigeMaster: true,
     nota: "Exige ADM Master sempre — é a porta de volta se um perfil for configurado errado." },
 ];
@@ -236,7 +235,7 @@ export const PERFIS_MODELO = [
     grants: p({ overview: "escrita", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
                 leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "escrita",
                 controlados: "escrita", suprimentos: "escrita", print: "escrita",
-                faturamento: "escrita", auditoria: "escrita", import: "escrita", supabase: "escrita", users: "escrita" }),
+                faturamento: "escrita", auditoria: "escrita", import: "escrita", users: "escrita" }),
   },
 ];
 

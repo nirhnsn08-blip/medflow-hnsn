@@ -252,7 +252,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('ti','overview','escrita'),('ti','atendimento','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
   ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','nsp','escrita'),('ti','protocolos','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
   ('ti','controlados','escrita'),('ti','suprimentos','escrita'),('ti','print','escrita'),
-  ('ti','faturamento','escrita'),('ti','auditoria','escrita'),('ti','import','escrita'),('ti','supabase','escrita'),('ti','users','escrita')
+  ('ti','faturamento','escrita'),('ti','auditoria','escrita'),('ti','import','escrita'),('ti','users','escrita')
 on conflict (perfil_chave, modulo) do nothing;
 
 
@@ -279,7 +279,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('provisorio','bloco','escrita'),('provisorio','leitos','escrita'),('provisorio','scih','escrita'),('provisorio','nsp','escrita'),('provisorio','protocolos','escrita'),
   ('provisorio','paciente','escrita'),('provisorio','farmacia','escrita'),('provisorio','controlados','escrita'),
   ('provisorio','suprimentos','escrita'),('provisorio','print','escrita'),('provisorio','auditoria','escrita'),
-  ('provisorio','faturamento','escrita'),('provisorio','import','escrita'),('provisorio','supabase','escrita')
+  ('provisorio','faturamento','escrita'),('provisorio','import','escrita')
 on conflict (perfil_chave, modulo) do nothing;
 
 update public.profiles set perfil = 'ti'         where perfil is null and role = 'adm_master';

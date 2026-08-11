@@ -17056,7 +17056,6 @@ export default function App() {
   const canPrint    = isMaster || isSilver || isAnalista; // master, silver e analista geram dashboard
   const canImport   = isMaster || isSilver;   // master e silver importam
   const canAudit    = isMaster || isSilver;   // master e silver veem auditoria
-  const canSupabase = isMaster;               // só master acessa banco
   const canUsers    = isMaster;               // só master gerencia usuários
 
   function handleLogout() { clearSession(); setCurrentUser(null); setActive("overview"); }
@@ -17102,7 +17101,6 @@ export default function App() {
     ...(canPrint    && verModulo("print")     ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
     ...(canAudit    && verModulo("auditoria") ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
     ...(canImport   && verModulo("import")    ? [{ id: "import",    icon: "upload",    label: "Importar Dados" }]      : []),
-    ...(canSupabase && verModulo("supabase")  ? [{ id: "supabase",  icon: "cloud",     label: "Banco de Dados" }]      : []),
     ...(canUsers    ? [{ id: "users",     icon: "users",     label: "Usuários" }]            : []),
   ];
   const currentSpec = SPECS.find(s => s.id === active);
@@ -17202,7 +17200,6 @@ export default function App() {
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
           {active === "auditoria" && canAudit    && <AuditoriaPage />}
           {active === "import"    && canImport   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
-          {active === "supabase"  && canSupabase && <SupabasePage />}
           {active === "users"     && canUsers    && <UsersPage currentUser={currentUser} />}
           </LimiteErro>
         </div>
