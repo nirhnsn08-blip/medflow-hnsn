@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
   minutosEntre, avaliarGatilhoSepse, avaliarGatilhoDorToracica, avaliarGatilhoAvc, janelaTerapeutica,
-  montarBundle, estadoAtivacao, tempoPortaAcao, indicadoresProtocolo, resumoPainelSetor,
+  escorePadua, recomendacaoTev, montarBundle, estadoAtivacao, tempoPortaAcao, indicadoresProtocolo, resumoPainelSetor,
 } from "./protocolos.js";
-import { SEPSE, IAM, AVC } from "./protocolos-catalogo.js";
+import { SEPSE, IAM, AVC, TEV } from "./protocolos-catalogo.js";
 
 const at = iso => new Date(iso).getTime();
 const T0 = "2026-08-03T10:00:00.000Z";
@@ -268,5 +268,36 @@ describe("bundle do AVC (Fase 3c)", () => {
     expect(tc.alvo_min).toBe(25);
     expect(tc.critico).toBe(true);
     expect(AVC.kpi_passo).toBe("tc");
+  });
+});
+
+describe("TEV — escore de Padua + recomendação (Fase 3d)", () => {
+  const fatores = TEV.passos;
+  it("o template do TEV é uma avaliação com os 11 fatores de Padua", () => {
+    expect(TEV.tipo).toBe("avaliacao");
+    expect(fatores.length).toBe(11);
+    expect(fatores.find(f => f.chave === "cancer").pontos).toBe(3);
+  });
+  it("soma os pontos dos fatores marcados (alto risco ≥ 4)", () => {
+    const r = escorePadua(["cancer", "idade"], fatores); // 3 + 1 = 4
+    expect(r.score).toBe(4);
+    expect(r.alto).toBe(true);
+  });
+  it("baixo risco quando a soma < 4", () => {
+    const r = escorePadua(["idade", "obesidade"], fatores); // 1 + 1 = 2
+    expect(r.score).toBe(2);
+    expect(r.alto).toBe(false);
+  });
+  it("ignora chave de fator inexistente", () => {
+    expect(escorePadua(["xis"], fatores).score).toBe(0);
+  });
+  it("alto risco sem sangramento → farmacológica", () => {
+    expect(recomendacaoTev({ alto: true, sangramentoAlto: false }).chave).toBe("farmacologica");
+  });
+  it("alto risco com sangramento → mecânica", () => {
+    expect(recomendacaoTev({ alto: true, sangramentoAlto: true }).chave).toBe("mecanica");
+  });
+  it("baixo risco → não rotina", () => {
+    expect(recomendacaoTev({ alto: false }).chave).toBe("nao_rotina");
   });
 });

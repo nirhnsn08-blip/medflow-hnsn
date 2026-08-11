@@ -68,15 +68,36 @@ export const AVC = {
   ],
 };
 
-// Esboços para o catálogo (3d) — só rótulo/gatilho; sem passos ainda.
-export const ESBOCOS = [
-  { chave: "tev", titulo: "Profilaxia de TEV no internado", categoria: "tromboembolismo",
-    referencia: "Padua / Caprini; ACCP", janela_min: null, kpi_passo: null,
-    gatilho: { tipo: "internacao", obs: "Avaliar todo internado × risco de sangramento" }, passos: [] },
-];
+// TEV (Fase 3d) — avaliação de profilaxia pelo escore de Padua. NÃO é bundle
+// agudo: aqui os "passos" são os FATORES de Padua (com pontos), não etapas com
+// relógio. `tipo: "avaliacao"` faz a tela mostrar o checklist em vez do acionar.
+export const TEV = {
+  chave: "tev",
+  titulo: "Profilaxia de TEV no internado",
+  categoria: "tromboembolismo",
+  referencia: "Escore de Padua; ACCP; SBACV",
+  tipo: "avaliacao",
+  janela_min: null,
+  kpi_passo: null,
+  corte_alto: 4, // Padua ≥ 4 = alto risco
+  gatilho: { tipo: "internacao", obs: "Rastreio de todo internado (não é evento agudo)" },
+  passos: [
+    { chave: "cancer",          rotulo: "Câncer ativo",                                    pontos: 3 },
+    { chave: "tev_previo",      rotulo: "TEV prévio (exceto trombose venosa superficial)", pontos: 3 },
+    { chave: "mobilidade",      rotulo: "Mobilidade reduzida (repouso ≥ 3 dias)",          pontos: 3 },
+    { chave: "trombofilia",     rotulo: "Trombofilia conhecida",                           pontos: 3 },
+    { chave: "trauma_cirurgia", rotulo: "Trauma e/ou cirurgia recente (≤ 1 mês)",          pontos: 2 },
+    { chave: "idade",           rotulo: "Idade ≥ 70 anos",                                 pontos: 1 },
+    { chave: "cardio_resp",     rotulo: "Insuficiência cardíaca e/ou respiratória",        pontos: 1 },
+    { chave: "iam_avc",         rotulo: "IAM e/ou AVC isquêmico",                          pontos: 1 },
+    { chave: "infeccao_reuma",  rotulo: "Infecção aguda e/ou doença reumatológica",        pontos: 1 },
+    { chave: "obesidade",       rotulo: "Obesidade (IMC ≥ 30)",                            pontos: 1 },
+    { chave: "hormonio",        rotulo: "Terapia hormonal em curso",                       pontos: 1 },
+  ],
+};
 
-// Catálogo canônico completo (Sepse + IAM + AVC prontos + esboço TEV).
-export const PROTOCOLOS_CATALOGO = [SEPSE, IAM, AVC, ...ESBOCOS];
+// Catálogo canônico completo — os 4 protocolos da Fase 3 (Sepse, IAM, AVC, TEV).
+export const PROTOCOLOS_CATALOGO = [SEPSE, IAM, AVC, TEV];
 
 export const PROT_STATUS = [
   { v: "ativa",     label: "Ativa",      nivel: "andamento" },
