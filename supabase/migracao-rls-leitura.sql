@@ -191,7 +191,7 @@ $converter$;
 -- PARTE 3/4 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 23 das 92 tabelas ficam abertas a
+-- a mesma coisa em português. 24 das 93 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -301,6 +301,7 @@ begin
       ('scih_germes', 'true'),                                                                        -- todos os autenticados
       ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
       ('setores', 'true'),                                                                            -- todos os autenticados
+      ('sigtap_procedimentos', 'true'),                                                               -- todos os autenticados
       ('solicitacoes', 'public.pode_ver_algum(''ps'', ''leitos'')'),                                  -- ps, leitos
       ('sup_cotacoes', 'public.pode_ver_algum(''suprimentos'')'),                                     -- suprimentos
       ('sup_fornecedores', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                   -- suprimentos, farmacia
@@ -396,7 +397,8 @@ with esperadas_abertas(tabela) as (values
   ('ps_faixas_pediatricas'),
   ('ps_protocolos'),
   ('scih_germes'),
-  ('setores')
+  ('setores'),
+  ('sigtap_procedimentos')
 ),
 politicas as (
   select c.relname::text as tabela,

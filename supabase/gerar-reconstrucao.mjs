@@ -92,9 +92,21 @@ const ORDEM = [
   // o pôs na ORDEM nem regerou este script — a trava do gerador teria
   // quebrado ao subir um banco novo. Entra aqui, na posição cronológica.
   "migracao-protocolos.sql",
+  // Fase 3b/3c/3d — seeds de IAM, AVC e TEV sobre as tabelas prot_* criadas
+  // acima. Mesma pegadinha da linha anterior: os arquivos existiam mas não
+  // entraram na ORDEM nem regeraram este script (a trava pegou ao rodar).
+  "migracao-protocolos-iam.sql",
+  "migracao-protocolos-avc.sql",
+  "migracao-protocolos-tev.sql",
   // Redundante num banco novo (o seed de perfis-acesso já traz os grants de
   // NSP), mas fica na ordem porque é o que os bancos JÁ existentes rodaram.
   "migracao-perfis-nsp.sql",
+  // Fase 4 (Faturamento SUS) — tabela de procedimentos do SUS (referência,
+  // sem paciente). Antes do RLS abaixo, que cobre também as tabelas sigtap_*.
+  "migracao-sigtap.sql",
+  // Grants do módulo Faturamento para os bancos que já rodaram o seed
+  // (mesmo motivo do migracao-perfis-nsp.sql). Redundante num banco novo.
+  "migracao-perfis-faturamento.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
