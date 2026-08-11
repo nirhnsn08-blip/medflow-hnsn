@@ -1,21 +1,54 @@
-# 📍 Ponto de restauração — checkpoint-v54
+# 📍 Ponto de restauração — checkpoint-v55
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v54` (anteriores: `checkpoint-v53` … `checkpoint-v1`)
-- **Data:** 2026-08-05 · `main` em `178af18`
+- **Tag Git mais recente:** `checkpoint-v55` (anteriores: `checkpoint-v54` … `checkpoint-v1`)
+- **Data:** 2026-08-11 · `main` em `96e6fb1`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v53 para cá: a **Tier 1 Fase 3 completa** — o módulo **Protocolos
-  Clínicos Gerenciados** com os 4 protocolos tempo-dependentes (Sepse **#67**, Dor
-  torácica/IAM **#68**, AVC **#70**, TEV **#72**), o **item de menu que faltava** (**#71**)
-  e os **grants clínicos** do módulo (**#69**). E a **Fase 3 de segurança: RLS de
-  leitura por módulo** (**#60**), que fecha a exposição de SELECT `using(true)`.
-- **1065 testes** · **92 tabelas / 1444 colunas** · build limpo.
+  vai ao ar). Da v54 para cá: começou a **Tier 1 Fase 4 — Faturamento SUS**, com a
+  **fundação do SIGTAP** num módulo **Faturamento** próprio (PR **#74**): a tabela oficial
+  de procedimentos do SUS semeada com os **219 que o HNSN fatura**, read-only, e a **glosa
+  de permanência** (permanência real × média) ao vivo.
+- **1099 testes** · **93 tabelas / 1461 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v55 (desde a v54): Faturamento SUS — fundação do SIGTAP (Tier 1 Fase 4)
+
+### 💼 Módulo Faturamento + tabela SIGTAP (PR #74)
+Começou a **Fase 4 (Faturamento SUS)**, construída **sobre a base de conta do Adauam**
+(`src/atendimento/faturamento.js`, que já modela as vias BPA/APAC/AIH/TISS/direta), em
+**arquivos novos** para não colidir. O que entrou nesta fundação:
+
+- **Motor puro `src/atendimento/sigtap.js` (+34 testes)** — via-agnóstico (AIH/APAC/BPA):
+  normaliza o código SIGTAP, deduz a **via** pelo instrumento de registro, calcula a
+  **permanência real × média** e roda um **checador de glosa extensível** que **CALA quando
+  falta dado** (sem alarme falso). As travas de sexo/idade/CID já existem e acendem quando o
+  pacote do DATASUS trouxer esses dados.
+- **Tabela `sigtap_procedimentos`** (`migracao-sigtap.sql`) semeada com os **219 procedimentos
+  que o HNSN fatura hoje** (grupo 03 clínicos + 04 cirúrgicos), com a **média de permanência**.
+  Referência **read-only** (valor oficial não se edita à mão = glosa na certa); RLS de leitura
+  `[TODOS]`; competência no formato `AAAA-MM` para casar com o `faturamento.js`.
+- **Tela `src/atendimento/FaturamentoSus.jsx`** — arquivo próprio (recebe `sb=sbFetch` por prop):
+  lista read-only dos 219 (código, nome, via, média) + **testador de glosa de permanência** ao vivo.
+  Módulo top-level **Faturamento** na barra (ícone briefcase, grupo Apoio), blindado por `LimiteErro`
+  e `TABELAS_OPCIONAIS`.
+- **Grants** (`migracao-perfis-faturamento.sql`): o módulo `faturamento` concedido a
+  faturamento / ti / provisório.
+- **De passagem:** corrigidos os seeds **IAM/AVC/TEV** que faltavam na `ORDEM` do
+  `gerar-reconstrucao.mjs` — o `reconstruir-banco.sql` estava desatualizado para subir banco novo.
+
+**Migrações desta fase (rodadas nos 2 bancos):** `migracao-sigtap.sql`,
+`migracao-perfis-faturamento.sql` e o `migracao-rls-leitura.sql` regenerado.
+**⚠️ Lição:** tabela nova classificada no `mapa-tabelas.js` só passa a ser lida depois de rodar
+o `migracao-rls-leitura.sql` — sem ele, fica **RLS ligado sem política = tela vazia, sem erro**.
+
+**Falta da Fase 4:** enriquecer o SIGTAP com o **pacote do DATASUS** (valores em R$, CID, CBO) →
+a **conta AIH se montar do prontuário** (o diferencial, em coordenação com o Adauam) → a glosa
+completa → o arquivo de remessa (parado até o layout que o HNSN transmite hoje). **1099 testes + build verdes.**
 
 ## 🆕 Novidades da v54 (desde a v53): Protocolos Clínicos Gerenciados (Tier 1 Fase 3) + RLS de leitura por módulo
 
