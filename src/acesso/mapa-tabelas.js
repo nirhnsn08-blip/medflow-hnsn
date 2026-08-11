@@ -77,6 +77,11 @@ export const MAPA_TABELAS = {
   at_planos:                [TODOS],
   at_procedimentos:         [TODOS],
 
+  // ── SIGTAP: tabela de procedimentos do SUS (Fase 4 — faturamento) ──
+  // Referência oficial, sem dado de paciente. Todo mundo lê: a conta e a
+  // glosa rodam dentro do Atendimento, do PS e do prontuário.
+  sigtap_procedimentos:     [TODOS],
+
   // ── Produção ambulatorial: contagem por dia/especialidade ──
   // Números agregados, ninguém identificável. É a fonte da Visão Geral.
   atendimentos:             ["overview", "atendimento", "ambulatorio", "print"],

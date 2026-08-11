@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 56 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 60 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (56 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (60 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/56 — schema.sql
+-- │ 01/60 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/56 — migracao-farmacia-faseA.sql
+-- │ 02/60 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1240,7 +1240,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/56 — migracao-farmacia-seed.sql
+-- │ 03/60 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1450,7 +1450,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/56 — migracao-farmacia-faseB.sql
+-- │ 04/60 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1491,7 +1491,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/56 — migracao-farmacia-clinica-fase1.sql
+-- │ 05/60 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1616,7 +1616,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/56 — migracao-farmacia-clinica-fase2.sql
+-- │ 06/60 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1738,7 +1738,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/56 — migracao-farmacia-clinica-fase3.sql
+-- │ 07/60 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1806,7 +1806,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/56 — migracao-farmacia-preparo.sql
+-- │ 08/60 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1840,7 +1840,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/56 — migracao-farmacia-custos.sql
+-- │ 09/60 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1853,7 +1853,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/56 — migracao-farmacia-nao-padronizados.sql
+-- │ 10/60 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1892,7 +1892,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/56 — migracao-farmacia-intervencoes.sql
+-- │ 11/60 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -1931,7 +1931,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/56 — migracao-leitos-kanban-metas.sql
+-- │ 12/60 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -1960,7 +1960,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/56 — migracao-leitos-saida-setor.sql
+-- │ 13/60 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -1986,7 +1986,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/56 — migracao-suprimentos-faseA.sql
+-- │ 14/60 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2124,7 +2124,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/56 — migracao-suprimentos-faseB.sql
+-- │ 15/60 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2176,7 +2176,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/56 — migracao-suprimentos-seed.sql
+-- │ 16/60 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2332,7 +2332,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/56 — migracao-suprimentos-faseC.sql
+-- │ 17/60 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2389,7 +2389,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/56 — migracao-suprimentos-inventario.sql
+-- │ 18/60 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2451,7 +2451,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/56 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 19/60 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2468,7 +2468,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/56 — migracao-suprimentos-cotacao.sql
+-- │ 20/60 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2516,7 +2516,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/56 — migracao-ps-salas.sql
+-- │ 21/60 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2565,7 +2565,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/56 — migracao-ps-salas-censo.sql
+-- │ 22/60 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2645,7 +2645,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/56 — migracao-ps-origem-elo.sql
+-- │ 23/60 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2685,7 +2685,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/56 — migracao-ps-checagem-medicacao.sql
+-- │ 24/60 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2738,7 +2738,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/56 — migracao-pep-fase1.sql
+-- │ 25/60 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3536,7 +3536,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/56 — migracao-pep-acessos.sql
+-- │ 26/60 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3602,7 +3602,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/56 — migracao-pep-sinais-spo2.sql
+-- │ 27/60 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3634,7 +3634,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/56 — migracao-pep-categoria-profissional.sql
+-- │ 28/60 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3688,7 +3688,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/56 — migracao-pep-perfis-update.sql
+-- │ 29/60 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3727,7 +3727,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/56 — migracao-pep-fase3.sql
+-- │ 30/60 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4037,7 +4037,7 @@ order by c.relname;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 31/56 — migracao-perfis-acesso.sql
+-- │ 31/60 — migracao-perfis-acesso.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS DE ACESSO — o cargo vira um pacote de permissões
@@ -4231,11 +4231,11 @@ on conflict (chave) do nothing;
 insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   -- Médico
   ('medico','overview','leitura'),('medico','atendimento','leitura'),('medico','ambulatorio','escrita'),('medico','ps','escrita'),
-  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),('medico','nsp','escrita'),
+  ('medico','bloco','escrita'),('medico','leitos','escrita'),('medico','scih','leitura'),('medico','nsp','escrita'),('medico','protocolos','escrita'),
   ('medico','paciente','escrita'),('medico','farmacia','leitura'),('medico','print','leitura'),
   -- Enfermeiro
   ('enfermeiro','overview','leitura'),('enfermeiro','atendimento','escrita'),('enfermeiro','ambulatorio','escrita'),('enfermeiro','ps','escrita'),
-  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),('enfermeiro','nsp','escrita'),
+  ('enfermeiro','bloco','leitura'),('enfermeiro','leitos','escrita'),('enfermeiro','scih','escrita'),('enfermeiro','nsp','escrita'),('enfermeiro','protocolos','escrita'),
   ('enfermeiro','paciente','escrita'),('enfermeiro','farmacia','leitura'),('enfermeiro','suprimentos','leitura'),
   ('enfermeiro','print','leitura'),
   -- Enfermeiro SCIH
@@ -4245,7 +4245,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('enfermeiro_scih','farmacia','leitura'),('enfermeiro_scih','print','leitura'),
   -- Técnico de enfermagem
   ('tecnico_enfermagem','overview','leitura'),('tecnico_enfermagem','atendimento','leitura'),('tecnico_enfermagem','ambulatorio','leitura'),
-  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),('tecnico_enfermagem','nsp','escrita'),
+  ('tecnico_enfermagem','ps','escrita'),('tecnico_enfermagem','leitos','escrita'),('tecnico_enfermagem','nsp','escrita'),('tecnico_enfermagem','protocolos','escrita'),
   ('tecnico_enfermagem','scih','leitura'),('tecnico_enfermagem','paciente','escrita'),
   -- Fisioterapeuta
   ('fisioterapeuta','overview','leitura'),('fisioterapeuta','ps','leitura'),('fisioterapeuta','nsp','escrita'),
@@ -4279,13 +4279,13 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('matriz','overview','leitura'),('matriz','suprimentos','leitura'),
   -- Gestão
   ('gestao','overview','leitura'),('gestao','atendimento','leitura'),('gestao','ambulatorio','leitura'),('gestao','ps','leitura'),
-  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),('gestao','nsp','leitura'),
+  ('gestao','bloco','leitura'),('gestao','leitos','leitura'),('gestao','scih','leitura'),('gestao','nsp','leitura'),('gestao','protocolos','leitura'),
   ('gestao','farmacia','leitura'),('gestao','suprimentos','leitura'),('gestao','print','leitura'),
   ('gestao','auditoria','leitura'),
   -- Diretor técnico
   ('diretor_tecnico','overview','leitura'),('diretor_tecnico','atendimento','leitura'),('diretor_tecnico','ambulatorio','leitura'),
   ('diretor_tecnico','ps','escrita'),('diretor_tecnico','bloco','leitura'),('diretor_tecnico','leitos','leitura'),
-  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),
+  ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),('diretor_tecnico','protocolos','escrita'),
   ('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
   ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
@@ -4340,7 +4340,7 @@ select p.chave, p.nome, count(pp.modulo) as modulos,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 32/56 — migracao-leitos-nir-regulacao.sql
+-- │ 32/60 — migracao-leitos-nir-regulacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"
@@ -4381,7 +4381,7 @@ select 'regulação NIR ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 33/56 — migracao-suprimentos-aprovacao.sql
+-- │ 33/60 — migracao-suprimentos-aprovacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Aprovação de pedidos de compra pela matriz
@@ -4416,7 +4416,7 @@ select 'aprovação de compras ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 34/56 — migracao-ps-comorbidades.sql
+-- │ 34/60 — migracao-ps-comorbidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Comorbidades na triagem
@@ -4442,7 +4442,7 @@ select 'comorbidades ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 35/56 — migracao-ps-triagem-tipo.sql
+-- │ 35/60 — migracao-ps-triagem-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)
@@ -4478,7 +4478,7 @@ select 'triagem_tipo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 36/56 — migracao-ps-faixas-pediatricas.sql
+-- │ 36/60 — migracao-ps-faixas-pediatricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)
@@ -4547,7 +4547,7 @@ select 'ps_faixas_pediatricas ok — ' || count(*) || ' faixas' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 37/56 — migracao-ps-faixas-obstetricas.sql
+-- │ 37/60 — migracao-ps-faixas-obstetricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)
@@ -4613,7 +4613,7 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 38/56 — migracao-enf-escalas-lpp.sql
+-- │ 38/60 — migracao-enf-escalas-lpp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)
@@ -4740,7 +4740,7 @@ select 'enf: escalas/lpp/faixas ok — ' || count(*) || ' cortes semeados' as re
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 39/56 — migracao-enf-sae.sql
+-- │ 39/60 — migracao-enf-sae.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)
@@ -4956,7 +4956,7 @@ select 'enf SAE: catálogo semeado — ' || count(*) || ' itens (' ||
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 40/56 — migracao-pacientes-identificacao.sql
+-- │ 40/60 — migracao-pacientes-identificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário
@@ -5150,7 +5150,7 @@ from public.pacientes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 41/56 — migracao-atendimento-recepcao.sql
+-- │ 41/60 — migracao-atendimento-recepcao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital
@@ -5488,7 +5488,7 @@ select last_value as ultimo_prontuario_emitido from public.prontuario_seq;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 42/56 — migracao-atendimento-fk.sql
+-- │ 42/60 — migracao-atendimento-fk.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)
@@ -5597,7 +5597,7 @@ select exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 43/56 — migracao-nsp-incidentes.sql
+-- │ 43/60 — migracao-nsp-incidentes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes
@@ -5687,7 +5687,7 @@ select 'NSP: nsp_incidentes + nsp_incidente_eventos ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 44/56 — migracao-atendimento-fase2.sql
+-- │ 44/60 — migracao-atendimento-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde
@@ -5994,7 +5994,7 @@ select 'dominios cadastrados pelo hospital', count(*)::text from public.at_domin
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 45/56 — migracao-atendimento-agenda.sql
+-- │ 45/60 — migracao-atendimento-agenda.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia
@@ -6216,7 +6216,7 @@ select 'trava de vaga unica instalada', (exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 46/56 — migracao-nsp-rca-plano.sql
+-- │ 46/60 — migracao-nsp-rca-plano.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)
@@ -6293,7 +6293,7 @@ select 'NSP: nsp_rca + nsp_acoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 47/56 — migracao-atendimento-ciclo.sql
+-- │ 47/60 — migracao-atendimento-ciclo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro
@@ -6380,7 +6380,7 @@ select 'atendimentos cancelados ate agora', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 48/56 — migracao-nsp-metas.sql
+-- │ 48/60 — migracao-nsp-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)
@@ -6455,7 +6455,7 @@ select 'NSP: nsp_meta_faixas (' || (select count(*) from public.nsp_meta_faixas)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 49/56 — migracao-nsp-protocolos.sql
+-- │ 49/60 — migracao-nsp-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Protocolos gerenciados de segurança (Fase 2d)
@@ -6509,7 +6509,7 @@ select 'NSP: nsp_protocolos ok — ' || count(*) || ' protocolos' as resultado f
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 50/56 — migracao-atendimento-responsavel.sql
+-- │ 50/60 — migracao-atendimento-responsavel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta
@@ -6677,7 +6677,7 @@ select 'politicas RLS (esperado 2)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 51/56 — migracao-atendimento-faturamento.sql
+-- │ 51/60 — migracao-atendimento-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — a conta do atendimento (fundação)
@@ -6921,7 +6921,7 @@ select 'politicas RLS (esperado 4)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 52/56 — migracao-nsp-capacitacoes.sql
+-- │ 52/60 — migracao-nsp-capacitacoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Capacitações em segurança do paciente (Fase 2d)
@@ -6964,7 +6964,7 @@ select 'NSP: nsp_capacitacoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 53/56 — migracao-nsp-comunicados.sql
+-- │ 53/60 — migracao-nsp-comunicados.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Comunicação / mural de segurança (Fase 2d)
@@ -7005,7 +7005,7 @@ select 'NSP: nsp_comunicados ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 54/56 — migracao-protocolos.sql
+-- │ 54/60 — migracao-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)
@@ -7132,7 +7132,126 @@ select 'PROTOCOLOS: prot_catalogo + prot_setor + prot_ativacoes + prot_bundle_it
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 55/56 — migracao-perfis-nsp.sql
+-- │ 55/60 — migracao-protocolos-iam.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)
+--
+-- Só semeia o template do IAM em prot_catalogo (as tabelas já vieram na
+-- migracao-protocolos.sql da 3a). Pacote porta→ECG: a estrela é o ECG de 12
+-- derivações em ≤ 10 min. Gatilho por queixa (texto livre) → sugestão; o
+-- acionamento é manual. Passos/alvos editáveis na tela pelo ADM Master.
+--
+-- Aditiva e idempotente. Rodar no SQL Editor — DEMO primeiro, depois HNSN.
+-- ON CONFLICT (chave) DO NOTHING: reexecutar não sobrescreve edições da equipe.
+-- ═══════════════════════════════════════════════════════════
+
+insert into public.prot_catalogo (chave, titulo, categoria, gatilho, passos, janela_min, referencia, status) values
+  ('iam',
+   'Dor torácica / IAM — porta→ECG',
+   'cardiologico',
+   '{"tipo":"queixa","termos":["dor torácica","precordial","dor no peito"],"obs":"ECG em <= 10 min da chegada; acionamento manual com sugestão pela queixa"}'::jsonb,
+   '[
+      {"chave":"ecg",        "rotulo":"ECG de 12 derivações",                                                "alvo_min":10, "ordem":1, "critico":true},
+      {"chave":"aas",        "rotulo":"AAS 150-300 mg VO (mastigar), se sem contraindicação",                "alvo_min":10, "ordem":2, "critico":true},
+      {"chave":"troponina",  "rotulo":"Coletar troponina",                                                   "alvo_min":20, "ordem":3, "critico":true},
+      {"chave":"monitor",    "rotulo":"Monitorização + acesso venoso + O2 se SpO2 < 90",                     "alvo_min":10, "ordem":4, "critico":false},
+      {"chave":"reperfusao", "rotulo":"Avaliar SCA: com supra de ST -> reperfusão; sem supra -> estratificar","alvo_min":60, "ordem":5, "critico":true},
+      {"chave":"analgesia",  "rotulo":"Analgesia / nitrato conforme protocolo",                              "alvo_min":30, "ordem":6, "critico":false}
+    ]'::jsonb,
+   10,
+   'AHA/ACC; Diretriz SBC de Síndromes Coronarianas Agudas',
+   'em_validacao')
+on conflict (chave) do nothing;
+
+-- Verificação
+select 'PROTOCOLOS 3b: template IAM ok — ' || (select count(*) from public.prot_catalogo where chave = 'iam') || ' linha(s)' as resultado;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 56/60 — migracao-protocolos-avc.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)
+--
+-- Só semeia o template do AVC em prot_catalogo (as tabelas vieram na
+-- migracao-protocolos.sql da 3a). Pacote porta→TC: TC de crânio ≤ 25 min.
+-- Gatilho por queixa (texto livre) → sugestão; acionamento manual.
+--
+-- ⚠️ O dado mais decisivo do AVC é o INÍCIO DOS SINTOMAS ("último visto bem"):
+-- define a janela de trombólise (≤ 4,5h). Ele é capturado no acionamento e
+-- guardado em prot_ativacoes.gatilho_ref (jsonb) — a janela de 4,5h é constante
+-- clínica no motor (janelaTerapeutica), não precisa de coluna nem de config.
+--
+-- Aditiva e idempotente. Rodar no SQL Editor — DEMO primeiro, depois HNSN.
+-- ON CONFLICT (chave) DO NOTHING: reexecutar não sobrescreve edições da equipe.
+-- ═══════════════════════════════════════════════════════════
+
+insert into public.prot_catalogo (chave, titulo, categoria, gatilho, passos, janela_min, referencia, status) values
+  ('avc',
+   'AVC — porta→TC/trombólise',
+   'neurologico',
+   '{"tipo":"queixa","termos":["déficit neurológico","fraqueza","boca torta","fala alterada"],"obs":"Sugestão pela queixa; acionamento manual. Checar SEMPRE o início dos sintomas (janela de trombólise <= 4,5h)."}'::jsonb,
+   '[
+      {"chave":"codigo_avc", "rotulo":"Acionar código AVC + glicemia capilar",          "alvo_min":5,  "ordem":1, "critico":false},
+      {"chave":"tc",         "rotulo":"TC de crânio sem contraste",                      "alvo_min":25, "ordem":2, "critico":true},
+      {"chave":"laudo",      "rotulo":"Laudo da TC",                                     "alvo_min":45, "ordem":3, "critico":true},
+      {"chave":"nihss",      "rotulo":"NIHSS (gravidade do déficit)",                    "alvo_min":20, "ordem":4, "critico":false},
+      {"chave":"reperfusao", "rotulo":"Avaliar trombólise/trombectomia (porta->agulha)","alvo_min":60, "ordem":5, "critico":true}
+    ]'::jsonb,
+   25,
+   'AHA/ASA; Linha de Cuidado do AVC (Ministério da Saúde)',
+   'em_validacao')
+on conflict (chave) do nothing;
+
+-- Verificação
+select 'PROTOCOLOS 3c: template AVC ok — ' || (select count(*) from public.prot_catalogo where chave = 'avc') || ' linha(s)' as resultado;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 57/60 — migracao-protocolos-tev.sql
+-- └────────────────────────────────────────────────────────────
+-- ===========================================================
+-- PROTOCOLOS CLINICOS -- Fase 3d: TEV / profilaxia (seed do template)
+--
+-- So semeia o template do TEV em prot_catalogo (as tabelas vieram na 3a).
+-- TEV nao e bundle agudo: e uma AVALIACAO (escore de Padua) de todo internado.
+-- Os "passos" aqui sao os FATORES de Padua (com pontos), nao etapas com relogio.
+-- A estrutura fixa dos fatores e o corte (>=4) vivem no motor/catalogo JS; este
+-- seed existe para o status "em validacao" e o registro do protocolo no banco.
+--
+-- Aditiva e idempotente. Rodar no SQL Editor -- DEMO primeiro, depois HNSN.
+-- ON CONFLICT (chave) DO NOTHING: reexecutar nao sobrescreve edicoes.
+-- ===========================================================
+
+insert into public.prot_catalogo (chave, titulo, categoria, gatilho, passos, janela_min, referencia, status) values
+  ('tev',
+   'Profilaxia de TEV no internado',
+   'tromboembolismo',
+   '{"tipo":"internacao","obs":"Rastreio de todo internado (nao e evento agudo)"}'::jsonb,
+   '[
+      {"chave":"cancer","rotulo":"Cancer ativo","pontos":3},
+      {"chave":"tev_previo","rotulo":"TEV previo (exceto trombose venosa superficial)","pontos":3},
+      {"chave":"mobilidade","rotulo":"Mobilidade reduzida (repouso >= 3 dias)","pontos":3},
+      {"chave":"trombofilia","rotulo":"Trombofilia conhecida","pontos":3},
+      {"chave":"trauma_cirurgia","rotulo":"Trauma e/ou cirurgia recente (<= 1 mes)","pontos":2},
+      {"chave":"idade","rotulo":"Idade >= 70 anos","pontos":1},
+      {"chave":"cardio_resp","rotulo":"Insuficiencia cardiaca e/ou respiratoria","pontos":1},
+      {"chave":"iam_avc","rotulo":"IAM e/ou AVC isquemico","pontos":1},
+      {"chave":"infeccao_reuma","rotulo":"Infeccao aguda e/ou doenca reumatologica","pontos":1},
+      {"chave":"obesidade","rotulo":"Obesidade (IMC >= 30)","pontos":1},
+      {"chave":"hormonio","rotulo":"Terapia hormonal em curso","pontos":1}
+    ]'::jsonb,
+   null,
+   'Escore de Padua; ACCP; SBACV',
+   'em_validacao')
+on conflict (chave) do nothing;
+
+select count(*) as tev_templates from public.prot_catalogo where chave = 'tev';
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 58/60 — migracao-perfis-nsp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS
@@ -7224,7 +7343,290 @@ select pa.chave as perfil,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 56/56 — migracao-rls-leitura.sql
+-- │ 59/60 — migracao-sigtap.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)
+--
+-- A tabela oficial do SUS: todo procedimento faturável, seu valor e as
+-- regras de quando ele é válido. O motor puro vive em src/atendimento/sigtap.js.
+--
+-- ESTA MIGRAÇÃO cria a espinha (sigtap_procedimentos) e semeia a LISTA CURADA
+-- do HNSN — os 219 procedimentos que o hospital fatura hoje (grupo 03 clínicos
+-- + 04 cirúrgicos), com a MÉDIA DE PERMANÊNCIA de cada um. Isso já sustenta a
+-- glosa de permanência (permanência real da internação × média).
+--
+-- O QUE AINDA NÃO VEM AQUI (entra no import do pacote do DATASUS):
+--   • valores em centavos (valor_sh/sp/sa), sexo e faixa etária;
+--   • as relações CID×procedimento e CBO (tabelas sigtap_proc_cid/cbo).
+-- Enquanto não vêm, o motor CALA nessas regras — não dá alarme falso.
+--
+-- COMPETÊNCIA no formato 'AAAA-MM' (com traço), igual ao faturamento.js do
+-- Adauam, para a conta casar com o SIGTAP. O '2026-08' do seed é NOMINAL
+-- (lista curada, sem vínculo a uma competência exata do DATASUS); o import
+-- do DATASUS normaliza 'AAAAMM'→'AAAA-MM' e enriquece estas mesmas linhas.
+--
+-- READ-ONLY: valor oficial não se edita à mão (editar = glosa na certa). A
+-- camada editável é do hospital, por cima. RLS de leitura ([TODOS], é
+-- referência sem paciente) vem do migracao-rls-leitura.sql gerado.
+--
+-- Aditiva e idempotente. Rodar no SQL Editor — DEMO primeiro, depois HNSN.
+-- ═══════════════════════════════════════════════════════════
+
+create table if not exists public.sigtap_procedimentos (
+  id                uuid primary key default gen_random_uuid(),
+  competencia       text not null,                 -- 'AAAA-MM' (nominal na base curada; exata no import)
+  codigo            text not null,                 -- 10 dígitos limpos (0303010037)
+  nome              text not null,
+  grupo             text,                          -- 2 primeiros dígitos (03 clínico, 04 cirúrgico)
+  via               text,                          -- aih | apac | bpa (instrumento de registro)
+  media_permanencia int,                           -- dias (null = não se aplica)
+  valor_sh          bigint,                        -- centavos — serviço hospitalar (do DATASUS)
+  valor_sp          bigint,                        -- centavos — serviço profissional (do DATASUS)
+  valor_sa          bigint,                        -- centavos — ambulatorial (do DATASUS)
+  sexo              text,                          -- 'M' | 'F' | null (ambos)
+  idade_min         int,                           -- anos (null = sem mínimo)
+  idade_max         int,                           -- anos (null = sem máximo)
+  origem            text not null default 'hnsn',  -- hnsn (lista curada) | datasus (importado)
+  usado_hnsn        boolean not null default false,-- procedimento que o HNSN fatura
+  criado_em         timestamptz not null default now(),
+  updated_at        timestamptz not null default now()
+);
+create unique index if not exists sigtap_proc_uk on public.sigtap_procedimentos (competencia, codigo);
+create index if not exists sigtap_proc_via_idx on public.sigtap_procedimentos (competencia, via);
+
+-- ── Seed: lista curada do HNSN (o arquivo "procedimentos_sus media perm") ──
+-- competência, código, nome, grupo, via, média de permanência, origem, usado_hnsn
+insert into public.sigtap_procedimentos
+  (competencia, codigo, nome, grupo, via, media_permanencia, origem, usado_hnsn) values
+  ('2026-08','0301060088','DIAGNOSTICO E/OU ATENDIMENTO DE URGENCIA EM CLINICA MÉDICA','03','aih',1,'hnsn',true),
+  ('2026-08','0303010037','TRATAMENTO DE OUTRAS DOENÇAS BACTERIANAS','03','aih',6,'hnsn',true),
+  ('2026-08','0303010061','TRATAMENTO DE DOENÇAS INFECCIOSAS INTESTINAIS','03','aih',4,'hnsn',true),
+  ('2026-08','0303010070','TRATAMENTO DE FEBRES POR ARBOVÍRUS E FEBRES HEMORRÁGICAS VIRAIS','03','aih',5,'hnsn',true),
+  ('2026-08','0303010134','TRATAMENTO DE INFECÇÕES VIRAIS CARACTERIZADAS POR LESÕES DE PELE E MUCOSAS (B00 A B09)','03','aih',4,'hnsn',true),
+  ('2026-08','0303010215','TRATAMENTO DE TUBERCULOSE (A15 A A19)','03','aih',null,'hnsn',true),
+  ('2026-08','0303020032','TRATAMENTO DE ANEMIA APLASTICA E OUTRAS ANEMIAS','03','aih',6,'hnsn',true),
+  ('2026-08','0303020040','TRATAMENTO DE ANEMIA HEMOLITICA','03','aih',4,'hnsn',true),
+  ('2026-08','0303020059','TRATAMENTO DE ANEMIAS NUTRICIONAIS','03','aih',4,'hnsn',true),
+  ('2026-08','0303030038','TRATAMENTO DE DIABETES MELLITUS','03','aih',4,'hnsn',true),
+  ('2026-08','0303030046','TRATAMENTO DE DISTURBIOS METABOLICOS','03','aih',3,'hnsn',true),
+  ('2026-08','0303030054','TRATAMENTO DE TRANSTORNOS DA GLÂNDULA TIREOIDE','03','aih',4,'hnsn',true),
+  ('2026-08','0303040076','TRATAMENTO CONSERVADOR DA HEMORRAGIA CEREBRAL','03','aih',7,'hnsn',true),
+  ('2026-08','0303040084','TRATAMENTO CONSERVADOR DE TRAUMATISMO CRANIOENCEFÁLICO (GRAU LEVE)','03','aih',2,'hnsn',true),
+  ('2026-08','0303040092','TRATAMENTO CONSERVADOR DE TRAUMATISMO CRANIOENCEFALICO (GRAU MÉDIO)','03','aih',7,'hnsn',true),
+  ('2026-08','0303040149','TRATAMENTO DE ACIDENTE VASCULAR CEREBRAL - AVC (ISQUEMICO OU HEMORRAGICO AGUDO)','03','aih',7,'hnsn',true),
+  ('2026-08','0303040165','TRATAMENTO DE CRISES EPILÉTICAS NÃO CONTROLADAS','03','aih',4,'hnsn',true),
+  ('2026-08','0303040203','TRATAMENTO DE DOENÇAS NEURODEGENERATIVAS','03','aih',7,'hnsn',true),
+  ('2026-08','0303040211','TRATAMENTO DE ENCEFALOPATIA HIPERTENSIVA','03','aih',4,'hnsn',true),
+  ('2026-08','0303040238','TRATAMENTO DE FRATURA DA COLUNA VERTEBRAL C/ LESÃO DA MEDULA ESPINHAL','03','aih',6,'hnsn',true),
+  ('2026-08','0303040300','TRATAMENTO DO ACIDENTE VASCULAR CEREBRAL ISQUÊMICO AGUDO COM USO DE TROMBOLÍTICO','03','aih',7,'hnsn',true),
+  ('2026-08','0303060018','TRATAMENTO DE ANEURISMA DA AORTA','03','aih',4,'hnsn',true),
+  ('2026-08','0303060026','TRATAMENTO DE ARRITMIAS','03','aih',4,'hnsn',true),
+  ('2026-08','0303060034','TRATAMENTO DE CARDIOPATIA HIPERTROFICA','03','aih',6,'hnsn',true),
+  ('2026-08','0303060042','TRATAMENTO DE CARDIOPATIA ISQUEMICA CRONICA','03','aih',6,'hnsn',true),
+  ('2026-08','0303060050','TRATAMENTO DE CHOQUE ANAFILATICO','03','aih',3,'hnsn',true),
+  ('2026-08','0303060077','TRATAMENTO DE CHOQUE HIPOVOLEMICO','03','aih',5,'hnsn',true),
+  ('2026-08','0303060131','TRATAMENTO DE EDEMA AGUDO DE PULMAO','03','aih',6,'hnsn',true),
+  ('2026-08','0303060140','TRATAMENTO DE EMBOLIA PULMONAR','03','aih',10,'hnsn',true),
+  ('2026-08','0303060190','TRATAMENTO DE INFARTO AGUDO DO MIOCÁRDIO','03','aih',7,'hnsn',true),
+  ('2026-08','0303060204','TRATAMENTO DE INSUFICIENCIA ARTERIAL C/ ISQUEMIA CRITICA','03','aih',5,'hnsn',true),
+  ('2026-08','0303060212','TRATAMENTO DE INSUFICIENCIA CARDIACA','03','aih',4,'hnsn',true),
+  ('2026-08','0303060239','TRATAMENTO DE MIOCARDIOPATIAS','03','aih',6,'hnsn',true),
+  ('2026-08','0303060255','TRATAMENTO DE PARADA CARDIACA C/ RESSUSCITACAO','03','aih',5,'hnsn',true),
+  ('2026-08','0303060263','TRATAMENTO DE PÉ DIABÉTICO COMPLICADO','03','aih',5,'hnsn',true),
+  ('2026-08','0303060280','TRATAMENTO DE SINDROME CORONARIANA AGUDA','03','aih',4,'hnsn',true),
+  ('2026-08','0303060298','TRATAMENTO DE TROMBOSE VENOSA PROFUNDA','03','aih',4,'hnsn',true),
+  ('2026-08','0303070072','TRATAMENTO DE DOENCAS DO FIGADO','03','aih',8,'hnsn',true),
+  ('2026-08','0303070099','TRATAMENTO DE ENTERITES E COLITES NAO INFECCIOSAS','03','aih',6,'hnsn',true),
+  ('2026-08','0303070102','TRATAMENTO DE OUTRAS DOENCAS DO APARELHO DIGESTIVO','03','aih',3,'hnsn',true),
+  ('2026-08','0303070110','TRATAMENTO DE OUTRAS DOENCAS DO INTESTINO','03','aih',4,'hnsn',true),
+  ('2026-08','0303070129','TRATAMENTO DE TRANSTORNOS DAS VIAS BILIARES E PANCREAS','03','aih',5,'hnsn',true),
+  ('2026-08','0303080086','TRATAMENTO DE FARMACODERMIAS','03','aih',5,'hnsn',true),
+  ('2026-08','0303080094','TRATAMENTO DE OUTRAS AFECÇÕES DA PELE E DO TECIDO SUBCUTANEO','03','aih',4,'hnsn',true),
+  ('2026-08','0303090243','TRATAMENTO CONSERVADOR DE LESAO DA COLUNA TORACO-LOMBO-SACRA S/ IMOBILIZACAO','03','aih',null,'hnsn',true),
+  ('2026-08','0303100036','TRATAMENTO DE EDEMA, PROTEINURIA E TRANSTORNOS HIPERTENSIVOS NA GRAVIDEZ PARTO E PUERPERIO','03','aih',3,'hnsn',true),
+  ('2026-08','0303100044','TRATAMENTO DE INTERCORRENCIAS CLINICAS NA GRAVIDEZ','03','aih',3,'hnsn',true),
+  ('2026-08','0303110066','TRATAMENTO DE MALFORMACOES CONGENITAS DO APARELHO URINARIO','03','aih',4,'hnsn',true),
+  ('2026-08','0303140046','TRATAMENTO DAS DOENCAS CRONICAS DAS VIAS AEREAS INFERIORES','03','aih',3,'hnsn',true),
+  ('2026-08','0303140054','TRATAMENTO DAS DOENCAS PULMONARES DEVIDO A AGENTES EXTERNOS','03','aih',3,'hnsn',true),
+  ('2026-08','0303140070','TRATAMENTO DE DOENÇA DO OUVIDO EXTERNO MÉDIO E DA MASTÓIDE','03','aih',1,'hnsn',true),
+  ('2026-08','0303140100','TRATAMENTO DE INFECCOES AGUDAS DAS VIAS AEREAS SUPERIORES','03','aih',2,'hnsn',true),
+  ('2026-08','0303140119','TRATAMENTO DE OUTRAS DOENCAS DA PLEURA','03','aih',2,'hnsn',true),
+  ('2026-08','0303140135','TRATAMENTO DE OUTRAS DOENCAS DO APARELHO RESPIRATORIO','03','aih',4,'hnsn',true),
+  ('2026-08','0303140143','TRATAMENTO DE OUTRAS INFECCOES AGUDAS DAS VIAS AEREAS INFERIORES','03','aih',3,'hnsn',true),
+  ('2026-08','0303140151','TRATAMENTO DE PNEUMONIAS OU INFLUENZA (GRIPE)','03','aih',4,'hnsn',true),
+  ('2026-08','0303150050','TRATAMENTO DE OUTRAS DOENCAS DO APARELHO URINARIO','03','aih',2,'hnsn',true),
+  ('2026-08','0303150068','TRATAMENTO DE OUTROS TRANSTORNOS DO RIM E DO URETER','03','aih',4,'hnsn',true),
+  ('2026-08','0303160047','TRATAMENTO DE TRANSTORNOS HEMORRAGICOS E HEMATOLOGICOS DO FETO E DO RECEM-NASCIDO','03','aih',4,'hnsn',true),
+  ('2026-08','0303160055','TRATAMENTO DE TRANSTORNOS RELACIONADOS C/ A DURACAO DA GESTACAO E C/ O CRESCIMENTO FETAL','03','aih',10,'hnsn',true),
+  ('2026-08','0303160063','TRATAMENTO DE TRANSTORNOS RESPIRATORIOS E CARDIOVASCULARES ESPECIFICOS DO PERIODO NEONATAL','03','aih',8,'hnsn',true),
+  ('2026-08','0303170131','TRATAMENTO CLÍNICO EM SAÚDE MENTAL EM SITUAÇÃO DE RISCO','03','aih',null,'hnsn',true),
+  ('2026-08','0303170140','TRATAMENTO CLÍNICO PARA CONTENÇÃO DE COMPORTAMENTO DESORGANIZADO E/OU DISRUPTIVO','03','aih',null,'hnsn',true),
+  ('2026-08','0303170166','TRATAMENTO CLÍNICO DE TRANSTORNOS MENTAIS E COMPORTAMENTAIS DEVIDO AO USO DE ÁLCOOL','03','aih',null,'hnsn',true),
+  ('2026-08','0303170174','TRATAMENTO CLÍNICO DE TRANSTORNOS MENTAIS E COMPORTAMENTAIS DEVIDO AO USO DE “CRACK”.','03','aih',null,'hnsn',true),
+  ('2026-08','0303170182','TRATAMENTO CLÍNICO DOS TRANSTORNOS MENTAIS E COMPORTAMENTAIS DEVIDO AO USO DAS DEMAIS DROGAS','03','aih',null,'hnsn',true),
+  ('2026-08','0304100013','TRATAMENTO DE INTERCORRÊNCIAS CLÍNICAS DE PACIENTE ONCOLÓGICO','03','aih',8,'hnsn',true),
+  ('2026-08','0305010174','TRATAMENTO DE INTERCORRÊNCIA EM PACIENTE RENAL CRÔNICO SOB TRATAMENTO DIALÍTICO ( POR DIA)','03','aih',null,'hnsn',true),
+  ('2026-08','0305020013','TRATAMENTO DA PIELONEFRITE','03','aih',2,'hnsn',true),
+  ('2026-08','0305020021','TRATAMENTO DE CALCULOSE RENAL','03','aih',2,'hnsn',true),
+  ('2026-08','0305020048','TRATAMENTO DE INSUFICIÊNCIA RENAL AGUDA','03','aih',4,'hnsn',true),
+  ('2026-08','0305020056','TRATAMENTO DA DOENÇA RENAL CRÔNICA - DRC','03','aih',4,'hnsn',true),
+  ('2026-08','0308010019','TRATAMENTO CLÍNICO/CONSERVADOR DE TRAUMATISMOS DE QUALQUER LOCALIZAÇÃO','03','aih',5,'hnsn',true),
+  ('2026-08','0308010035','TRATAMENTO DE TRAUMATISMOS C/ LESAO DE ORGAO INTRA-TORACICO E INTRA-ABDOMINAL','03','aih',6,'hnsn',true),
+  ('2026-08','0308010043','TRATAMENTO DE TRAUMATISMOS ENVOLVENDO MULTIPLAS REGIOES DO CORPO','03','aih',7,'hnsn',true),
+  ('2026-08','0308020030','TRATAMENTO DE INTOXICACAO OU ENVENENAMENTO POR EXPOSICAO A MEDICAMENTO E SUBSTANCIAS DE USO NAO MEDICINAL','03','aih',3,'hnsn',true),
+  ('2026-08','0308030036','TRATAMENTO DE QUEIMADURAS CORROSOES E GELADURAS','03','aih',5,'hnsn',true),
+  ('2026-08','0308040015','TRATAMENTO DE COMPLICACOES DE PROCEDIMENTOS CIRURGICOS OU CLINICOS','03','aih',5,'hnsn',true),
+  ('2026-08','0310010039','PARTO NORMAL','03','aih',2,'hnsn',true),
+  ('2026-08','0401020053','EXCISÃO E SUTURA DE LESAO NA PELE C/ PLÁSTICA EM Z OU ROTAÇÃO DE RETALHO','04','aih',2,'hnsn',true),
+  ('2026-08','0401020070','EXÉRESE DE CISTO DERMOIDE','04','aih',1,'hnsn',true),
+  ('2026-08','0401020100','EXTIRPAÇÃOE SUPRESSÃO DE LESÃO DE PELE E DE TECIDO CELULAR SUBCUTÂNEO','04','aih',2,'hnsn',true),
+  ('2026-08','0403020077','NEUROLISE NAO FUNCIONAL DE NERVOS PERIFERICOS','04','aih',1,'hnsn',true),
+  ('2026-08','0403020123','TRATAMENTO CIRURGICO DE SINDROME COMPRESSIVA EM TUNEL OSTEO-FIBROSO AO NIVEL DO CARPO','04','aih',1,'hnsn',true),
+  ('2026-08','0404010067','DRENAGEM DE ABSCESSO PERIAMIGDALIANO','04','aih',2,'hnsn',true),
+  ('2026-08','0404010318','RETIRADA DE CORPO ESTRANHO DE OUVIDO / FARINGE / LARINGE / NARIZ','04','aih',2,'hnsn',true),
+  ('2026-08','0404020550','OSTEOSSÍNTESE DE FRATURA SIMPLES DE MANDÍBULA','04','aih',1,'hnsn',true),
+  ('2026-08','0405010079','EXÉRESE DE CALAZIO E OUTRAS PEQUENAS LESOES DA PALPEBRA E SUPERCILIOS','04','aih',1,'hnsn',true),
+  ('2026-08','0406010684','IMPLANTE DE MARCAPASSO TEMPORÁRIO TRANSVENOSO','04','aih',2,'hnsn',true),
+  ('2026-08','0406020507','TRATAMENTO CIRURGICO DE LESOES VASCULARES TRAUMATICAS DE MEMBRO INFERIOR BILATERAL','04','aih',4,'hnsn',true),
+  ('2026-08','0407020039','APENDICECTOMIA','04','aih',3,'hnsn',true),
+  ('2026-08','0407020047','APENDICECTOMIA VIDEOLAPAROSCÓPICA','04','aih',3,'hnsn',true),
+  ('2026-08','0407020144','DRENAGEM DE ABSCESSO ISQUIORRETAL','04','aih',2,'hnsn',true),
+  ('2026-08','0407020268','FECHAMENTO DE FÍSTULA DE RETO','04','aih',2,'hnsn',true),
+  ('2026-08','0407020284','HEMORROIDECTOMIA','04','aih',2,'hnsn',true),
+  ('2026-08','0407020365','REDUÇÃO CIRÚRGICA DE VOLVO POR LAPAROTOMIA','04','aih',4,'hnsn',true),
+  ('2026-08','0407020462','TRATAMENTO CIRÚRGICO DE MA ROTAÇÃO INTESTINAL','04','aih',7,'hnsn',true),
+  ('2026-08','0407030026','COLECISTECTOMIA','04','aih',3,'hnsn',true),
+  ('2026-08','0407030034','COLECISTECTOMIA VIDEOLAPAROSCÓPICA','04','aih',2,'hnsn',true),
+  ('2026-08','0407030042','COLECISTOSTOMIA','04','aih',3,'hnsn',true),
+  ('2026-08','0407030255','COLANGIOPANCREATOGRAFIA RETRÓGRADA ENDOSCÓPICA TERAPÊUTICA','04','aih',2,'hnsn',true),
+  ('2026-08','0407040013','DRENAGEM DE ABSCESSO PÉLVICO','04','aih',7,'hnsn',true),
+  ('2026-08','0407040030','DRENAGEM DE HEMATOMA / ABSCESSO PRE-PERITONEAL','04','aih',5,'hnsn',true),
+  ('2026-08','0407040064','HERNIOPLASTIA EPIGASTRICA','04','aih',1,'hnsn',true),
+  ('2026-08','0407040080','HERNIOPLASTIA INCISIONAL','04','aih',2,'hnsn',true),
+  ('2026-08','0407040099','HERNIOPLASTIA INGUINAL (BILATERAL)','04','aih',2,'hnsn',true),
+  ('2026-08','0407040102','HERNIOPLASTIA INGUINAL / CRURAL (UNILATERAL)','04','aih',2,'hnsn',true),
+  ('2026-08','0407040110','HERNIOPLASTIA RECIDIVANTE','04','aih',2,'hnsn',true),
+  ('2026-08','0407040129','HERNIOPLASTIA UMBILICAL','04','aih',2,'hnsn',true),
+  ('2026-08','0407040145','HERNIORRAFIA SEM RESSECÇÃO INTESTINAL (HÉRNIA ESTRANGULADA )','04','aih',2,'hnsn',true),
+  ('2026-08','0407040161','LAPAROTOMIA EXPLORADORA','04','aih',5,'hnsn',true),
+  ('2026-08','0407040188','LIBERAÇÃO DE ADERÊNCIAS INTESTINAIS','04','aih',6,'hnsn',true),
+  ('2026-08','0407040226','REPARACAO DE OUTRAS HERNIAS','04','aih',2,'hnsn',true),
+  ('2026-08','0407040250','TRATAMENTO CIRÚRGICO DE PERITONITE','04','aih',5,'hnsn',true),
+  ('2026-08','0408010142','REPARO DE ROTURA DO MANGUITO ROTADOR (INCLUI PROCEDIMENTOS DESCOMPRESSIVOS)','04','aih',2,'hnsn',true),
+  ('2026-08','0408010150','TRATAMENTO CIRÚRGICO DE FRATURA DA CLAVÍCULA','04','aih',2,'hnsn',true),
+  ('2026-08','0408010185','TRATAMENTO CIRÚRGICO DE LUXAÇÃO / FRATURA-LUXAÇÃO ACROMIO-CLAVICULAR','04','aih',2,'hnsn',true),
+  ('2026-08','0408010193','TRATAMENTO CIRÙRGICO DE LUXAÇÁO / FRATURA-LUXAÇÃO ESCÁPULO-UMERAL AGUDA','04','aih',3,'hnsn',true),
+  ('2026-08','0408010223','TRATAMENTO CIRÚRGICO DE RETARDO DE CONSOLIDAÇÃO DA PSEUDARTROSE DE CLAVICULA / ESCAPULA','04','aih',2,'hnsn',true),
+  ('2026-08','0408020121','REALINHAMENTO DE MECANISMO EXTENSOR DOS DEDOS DA MÃO','04','aih',1,'hnsn',true),
+  ('2026-08','0408020148','RECONSTRUÇÃO DE POLIA TENDINOSA DOS DEDOS DA MÃO','04','aih',2,'hnsn',true),
+  ('2026-08','0408020164','REDUÇAO INCRUENTA DE FRATURA / LESÃO FISARIA DO EXTREMO PROXIMAL DO ÚMERO','04','aih',2,'hnsn',true),
+  ('2026-08','0408020229','TRATAMENTO CIRÚRGICO DE LUXAÇÃO / FRATURA-LUXACAO DO COTOVELO','04','aih',2,'hnsn',true),
+  ('2026-08','0408020326','TRATAMENTO CIRÚRGICO DE DEDO EM GATILHO','04','aih',1,'hnsn',true),
+  ('2026-08','0408020334','TRATAMENTO CIRÚRGICO DE FRATURA / LESÃO FISARIA DA EXTREMIDADE PROXIMAL DO UMERO','04','aih',4,'hnsn',true),
+  ('2026-08','0408020342','TRATAMENTO CIRÚRGICO DE FRATURA / LESÃO FISARIA DAS FALANGES DA MÃO (COM FIXAÇÃO)','04','aih',2,'hnsn',true),
+  ('2026-08','0408020369','TRATAMENTO CIRÚRGICO DE FRATURA / LESÃO FISARIA DO CÔNDILO / TRÓCLEA/APOFISE CORONÓIDE DO ULNA / CABEÇA DO RÁDIO','04','aih',3,'hnsn',true),
+  ('2026-08','0408020377','TRATAMENTO CIRÚRGICO DE FRATURA / LESÃO FISARIA DOS METACARPIANOS','04','aih',2,'hnsn',true),
+  ('2026-08','0408020385','TRATAMENTO CIRÚRGICO DE FRATURA / LESÃO FISARIA SUPRACONDILIANA DO ÚMERO','04','aih',3,'hnsn',true),
+  ('2026-08','0408020393','TRATAMENTO CIRÚGICO DE FRATURA DA DIÁFISE DO ÚMERO','04','aih',2,'hnsn',true),
+  ('2026-08','0408020407','TRATAMENTO CIRÚRGICO DE FRATURA DA EXTREMIDADE / METÁFISE DISTAL DOS OSSOS DO ANTEBRAÇO','04','aih',2,'hnsn',true),
+  ('2026-08','0408020431','TRATAMENTO CIRÚRGICO DE FRATURA DIAFISARIA ÚNICA DO RÁDIO / DA ULNA','04','aih',2,'hnsn',true),
+  ('2026-08','0408020512','TRATAMENTO CIRÚRGICO DE LUXAÇÃO / FRATURA-LUXAÇÃO CARPO-METACARPIANA','04','aih',2,'hnsn',true),
+  ('2026-08','0408020539','TRATAMENTO CIRÚRGICO DE LUXAÇÃO / FRATURA-LUXAÇÃO METACARPO-FALANGIANA','04','aih',2,'hnsn',true),
+  ('2026-08','0408020547','TRATAMENTO CIRÚRGICO DE LUXAÇÃO OU FRATURA-LUXAÇÃO DO COTOVELO','04','aih',3,'hnsn',true),
+  ('2026-08','0408030399','DISCECTOMIA CERVICAL / LOMBAR / LOMBO-SACRA POR VIA POSTERIOR (UM NÍVEL)','04','aih',3,'hnsn',true),
+  ('2026-08','0408040050','ARTROPLASTIA PARCIAL DE QUADRIL','04','aih',5,'hnsn',true),
+  ('2026-08','0408040190','REDUÇÃO INCRUENTA DE LUXAÇÃO COXOFEMORAL TRAUMÁTICA / PÓS-ARTROPLASTIA','04','aih',3,'hnsn',true),
+  ('2026-08','0408040246','TRATAMENTO CIRÚRGICO DA AVULSÃO DE TUBEROSIDADES / ESPINHAS E CRISTA ILÍACA S/ LESÃO DO ANEL PÉLVICO','04','aih',3,'hnsn',true),
+  ('2026-08','0408040343','TRATAMENTO CIRURGICO DE LUXACAO ESPONTANEA / PROGRESSIVA / PARALITICA DO QUADRIL','04','aih',5,'hnsn',true),
+  ('2026-08','0408050020','AMPUTACAO / DESARTICULACAO DE PE E TARSO','04','aih',3,'hnsn',true),
+  ('2026-08','0408050136','RECONSTRUÇÃODE TENDAO PATELAR / TENDAO QUADRICIPITA','04','aih',3,'hnsn',true),
+  ('2026-08','0408050160','RECONSTRUÇÃO LIGAMENTAR INTRA-ARTICULAR DO JOELHO (CRUZADO ANTERIOR)','04','aih',2,'hnsn',true),
+  ('2026-08','0408050179','RECONSTRUÇÃOLIGAMENTAR INTRA-ARTICULAR DO JOELHO (CRUZADO POSTERIOR COM OU SEM ANTERIOR)','04','aih',3,'hnsn',true),
+  ('2026-08','0408050217','REDUCAO INCRUENTA DE FRATURA / LUXACAO / FRATURA-LUXACAO DO TORNOZELO','04','aih',2,'hnsn',true),
+  ('2026-08','0408050225','REDUCAO INCRUENTA DE FRATURA DIAFISARIA / LESAO FISARIA DISTAL DA TIBIA C/ OU S/ FRATURA DA FIBULA','04','aih',3,'hnsn',true),
+  ('2026-08','0408050233','REDUCAO INCRUENTA DE FRATURA DIAFISARIA / LESAO FISARIA PROXIMAL DO FEMUR','04','aih',3,'hnsn',true),
+  ('2026-08','0408050322','REPARO DE BAINHA TENDINOSA AO NIVEL DO TORNOZELO','04','aih',2,'hnsn',true),
+  ('2026-08','0408050470','TRATAMENTO CIRURGICO DE FRATURA / LESAO FISARIA DOS PODODACTILOS','04','aih',3,'hnsn',true),
+  ('2026-08','0408050489','TRATAMENTO CIRURGICO DE FRATURA / LESAO FISARIA PROXIMAL','04','aih',4,'hnsn',true),
+  ('2026-08','0408050497','TRATAMENTO CIRÚRGICO DE FRATURA BIMALEOLAR / TRIMALEOLAR / DA FRATURA-LUXAÇÃO DO TORNOZELO','04','aih',3,'hnsn',true),
+  ('2026-08','0408050500','TRATAMENTO CIRÚRGICO DE FRATURA DA DIÁFISE DA TÍBIA','04','aih',4,'hnsn',true),
+  ('2026-08','0408050519','TRATAMENTO CIRÚRGICO DE FRATURA DA DIÁFISE DO FÊMUR','04','aih',4,'hnsn',true),
+  ('2026-08','0408050527','TRATAMENTO CIRÚRGICO DE FRATURA DA PATELA POR FIXAÇÃO INTERNA','04','aih',3,'hnsn',true),
+  ('2026-08','0408050535','TRATAMENTO CIRÚRGICO DE FRATURA DO CALCÂNEO','04','aih',3,'hnsn',true),
+  ('2026-08','0408050543','TRATAMENTO CIRÚRGICO DE FRATURA DO PILÃO TIBIAL','04','aih',4,'hnsn',true),
+  ('2026-08','0408050551','TRATAMENTO CIRÚRGICO DE FRATURA DO PLANALTO TIBIAL','04','aih',3,'hnsn',true),
+  ('2026-08','0408050578','TRATAMENTO CIRÚRGICO DE FRATURA DO TORNOZELO UNIMALEOLAR','04','aih',3,'hnsn',true),
+  ('2026-08','0408050594','TRATAMENTO CIRÚRGICO DE FRATURA LESÃO FISÁRIA AO NÍVEL DO JOELHO','04','aih',3,'hnsn',true),
+  ('2026-08','0408050608','TRATAMENTO CIRÚRGICO DE FRATURA LESÃO FISÁRIA DISTAL DE TÍBIA','04','aih',3,'hnsn',true),
+  ('2026-08','0408050632','TRATAMENTO CIRÚRGICO DE FRATURA TRANSTROCANTERIANA','04','aih',4,'hnsn',true),
+  ('2026-08','0408050667','TRATAMENTO CIRÚRGICO DE LESÃO AGUDA CAPSULO-LIGAMENTAR MEMBRO INFERIOR (JOELHO / TORNOZELO)','04','aih',2,'hnsn',true),
+  ('2026-08','0408050896','TRATAMENTO CIRÚRGICO DE ROTURA DO MENISCO COM MENISCECTOMIA PARCIAL / TOTAL','04','aih',1,'hnsn',true),
+  ('2026-08','0408050926','TRATAMENTO DAS LESÕES OSTEO-CONDRAIS POR FIXAÇÃO OU MOSAICOPLASTIA JOELHO/TORNOZELO','04','aih',2,'hnsn',true),
+  ('2026-08','0408060018','ALONGAMENTO / ENCURTAMENTO MIOTENDINOSO','04','aih',2,'hnsn',true),
+  ('2026-08','0408060042','AMPUTAÇÃO / DESARTICULAÇÃO DE DEDO','04','aih',2,'hnsn',true),
+  ('2026-08','0408060212','RESSECÇÃO DE CISTO SINOVIAL','04','aih',1,'hnsn',true),
+  ('2026-08','0408060352','RETIRADA DE FIO OU PINO INTRA-ÓSSEO','04','aih',1,'hnsn',true),
+  ('2026-08','0408060360','RETIRADA DE FIXADOR EXTERNO','04','aih',2,'hnsn',true),
+  ('2026-08','0408060379','RETIRADA DE PLACA E/OU PARAFUSOS','04','aih',1,'hnsn',true),
+  ('2026-08','0408060395','RETIRADA DE PRÓTESE DE SUBSTITUIÇÃO EM PEQUENAS E MÉDIAS ARTICULAÇÕES','04','aih',2,'hnsn',true),
+  ('2026-08','0408060450','TENOMIORRAFIA','04','aih',2,'hnsn',true),
+  ('2026-08','0408060476','TENOPLASTIA OU ENXERTO DE TENDÃO UNICO','04','aih',2,'hnsn',true),
+  ('2026-08','0408060557','TRATAMENTO CIRÚRGICO DE ARTRITE INFECCIOSA (GRANDES E MÉDIAS ARTICULAÇÕES)','04','aih',5,'hnsn',true),
+  ('2026-08','0408060573','TRATAMENTO CIRÚRGICO DE DEDO EM MARTELO / EM GARRA (MÃO E PÉ)','04','aih',1,'hnsn',true),
+  ('2026-08','0408060590','TRATAMENTO CIRÚRGICO DE FRATURA VICIOSAMENTE CONSOLIDADA DOS OSSOS LONGOS EXCETO DA MÃO E DO PÉ','04','aih',3,'hnsn',true),
+  ('2026-08','0409010065','CISTOLITOTOMIA E/OU RETIRADA DE CORPO ESTRANHO DA BEX','04','aih',2,'hnsn',true),
+  ('2026-08','0409010090','CISTOSTOMIA','04','aih',3,'hnsn',true),
+  ('2026-08','0409010170','INSTALAÇÃO ENDOSCÓPICA DE CATETER DUPLO J','04','aih',2,'hnsn',true),
+  ('2026-08','0409010430','TRATAMENTO CIRÚRGICO DE CISTOCELE','04','aih',2,'hnsn',true),
+  ('2026-08','0409020150','URETRORRAFIA','04','aih',3,'hnsn',true),
+  ('2026-08','0409020176','URETROTOMIA INTERNA','04','aih',3,'hnsn',true),
+  ('2026-08','0409030023','PROSTATECTOMIA SUPRAPÚBICA','04','aih',4,'hnsn',true),
+  ('2026-08','0409030040','RESSECÇÃO ENDOSCÓPICA DE PRÓSTATA','04','aih',3,'hnsn',true),
+  ('2026-08','0409040010','DRENAGEM DE ABSCESSO DA BOLSA ESCROTAL','04','aih',3,'hnsn',true),
+  ('2026-08','0409040096','EXPLORACAO CIRURGICA DA BOLSA ESCROTAL','04','aih',2,'hnsn',true),
+  ('2026-08','0409040185','REPARAÇÃO E OPERAÇÃO PLÁSTICA DO TESTÍCULO','04','aih',2,'hnsn',true),
+  ('2026-08','0409040215','TRATAMENTO CIRÚRGICO DE HIDROCELE','04','aih',1,'hnsn',true),
+  ('2026-08','0409040223','TRATAMENTO CIRÚRGICO DE TORÇÃO DO TESTÍCULO DO CORDÃO ESPERMÁTICO','04','aih',1,'hnsn',true),
+  ('2026-08','0409040231','TRATAMENTO CIRÚRGICO DE VARICOCELE','04','aih',1,'hnsn',true),
+  ('2026-08','0409040240','VASECTOMIA','04','aih',1,'hnsn',true),
+  ('2026-08','0409050075','PLASTICA TOTAL DO PENIS','04','aih',2,'hnsn',true),
+  ('2026-08','0409050083','POSTECTOMIA','04','aih',1,'hnsn',true),
+  ('2026-08','0409050113','TRATAMENTO CIRURGICO DE PRIAPRISMO','04','aih',3,'hnsn',true),
+  ('2026-08','0409060038','EXCISÃO TIPO 3 DO COLO UTERINO','04','aih',2,'hnsn',true),
+  ('2026-08','0409060070','ESVAZIAMENTO DE UTERO POS-ABORTO POR ASPIRACAO MANUAL INTRA-UTERINA','04','aih',1,'hnsn',true),
+  ('2026-08','0409060127','HISTERECTOMIA SUBTOTAL','04','aih',3,'hnsn',true),
+  ('2026-08','0409060135','HISTERECTOMIA TOTAL','04','aih',3,'hnsn',true),
+  ('2026-08','0409060186','LAQUEADURA TUBARIA','04','aih',1,'hnsn',true),
+  ('2026-08','0409060232','SALPINGECTOMIA UNI / BILATERAL','04','aih',2,'hnsn',true),
+  ('2026-08','0409060240','SALPINGECTOMIA VIDEOLAPAROSCOPICA','04','aih',2,'hnsn',true),
+  ('2026-08','0409070092','COLPORRAFIA NAO OBSTETRICA','04','aih',1,'hnsn',true),
+  ('2026-08','0409070190','MARSUPIALIZACAO DE GLÂNDULA DE BARTOLIN','04','aih',1,'hnsn',true),
+  ('2026-08','0409070262','TRATAMENTO CIRURGICO DE HIPERTROFIA DOS PEQUENOS LABIOS','04','aih',1,'hnsn',true),
+  ('2026-08','0410010014','DRENAGEM DE ABSCESSO DE MAMA','04','aih',2,'hnsn',true),
+  ('2026-08','0411010034','PARTO CESARIANO','04','aih',2,'hnsn',true),
+  ('2026-08','0411010042','PARTO CESARIANO C/ LAQUEADURA TUBARIA','04','aih',2,'hnsn',true),
+  ('2026-08','0411010077','SUTURA DE LACERACOES DE TRAJETO PELVICO','04','aih',2,'hnsn',true),
+  ('2026-08','0411020013','CURETAGEM POS-ABORTAMENTO / PUERPERAL','04','aih',1,'hnsn',true),
+  ('2026-08','0411020048','TRATAMENTO CIRURGICO DE GRAVIDEZ ECTOPICA','04','aih',3,'hnsn',true),
+  ('2026-08','0412020033','MEDIASTINOTOMIA P/ DRENAGEM','04','aih',5,'hnsn',true),
+  ('2026-08','0412040166','TORACOSTOMIA COM DRENAGEM PLEURAL FECHADA','04','aih',5,'hnsn',true),
+  ('2026-08','0413010015','ATENDIMENTO DE URGENCIA EM MEDIO E GRANDE QUEIMADO','04','aih',1,'hnsn',true),
+  ('2026-08','0413010082','TRATAMENTO DE MEDIO QUEIMADO','04','aih',4,'hnsn',true),
+  ('2026-08','0413040178','TRATAMENTO CIRURGICO DE LESOES EXTENSAS C/ PERDA DE SUBSTANCIA CUTANEA','04','aih',3,'hnsn',true),
+  ('2026-08','0413040240','TRATAMENTO CIRURGICO P/ REPARACOES DE PERDA DE SUBSTANCIA DA MAO','04','aih',3,'hnsn',true),
+  ('2026-08','0415010012','TRATAMENTO C/ CIRURGIAS MULTIPLAS','04','aih',null,'hnsn',true),
+  ('2026-08','0415040027','DEBRIDAMENTO DE FASCEITE NECROTIZANTE','04','aih',3,'hnsn',true),
+  ('2026-08','0415040035','DEBRIDAMENTO DE ULCERA / DE TECIDOS DESVITALIZADOS','04','aih',2,'hnsn',true)
+on conflict (competencia, codigo) do nothing;
+
+-- Verificação
+select 'SIGTAP: sigtap_procedimentos ok — '
+       || (select count(*) from public.sigtap_procedimentos) || ' procedimento(s)' as resultado;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 60/60 — migracao-rls-leitura.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — RLS DE LEITURA: quem lê cada tabela
@@ -7419,7 +7821,7 @@ $converter$;
 -- PARTE 3/4 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 23 das 92 tabelas ficam abertas a
+-- a mesma coisa em português. 24 das 93 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -7529,6 +7931,7 @@ begin
       ('scih_germes', 'true'),                                                                        -- todos os autenticados
       ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
       ('setores', 'true'),                                                                            -- todos os autenticados
+      ('sigtap_procedimentos', 'true'),                                                               -- todos os autenticados
       ('solicitacoes', 'public.pode_ver_algum(''ps'', ''leitos'')'),                                  -- ps, leitos
       ('sup_cotacoes', 'public.pode_ver_algum(''suprimentos'')'),                                     -- suprimentos
       ('sup_fornecedores', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                   -- suprimentos, farmacia
@@ -7624,7 +8027,8 @@ with esperadas_abertas(tabela) as (values
   ('ps_faixas_pediatricas'),
   ('ps_protocolos'),
   ('scih_germes'),
-  ('setores')
+  ('setores'),
+  ('sigtap_procedimentos')
 ),
 politicas as (
   select c.relname::text as tabela,

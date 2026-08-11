@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 92 tabelas, 1444 colunas.
+-- Cobertura atual: 93 tabelas, 1461 colunas.
 -- ============================================================
 
 with
@@ -100,6 +100,7 @@ tabelas(nome, origem) as (values
   ('scih_germes','schema'),
   ('scih_indicadores','schema'),
   ('setores','schema'),
+  ('sigtap_procedimentos','sigtap'),
   ('solicitacoes','schema'),
   ('sup_cotacoes','suprimentos-cotacao'),
   ('sup_fornecedores','suprimentos-faseA'),
@@ -1440,6 +1441,23 @@ colunas(tabela, coluna, origem) as (values
   ('setores','ordem','schema'),
   ('setores','updated_at','schema'),
   ('setores','usuario','schema'),
+  ('sigtap_procedimentos','codigo','sigtap'),
+  ('sigtap_procedimentos','competencia','sigtap'),
+  ('sigtap_procedimentos','criado_em','sigtap'),
+  ('sigtap_procedimentos','grupo','sigtap'),
+  ('sigtap_procedimentos','id','sigtap'),
+  ('sigtap_procedimentos','idade_max','sigtap'),
+  ('sigtap_procedimentos','idade_min','sigtap'),
+  ('sigtap_procedimentos','media_permanencia','sigtap'),
+  ('sigtap_procedimentos','nome','sigtap'),
+  ('sigtap_procedimentos','origem','sigtap'),
+  ('sigtap_procedimentos','sexo','sigtap'),
+  ('sigtap_procedimentos','updated_at','sigtap'),
+  ('sigtap_procedimentos','usado_hnsn','sigtap'),
+  ('sigtap_procedimentos','valor_sa','sigtap'),
+  ('sigtap_procedimentos','valor_sh','sigtap'),
+  ('sigtap_procedimentos','valor_sp','sigtap'),
+  ('sigtap_procedimentos','via','sigtap'),
   ('solicitacoes','created_at','schema'),
   ('solicitacoes','hora_pedido','schema'),
   ('solicitacoes','id','schema'),
