@@ -25,7 +25,7 @@
 --                        só não pode ser surpresa.
 --
 -- Resultado ideal: nenhuma linha ❌ e nenhuma ⚠️ inesperada.
--- Cobertura: 157 grants em 18 perfis.
+-- Cobertura: 155 grants em 18 perfis.
 -- ============================================================
 
 with esperado(perfil, modulo, nivel) as (values
@@ -150,7 +150,6 @@ with esperado(perfil, modulo, nivel) as (values
   ('provisorio','protocolos','escrita'),
   ('provisorio','ps','escrita'),
   ('provisorio','scih','escrita'),
-  ('provisorio','supabase','escrita'),
   ('provisorio','suprimentos','escrita'),
   ('recepcao','ambulatorio','escrita'),
   ('recepcao','atendimento','escrita'),
@@ -183,7 +182,6 @@ with esperado(perfil, modulo, nivel) as (values
   ('ti','protocolos','escrita'),
   ('ti','ps','escrita'),
   ('ti','scih','escrita'),
-  ('ti','supabase','escrita'),
   ('ti','suprimentos','escrita'),
   ('ti','users','escrita')
 ),
