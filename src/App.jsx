@@ -63,6 +63,7 @@ import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
 import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
 import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
 import Atendimento from "./atendimento/Atendimento.jsx";
+import FaturamentoPage from "./atendimento/FaturamentoSus.jsx";
 import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 import { carregarPaciente } from "./atendimento/dados.js";
@@ -142,7 +143,8 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
 // aí é permissão, não migração pendente.
 const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuarios_permissoes", "ps_faixas_pediatricas", "ps_faixas_obstetricas",
   "nsp_meta_faixas", "nsp_meta_medicoes", "nsp_protocolos", "nsp_capacitacoes", "nsp_comunicados",
-  "prot_catalogo", "prot_setor", "prot_ativacoes", "prot_bundle_itens"]);
+  "prot_catalogo", "prot_setor", "prot_ativacoes", "prot_bundle_itens",
+  "sigtap_procedimentos"]);
 
 async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;
@@ -17095,6 +17097,7 @@ export default function App() {
     ...(verModulo("protocolos")  ? [{ id: "protocolos", icon: "activity", label: "Protocolos Clínicos" }] : []),
     ...(verModulo("farmacia")    ? [{ id: "farmacia", icon: "pill", label: "Farmácia" }]              : []),
     ...(verModulo("suprimentos") ? [{ id: "suprimentos", icon: "cart", label: "Estoque & Compras" }]  : []),
+    ...(verModulo("faturamento") ? [{ id: "faturamento", icon: "briefcase", label: "Faturamento" }]    : []),
     ...(verModulo("paciente")    ? [{ id: "paciente", icon: "record", label: "Paciente 360" }]        : []),
     ...(canPrint    && verModulo("print")     ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
     ...(canAudit    && verModulo("auditoria") ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
@@ -17194,6 +17197,7 @@ export default function App() {
           {active === "protocolos" && <ProtocolosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "suprimentos" && <SuprimentosPage currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
           {active === "auditoria" && canAudit    && <AuditoriaPage />}
