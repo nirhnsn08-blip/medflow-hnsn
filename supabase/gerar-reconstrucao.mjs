@@ -104,6 +104,9 @@ const ORDEM = [
   // Fase 4 (Faturamento SUS) — tabela de procedimentos do SUS (referência,
   // sem paciente). Antes do RLS abaixo, que cobre também as tabelas sigtap_*.
   "migracao-sigtap.sql",
+  // Grants do módulo Faturamento para os bancos que já rodaram o seed
+  // (mesmo motivo do migracao-perfis-nsp.sql). Redundante num banco novo.
+  "migracao-perfis-faturamento.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

@@ -86,6 +86,8 @@ export const MODULOS = [
   { chave: "controlados",  label: "Livro de Controlados", grupo: "Apoio",
     nota: "Documento fiscalizável (Portaria 344/98) — acesso restrito por norma." },
   { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Apoio" },
+  { chave: "faturamento",  label: "Faturamento",        grupo: "Apoio",
+    nota: "Faturamento SUS: SIGTAP, conta montada do prontuário e trava de glosa antes do envio (AIH/APAC/BPA). Sem prontuário — é administrativo." },
   { chave: "print",        label: "Imprimir Dashboard", grupo: "Gestão" },
   { chave: "auditoria",    label: "Auditoria",          grupo: "Gestão",
     nota: "Trilha de quem fez o quê. Quem é auditado não deveria administrar a própria trilha." },
@@ -197,7 +199,7 @@ export const PERFIS_MODELO = [
   {
     chave: "faturamento", nome: "Faturamento", categoria: "administrativo", role: "analista",
     descricao: "Produção e movimento para faturamento. NÃO acessa prontuário.",
-    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", leitos: "leitura", print: "leitura" }),
+    grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", leitos: "leitura", faturamento: "escrita", print: "leitura" }),
   },
   {
     chave: "almoxarifado", nome: "Almoxarifado / Suprimentos", categoria: "administrativo", role: "adm_silver",
@@ -234,7 +236,7 @@ export const PERFIS_MODELO = [
     grants: p({ overview: "escrita", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
                 leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "escrita",
                 controlados: "escrita", suprimentos: "escrita", print: "escrita",
-                auditoria: "escrita", import: "escrita", supabase: "escrita", users: "escrita" }),
+                faturamento: "escrita", auditoria: "escrita", import: "escrita", supabase: "escrita", users: "escrita" }),
   },
 ];
 
