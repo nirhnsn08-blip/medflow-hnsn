@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-11 · `main` em `96e6fb1` (checkpoint-v55) · zero PRs abertos.
+**Atualizado em:** 2026-08-12 · `main` em `0d60699` (checkpoint-v56) · zero PRs abertos.
 
 ---
 

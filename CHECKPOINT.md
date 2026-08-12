@@ -1,20 +1,56 @@
-# 📍 Ponto de restauração — checkpoint-v55
+# 📍 Ponto de restauração — checkpoint-v56
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v55` (anteriores: `checkpoint-v54` … `checkpoint-v1`)
-- **Data:** 2026-08-11 · `main` em `96e6fb1`
+- **Tag Git mais recente:** `checkpoint-v56` (anteriores: `checkpoint-v55` … `checkpoint-v1`)
+- **Data:** 2026-08-12 · `main` em `0d60699`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v54 para cá: começou a **Tier 1 Fase 4 — Faturamento SUS**, com a
-  **fundação do SIGTAP** num módulo **Faturamento** próprio (PR **#74**): a tabela oficial
-  de procedimentos do SUS semeada com os **219 que o HNSN fatura**, read-only, e a **glosa
-  de permanência** (permanência real × média) ao vivo.
-- **1099 testes** · **93 tabelas / 1461 colunas** · build limpo.
+  vai ao ar). Da v55 para cá: o **diferencial da Fase 4** entrou no ar — a **conta AIH se
+  monta do prontuário** (motor puro `montar-conta.js`, +30 testes; aba **Pendentes** do
+  Faturamento), incluindo a **medicação administrada** na conta (PRs **#78**, **#79**).
+- **1129 testes** · **93 tabelas / 1461 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v56 (desde a v55): a conta AIH se monta do prontuário (Tier 1 Fase 4)
+
+O **diferencial da Fase 4** saiu do papel: em vez de o faturamento digitar item a item, a
+**conta se monta sozinha do que aconteceu no episódio**. Construída **em cima da conta do
+Adauam** (mesmo formato de item, para **alimentar a conta dele** — não uma paralela), em
+**arquivos novos** para não colidir.
+
+### 🧾 Motor `src/atendimento/montar-conta.js` (+30 testes) — a espinha (PR #78)
+Puro (não sabe React nem banco): dado o episódio + os catálogos + o convênio, **propõe a conta**:
+- **Procedimento principal**, cruzando os dois catálogos — o do hospital (que tem o **preço**) e o
+  **SIGTAP** (que tem o nome oficial);
+- **Diárias de permanência** (admissão → alta), comparadas com a **média SIGTAP**;
+- **CID** e **via** — internou pelo SUS = **AIH**, acima do procedimento;
+- **pré-glosa** (reusa `sigtap.avaliarGlosa`: permanência / sexo / idade / CID);
+- **avisos** do que conferir antes de fechar.
+
+Fiel aos princípios da casa: **preço nunca inventado** (o que não veio do DATASUS entra `null`,
+e a tela avisa que o total sai menor), **cada item mostra a origem** no prontuário, e **todo item
+nasce sem cobrança do paciente** (SUS não cobra de quem foi atendido). A tela é a **aba Pendentes**
+do módulo Faturamento (busca por nº de atendimento → monta → cabeçalho / permanência / itens com
+origem / pré-glosa / total). **Sem migração:** o perfil faturamento já lê `ps_atendimentos` pelo
+grant `atendimento`.
+
+### 💊 Medicação administrada entra na conta (PR #79)
+A conta passa a incluir os **medicamentos de fato administrados** (`ps_administracoes`, status
+`administrado`), agrupados por medicamento. Item cobrável da AIH, montado do **realizado**, não do
+prescrito. Exigiu **liberar a leitura** de `ps_administracoes` para o módulo faturamento
+(`mapa-tabelas.js` + `migracao-rls-leitura.sql` regenerado) — decisão de acesso tomada com cuidado:
+é a **base clínica da conta**, não a narrativa do prontuário (evolução / anamnese / prescrição
+detalhada seguem **fora** do faturamento). **Verificado no DEMO e no ar no HNSN.**
+
+**Falta da Fase 4:** o botão **"lançar na conta do Adauam"** (a proposta virar itens gravados em
+`at_conta_itens`, coordenando com ele) → as **datas de internação do leito** para a permanência
+real (hoje estima pela passagem no PS) → enriquecer o SIGTAP com o **pacote do DATASUS** (R$ / CID /
+CBO) → a glosa completa → o **arquivo de remessa** (parado até o layout que o HNSN transmite hoje).
+**1129 testes + build verdes.**
 
 ## 🆕 Novidades da v55 (desde a v54): Faturamento SUS — fundação do SIGTAP (Tier 1 Fase 4)
 
