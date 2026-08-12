@@ -198,7 +198,12 @@ export const MAPA_TABELAS = {
   // O ciclo do atendimento é o mesmo objeto da Recepção e do Ambulatório
   // — ver src/atendimento/ciclo.js.
   ps_atendimentos:          ["ps", "atendimento", "ambulatorio", "paciente"],
-  ps_administracoes:        ["ps", "paciente"],
+  // O faturamento lê a medicação administrada para montar a conta do
+  // episódio — o que foi de fato dado é item cobrável da AIH. É a base
+  // clínica da CONTA, não a narrativa do prontuário: a evolução, a anamnese
+  // e a prescrição detalhada seguem fora do alcance do faturamento (módulo
+  // Paciente). Bilha o realizado, não o clínico.
+  ps_administracoes:        ["ps", "paciente", "faturamento"],
   ps_sinais:                ["ps", "paciente"],
   ps_salas:                 ["ps"],
   // A farmácia lê a prescrição do PS para preparar e dispensar.

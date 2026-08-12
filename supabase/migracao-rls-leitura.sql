@@ -288,7 +288,7 @@ begin
       ('prot_bundle_itens', 'public.pode_ver_algum(''protocolos'', ''ps'', ''paciente'')'),           -- protocolos, ps, paciente
       ('prot_catalogo', 'true'),                                                                      -- todos os autenticados
       ('prot_setor', 'true'),                                                                         -- todos os autenticados
-      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'')'),                           -- ps, paciente
+      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'', ''faturamento'')'),          -- ps, paciente, faturamento
       ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'')'), -- ps, atendimento, ambulatorio, paciente
       ('ps_faixas_obstetricas', 'true'),                                                              -- todos os autenticados
       ('ps_faixas_pediatricas', 'true'),                                                              -- todos os autenticados
