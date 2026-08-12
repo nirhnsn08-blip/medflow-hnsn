@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  montarContaDoProntuario, resolverVia, janelaInternacao,
+  montarContaDoProntuario, resolverVia, janelaInternacao, escolherInternacao,
 } from "./montar-conta.js";
 import { camposDoItem } from "./faturamento.js";
 import { GRAVIDADES as SIG_GRAV } from "./sigtap.js";
@@ -88,6 +88,78 @@ describe("janelaInternacao", () => {
   it("não inventa internação onde não houve", () => {
     const j = janelaInternacao({ atendimento: atend({ desfecho: "alta" }) });
     expect(j).toMatchObject({ admissao: null, alta: null, estimada: false });
+  });
+  it("internação em curso (alta null da fonte) NÃO herda o desfecho do PS", () => {
+    const j = janelaInternacao({
+      atendimento: atend({ desfecho: "internacao", desfecho_em: "2026-08-05T00:00:00Z" }),
+      internacao: { admissao: "2026-08-01", alta: null },
+    });
+    expect(j).toEqual({ admissao: "2026-08-01", alta: null, estimada: false });
+  });
+});
+
+describe("escolherInternacao", () => {
+  const at = (o = {}) => atend({ chegada_em: "2026-08-01T10:00:00Z", ...o });
+
+  it("leito ocupado do episódio → internação em curso (admissão exata, sem alta)", () => {
+    const r = escolherInternacao({ leitoAtivo: { data_internacao: "2026-08-01" }, saidas: [], atendimento: at() });
+    expect(r).toEqual({ admissao: "2026-08-01", alta: null, fonte: "leito-ativo" });
+  });
+
+  it("saída de leito cujo início casa com o episódio → admissão + alta", () => {
+    const r = escolherInternacao({
+      leitoAtivo: null,
+      saidas: [{ data_internacao: "2026-08-01", data_alta: "2026-08-08", dias_permanencia: 7 }],
+      atendimento: at(),
+    });
+    expect(r).toMatchObject({ admissao: "2026-08-01", alta: "2026-08-08", fonte: "saida-leito" });
+  });
+
+  it("ignora saída que começou ANTES da chegada (é de outro episódio)", () => {
+    const r = escolherInternacao({
+      leitoAtivo: null,
+      saidas: [{ data_internacao: "2026-07-20", data_alta: "2026-07-25" }],
+      atendimento: at(),
+    });
+    expect(r).toBeNull();
+  });
+
+  it("ignora saída fora da janela do episódio (> 7 dias após a chegada)", () => {
+    const r = escolherInternacao({
+      leitoAtivo: null,
+      saidas: [{ data_internacao: "2026-08-15", data_alta: "2026-08-20" }],
+      atendimento: at(),
+    });
+    expect(r).toBeNull();
+  });
+
+  it("com várias saídas na janela, pega a que começou mais perto da chegada", () => {
+    const r = escolherInternacao({
+      leitoAtivo: null,
+      saidas: [
+        { data_internacao: "2026-08-05", data_alta: "2026-08-10" },
+        { data_internacao: "2026-08-02", data_alta: "2026-08-06" },
+      ],
+      atendimento: at(),
+    });
+    expect(r.admissao).toBe("2026-08-02");
+  });
+
+  it("sem leito e sem saída casável → null (o motor estima pelo PS)", () => {
+    expect(escolherInternacao({ leitoAtivo: null, saidas: [], atendimento: at() })).toBeNull();
+  });
+
+  it("ponta a ponta: a conta usa a permanência do leito, não a estimativa do PS", () => {
+    const atendimento = atend({ chegada_em: "2026-08-01T10:00:00Z", desfecho: "internacao", desfecho_em: "2026-08-02T00:00:00Z" });
+    const internacao = escolherInternacao({
+      leitoAtivo: null,
+      saidas: [{ data_internacao: "2026-08-02", data_alta: "2026-08-12" }],
+      atendimento,
+    });
+    const r = montarContaDoProntuario({ atendimento, convenio: SUS, sigtapProcs: [sigProc({ media_permanencia: 6 })], internacao });
+    const d = r.itens.find((i) => i.tipo === "diaria");
+    expect(d.quantidade).toBe(10); // 02→12 do leito, não 1 dia da passagem no PS
+    expect(r.avisos.some((a) => /estimada pela passagem/i.test(a))).toBe(false);
   });
 });
 

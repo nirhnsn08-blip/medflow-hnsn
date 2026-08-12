@@ -649,6 +649,29 @@ export async function carregarAdministracoes(sb, atendimentoId) {
 }
 
 /**
+ * As fontes de internação do episódio, para a conta usar a permanência REAL da
+ * estadia (não a passagem pelo PS): o leito ainda OCUPADO (ligado pelo
+ * `ps_atendimento_id`, internação em curso) e as SAÍDAS do prontuário (com
+ * admissão, alta e dias de permanência). Só leitura — a escolha de qual saída
+ * casa com o episódio é do motor puro (`escolherInternacao`). O faturamento
+ * alcança as duas pela leitura de `leitos`/`leitos_saidas`.
+ */
+export async function carregarLeitosDoEpisodio(sb, { atendimentoId, prontuario } = {}) {
+  const [ativo, saidas] = await Promise.all([
+    atendimentoId
+      ? sb(`leitos?ps_atendimento_id=eq.${encodeURIComponent(atendimentoId)}&status=eq.ocupado&select=data_internacao,prontuario,status&limit=1`)
+      : Promise.resolve([]),
+    prontuario
+      ? sb(`leitos_saidas?prontuario=eq.${encodeURIComponent(prontuario)}&select=data_internacao,data_alta,dias_permanencia,leito,setor&order=data_internacao.desc&limit=20`)
+      : Promise.resolve([]),
+  ]);
+  return {
+    leitoAtivo: Array.isArray(ativo) && ativo.length ? ativo[0] : null,
+    saidas: Array.isArray(saidas) ? saidas : [],
+  };
+}
+
+/**
  * Abre a conta de um atendimento.
  *
  * O índice único parcial do banco (`at_contas_atend_unica`) é a última

@@ -25,10 +25,10 @@ import {
   montarProcedimento, codigoFormatado, viaDoProcedimento,
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
-import { montarContaDoProntuario } from "./montar-conta.js";
+import { montarContaDoProntuario, escolherInternacao } from "./montar-conta.js";
 import { reais, centavos, STATUS_CONTA } from "./faturamento.js";
 import {
-  carregarAtendimento, carregarCatalogos, carregarAdministracoes,
+  carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
 } from "./dados.js";
 
@@ -441,19 +441,24 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
       // Catálogos e medicação administrada numa ida só. As administrações
       // vêm vazias (sem erro) enquanto a migração de leitura não tiver rodado
       // neste banco — a conta se monta assim mesmo, só sem a linha de remédio.
-      const [cat, administracoes] = await Promise.all([
+      const [cat, administracoes, leitos] = await Promise.all([
         carregarCatalogos(sb),
         carregarAdministracoes(sb, atendimento.id),
+        carregarLeitosDoEpisodio(sb, { atendimentoId: atendimento.id, prontuario: atendimento.prontuario }),
       ]);
       const convenio = (cat.convenios || []).find((c) => String(c.id) === String(atendimento.convenio_id)) || null;
+      // A permanência vem do LEITO (estadia real); só na falta dele o motor
+      // estima pela passagem no PS, marcada como estimativa.
+      const internacao = escolherInternacao({ leitoAtivo: leitos.leitoAtivo, saidas: leitos.saidas, atendimento });
       const conta = montarContaDoProntuario({
         atendimento,
         convenio,
         procedimentos: cat.procedimentos || [],
         sigtapProcs: sigtapRows || [],
         administracoes,
+        internacao,
       });
-      setResultado({ conta, atendimento });
+      setResultado({ conta, atendimento, fonteInternacao: internacao?.fonte || null });
     } catch {
       setErro("Não consegui montar a conta agora. Tente de novo.");
     } finally {
@@ -599,7 +604,17 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
           {/* permanência */}
           {r.permanencia?.dias != null && (
             <section style={{ ...cx.card, marginBottom: 14, borderLeft: `3px solid ${r.permanencia.excede ? "#f59e0b" : TEAL}` }}>
-              <div style={cx.rotulo}>Permanência</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={cx.rotulo}>Permanência</div>
+                {(() => {
+                  const doLeito = resultado?.fonteInternacao === "saida-leito";
+                  return (
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", padding: "2px 8px", borderRadius: 20, background: doLeito ? "rgba(45,212,191,.14)" : "rgba(245,158,11,.14)", color: doLeito ? TEAL : "#f59e0b" }}>
+                      {doLeito ? "do leito" : "estimada pelo PS"}
+                    </span>
+                  );
+                })()}
+              </div>
               <div style={{ marginTop: 8, fontSize: 13.5, color: "var(--text)" }}>
                 <b style={{ fontSize: 20, fontVariantNumeric: "tabular-nums" }}>{r.permanencia.dias}</b>{" "}
                 {r.permanencia.dias === 1 ? "dia" : "dias"}
