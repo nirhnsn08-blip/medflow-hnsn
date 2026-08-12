@@ -171,13 +171,55 @@ function itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow
  * PS e pedir confirmação. Nunca se inventa internação onde não houve.
  */
 export function janelaInternacao({ atendimento, internacao } = {}) {
-  const temFonte = internacao?.admissao != null;
+  // A fonte explícita (as datas do leito) manda: usa admissão E alta como
+  // vieram. Alta `null` aqui é "internação em curso" — e NÃO pode cair no
+  // desfecho do PS, senão a estadia em aberto ganharia uma alta que é só a
+  // hora em que o paciente saiu do pronto-socorro para o leito.
+  if (internacao?.admissao != null) {
+    return { admissao: internacao.admissao, alta: internacao.alta ?? null, estimada: false };
+  }
+  // Sem fonte do leito, e só se o desfecho foi internação: estima pela
+  // passagem no PS (marcada como estimativa — a passagem não é a estadia).
   const internou = atendimento?.desfecho === "internacao";
   return {
-    admissao: internacao?.admissao ?? (internou ? atendimento?.chegada_em ?? null : null),
-    alta: internacao?.alta ?? (internou ? atendimento?.desfecho_em ?? null : null),
-    estimada: !temFonte && internou,
+    admissao: internou ? atendimento?.chegada_em ?? null : null,
+    alta: internou ? atendimento?.desfecho_em ?? null : null,
+    estimada: internou,
   };
+}
+
+/**
+ * Escolhe a janela de internação a partir das fontes do LEITO — para a conta
+ * usar a permanência REAL da estadia, não a passagem pelo pronto-socorro (que
+ * é o que a estimativa mede, e não é a mesma coisa).
+ *
+ * Prioridade:
+ *   1. Leito OCUPADO do episódio (ligado por `ps_atendimento_id`) → internação
+ *      em CURSO: admissão exata, sem alta (as diárias fecham na alta).
+ *   2. Saída de leito (`leitos_saidas`) do mesmo prontuário cujo início casa
+ *      com o episódio — a internação começa quando o paciente deixa o PS.
+ *      Traz admissão E alta, logo, diárias. O vínculo é por prontuário+período
+ *      (a saída não guarda o atendimento), por isso a tela mostra a fonte.
+ *   3. Nada → `null`: o motor cai na estimativa pelo PS, marcada como tal.
+ */
+export function escolherInternacao({ leitoAtivo, saidas = [], atendimento } = {}) {
+  if (leitoAtivo?.data_internacao) {
+    return { admissao: soData(leitoAtivo.data_internacao), alta: null, fonte: "leito-ativo" };
+  }
+  const chegada = soData(atendimento?.chegada_em);
+  if (chegada) {
+    const candidatas = (Array.isArray(saidas) ? saidas : [])
+      .map((s) => ({ ini: soData(s.data_internacao), alta: soData(s.data_alta) }))
+      .filter((s) => {
+        if (!s.ini || s.ini < chegada) return false; // começou antes da chegada = outro episódio
+        const d = permanenciaEmDias(chegada, s.ini);
+        return d != null && d <= 7;                  // internação dentro da janela do episódio
+      })
+      .sort((a, b) => (a.ini < b.ini ? -1 : a.ini > b.ini ? 1 : 0));
+    const m = candidatas[0];
+    if (m) return { admissao: m.ini, alta: m.alta, fonte: "saida-leito" };
+  }
+  return null;
 }
 
 /**
