@@ -25,6 +25,9 @@ import {
   montarProcedimento, codigoFormatado, viaDoProcedimento,
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
+import { montarContaDoProntuario } from "./montar-conta.js";
+import { reais, centavos } from "./faturamento.js";
+import { carregarAtendimento, carregarCatalogos } from "./dados.js";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -75,7 +78,6 @@ const FAT_NAV = [
 ];
 
 const EM_CONSTRUCAO = {
-  pendentes: "Contas abertas, montadas do prontuário, a revisar e fechar — com a auditoria de conta antes de faturar.",
   glosas: "Glosas recebidas → análise do motivo → recurso no prazo → recuperação. O coração do faturamento hospitalar.",
   receitas: "Faturado × recebido × glosado, por competência e por convênio (repasse).",
   analises: "BI do faturamento: produção, índice de glosa, ticket médio, rejeição.",
@@ -410,6 +412,220 @@ function SigtapView({ rows, carregando }) {
   );
 }
 
+// ── Conta do prontuário (motor real: a conta se monta do episódio) ─
+const TIPO_ITEM_LABEL = { procedimento: "Procedimento", diaria: "Diária", medicamento: "Medicamento", material: "Material", taxa: "Taxa" };
+
+function subtotalCentavos(it) {
+  const u = centavos(it.valor_unitario);
+  return u === null ? null : u * Number(it.quantidade || 0);
+}
+
+function ContaDoProntuario({ sb, sigtapRows }) {
+  const [numero, setNumero] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState(null);
+  const [resultado, setResultado] = useState(null); // { conta, atendimento }
+
+  async function montar() {
+    const n = String(numero).replace(/\D/g, "");
+    if (!n) { setErro("Informe o número do atendimento."); return; }
+    setCarregando(true); setErro(null); setResultado(null);
+    try {
+      const atendimento = await carregarAtendimento(sb, n);
+      if (!atendimento) { setErro(`Nenhum atendimento com o número ${n}.`); return; }
+      const cat = await carregarCatalogos(sb);
+      const convenio = (cat.convenios || []).find((c) => String(c.id) === String(atendimento.convenio_id)) || null;
+      const conta = montarContaDoProntuario({
+        atendimento,
+        convenio,
+        procedimentos: cat.procedimentos || [],
+        sigtapProcs: sigtapRows || [],
+        // A medicação administrada entra quando o acesso a ps_administracoes
+        // for decidido — hoje o perfil Faturamento não lê prontuário.
+        administracoes: [],
+      });
+      setResultado({ conta, atendimento });
+    } catch {
+      setErro("Não consegui montar a conta agora. Tente de novo.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+
+  const r = resultado?.conta || null;
+  const at = resultado?.atendimento || null;
+
+  return (
+    <div>
+      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 600 }}>Pendentes — conta do prontuário</h2>
+      <p style={{ margin: "0 0 4px", color: "var(--text-2)", fontSize: 14 }}>
+        A conta se monta sozinha do que aconteceu no episódio — o procedimento, a permanência, o diagnóstico —
+        em vez de alguém digitar item por item. Você confere.
+      </p>
+      <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>
+        Prévia somente leitura. Lançar na conta do atendimento e incluir a medicação administrada são as próximas fatias.
+      </p>
+
+      <section style={{ ...cx.card, marginBottom: 16 }}>
+        <div style={cx.rotulo}>Monte a partir de um atendimento</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          <input
+            value={numero}
+            onChange={(e) => setNumero(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && montar()}
+            placeholder="Número do atendimento"
+            style={{ ...cx.input, flex: 1, minWidth: 200 }}
+          />
+          <button
+            onClick={montar}
+            disabled={carregando}
+            style={{ background: carregando ? "var(--surface-3)" : TEAL, color: carregando ? "var(--text-muted)" : "#04201c", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: carregando ? "default" : "pointer", whiteSpace: "nowrap" }}
+          >
+            {carregando ? "Montando…" : "Montar conta"}
+          </button>
+        </div>
+      </section>
+
+      {erro && (
+        <div style={{ ...cx.card, borderLeft: "3px solid #ef4444", background: "rgba(239,68,68,.08)", marginBottom: 16, fontSize: 13 }}>
+          {erro}
+        </div>
+      )}
+
+      {r && at && (
+        <>
+          {/* cabeçalho do episódio */}
+          <section style={{ ...cx.card, marginBottom: 14 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{at.iniciais || "—"}</div>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                atend. #{at.id} · reg. {at.prontuario}
+                {at.chegada_em ? ` · ${new Date(at.chegada_em).toLocaleDateString("pt-BR")}` : ""}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".04em" }}>Via</span>
+                <b style={{ background: "rgba(45,212,191,.14)", color: TEAL, borderRadius: 6, padding: "2px 9px", fontWeight: 700 }}>{r.viaLabel}</b>
+                <span style={{ color: "var(--text-muted)" }}>{r.viaNome}</span>
+              </span>
+              <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".04em" }}>Competência</span>{" "}
+                {r.competencia || "—"}
+              </span>
+              <span style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700, letterSpacing: ".04em" }}>CID</span>{" "}
+                {r.cid || <span style={{ color: "#f59e0b" }}>não informado</span>}
+              </span>
+            </div>
+            {r.via && !r.cobraDoPaciente && (
+              <div style={{ fontSize: 11.5, color: "#0d9488", marginTop: 10, fontWeight: 700 }}>
+                O paciente NÃO pode ser cobrado por nada desta conta.
+              </div>
+            )}
+          </section>
+
+          {/* permanência */}
+          {r.permanencia?.dias != null && (
+            <section style={{ ...cx.card, marginBottom: 14, borderLeft: `3px solid ${r.permanencia.excede ? "#f59e0b" : TEAL}` }}>
+              <div style={cx.rotulo}>Permanência</div>
+              <div style={{ marginTop: 8, fontSize: 13.5, color: "var(--text)" }}>
+                <b style={{ fontSize: 20, fontVariantNumeric: "tabular-nums" }}>{r.permanencia.dias}</b>{" "}
+                {r.permanencia.dias === 1 ? "dia" : "dias"}
+                {r.permanencia.media != null && (
+                  <span style={{ color: "var(--text-muted)", fontSize: 12.5 }}> · média SUS {r.permanencia.media}</span>
+                )}
+              </div>
+              {r.permanencia.texto && (
+                <div style={{ marginTop: 6, fontSize: 12.5, color: r.permanencia.excede ? "#f59e0b" : "var(--text-muted)" }}>{r.permanencia.texto}</div>
+              )}
+            </section>
+          )}
+
+          {/* itens montados */}
+          <section style={{ ...cx.card, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div style={cx.rotulo}>Itens montados do prontuário ({r.itens.length})</div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                Total <b style={{ color: "var(--text)", fontSize: 15, fontVariantNumeric: "tabular-nums" }}>{r.total}</b>
+                {r.semPreco > 0 && <span style={{ color: "#f59e0b" }}> · {r.semPreco} sem preço</span>}
+              </div>
+            </div>
+            {r.itens.length === 0 ? (
+              <p style={{ margin: "12px 0 0", color: "var(--text-muted)", fontSize: 13 }}>Nada a faturar neste episódio ainda.</p>
+            ) : (
+              <div style={{ overflowX: "auto", marginTop: 12 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
+                      <th style={{ padding: "6px 8px" }}>Tipo</th>
+                      <th style={{ padding: "6px 8px" }}>Item</th>
+                      <th style={{ padding: "6px 8px", textAlign: "right" }}>Qtd</th>
+                      <th style={{ padding: "6px 8px", textAlign: "right" }}>Valor unit.</th>
+                      <th style={{ padding: "6px 8px", textAlign: "right" }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {r.itens.map((it, i) => {
+                      const sub = subtotalCentavos(it);
+                      const cod = codigoFormatado(it.codigo) || it.codigo || "";
+                      return (
+                        <tr key={i} style={{ borderTop: "1px solid var(--border)", verticalAlign: "top" }}>
+                          <td style={{ padding: "8px", whiteSpace: "nowrap", color: "var(--text-2)" }}>{TIPO_ITEM_LABEL[it.tipo] || it.tipo}</td>
+                          <td style={{ padding: "8px" }}>
+                            <div style={{ fontWeight: 600 }}>{it.descricao || cod || "—"}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
+                              {cod && it.descricao ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{cod} · </span> : null}{it.origem}
+                            </div>
+                          </td>
+                          <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Number(it.quantidade)}</td>
+                          <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: it.valor_unitario == null ? "#f59e0b" : "var(--text)" }}>
+                            {it.valor_unitario == null ? "sem preço" : reais(centavos(it.valor_unitario))}
+                          </td>
+                          <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>{sub == null ? "—" : reais(sub)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* pré-glosa */}
+          {r.glosa.length > 0 && (
+            <section style={{ ...cx.card, marginBottom: 14 }}>
+              <div style={cx.rotulo}>Antecipação de glosa</div>
+              <ul style={{ margin: "10px 0 0", padding: 0, listStyle: "none", display: "grid", gap: 8 }}>
+                {r.glosa.map((g, i) => (
+                  <li key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "9px 11px", borderRadius: 8, background: "var(--surface-2)", borderLeft: `3px solid ${COR_GRAV[g.gravidade] || "var(--border)"}` }}>
+                    <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", color: COR_GRAV[g.gravidade] || "var(--text)", whiteSpace: "nowrap", paddingTop: 1 }}>
+                      {g.gravidade === GRAVIDADES.IMPEDIMENTO ? "Impedimento" : "Atenção"}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.45 }}>{g.texto}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {/* avisos */}
+          {r.avisos.length > 0 && (
+            <section style={cx.card}>
+              <div style={cx.rotulo}>A conferir antes de fechar</div>
+              <ul style={{ margin: "10px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>
+                {r.avisos.map((a, i) => (
+                  <li key={i} style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.45 }}>{a}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function EmConstrucao({ titulo, desc }) {
   return (
     <div>
@@ -471,6 +687,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
 
       <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "22px 26px 40px" }}>
         {sub === "visao" && <VisaoExecutiva totalProcs={rows.length} />}
+        {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
       </div>
