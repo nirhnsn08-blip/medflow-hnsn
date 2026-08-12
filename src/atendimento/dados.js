@@ -634,6 +634,21 @@ export async function carregarItensDaConta(sb, contaId) {
 }
 
 /**
+ * A medicação administrada de um atendimento — para a conta se montar do que
+ * foi de fato realizado, e não do que foi só prescrito. Somente leitura: a
+ * checagem à beira-leito é do PS/PEP; aqui o faturamento apenas conta o que
+ * já foi dado. O acesso é da política de leitura de `ps_administracoes`
+ * (o faturamento entra nela porque a medicação é item cobrável da conta).
+ */
+export async function carregarAdministracoes(sb, atendimentoId) {
+  if (!atendimentoId) return [];
+  const r = await sb(`ps_administracoes?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&select=id,atendimento_id,medicamento_id,medicamento_nome,dose,via,status,administrado_em,categoria,criado_em` +
+    `&order=administrado_em`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
  * Abre a conta de um atendimento.
  *
  * O índice único parcial do banco (`at_contas_atend_unica`) é a última

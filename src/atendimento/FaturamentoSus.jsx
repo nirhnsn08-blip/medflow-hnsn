@@ -27,7 +27,7 @@ import {
 } from "./sigtap.js";
 import { montarContaDoProntuario } from "./montar-conta.js";
 import { reais, centavos } from "./faturamento.js";
-import { carregarAtendimento, carregarCatalogos } from "./dados.js";
+import { carregarAtendimento, carregarCatalogos, carregarAdministracoes } from "./dados.js";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -433,16 +433,20 @@ function ContaDoProntuario({ sb, sigtapRows }) {
     try {
       const atendimento = await carregarAtendimento(sb, n);
       if (!atendimento) { setErro(`Nenhum atendimento com o número ${n}.`); return; }
-      const cat = await carregarCatalogos(sb);
+      // Catálogos e medicação administrada numa ida só. As administrações
+      // vêm vazias (sem erro) enquanto a migração de leitura não tiver rodado
+      // neste banco — a conta se monta assim mesmo, só sem a linha de remédio.
+      const [cat, administracoes] = await Promise.all([
+        carregarCatalogos(sb),
+        carregarAdministracoes(sb, atendimento.id),
+      ]);
       const convenio = (cat.convenios || []).find((c) => String(c.id) === String(atendimento.convenio_id)) || null;
       const conta = montarContaDoProntuario({
         atendimento,
         convenio,
         procedimentos: cat.procedimentos || [],
         sigtapProcs: sigtapRows || [],
-        // A medicação administrada entra quando o acesso a ps_administracoes
-        // for decidido — hoje o perfil Faturamento não lê prontuário.
-        administracoes: [],
+        administracoes,
       });
       setResultado({ conta, atendimento });
     } catch {
@@ -463,7 +467,7 @@ function ContaDoProntuario({ sb, sigtapRows }) {
         em vez de alguém digitar item por item. Você confere.
       </p>
       <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>
-        Prévia somente leitura. Lançar na conta do atendimento e incluir a medicação administrada são as próximas fatias.
+        Prévia somente leitura. Lançar na conta do atendimento é a próxima fatia.
       </p>
 
       <section style={{ ...cx.card, marginBottom: 16 }}>
