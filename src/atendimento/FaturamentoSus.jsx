@@ -26,8 +26,11 @@ import {
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
 import { montarContaDoProntuario } from "./montar-conta.js";
-import { reais, centavos } from "./faturamento.js";
-import { carregarAtendimento, carregarCatalogos, carregarAdministracoes } from "./dados.js";
+import { reais, centavos, STATUS_CONTA } from "./faturamento.js";
+import {
+  carregarAtendimento, carregarCatalogos, carregarAdministracoes,
+  carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
+} from "./dados.js";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -420,16 +423,18 @@ function subtotalCentavos(it) {
   return u === null ? null : u * Number(it.quantidade || 0);
 }
 
-function ContaDoProntuario({ sb, sigtapRows }) {
+function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
   const [numero, setNumero] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
   const [resultado, setResultado] = useState(null); // { conta, atendimento }
+  const [lancando, setLancando] = useState(false);
+  const [msgLanc, setMsgLanc] = useState(null);     // { tom, texto }
 
   async function montar() {
     const n = String(numero).replace(/\D/g, "");
     if (!n) { setErro("Informe o número do atendimento."); return; }
-    setCarregando(true); setErro(null); setResultado(null);
+    setCarregando(true); setErro(null); setResultado(null); setMsgLanc(null);
     try {
       const atendimento = await carregarAtendimento(sb, n);
       if (!atendimento) { setErro(`Nenhum atendimento com o número ${n}.`); return; }
@@ -456,6 +461,68 @@ function ContaDoProntuario({ sb, sigtapRows }) {
     }
   }
 
+  // Lança a proposta na CONTA DO EPISÓDIO (a mesma do módulo Atendimento, do
+  // Adauam) — não uma paralela. Reusa as funções de escrita dele. É escrita
+  // em produção, então: só numa conta vazia (nunca duplica), confirma antes,
+  // e a política do banco ainda exige role de escrita (adm_silver+).
+  async function lancar() {
+    const r = resultado?.conta, at = resultado?.atendimento;
+    if (!canEdit || lancando || !r || !at) return;
+    if (r.itens.length === 0) { setMsgLanc({ tom: "erro", texto: "Nada a lançar — a conta montada está vazia." }); return; }
+    if (!r.via) { setMsgLanc({ tom: "erro", texto: "Sem fonte pagadora (convênio) no atendimento — informe o convênio antes de lançar." }); return; }
+
+    setLancando(true); setMsgLanc(null);
+    try {
+      // A conta já existe? Se sim e tiver item, não mexemos: acrescentar por
+      // cima duplicaria a produção. Quem já começou a conta fecha na tela do
+      // Atendimento; aqui a gente só monta a partir do zero.
+      let conta = await carregarConta(sb, at.id);
+      if (conta) {
+        if (!STATUS_CONTA[conta.status]?.recebeItem) {
+          setMsgLanc({ tom: "erro", texto: `A conta #${conta.id} está ${STATUS_CONTA[conta.status]?.label?.toLowerCase() || conta.status} e não recebe item novo. Reabra pela tela de Faturamento do Atendimento.` });
+          return;
+        }
+        const existentes = await carregarItensDaConta(sb, conta.id);
+        const ativos = existentes.filter((i) => !i.cancelado);
+        if (ativos.length > 0) {
+          setMsgLanc({ tom: "erro", texto: `Este atendimento já tem a conta #${conta.id} com ${ativos.length} item(ns). Para não duplicar, revise ou lance pela tela de Faturamento do Atendimento (a do Adauam).` });
+          return;
+        }
+      }
+
+      const aviso = r.temImpedimento ? "\n\n⚠️ Há impedimento de glosa na conta — revise antes de faturar." : "";
+      if (!confirm(`Lançar ${r.itens.length} item(ns) montados do prontuário na conta do atendimento #${at.id}?\n\nEles vão para a conta do episódio — a mesma que aparece no módulo Atendimento.${aviso}`)) {
+        return;
+      }
+
+      if (!conta) {
+        const ab = await abrirConta(sb, {
+          atendimento_id: at.id, prontuario: at.prontuario,
+          convenio_id: at.convenio_id, plano_id: at.plano_id,
+          via: r.via, competencia: r.competencia,
+        }, currentUser);
+        if (!ab.ok) { setMsgLanc({ tom: "erro", texto: ab.motivo }); return; }
+        conta = ab.conta;
+      }
+
+      let ok = 0; const erros = [];
+      for (const it of r.itens) {
+        const res = await acrescentarItem(sb, { ...it, conta_id: conta.id }, currentUser);
+        if (res.ok) ok += 1; else erros.push(res.motivo);
+      }
+
+      if (erros.length) {
+        setMsgLanc({ tom: "erro", texto: `Lancei ${ok} de ${r.itens.length}. O primeiro erro: ${erros[0]}` });
+      } else {
+        setMsgLanc({ tom: "ok", texto: `✓ ${ok} item(ns) lançados na conta #${conta.id}. A conta agora vive no módulo Atendimento → Faturamento, pronta para conferência e fechamento.` });
+      }
+    } catch {
+      setMsgLanc({ tom: "erro", texto: "Não consegui lançar agora. Tente de novo." });
+    } finally {
+      setLancando(false);
+    }
+  }
+
   const r = resultado?.conta || null;
   const at = resultado?.atendimento || null;
 
@@ -467,7 +534,7 @@ function ContaDoProntuario({ sb, sigtapRows }) {
         em vez de alguém digitar item por item. Você confere.
       </p>
       <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>
-        Prévia somente leitura. Lançar na conta do atendimento é a próxima fatia.
+        Monte a conta, confira, e lance na conta do episódio (a mesma do módulo Atendimento). O lançamento grava — só perfis com escrita na conta (adm_silver+).
       </p>
 
       <section style={{ ...cx.card, marginBottom: 16 }}>
@@ -596,6 +663,36 @@ function ContaDoProntuario({ sb, sigtapRows }) {
             )}
           </section>
 
+          {/* lançar na conta do episódio */}
+          <section style={{ ...cx.card, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={cx.rotulo}>Lançar na conta</div>
+                <p style={{ margin: "6px 0 0", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.45 }}>
+                  Grava estes itens na conta do episódio — a mesma do módulo Atendimento. Só numa conta ainda vazia; nada é duplicado.
+                </p>
+              </div>
+              {canEdit ? (
+                <button
+                  onClick={lancar}
+                  disabled={lancando || r.itens.length === 0}
+                  style={{ background: lancando ? "var(--surface-3)" : TEAL, color: lancando ? "var(--text-muted)" : "#04201c", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: lancando || r.itens.length === 0 ? "default" : "pointer", whiteSpace: "nowrap", opacity: r.itens.length === 0 ? 0.5 : 1 }}
+                >
+                  {lancando ? "Lançando…" : "Lançar na conta"}
+                </button>
+              ) : (
+                <span style={{ fontSize: 12, color: "var(--text-muted)", maxWidth: 260, textAlign: "right", lineHeight: 1.4 }}>
+                  Seu perfil vê a proposta, mas não grava na conta. O lançamento precisa de um perfil com escrita (adm_silver+).
+                </span>
+              )}
+            </div>
+            {msgLanc && (
+              <div style={{ marginTop: 12, fontSize: 13, padding: "10px 12px", borderRadius: 8, borderLeft: `3px solid ${msgLanc.tom === "erro" ? "#ef4444" : TEAL}`, background: msgLanc.tom === "erro" ? "rgba(239,68,68,.08)" : "rgba(45,212,191,.08)", color: "var(--text)" }}>
+                {msgLanc.texto}
+              </div>
+            )}
+          </section>
+
           {/* pré-glosa */}
           {r.glosa.length > 0 && (
             <section style={{ ...cx.card, marginBottom: 14 }}>
@@ -691,7 +788,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
 
       <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "22px 26px 40px" }}>
         {sub === "visao" && <VisaoExecutiva totalProcs={rows.length} />}
-        {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} />}
+        {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} canEdit={canEdit} currentUser={currentUser} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
       </div>
