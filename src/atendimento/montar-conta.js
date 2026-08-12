@@ -310,6 +310,38 @@ function itensMedicacao(administracoes) {
   );
 }
 
+// ── WORKLIST ────────────────────────────────────────────────
+
+/**
+ * A lista de trabalho do faturamento: as internações e o estado da conta de
+ * cada uma. Junta o episódio (ps_atendimentos) com a conta (at_contas) por
+ * `atendimento_id` e diz o que precisa de ação.
+ *
+ * A ordem é a ordem de TRABALHO, não a cronológica: primeiro o que ainda não
+ * tem conta (é o que se monta), depois a conta aberta (a revisar/fechar),
+ * por fim o que já está fechado ou faturado. Dentro de cada grupo, o mais
+ * recente no topo. Uma conta cancelada não conta — o episódio volta a
+ * aparecer como "sem conta", que é a verdade.
+ */
+export function montarWorklist(internacoes = [], contas = []) {
+  const porAtend = new Map();
+  for (const c of Array.isArray(contas) ? contas : []) {
+    if (!c || c.status === "cancelada") continue;
+    porAtend.set(String(c.atendimento_id), c);
+  }
+  const rows = (Array.isArray(internacoes) ? internacoes : []).map((a) => {
+    const conta = porAtend.get(String(a.id)) || null;
+    return { ...a, conta, situacao: conta ? conta.status : "sem-conta" };
+  });
+  const peso = { "sem-conta": 0, aberta: 1, fechada: 2, glosada: 2, faturada: 3 };
+  return rows.sort((x, y) => {
+    const px = peso[x.situacao] ?? 5;
+    const py = peso[y.situacao] ?? 5;
+    if (px !== py) return px - py;
+    return String(y.chegada_em || "").localeCompare(String(x.chegada_em || "")); // recente primeiro
+  });
+}
+
 // ── O MOTOR ─────────────────────────────────────────────────
 
 /**

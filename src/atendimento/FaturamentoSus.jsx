@@ -25,11 +25,11 @@ import {
   montarProcedimento, codigoFormatado, viaDoProcedimento,
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
-import { montarContaDoProntuario, escolherInternacao } from "./montar-conta.js";
+import { montarContaDoProntuario, escolherInternacao, montarWorklist } from "./montar-conta.js";
 import { reais, centavos, STATUS_CONTA } from "./faturamento.js";
 import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
-  carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
+  carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, carregarWorklistFaturamento,
 } from "./dados.js";
 
 const TEAL = "#2dd4bf";
@@ -417,6 +417,14 @@ function SigtapView({ rows, carregando }) {
 
 // ── Conta do prontuário (motor real: a conta se monta do episódio) ─
 const TIPO_ITEM_LABEL = { procedimento: "Procedimento", diaria: "Diária", medicamento: "Medicamento", material: "Material", taxa: "Taxa" };
+const SIT = {
+  "sem-conta": { label: "Sem conta", cor: "#f59e0b", bg: "rgba(245,158,11,.14)" },
+  aberta: { label: "Aberta", cor: TEAL, bg: "rgba(45,212,191,.14)" },
+  fechada: { label: "Fechada", cor: "var(--text-2)", bg: "var(--surface-3)" },
+  faturada: { label: "Faturada", cor: "var(--text-2)", bg: "var(--surface-3)" },
+  glosada: { label: "Glosada", cor: "#ef4444", bg: "rgba(239,68,68,.14)" },
+};
+const SIT_DEFAULT = { label: "—", cor: "var(--text-muted)", bg: "var(--surface-3)" };
 
 function subtotalCentavos(it) {
   const u = centavos(it.valor_unitario);
@@ -430,10 +438,23 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
   const [resultado, setResultado] = useState(null); // { conta, atendimento }
   const [lancando, setLancando] = useState(false);
   const [msgLanc, setMsgLanc] = useState(null);     // { tom, texto }
+  const [worklist, setWorklist] = useState([]);
+  const [carregandoWL, setCarregandoWL] = useState(true);
 
-  async function montar() {
-    const n = String(numero).replace(/\D/g, "");
+  async function carregarWL() {
+    setCarregandoWL(true);
+    try {
+      const { internacoes, contas } = await carregarWorklistFaturamento(sb, { limite: 100 });
+      setWorklist(montarWorklist(internacoes, contas));
+    } catch { setWorklist([]); }
+    finally { setCarregandoWL(false); }
+  }
+  useEffect(() => { carregarWL(); }, [sb]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function montar(idArg) {
+    const n = String(idArg ?? numero).replace(/\D/g, "");
     if (!n) { setErro("Informe o número do atendimento."); return; }
+    setNumero(n);
     setCarregando(true); setErro(null); setResultado(null); setMsgLanc(null);
     try {
       const atendimento = await carregarAtendimento(sb, n);
@@ -520,6 +541,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         setMsgLanc({ tom: "erro", texto: `Lancei ${ok} de ${r.itens.length}. O primeiro erro: ${erros[0]}` });
       } else {
         setMsgLanc({ tom: "ok", texto: `✓ ${ok} item(ns) lançados na conta #${conta.id}. A conta agora vive no módulo Atendimento → Faturamento, pronta para conferência e fechamento.` });
+        carregarWL(); // a internação sai de "sem conta" para "aberta" na lista
       }
     } catch {
       setMsgLanc({ tom: "erro", texto: "Não consegui lançar agora. Tente de novo." });
@@ -542,8 +564,60 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         Monte a conta, confira, e lance na conta do episódio (a mesma do módulo Atendimento). O lançamento grava — só perfis com escrita na conta (adm_silver+).
       </p>
 
+      {/* worklist: internações a faturar */}
       <section style={{ ...cx.card, marginBottom: 16 }}>
-        <div style={cx.rotulo}>Monte a partir de um atendimento</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={cx.rotulo}>Internações a faturar ({worklist.length})</div>
+          <button onClick={carregarWL} disabled={carregandoWL} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 7, padding: "5px 12px", fontSize: 12, cursor: carregandoWL ? "default" : "pointer" }}>
+            {carregandoWL ? "Atualizando…" : "Atualizar"}
+          </button>
+        </div>
+        {carregandoWL ? (
+          <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>Carregando…</p>
+        ) : worklist.length === 0 ? (
+          <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>
+            Nenhuma internação encontrada. As internações do PS (desfecho “internação”) aparecem aqui para virar conta.
+          </p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
+                  <th style={{ padding: "6px 8px" }}>Paciente</th>
+                  <th style={{ padding: "6px 8px" }}>Atend.</th>
+                  <th style={{ padding: "6px 8px" }}>Internação</th>
+                  <th style={{ padding: "6px 8px" }}>CID</th>
+                  <th style={{ padding: "6px 8px" }}>Conta</th>
+                  <th style={{ padding: "6px 8px" }} />
+                </tr>
+              </thead>
+              <tbody>
+                {worklist.map((row) => {
+                  const sit = SIT[row.situacao] || SIT_DEFAULT;
+                  const ativo = at && String(at.id) === String(row.id);
+                  return (
+                    <tr key={row.id} onClick={() => montar(row.id)} style={{ cursor: "pointer", borderTop: "1px solid var(--border)", background: ativo ? "var(--surface-3)" : "transparent" }}>
+                      <td style={{ padding: "8px", fontWeight: 600 }}>{row.iniciais || "—"}</td>
+                      <td style={{ padding: "8px", fontVariantNumeric: "tabular-nums", color: "var(--text-2)", whiteSpace: "nowrap" }}>#{row.id} · reg. {row.prontuario}</td>
+                      <td style={{ padding: "8px", color: "var(--text-2)", whiteSpace: "nowrap" }}>{row.chegada_em ? new Date(row.chegada_em).toLocaleDateString("pt-BR") : "—"}</td>
+                      <td style={{ padding: "8px", color: "var(--text-2)" }}>{row.cid || "—"}</td>
+                      <td style={{ padding: "8px" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20, background: sit.bg, color: sit.cor, whiteSpace: "nowrap" }}>{sit.label}</span>
+                      </td>
+                      <td style={{ padding: "8px", textAlign: "right" }}>
+                        <span style={{ color: TEAL, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>Montar →</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section style={{ ...cx.card, marginBottom: 16 }}>
+        <div style={cx.rotulo}>Ou monte por número de atendimento</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
           <input
             value={numero}
@@ -553,7 +627,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
             style={{ ...cx.input, flex: 1, minWidth: 200 }}
           />
           <button
-            onClick={montar}
+            onClick={() => montar()}
             disabled={carregando}
             style={{ background: carregando ? "var(--surface-3)" : TEAL, color: carregando ? "var(--text-muted)" : "#04201c", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, fontSize: 13, cursor: carregando ? "default" : "pointer", whiteSpace: "nowrap" }}
           >
