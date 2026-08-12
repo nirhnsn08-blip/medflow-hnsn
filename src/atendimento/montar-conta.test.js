@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  montarContaDoProntuario, resolverVia, janelaInternacao, escolherInternacao,
+  montarContaDoProntuario, resolverVia, janelaInternacao, escolherInternacao, montarWorklist,
 } from "./montar-conta.js";
 import { camposDoItem } from "./faturamento.js";
 import { GRAVIDADES as SIG_GRAV } from "./sigtap.js";
@@ -358,5 +358,45 @@ describe("total e regras", () => {
     const r = montarContaDoProntuario({ atendimento: atend(), convenio: SUS, procedimentos: [catProc()] });
     expect(r.prontas).toBe(true);
     expect(r.competencia).toBe("2026-08");
+  });
+});
+
+// ── WORKLIST ────────────────────────────────────────────────
+describe("montarWorklist", () => {
+  const internacoes = [
+    { id: 1, iniciais: "A", chegada_em: "2026-08-10T10:00:00Z" }, // aberta
+    { id: 2, iniciais: "B", chegada_em: "2026-08-12T10:00:00Z" }, // sem conta (mais recente)
+    { id: 3, iniciais: "C", chegada_em: "2026-08-01T10:00:00Z" }, // faturada
+    { id: 4, iniciais: "D", chegada_em: "2026-08-11T10:00:00Z" }, // sem conta
+  ];
+  const contas = [
+    { id: 91, atendimento_id: 1, status: "aberta" },
+    { id: 92, atendimento_id: 3, status: "faturada" },
+    { id: 93, atendimento_id: 99, status: "aberta" }, // de outro atendimento — ignorada aqui
+  ];
+
+  it("junta a conta ao episódio e deriva a situação", () => {
+    const w = montarWorklist(internacoes, contas);
+    const porId = Object.fromEntries(w.map((r) => [r.id, r.situacao]));
+    expect(porId).toEqual({ 1: "aberta", 2: "sem-conta", 3: "faturada", 4: "sem-conta" });
+  });
+
+  it("ordena por ação primeiro (sem-conta → aberta → faturada), recente no topo dentro do grupo", () => {
+    const w = montarWorklist(internacoes, contas);
+    expect(w.map((r) => r.id)).toEqual([2, 4, 1, 3]); // 2 e 4 sem-conta (12>11), depois aberta (1), depois faturada (3)
+  });
+
+  it("conta cancelada não conta — o episódio volta a 'sem-conta'", () => {
+    const w = montarWorklist(
+      [{ id: 5, chegada_em: "2026-08-05T00:00:00Z" }],
+      [{ id: 94, atendimento_id: 5, status: "cancelada" }],
+    );
+    expect(w[0].situacao).toBe("sem-conta");
+    expect(w[0].conta).toBeNull();
+  });
+
+  it("listas vazias não quebram", () => {
+    expect(montarWorklist()).toEqual([]);
+    expect(montarWorklist([], [])).toEqual([]);
   });
 });

@@ -672,6 +672,30 @@ export async function carregarLeitosDoEpisodio(sb, { atendimentoId, prontuario }
 }
 
 /**
+ * A lista de trabalho do faturamento: as internações (desfecho `internacao`)
+ * e as contas que já existem para elas. O cruzamento e a ordem de trabalho
+ * são do motor puro (`montarWorklist`); aqui só se busca.
+ *
+ * Traz as contas num segundo select por `atendimento_id in (...)` em vez de um
+ * join do PostgREST: o faturamento lê as duas tabelas por módulos diferentes,
+ * e dois selects simples não dependem de relação declarada no schema.
+ */
+export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
+  const internacoes = await sb(`ps_atendimentos?desfecho=eq.internacao` +
+    `&select=id,prontuario,iniciais,chegada_em,desfecho,desfecho_em,convenio_id,procedimento_cod,cid` +
+    `&order=chegada_em.desc&limit=${limite}`);
+  const lista = Array.isArray(internacoes) ? internacoes : [];
+  if (!lista.length) return { internacoes: [], contas: [] };
+
+  const ids = lista.map((a) => a.id).filter((v) => v != null);
+  const contas = ids.length
+    ? await sb(`at_contas?atendimento_id=in.(${ids.join(",")})&status=neq.cancelada` +
+      `&select=id,atendimento_id,status,competencia`)
+    : [];
+  return { internacoes: lista, contas: Array.isArray(contas) ? contas : [] };
+}
+
+/**
  * Abre a conta de um atendimento.
  *
  * O índice único parcial do banco (`at_contas_atend_unica`) é a última
