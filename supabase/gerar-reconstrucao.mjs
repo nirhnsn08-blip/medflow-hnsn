@@ -104,6 +104,9 @@ const ORDEM = [
   // Fase 4 (Faturamento SUS) — tabela de procedimentos do SUS (referência,
   // sem paciente). Antes do RLS abaixo, que cobre também as tabelas sigtap_*.
   "migracao-sigtap.sql",
+  // Valores (SH/SP) e permanência REAIS dos 219, das AIHs do SIH-SUS (RS,
+  // jun/2026). Depois do seed acima (que cria a tabela e semeia sem valor).
+  "migracao-sigtap-valores.sql",
   // Grants do módulo Faturamento para os bancos que já rodaram o seed
   // (mesmo motivo do migracao-perfis-nsp.sql). Redundante num banco novo.
   "migracao-perfis-faturamento.sql",

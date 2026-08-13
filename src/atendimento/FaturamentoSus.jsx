@@ -390,6 +390,7 @@ function SigtapView({ rows, carregando }) {
                     <th style={{ padding: "6px 8px" }}>Código</th>
                     <th style={{ padding: "6px 8px" }}>Procedimento</th>
                     <th style={{ padding: "6px 8px" }}>Via</th>
+                    <th style={{ padding: "6px 8px", textAlign: "right" }}>Valor (SH+SP)</th>
                     <th style={{ padding: "6px 8px", textAlign: "right" }}>Média perm.</th>
                   </tr>
                 </thead>
@@ -401,6 +402,9 @@ function SigtapView({ rows, carregando }) {
                         <td style={{ padding: "6px 8px", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{codigoFormatado(p.codigo)}</td>
                         <td style={{ padding: "6px 8px" }}>{p.nome}</td>
                         <td style={{ padding: "6px 8px" }}>{VIA_LABEL[viaDoProcedimento(p)] || "—"}</td>
+                        <td style={{ padding: "6px 8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                          {p.valorSh != null || p.valorSp != null ? reais((p.valorSh || 0) + (p.valorSp || 0)) : "—"}
+                        </td>
                         <td style={{ padding: "6px 8px", textAlign: "right" }}>{p.mediaPermanencia ?? "—"}</td>
                       </tr>
                     );
