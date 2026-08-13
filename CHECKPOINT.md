@@ -1,19 +1,55 @@
-# 📍 Ponto de restauração — checkpoint-v56
+# 📍 Ponto de restauração — checkpoint-v57
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v56` (anteriores: `checkpoint-v55` … `checkpoint-v1`)
-- **Data:** 2026-08-12 · `main` em `0d60699`
+- **Tag Git mais recente:** `checkpoint-v57` (anteriores: `checkpoint-v56` … `checkpoint-v1`)
+- **Data:** 2026-08-12 · `main` em `df27530`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v55 para cá: o **diferencial da Fase 4** entrou no ar — a **conta AIH se
-  monta do prontuário** (motor puro `montar-conta.js`, +30 testes; aba **Pendentes** do
-  Faturamento), incluindo a **medicação administrada** na conta (PRs **#78**, **#79**).
-- **1129 testes** · **93 tabelas / 1461 colunas** · build limpo.
+  vai ao ar). Da v56 para cá: a **conta do prontuário virou fluxo completo** (lançar na
+  conta · permanência real do leito · worklist de Pendentes) e ganhou **R$ real** dos
+  valores que o SUS pagou de verdade, lidos de um `.dbc` do DATASUS (PRs **#81**–**#84**).
+- **1143 testes** · **93 tabelas / 1461 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v57 (desde a v56): a conta do prontuário fecha o fluxo e ganha R$ real
+
+A conta que se monta do prontuário virou um **fluxo completo** — da lista de trabalho ao
+lançamento — e passou a fechar em **R$ real**, dos valores que o SUS de fato pagou.
+
+### 🧾 Lançar na conta do Adauam (PR #81)
+A proposta montada do prontuário vira **itens gravados na conta do episódio** — a mesma do
+módulo Atendimento, não uma paralela. Reusa `abrirConta`/`acrescentarItem` sem editar o
+arquivo dele. Gated por `canLaunch` (adm_silver+); só lança em conta vazia (nunca duplica);
+confirma antes de gravar.
+
+### 🛏️ Permanência real pela estadia no leito (PR #82)
+As diárias saem da **permanência real da internação** — datas do leito (`ps_atendimento_id`
+para a estadia em curso; `leitos_saidas` por prontuário+período para a encerrada) —, não da
+passagem pelo PS. A tela mostra a fonte (**do leito** × **estimada**). De passagem, corrigiu
+um bug latente: internação em curso não herda mais o desfecho do PS como se fosse alta.
+
+### 📋 Worklist de Pendentes (PR #83)
+A aba Pendentes deixa de exigir digitar número: **lista as internações a faturar** com o
+estado da conta de cada uma (sem-conta → aberta → fechada/faturada, ação primeiro), e um
+clique monta. `montarWorklist` (puro) junta episódio × conta por `atendimento_id`.
+
+### 💰 Valores e permanência REAIS do SIH-SUS (PR #84)
+A conta ganha **R$ de verdade**. A Laura passou um `.dbc` do DATASUS (AIH do RS, jun/2026);
+escrevi um **leitor de `.dbc` em Node do zero** (descompactador PKWARE/DCL — a máquina só tem
+Node), li as **76.035 AIHs** e derivei, por procedimento, a **mediana de VAL_SH/VAL_SP** e a
+**permanência média real** — `migracao-sigtap-valores.sql` populou `valor_sh`/`valor_sp`/
+`media_permanencia` de **215 dos 219**. O motor usa **SH+SP** quando o hospital não tem valor;
+a diária segue informativa (o SH cobre a permanência padrão, sem duplicar). Uma pneumonia saiu
+de "sem preço" para **R$ 1.110**. Valores do RS (a tabela SUS é nacional → aproxima o oficial);
+refinar pelo CNES do HNSN quando houver. Ver `datasus-dbc-node` na memória.
+
+**Falta da Fase 4:** ferramenta de import mensal do `.dbc` (o dado é mensal); refinar valores
+pelo CNES do HNSN; **glosa completa por valor**; **arquivo de remessa** (parado até o layout que
+o HNSN transmite). **1143 testes + build verdes.**
 
 ## 🆕 Novidades da v56 (desde a v55): a conta AIH se monta do prontuário (Tier 1 Fase 4)
 
