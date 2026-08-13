@@ -133,27 +133,44 @@ function itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow
   }
 
   const nome = procCatalogo?.nome || sigRow?.nome || null;
-  const valor = procCatalogo?.valor_sus ?? null; // em reais; centavos() converte no total
+
+  // Preço: o catálogo do hospital manda; na falta, o valor do SIGTAP —
+  // SH+SP, dos valores reais das AIHs do SUS. É o valor-base do ato; a
+  // diária segue informativa, sem duplicar, porque o SH já cobre a
+  // permanência padrão (só o que passa da média é diária a maior).
+  let valor = procCatalogo?.valor_sus ?? null; // em reais
+  let fonteValor = valor != null ? "catálogo do hospital" : null;
+  if (valor == null) {
+    const sh = numOuNull(sigRow?.valor_sh);
+    const sp = numOuNull(sigRow?.valor_sp);
+    if (sh != null || sp != null) {
+      valor = ((sh ?? 0) + (sp ?? 0)) / 100; // centavos → reais
+      fonteValor = "SIGTAP (SH+SP)";
+    }
+  }
 
   if (!procCatalogo && !sigRow) {
     avisos.push(`Procedimento ${codigoFormatado(codPrinc) || codPrinc} não está em nenhum catálogo (nem no do hospital, nem no SIGTAP) — entra sem nome e sem preço.`);
-  } else if (!procCatalogo) {
-    avisos.push(`Procedimento ${codigoFormatado(codPrinc) || codPrinc} está no SIGTAP mas não no catálogo de preços do hospital — entra sem valor até o pacote do DATASUS.`);
+  } else if (valor == null) {
+    avisos.push(`Procedimento ${codigoFormatado(codPrinc) || codPrinc} ainda sem valor — o SIGTAP não trouxe SH/SP para ele, então o total sai menor do que é.`);
   }
 
   return {
-    item: item({
-      tipo: "procedimento",
-      codigo: codPrinc,
-      descricao: nome,
-      quantidade: 1,
-      valorUnitario: valor,
-      executante: atendimento?.medico ?? null,
-      executanteCbo: atendimento?.medico_cbo ?? null,
-      dataExecucao: soData(atendimento?.chegada_em),
-      origem: "Procedimento principal do atendimento",
-      fonte: "ps_atendimentos.procedimento_cod",
-    }),
+    item: {
+      ...item({
+        tipo: "procedimento",
+        codigo: codPrinc,
+        descricao: nome,
+        quantidade: 1,
+        valorUnitario: valor,
+        executante: atendimento?.medico ?? null,
+        executanteCbo: atendimento?.medico_cbo ?? null,
+        dataExecucao: soData(atendimento?.chegada_em),
+        origem: "Procedimento principal do atendimento",
+        fonte: "ps_atendimentos.procedimento_cod",
+      }),
+      fonteValor,
+    },
     avisos,
   };
 }

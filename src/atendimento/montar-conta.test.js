@@ -173,12 +173,30 @@ describe("procedimento principal", () => {
     expect(p.executante).toBe("Dra. Ana");
     expect(p.executante_cbo).toBe("225125");
   });
-  it("sem preço no hospital, usa o nome do SIGTAP e avisa", () => {
+  it("sem valor no hospital nem no SIGTAP, usa o nome do SIGTAP e avisa", () => {
     const r = montarContaDoProntuario({ atendimento: atend(), convenio: SUS, sigtapProcs: [sigProc()] });
     const p = r.itens.find((i) => i.tipo === "procedimento");
     expect(p.descricao).toBe("Trat. pneumonia (SIGTAP)");
     expect(p.valor_unitario).toBeNull();
-    expect(r.avisos.some((a) => /catálogo de preços/i.test(a))).toBe(true);
+    expect(r.avisos.some((a) => /ainda sem valor/i.test(a))).toBe(true);
+  });
+
+  it("sem valor no hospital, pega SH+SP do SIGTAP (das AIHs reais)", () => {
+    const r = montarContaDoProntuario({ atendimento: atend(), convenio: SUS, sigtapProcs: [sigProc({ valor_sh: 103796, valor_sp: 7222 })] });
+    const p = r.itens.find((i) => i.tipo === "procedimento");
+    expect(p.valor_unitario).toBeCloseTo(1110.18, 2); // (103796+7222) centavos
+    expect(p.fonteValor).toBe("SIGTAP (SH+SP)");
+  });
+
+  it("o catálogo do hospital tem prioridade sobre o SIGTAP", () => {
+    const r = montarContaDoProntuario({
+      atendimento: atend(), convenio: SUS,
+      procedimentos: [catProc({ valor_sus: 850.0 })],
+      sigtapProcs: [sigProc({ valor_sh: 103796, valor_sp: 7222 })],
+    });
+    const p = r.itens.find((i) => i.tipo === "procedimento");
+    expect(p.valor_unitario).toBe(850.0);
+    expect(p.fonteValor).toBe("catálogo do hospital");
   });
   it("fora de todo catálogo: entra com o código, sem nome nem preço, e avisa", () => {
     const r = montarContaDoProntuario({ atendimento: atend(), convenio: SUS });

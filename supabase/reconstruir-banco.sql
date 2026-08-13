@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 61 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 62 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (61 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (62 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/61 — schema.sql
+-- │ 01/62 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/61 — migracao-farmacia-faseA.sql
+-- │ 02/62 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1240,7 +1240,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/61 — migracao-farmacia-seed.sql
+-- │ 03/62 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1450,7 +1450,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/61 — migracao-farmacia-faseB.sql
+-- │ 04/62 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1491,7 +1491,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/61 — migracao-farmacia-clinica-fase1.sql
+-- │ 05/62 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1616,7 +1616,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/61 — migracao-farmacia-clinica-fase2.sql
+-- │ 06/62 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1738,7 +1738,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/61 — migracao-farmacia-clinica-fase3.sql
+-- │ 07/62 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1806,7 +1806,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/61 — migracao-farmacia-preparo.sql
+-- │ 08/62 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1840,7 +1840,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/61 — migracao-farmacia-custos.sql
+-- │ 09/62 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1853,7 +1853,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/61 — migracao-farmacia-nao-padronizados.sql
+-- │ 10/62 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1892,7 +1892,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/61 — migracao-farmacia-intervencoes.sql
+-- │ 11/62 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -1931,7 +1931,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/61 — migracao-leitos-kanban-metas.sql
+-- │ 12/62 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -1960,7 +1960,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/61 — migracao-leitos-saida-setor.sql
+-- │ 13/62 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -1986,7 +1986,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/61 — migracao-suprimentos-faseA.sql
+-- │ 14/62 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2124,7 +2124,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/61 — migracao-suprimentos-faseB.sql
+-- │ 15/62 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2176,7 +2176,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/61 — migracao-suprimentos-seed.sql
+-- │ 16/62 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2332,7 +2332,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/61 — migracao-suprimentos-faseC.sql
+-- │ 17/62 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2389,7 +2389,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/61 — migracao-suprimentos-inventario.sql
+-- │ 18/62 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2451,7 +2451,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/61 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 19/62 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2468,7 +2468,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/61 — migracao-suprimentos-cotacao.sql
+-- │ 20/62 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2516,7 +2516,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/61 — migracao-ps-salas.sql
+-- │ 21/62 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2565,7 +2565,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/61 — migracao-ps-salas-censo.sql
+-- │ 22/62 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2645,7 +2645,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/61 — migracao-ps-origem-elo.sql
+-- │ 23/62 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2685,7 +2685,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/61 — migracao-ps-checagem-medicacao.sql
+-- │ 24/62 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2738,7 +2738,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/61 — migracao-pep-fase1.sql
+-- │ 25/62 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3536,7 +3536,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/61 — migracao-pep-acessos.sql
+-- │ 26/62 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3602,7 +3602,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/61 — migracao-pep-sinais-spo2.sql
+-- │ 27/62 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3634,7 +3634,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/61 — migracao-pep-categoria-profissional.sql
+-- │ 28/62 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3688,7 +3688,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/61 — migracao-pep-perfis-update.sql
+-- │ 29/62 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3727,7 +3727,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/61 — migracao-pep-fase3.sql
+-- │ 30/62 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4037,7 +4037,7 @@ order by c.relname;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 31/61 — migracao-perfis-acesso.sql
+-- │ 31/62 — migracao-perfis-acesso.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS DE ACESSO — o cargo vira um pacote de permissões
@@ -4340,7 +4340,7 @@ select p.chave, p.nome, count(pp.modulo) as modulos,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 32/61 — migracao-leitos-nir-regulacao.sql
+-- │ 32/62 — migracao-leitos-nir-regulacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"
@@ -4381,7 +4381,7 @@ select 'regulação NIR ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 33/61 — migracao-suprimentos-aprovacao.sql
+-- │ 33/62 — migracao-suprimentos-aprovacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Aprovação de pedidos de compra pela matriz
@@ -4416,7 +4416,7 @@ select 'aprovação de compras ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 34/61 — migracao-ps-comorbidades.sql
+-- │ 34/62 — migracao-ps-comorbidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Comorbidades na triagem
@@ -4442,7 +4442,7 @@ select 'comorbidades ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 35/61 — migracao-ps-triagem-tipo.sql
+-- │ 35/62 — migracao-ps-triagem-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)
@@ -4478,7 +4478,7 @@ select 'triagem_tipo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 36/61 — migracao-ps-faixas-pediatricas.sql
+-- │ 36/62 — migracao-ps-faixas-pediatricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)
@@ -4547,7 +4547,7 @@ select 'ps_faixas_pediatricas ok — ' || count(*) || ' faixas' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 37/61 — migracao-ps-faixas-obstetricas.sql
+-- │ 37/62 — migracao-ps-faixas-obstetricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)
@@ -4613,7 +4613,7 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 38/61 — migracao-enf-escalas-lpp.sql
+-- │ 38/62 — migracao-enf-escalas-lpp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)
@@ -4740,7 +4740,7 @@ select 'enf: escalas/lpp/faixas ok — ' || count(*) || ' cortes semeados' as re
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 39/61 — migracao-enf-sae.sql
+-- │ 39/62 — migracao-enf-sae.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)
@@ -4956,7 +4956,7 @@ select 'enf SAE: catálogo semeado — ' || count(*) || ' itens (' ||
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 40/61 — migracao-pacientes-identificacao.sql
+-- │ 40/62 — migracao-pacientes-identificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário
@@ -5150,7 +5150,7 @@ from public.pacientes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 41/61 — migracao-atendimento-recepcao.sql
+-- │ 41/62 — migracao-atendimento-recepcao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital
@@ -5488,7 +5488,7 @@ select last_value as ultimo_prontuario_emitido from public.prontuario_seq;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 42/61 — migracao-atendimento-fk.sql
+-- │ 42/62 — migracao-atendimento-fk.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)
@@ -5597,7 +5597,7 @@ select exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 43/61 — migracao-nsp-incidentes.sql
+-- │ 43/62 — migracao-nsp-incidentes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes
@@ -5687,7 +5687,7 @@ select 'NSP: nsp_incidentes + nsp_incidente_eventos ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 44/61 — migracao-atendimento-fase2.sql
+-- │ 44/62 — migracao-atendimento-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde
@@ -5994,7 +5994,7 @@ select 'dominios cadastrados pelo hospital', count(*)::text from public.at_domin
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 45/61 — migracao-atendimento-agenda.sql
+-- │ 45/62 — migracao-atendimento-agenda.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia
@@ -6216,7 +6216,7 @@ select 'trava de vaga unica instalada', (exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 46/61 — migracao-nsp-rca-plano.sql
+-- │ 46/62 — migracao-nsp-rca-plano.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)
@@ -6293,7 +6293,7 @@ select 'NSP: nsp_rca + nsp_acoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 47/61 — migracao-atendimento-ciclo.sql
+-- │ 47/62 — migracao-atendimento-ciclo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro
@@ -6380,7 +6380,7 @@ select 'atendimentos cancelados ate agora', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 48/61 — migracao-nsp-metas.sql
+-- │ 48/62 — migracao-nsp-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)
@@ -6455,7 +6455,7 @@ select 'NSP: nsp_meta_faixas (' || (select count(*) from public.nsp_meta_faixas)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 49/61 — migracao-nsp-protocolos.sql
+-- │ 49/62 — migracao-nsp-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Protocolos gerenciados de segurança (Fase 2d)
@@ -6509,7 +6509,7 @@ select 'NSP: nsp_protocolos ok — ' || count(*) || ' protocolos' as resultado f
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 50/61 — migracao-atendimento-responsavel.sql
+-- │ 50/62 — migracao-atendimento-responsavel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta
@@ -6677,7 +6677,7 @@ select 'politicas RLS (esperado 2)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 51/61 — migracao-atendimento-faturamento.sql
+-- │ 51/62 — migracao-atendimento-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — a conta do atendimento (fundação)
@@ -6921,7 +6921,7 @@ select 'politicas RLS (esperado 4)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 52/61 — migracao-nsp-capacitacoes.sql
+-- │ 52/62 — migracao-nsp-capacitacoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Capacitações em segurança do paciente (Fase 2d)
@@ -6964,7 +6964,7 @@ select 'NSP: nsp_capacitacoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 53/61 — migracao-nsp-comunicados.sql
+-- │ 53/62 — migracao-nsp-comunicados.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Comunicação / mural de segurança (Fase 2d)
@@ -7005,7 +7005,7 @@ select 'NSP: nsp_comunicados ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 54/61 — migracao-protocolos.sql
+-- │ 54/62 — migracao-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)
@@ -7132,7 +7132,7 @@ select 'PROTOCOLOS: prot_catalogo + prot_setor + prot_ativacoes + prot_bundle_it
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 55/61 — migracao-protocolos-iam.sql
+-- │ 55/62 — migracao-protocolos-iam.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)
@@ -7169,7 +7169,7 @@ select 'PROTOCOLOS 3b: template IAM ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 56/61 — migracao-protocolos-avc.sql
+-- │ 56/62 — migracao-protocolos-avc.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)
@@ -7209,7 +7209,7 @@ select 'PROTOCOLOS 3c: template AVC ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 57/61 — migracao-protocolos-tev.sql
+-- │ 57/62 — migracao-protocolos-tev.sql
 -- └────────────────────────────────────────────────────────────
 -- ===========================================================
 -- PROTOCOLOS CLINICOS -- Fase 3d: TEV / profilaxia (seed do template)
@@ -7251,7 +7251,7 @@ select count(*) as tev_templates from public.prot_catalogo where chave = 'tev';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 58/61 — migracao-perfis-nsp.sql
+-- │ 58/62 — migracao-perfis-nsp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS
@@ -7343,7 +7343,7 @@ select pa.chave as perfil,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 59/61 — migracao-sigtap.sql
+-- │ 59/62 — migracao-sigtap.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)
@@ -7626,7 +7626,259 @@ select 'SIGTAP: sigtap_procedimentos ok — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 60/61 — migracao-perfis-faturamento.sql
+-- │ 60/62 — migracao-sigtap-valores.sql
+-- └────────────────────────────────────────────────────────────
+-- ============================================================
+-- Valentrax — SIGTAP: valores e permanência REAIS (SIH-SUS)
+--
+-- Preenche valor_sh, valor_sp (centavos) e media_permanencia dos
+-- procedimentos que o HNSN fatura, a partir das AIHs REAIS pagas no
+-- Rio Grande do Sul em junho/2026 (arquivo SIH/SUS RDRS2606.dbc).
+--
+-- MÉTODO: por procedimento, a MEDIANA de VAL_SH e VAL_SP (robusta aos
+-- casos com UTI/complicação que inflam a média) e a MÉDIA de DIAS_PERM.
+-- 215 dos 219 procedimentos tiveram AIH no RS neste mês;
+-- os demais ficam como estão (sem valor até haver dado).
+--
+-- POR QUE SH+SP: na AIH, VAL_SH cobre a permanência PADRÃO do procedimento;
+-- a permanência acima da média é que vira diária a maior. Então SH+SP é o
+-- valor-base do ato — as diárias da conta seguem informativas, sem duplicar.
+--
+-- É ADITIVO E IDEMPOTENTE: só UPDATE de colunas já existentes; rodar duas
+-- vezes não faz mal. NÃO cria, altera ou apaga tabela/coluna.
+--
+-- ⚠️ Roda no DEMO primeiro, depois no principal.
+-- ============================================================
+
+begin;
+
+update public.sigtap_procedimentos set valor_sh = 4134, valor_sp = 1088, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0301060088';
+update public.sigtap_procedimentos set valor_sh = 103796, valor_sp = 7222, media_permanencia = 10, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303010037';
+update public.sigtap_procedimentos set valor_sh = 30940, valor_sp = 3950, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303010061';
+update public.sigtap_procedimentos set valor_sh = 17510, valor_sp = 3535, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303010070';
+update public.sigtap_procedimentos set valor_sh = 19507, valor_sp = 3535, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303010134';
+update public.sigtap_procedimentos set valor_sh = 64377, valor_sp = 17848, media_permanencia = 11, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303010215';
+update public.sigtap_procedimentos set valor_sh = 47366, valor_sp = 3965, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303020032';
+update public.sigtap_procedimentos set valor_sh = 31532, valor_sp = 3797, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303020040';
+update public.sigtap_procedimentos set valor_sh = 30876, valor_sp = 3294, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303020059';
+update public.sigtap_procedimentos set valor_sh = 39804, valor_sp = 5001, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303030038';
+update public.sigtap_procedimentos set valor_sh = 17977, valor_sp = 2350, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303030046';
+update public.sigtap_procedimentos set valor_sh = 39239, valor_sp = 4599, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303030054';
+update public.sigtap_procedimentos set valor_sh = 64904, valor_sp = 5794, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040076';
+update public.sigtap_procedimentos set valor_sh = 26321, valor_sp = 7633, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040084';
+update public.sigtap_procedimentos set valor_sh = 50554, valor_sp = 5794, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040092';
+update public.sigtap_procedimentos set valor_sh = 67779, valor_sp = 6438, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040149';
+update public.sigtap_procedimentos set valor_sh = 21832, valor_sp = 2752, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040165';
+update public.sigtap_procedimentos set valor_sh = 41474, valor_sp = 5643, media_permanencia = 10, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040203';
+update public.sigtap_procedimentos set valor_sh = 55513, valor_sp = 3994, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040211';
+update public.sigtap_procedimentos set valor_sh = 52633, valor_sp = 5205, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040238';
+update public.sigtap_procedimentos set valor_sh = 228729, valor_sp = 6438, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303040300';
+update public.sigtap_procedimentos set valor_sh = 77552, valor_sp = 4605, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060018';
+update public.sigtap_procedimentos set valor_sh = 29977, valor_sp = 5629, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060026';
+update public.sigtap_procedimentos set valor_sh = 32927, valor_sp = 4971, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060034';
+update public.sigtap_procedimentos set valor_sh = 67973, valor_sp = 28941, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060042';
+update public.sigtap_procedimentos set valor_sh = 59033, valor_sp = 11037, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060050';
+update public.sigtap_procedimentos set valor_sh = 65116, valor_sp = 9471, media_permanencia = 10, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060077';
+update public.sigtap_procedimentos set valor_sh = 82800, valor_sp = 3650, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060131';
+update public.sigtap_procedimentos set valor_sh = 64428, valor_sp = 5940, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060140';
+update public.sigtap_procedimentos set valor_sh = 69417, valor_sp = 11672, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060190';
+update public.sigtap_procedimentos set valor_sh = 49113, valor_sp = 5063, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060204';
+update public.sigtap_procedimentos set valor_sh = 82839, valor_sp = 4017, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060212';
+update public.sigtap_procedimentos set valor_sh = 45536, valor_sp = 4971, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060239';
+update public.sigtap_procedimentos set valor_sh = 46557, valor_sp = 10971, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060255';
+update public.sigtap_procedimentos set valor_sh = 42776, valor_sp = 5063, media_permanencia = 10, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060263';
+update public.sigtap_procedimentos set valor_sh = 76233, valor_sp = 30828, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060280';
+update public.sigtap_procedimentos set valor_sh = 32740, valor_sp = 5068, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303060298';
+update public.sigtap_procedimentos set valor_sh = 58719, valor_sp = 5970, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303070072';
+update public.sigtap_procedimentos set valor_sh = 26745, valor_sp = 3705, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303070099';
+update public.sigtap_procedimentos set valor_sh = 43045, valor_sp = 5358, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303070102';
+update public.sigtap_procedimentos set valor_sh = 31081, valor_sp = 2751, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303070110';
+update public.sigtap_procedimentos set valor_sh = 37971, valor_sp = 4195, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303070129';
+update public.sigtap_procedimentos set valor_sh = 23676, valor_sp = 3323, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303080086';
+update public.sigtap_procedimentos set valor_sh = 27759, valor_sp = 3983, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303080094';
+update public.sigtap_procedimentos set valor_sh = 14541, valor_sp = 2698, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303100036';
+update public.sigtap_procedimentos set valor_sh = 12815, valor_sp = 2399, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303100044';
+update public.sigtap_procedimentos set valor_sh = 30035, valor_sp = 5872, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303110066';
+update public.sigtap_procedimentos set valor_sh = 51720, valor_sp = 2571, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140046';
+update public.sigtap_procedimentos set valor_sh = 62268, valor_sp = 3133, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140054';
+update public.sigtap_procedimentos set valor_sh = 23944, valor_sp = 3129, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140070';
+update public.sigtap_procedimentos set valor_sh = 17697, valor_sp = 2410, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140100';
+update public.sigtap_procedimentos set valor_sh = 52435, valor_sp = 6150, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140119';
+update public.sigtap_procedimentos set valor_sh = 62583, valor_sp = 2940, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140135';
+update public.sigtap_procedimentos set valor_sh = 22581, valor_sp = 2651, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140143';
+update public.sigtap_procedimentos set valor_sh = 57408, valor_sp = 7835, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303140151';
+update public.sigtap_procedimentos set valor_sh = 29257, valor_sp = 3455, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303150050';
+update public.sigtap_procedimentos set valor_sh = 38939, valor_sp = 5421, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303150068';
+update public.sigtap_procedimentos set valor_sh = 25575, valor_sp = 3879, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303160047';
+update public.sigtap_procedimentos set valor_sh = 691426, valor_sp = 163866, media_permanencia = 19, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303160055';
+update public.sigtap_procedimentos set valor_sh = 421801, valor_sp = 103214, media_permanencia = 14, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303160063';
+update public.sigtap_procedimentos set valor_sh = 29379, valor_sp = 3610, media_permanencia = 13, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303170131';
+update public.sigtap_procedimentos set valor_sh = 44802, valor_sp = 5776, media_permanencia = 15, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303170140';
+update public.sigtap_procedimentos set valor_sh = 59736, valor_sp = 7942, media_permanencia = 18, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303170166';
+update public.sigtap_procedimentos set valor_sh = 19912, valor_sp = 2888, media_permanencia = 14, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303170174';
+update public.sigtap_procedimentos set valor_sh = 31736, valor_sp = 4332, media_permanencia = 16, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0303170182';
+update public.sigtap_procedimentos set valor_sh = 32046, valor_sp = 4075, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0304100013';
+update public.sigtap_procedimentos set valor_sh = 108964, valor_sp = 11907, media_permanencia = 12, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0305010174';
+update public.sigtap_procedimentos set valor_sh = 24114, valor_sp = 2794, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0305020013';
+update public.sigtap_procedimentos set valor_sh = 20606, valor_sp = 2677, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0305020021';
+update public.sigtap_procedimentos set valor_sh = 42897, valor_sp = 4535, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0305020048';
+update public.sigtap_procedimentos set valor_sh = 65819, valor_sp = 6872, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0305020056';
+update public.sigtap_procedimentos set valor_sh = 21012, valor_sp = 2921, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0308010019';
+update public.sigtap_procedimentos set valor_sh = 44530, valor_sp = 4660, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0308010035';
+update public.sigtap_procedimentos set valor_sh = 25830, valor_sp = 4702, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0308010043';
+update public.sigtap_procedimentos set valor_sh = 13433, valor_sp = 2662, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0308020030';
+update public.sigtap_procedimentos set valor_sh = 27607, valor_sp = 2655, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0308030036';
+update public.sigtap_procedimentos set valor_sh = 32397, valor_sp = 2921, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0308040015';
+update public.sigtap_procedimentos set valor_sh = 31560, valor_sp = 25594, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0310010039';
+update public.sigtap_procedimentos set valor_sh = 29104, valor_sp = 10655, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0401020053';
+update public.sigtap_procedimentos set valor_sh = 12921, valor_sp = 5529, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0401020070';
+update public.sigtap_procedimentos set valor_sh = 13806, valor_sp = 6083, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0401020100';
+update public.sigtap_procedimentos set valor_sh = 20143, valor_sp = 18075, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0403020077';
+update public.sigtap_procedimentos set valor_sh = 14518, valor_sp = 20244, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0403020123';
+update public.sigtap_procedimentos set valor_sh = 19185, valor_sp = 13334, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0404010067';
+update public.sigtap_procedimentos set valor_sh = 9628, valor_sp = 14003, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0404010318';
+update public.sigtap_procedimentos set valor_sh = 86746, valor_sp = 13567, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0404020550';
+update public.sigtap_procedimentos set valor_sh = 9608, valor_sp = 2345, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0405010079';
+update public.sigtap_procedimentos set valor_sh = 132923, valor_sp = 38086, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0406010684';
+update public.sigtap_procedimentos set valor_sh = 33477, valor_sp = 16103, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407020039';
+update public.sigtap_procedimentos set valor_sh = 32375, valor_sp = 17843, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407020047';
+update public.sigtap_procedimentos set valor_sh = 12957, valor_sp = 7328, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407020144';
+update public.sigtap_procedimentos set valor_sh = 41280, valor_sp = 16604, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407020268';
+update public.sigtap_procedimentos set valor_sh = 19110, valor_sp = 12484, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407020284';
+update public.sigtap_procedimentos set valor_sh = 66569, valor_sp = 15355, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407020365';
+update public.sigtap_procedimentos set valor_sh = 68873, valor_sp = 35601, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407030026';
+update public.sigtap_procedimentos set valor_sh = 82641, valor_sp = 24599, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407030034';
+update public.sigtap_procedimentos set valor_sh = 60381, valor_sp = 22988, media_permanencia = 11, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407030042';
+update public.sigtap_procedimentos set valor_sh = 149431, valor_sp = 54122, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407030255';
+update public.sigtap_procedimentos set valor_sh = 77997, valor_sp = 15219, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040013';
+update public.sigtap_procedimentos set valor_sh = 36876, valor_sp = 11615, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040030';
+update public.sigtap_procedimentos set valor_sh = 68882, valor_sp = 21491, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040064';
+update public.sigtap_procedimentos set valor_sh = 51723, valor_sp = 14769, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040080';
+update public.sigtap_procedimentos set valor_sh = 53357, valor_sp = 21049, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040099';
+update public.sigtap_procedimentos set valor_sh = 52952, valor_sp = 21045, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040102';
+update public.sigtap_procedimentos set valor_sh = 50157, valor_sp = 19676, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040110';
+update public.sigtap_procedimentos set valor_sh = 31455, valor_sp = 13644, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040129';
+update public.sigtap_procedimentos set valor_sh = 36189, valor_sp = 10645, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040145';
+update public.sigtap_procedimentos set valor_sh = 92369, valor_sp = 13999, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040161';
+update public.sigtap_procedimentos set valor_sh = 87880, valor_sp = 14522, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040188';
+update public.sigtap_procedimentos set valor_sh = 34500, valor_sp = 11875, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040226';
+update public.sigtap_procedimentos set valor_sh = 139059, valor_sp = 21039, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0407040250';
+update public.sigtap_procedimentos set valor_sh = 26505, valor_sp = 19086, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408010142';
+update public.sigtap_procedimentos set valor_sh = 57542, valor_sp = 10318, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408010150';
+update public.sigtap_procedimentos set valor_sh = 28344, valor_sp = 10215, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408010185';
+update public.sigtap_procedimentos set valor_sh = 20045, valor_sp = 13335, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408010193';
+update public.sigtap_procedimentos set valor_sh = 36682, valor_sp = 10126, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408010223';
+update public.sigtap_procedimentos set valor_sh = 11695, valor_sp = 8858, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020121';
+update public.sigtap_procedimentos set valor_sh = 11695, valor_sp = 8858, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020148';
+update public.sigtap_procedimentos set valor_sh = 6287, valor_sp = 6314, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020164';
+update public.sigtap_procedimentos set valor_sh = 18257, valor_sp = 9523, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020229';
+update public.sigtap_procedimentos set valor_sh = 15196, valor_sp = 9119, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020326';
+update public.sigtap_procedimentos set valor_sh = 39271, valor_sp = 13459, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020334';
+update public.sigtap_procedimentos set valor_sh = 12269, valor_sp = 8291, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020342';
+update public.sigtap_procedimentos set valor_sh = 25547, valor_sp = 12117, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020369';
+update public.sigtap_procedimentos set valor_sh = 15475, valor_sp = 11151, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020377';
+update public.sigtap_procedimentos set valor_sh = 39906, valor_sp = 13468, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020385';
+update public.sigtap_procedimentos set valor_sh = 54409, valor_sp = 12244, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020393';
+update public.sigtap_procedimentos set valor_sh = 18549, valor_sp = 9431, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020407';
+update public.sigtap_procedimentos set valor_sh = 24445, valor_sp = 9594, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020431';
+update public.sigtap_procedimentos set valor_sh = 14967, valor_sp = 9006, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020512';
+update public.sigtap_procedimentos set valor_sh = 11770, valor_sp = 8290, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020539';
+update public.sigtap_procedimentos set valor_sh = 21577, valor_sp = 11015, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408020547';
+update public.sigtap_procedimentos set valor_sh = 45985, valor_sp = 33339, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408030399';
+update public.sigtap_procedimentos set valor_sh = 981399, valor_sp = 94522, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408040050';
+update public.sigtap_procedimentos set valor_sh = 7143, valor_sp = 6908, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408040190';
+update public.sigtap_procedimentos set valor_sh = 32074, valor_sp = 7920, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408040246';
+update public.sigtap_procedimentos set valor_sh = 149723, valor_sp = 29542, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408040343';
+update public.sigtap_procedimentos set valor_sh = 27083, valor_sp = 11659, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050020';
+update public.sigtap_procedimentos set valor_sh = 129085, valor_sp = 33203, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050136';
+update public.sigtap_procedimentos set valor_sh = 723109, valor_sp = 161474, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050160';
+update public.sigtap_procedimentos set valor_sh = 226394, valor_sp = 33202, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050179';
+update public.sigtap_procedimentos set valor_sh = 8225, valor_sp = 10879, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050217';
+update public.sigtap_procedimentos set valor_sh = 5582, valor_sp = 5643, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050225';
+update public.sigtap_procedimentos set valor_sh = 8962, valor_sp = 7732, media_permanencia = 9, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050233';
+update public.sigtap_procedimentos set valor_sh = 21452, valor_sp = 9136, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050322';
+update public.sigtap_procedimentos set valor_sh = 22401, valor_sp = 12559, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050470';
+update public.sigtap_procedimentos set valor_sh = 147271, valor_sp = 24663, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050489';
+update public.sigtap_procedimentos set valor_sh = 44381, valor_sp = 16913, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050497';
+update public.sigtap_procedimentos set valor_sh = 140586, valor_sp = 21511, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050500';
+update public.sigtap_procedimentos set valor_sh = 180566, valor_sp = 24780, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050519';
+update public.sigtap_procedimentos set valor_sh = 37341, valor_sp = 15958, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050527';
+update public.sigtap_procedimentos set valor_sh = 38250, valor_sp = 11413, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050535';
+update public.sigtap_procedimentos set valor_sh = 101949, valor_sp = 20295, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050543';
+update public.sigtap_procedimentos set valor_sh = 55208, valor_sp = 14507, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050551';
+update public.sigtap_procedimentos set valor_sh = 51386, valor_sp = 12403, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050578';
+update public.sigtap_procedimentos set valor_sh = 30008, valor_sp = 14507, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050594';
+update public.sigtap_procedimentos set valor_sh = 44416, valor_sp = 17474, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050608';
+update public.sigtap_procedimentos set valor_sh = 178348, valor_sp = 24780, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050632';
+update public.sigtap_procedimentos set valor_sh = 83636, valor_sp = 15016, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050667';
+update public.sigtap_procedimentos set valor_sh = 153696, valor_sp = 58076, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050896';
+update public.sigtap_procedimentos set valor_sh = 141890, valor_sp = 28343, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408050926';
+update public.sigtap_procedimentos set valor_sh = 17014, valor_sp = 9179, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060018';
+update public.sigtap_procedimentos set valor_sh = 28837, valor_sp = 10980, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060042';
+update public.sigtap_procedimentos set valor_sh = 5240, valor_sp = 3909, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060212';
+update public.sigtap_procedimentos set valor_sh = 9570, valor_sp = 5596, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060352';
+update public.sigtap_procedimentos set valor_sh = 9571, valor_sp = 5596, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060360';
+update public.sigtap_procedimentos set valor_sh = 17160, valor_sp = 6156, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060379';
+update public.sigtap_procedimentos set valor_sh = 12425, valor_sp = 8166, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060450';
+update public.sigtap_procedimentos set valor_sh = 50640, valor_sp = 17380, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060476';
+update public.sigtap_procedimentos set valor_sh = 39559, valor_sp = 15413, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060557';
+update public.sigtap_procedimentos set valor_sh = 16726, valor_sp = 11415, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060573';
+update public.sigtap_procedimentos set valor_sh = 70095, valor_sp = 16442, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0408060590';
+update public.sigtap_procedimentos set valor_sh = 39766, valor_sp = 16006, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409010065';
+update public.sigtap_procedimentos set valor_sh = 51976, valor_sp = 13960, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409010090';
+update public.sigtap_procedimentos set valor_sh = 33793, valor_sp = 7980, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409010170';
+update public.sigtap_procedimentos set valor_sh = 22590, valor_sp = 14664, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409010430';
+update public.sigtap_procedimentos set valor_sh = 25786, valor_sp = 14861, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409020150';
+update public.sigtap_procedimentos set valor_sh = 24439, valor_sp = 8353, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409020176';
+update public.sigtap_procedimentos set valor_sh = 65604, valor_sp = 42647, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409030023';
+update public.sigtap_procedimentos set valor_sh = 47382, valor_sp = 47047, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409030040';
+update public.sigtap_procedimentos set valor_sh = 32605, valor_sp = 10199, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040010';
+update public.sigtap_procedimentos set valor_sh = 12388, valor_sp = 10998, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040096';
+update public.sigtap_procedimentos set valor_sh = 48081, valor_sp = 14667, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040185';
+update public.sigtap_procedimentos set valor_sh = 18785, valor_sp = 7512, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040215';
+update public.sigtap_procedimentos set valor_sh = 13348, valor_sp = 14665, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040223';
+update public.sigtap_procedimentos set valor_sh = 17324, valor_sp = 8432, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040231';
+update public.sigtap_procedimentos set valor_sh = 19092, valor_sp = 24795, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409040240';
+update public.sigtap_procedimentos set valor_sh = 34188, valor_sp = 18334, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409050075';
+update public.sigtap_procedimentos set valor_sh = 9772, valor_sp = 12140, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409050083';
+update public.sigtap_procedimentos set valor_sh = 32167, valor_sp = 25674, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409050113';
+update public.sigtap_procedimentos set valor_sh = 34598, valor_sp = 13846, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060038';
+update public.sigtap_procedimentos set valor_sh = 10710, valor_sp = 7652, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060070';
+update public.sigtap_procedimentos set valor_sh = 55728, valor_sp = 27343, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060127';
+update public.sigtap_procedimentos set valor_sh = 70364, valor_sp = 31749, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060135';
+update public.sigtap_procedimentos set valor_sh = 31876, valor_sp = 19901, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060186';
+update public.sigtap_procedimentos set valor_sh = 36150, valor_sp = 15287, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060232';
+update public.sigtap_procedimentos set valor_sh = 27506, valor_sp = 18334, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409060240';
+update public.sigtap_procedimentos set valor_sh = 25113, valor_sp = 14665, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409070092';
+update public.sigtap_procedimentos set valor_sh = 9414, valor_sp = 4582, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409070190';
+update public.sigtap_procedimentos set valor_sh = 4873, valor_sp = 7062, media_permanencia = 0, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0409070262';
+update public.sigtap_procedimentos set valor_sh = 14268, valor_sp = 4893, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0410010014';
+update public.sigtap_procedimentos set valor_sh = 43588, valor_sp = 27643, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0411010034';
+update public.sigtap_procedimentos set valor_sh = 49145, valor_sp = 27643, media_permanencia = 3, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0411010042';
+update public.sigtap_procedimentos set valor_sh = 8876, valor_sp = 5682, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0411010077';
+update public.sigtap_procedimentos set valor_sh = 14999, valor_sp = 7041, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0411020013';
+update public.sigtap_procedimentos set valor_sh = 39946, valor_sp = 12870, media_permanencia = 2, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0411020048';
+update public.sigtap_procedimentos set valor_sh = 274953, valor_sp = 76816, media_permanencia = 6, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0412020033';
+update public.sigtap_procedimentos set valor_sh = 109932, valor_sp = 44043, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0412040166';
+update public.sigtap_procedimentos set valor_sh = 39180, valor_sp = 9816, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0413010015';
+update public.sigtap_procedimentos set valor_sh = 87184, valor_sp = 35727, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0413010082';
+update public.sigtap_procedimentos set valor_sh = 61303, valor_sp = 20182, media_permanencia = 4, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0413040178';
+update public.sigtap_procedimentos set valor_sh = 23187, valor_sp = 10033, media_permanencia = 1, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0413040240';
+update public.sigtap_procedimentos set valor_sh = 128770, valor_sp = 54604, media_permanencia = 5, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0415010012';
+update public.sigtap_procedimentos set valor_sh = 43983, valor_sp = 17011, media_permanencia = 8, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0415040027';
+update public.sigtap_procedimentos set valor_sh = 44584, valor_sp = 21591, media_permanencia = 7, origem = 'datasus-sih-rs-2606', updated_at = now() where competencia = '2026-08' and codigo = '0415040035';
+
+commit;
+
+-- conferência (esperado: 215 com valor)
+select
+  count(*) filter (where valor_sh is not null) as com_valor,
+  count(*) as total
+from public.sigtap_procedimentos where competencia = '2026-08';
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 61/62 — migracao-perfis-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GRANTS DO MÓDULO FATURAMENTO — migração avulsa (Tier 1 — Fase 4)
@@ -7657,7 +7909,7 @@ select 'FATURAMENTO: grants do módulo aplicados — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 61/61 — migracao-rls-leitura.sql
+-- │ 62/62 — migracao-rls-leitura.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — RLS DE LEITURA: quem lê cada tabela
@@ -7949,7 +8201,7 @@ begin
       ('prot_bundle_itens', 'public.pode_ver_algum(''protocolos'', ''ps'', ''paciente'')'),           -- protocolos, ps, paciente
       ('prot_catalogo', 'true'),                                                                      -- todos os autenticados
       ('prot_setor', 'true'),                                                                         -- todos os autenticados
-      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'')'),                           -- ps, paciente
+      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'', ''faturamento'')'),          -- ps, paciente, faturamento
       ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'')'), -- ps, atendimento, ambulatorio, paciente
       ('ps_faixas_obstetricas', 'true'),                                                              -- todos os autenticados
       ('ps_faixas_pediatricas', 'true'),                                                              -- todos os autenticados
