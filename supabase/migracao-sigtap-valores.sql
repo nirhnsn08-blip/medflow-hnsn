@@ -1,13 +1,16 @@
 -- ============================================================
 -- Valentrax — SIGTAP: valores e permanência REAIS (SIH-SUS)
 --
+-- ⚠️ ARQUIVO GERADO — não edite à mão.
+--    Regenere com:  node supabase/importar-aih.mjs <arquivo.dbc> [--cnes N]
+--
 -- Preenche valor_sh, valor_sp (centavos) e media_permanencia dos
--- procedimentos que o HNSN fatura, a partir das AIHs REAIS pagas no
--- Rio Grande do Sul em junho/2026 (arquivo SIH/SUS RDRS2606.dbc).
+-- procedimentos que o HNSN fatura, a partir das AIHs REAIS pagas no Rio Grande do Sul (RS)
+-- em junho/2026 (arquivo SIH-SUS RDRS2606.dbc).
 --
 -- MÉTODO: por procedimento, a MEDIANA de VAL_SH e VAL_SP (robusta aos
 -- casos com UTI/complicação que inflam a média) e a MÉDIA de DIAS_PERM.
--- 215 dos 219 procedimentos tiveram AIH no RS neste mês;
+-- 215 dos 219 procedimentos tiveram AIH neste recorte;
 -- os demais ficam como estão (sem valor até haver dado).
 --
 -- POR QUE SH+SP: na AIH, VAL_SH cobre a permanência PADRÃO do procedimento;
