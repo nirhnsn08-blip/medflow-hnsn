@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 93 tabelas, 1461 colunas.
+-- Cobertura atual: 93 tabelas, 1462 colunas.
 -- ============================================================
 
 with
@@ -1441,6 +1441,7 @@ colunas(tabela, coluna, origem) as (values
   ('setores','ordem','schema'),
   ('setores','updated_at','schema'),
   ('setores','usuario','schema'),
+  ('sigtap_procedimentos','cids','sigtap-valores'),
   ('sigtap_procedimentos','codigo','sigtap'),
   ('sigtap_procedimentos','competencia','sigtap'),
   ('sigtap_procedimentos','criado_em','sigtap'),

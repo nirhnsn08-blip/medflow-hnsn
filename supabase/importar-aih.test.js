@@ -90,11 +90,23 @@ describe("gerarSqlValores", () => {
     expect(sql).toContain("junho/2026");
     expect(sql).toContain("RDRS2606.dbc");
   });
-  it("é idempotente na intenção: só UPDATE, com begin/commit", () => {
+  it("é aditivo: cria a coluna cids (if not exists), faz UPDATE, sem destruir nada", () => {
     expect(sql).toContain("begin;");
     expect(sql).toContain("commit;");
-    // sem os comentários (que têm "altera", "cria" em português) — só o SQL.
+    expect(sql).toContain("add column if not exists cids text[]");
     const semComentario = sql.replace(/--[^\n]*/g, "");
-    expect(/\b(create|alter|drop|delete|truncate)\b/i.test(semComentario)).toBe(false);
+    expect(/\b(drop|delete|truncate)\b/i.test(semComentario)).toBe(false);
+  });
+
+  it("inclui os CIDs compatíveis como array text[]", () => {
+    const sqlCid = gerarSqlValores(
+      [{ codigo: "0303010037", valorSh: 100, valorSp: 10, media: 5, cids: ["A419", "J189"], n: 100 }],
+      { compSeed: "2026-08", uf: "43", anoCmpt: "2026", mesCmpt: "06", arquivo: "X.dbc", totalCodigos: 1 },
+    );
+    expect(sqlCid).toContain("cids = '{A419,J189}'::text[]");
+  });
+
+  it("procedimento sem CID vira array vazio (não quebra a glosa)", () => {
+    expect(sql).toContain("cids = '{}'::text[]"); // o `sql` de cima não tem cids
   });
 });

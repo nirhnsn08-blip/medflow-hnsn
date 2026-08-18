@@ -181,6 +181,8 @@ export function mediana(arr) {
 }
 
 const numDbf = (s) => { const v = Number(String(s).replace(",", ".")); return Number.isFinite(v) ? v : 0; };
+const MIN_CID = 2; // CID visto ao menos 2× com o procedimento = compatível (1× costuma ser erro de digitação isolado)
+const cidLimpo = (s) => String(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 /** Os códigos de procedimento (10 dígitos) que o HNSN fatura, do seed. */
 export function lerCodigosSeed(seedSql) {
@@ -213,10 +215,12 @@ export function agregarValores({ header, dados }, codigos, { cnes = null } = {})
     usados++;
     const proc = campoDe(rec, campoPorNome, "PROC_REA");
     if (!alvo.has(proc)) continue;
-    const g = agg.get(proc) || { sh: [], sp: [], perm: [] };
+    const g = agg.get(proc) || { sh: [], sp: [], perm: [], cid: new Map() };
     g.sh.push(numDbf(campoDe(rec, campoPorNome, "VAL_SH")));
     g.sp.push(numDbf(campoDe(rec, campoPorNome, "VAL_SP")));
     g.perm.push(numDbf(campoDe(rec, campoPorNome, "DIAS_PERM")));
+    const cid = cidLimpo(campoDe(rec, campoPorNome, "DIAG_PRINC"));
+    if (cid) g.cid.set(cid, (g.cid.get(cid) || 0) + 1);
     agg.set(proc, g);
   }
   const linhas = [];
@@ -228,6 +232,9 @@ export function agregarValores({ header, dados }, codigos, { cnes = null } = {})
       valorSh: Math.round(mediana(g.sh) * 100),
       valorSp: Math.round(mediana(g.sp) * 100),
       media: Math.round(g.perm.reduce((a, b) => a + b, 0) / g.perm.length),
+      // CIDs compatíveis: os vistos ao menos MIN_CID vezes com este procedimento
+      // nas AIHs reais. É a base da glosa "CID atípico" (atenção, não bloqueio).
+      cids: [...g.cid].filter(([, c]) => c >= MIN_CID).map(([cid]) => cid).sort(),
       n: g.sh.length,
     });
   }
@@ -255,36 +262,42 @@ export function gerarSqlValores(linhas, { compSeed, uf, anoCmpt, mesCmpt, arquiv
   const quando = `${MESES[Number(mesCmpt)] || mesCmpt}/${anoCmpt}`;
   const escopo = cnes ? `pelo CNES ${cnes} (${nomeUf})` : `no ${nomeUf} (${sigla})`;
 
+  const arrCid = (cids) => (cids && cids.length) ? `'{${cids.join(",")}}'::text[]` : `'{}'::text[]`;
   const updates = linhas.map((l) =>
-    `update public.sigtap_procedimentos set valor_sh = ${l.valorSh}, valor_sp = ${l.valorSp}, media_permanencia = ${l.media}, origem = '${origem}', updated_at = now() where competencia = '${compSeed}' and codigo = '${l.codigo}';`
+    `update public.sigtap_procedimentos set valor_sh = ${l.valorSh}, valor_sp = ${l.valorSp}, media_permanencia = ${l.media}, cids = ${arrCid(l.cids)}, origem = '${origem}', updated_at = now() where competencia = '${compSeed}' and codigo = '${l.codigo}';`
   ).join("\n");
+  const comCid = linhas.filter((l) => l.cids && l.cids.length).length;
 
   return `-- ============================================================
--- Valentrax — SIGTAP: valores e permanência REAIS (SIH-SUS)
+-- Valentrax — SIGTAP: valores, permanência e CID REAIS (SIH-SUS)
 --
 -- ⚠️ ARQUIVO GERADO — não edite à mão.
 --    Regenere com:  node supabase/importar-aih.mjs <arquivo.dbc> [--cnes N]
 --
--- Preenche valor_sh, valor_sp (centavos) e media_permanencia dos
--- procedimentos que o HNSN fatura, a partir das AIHs REAIS pagas ${escopo}
--- em ${quando} (arquivo SIH-SUS ${arquivo}).
+-- Preenche, dos procedimentos que o HNSN fatura, a partir das AIHs REAIS
+-- pagas ${escopo} em ${quando} (arquivo SIH-SUS ${arquivo}):
+--   • valor_sh, valor_sp (centavos) e media_permanencia;
+--   • cids[] — os CIDs compatíveis (base da glosa "CID atípico", que é ATENÇÃO).
 --
--- MÉTODO: por procedimento, a MEDIANA de VAL_SH e VAL_SP (robusta aos
--- casos com UTI/complicação que inflam a média) e a MÉDIA de DIAS_PERM.
--- ${linhas.length} dos ${totalCodigos} procedimentos tiveram AIH neste recorte;
--- os demais ficam como estão (sem valor até haver dado).
+-- MÉTODO: por procedimento, a MEDIANA de VAL_SH e VAL_SP (robusta aos casos
+-- com UTI/complicação que inflam a média), a MÉDIA de DIAS_PERM, e os CIDs
+-- (DIAG_PRINC) vistos ao menos 2× (1× costuma ser erro de digitação isolado).
+-- ${linhas.length} dos ${totalCodigos} procedimentos tiveram AIH neste recorte
+-- (${comCid} com CID); os demais ficam como estão.
 --
 -- POR QUE SH+SP: na AIH, VAL_SH cobre a permanência PADRÃO do procedimento;
 -- a permanência acima da média é que vira diária a maior. Então SH+SP é o
 -- valor-base do ato — as diárias da conta seguem informativas, sem duplicar.
 --
--- É ADITIVO E IDEMPOTENTE: só UPDATE de colunas já existentes; rodar duas
--- vezes não faz mal. NÃO cria, altera ou apaga tabela/coluna.
+-- É ADITIVO E IDEMPOTENTE: cria a coluna \`cids\` se não existir e faz UPDATE
+-- de colunas; rodar duas vezes não faz mal. NÃO apaga tabela, coluna ou linha.
 --
 -- ⚠️ Roda no DEMO primeiro, depois no principal.
 -- ============================================================
 
 begin;
+
+alter table public.sigtap_procedimentos add column if not exists cids text[];
 
 ${updates}
 
@@ -323,8 +336,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
 
   const saida = path.join(dir, "migracao-sigtap-valores.sql");
   fs.writeFileSync(saida, sql, "utf8");
+  const comCid = linhas.filter((l) => l.cids && l.cids.length).length;
   console.log(`\nmigracao-sigtap-valores.sql gerado:`);
   console.log(`  ${linhas.length} de ${codigos.length} procedimentos com valor real` + (cnes ? ` (CNES ${cnes})` : ` (UF ${uf}, ${aihUsadas.toLocaleString("pt-BR")} AIHs)`));
+  console.log(`  ${comCid} com CIDs compatíveis (acende a glosa de CID atípico)`);
   console.log(`  competência do seed: ${compSeed} · dado de ${MESES[Number(mesCmpt)]}/${anoCmpt}`);
   console.log(`\n⚠️ rode no DEMO primeiro, depois no principal.`);
 }
