@@ -9,6 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   permissoesEfetivas, podeVer, podeEditar, modulosVisiveis, resumoDeAcesso,
   excecoesAplicadas, quantosUsam, conferirPerfil, podeSalvarPerfil,
+  modulosExcecionaveis, validarExcecao, rotuloNivel,
 } from "./permissoes.js";
 import { PERFIL_POR_CHAVE, MODULOS, PERFIS_MODELO } from "./modulos.js";
 
@@ -100,6 +101,45 @@ describe("exceções por usuário", () => {
     expect(d[0].de).toBe("nenhum");
     expect(d[0].ampliou).toBe(true);
     expect(d[0].motivo).toBe("Cobre escala");
+  });
+});
+
+describe("a tela de exceção — o que ela deixa a TI conceder", () => {
+  it("oferece todo módulo, menos o que tem trava dura (Usuários)", () => {
+    const chaves = modulosExcecionaveis().map(m => m.chave);
+    expect(chaves).toContain("bloco");
+    expect(chaves).toContain("paciente");
+    // "Usuários e Perfis" é exigeMaster — conceder por exceção não teria
+    // efeito (a trava decide pelo papel), então nem aparece na lista.
+    expect(chaves).not.toContain("users");
+    expect(chaves).toHaveLength(MODULOS.filter(m => !m.exigeMaster).length);
+  });
+
+  it("aceita uma exceção bem formada — ampliar", () => {
+    expect(validarExcecao({ modulo: "bloco", nivel: "leitura", motivo: "Cobre a escala do bloco" })).toBeNull();
+  });
+
+  it("aceita reduzir (nenhum) — suspender é caso legítimo", () => {
+    expect(validarExcecao({ modulo: "paciente", nivel: "nenhum", motivo: "Afastada" })).toBeNull();
+  });
+
+  it("recusa sem motivo — exceção sem rastro é o começo do descontrole", () => {
+    expect(validarExcecao({ modulo: "bloco", nivel: "leitura", motivo: "   " })).toMatch(/motivo/i);
+  });
+
+  it("recusa módulo inexistente e módulo com trava dura", () => {
+    expect(validarExcecao({ modulo: "nao_existe", nivel: "leitura", motivo: "x" })).toMatch(/módulo/i);
+    expect(validarExcecao({ modulo: "users", nivel: "escrita", motivo: "x" })).toMatch(/ADM Master/i);
+  });
+
+  it("recusa nível inválido", () => {
+    expect(validarExcecao({ modulo: "bloco", nivel: "chefe", motivo: "x" })).toMatch(/nível/i);
+  });
+
+  it("rotuloNivel traduz o nível para a linguagem da tela", () => {
+    expect(rotuloNivel("escrita")).toBe("Lança");
+    expect(rotuloNivel("leitura")).toBe("Consulta");
+    expect(rotuloNivel("nenhum")).toBe("Sem acesso");
   });
 });
 

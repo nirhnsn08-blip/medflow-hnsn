@@ -21,7 +21,7 @@
 // percebe quando afrouxa.
 // ═══════════════════════════════════════════════════════════
 
-import { NIVEIS, MODULOS, MODULO_POR_CHAVE } from "./modulos.js";
+import { NIVEIS, MODULOS, MODULO_POR_CHAVE, NIVEL_LABEL } from "./modulos.js";
 
 const nivelNum = n => NIVEIS[n] ?? 0;
 
@@ -164,4 +164,61 @@ export function conferirPerfil(perfil, { usuarios = [] } = {}) {
 /** Pode salvar? Só quando nada de nível "impede" restar. */
 export function podeSalvarPerfil(avisos = []) {
   return !avisos.some(a => a.nivel === "impede");
+}
+
+
+// ═══════════════════════════════════════════════════════════
+// EXCEÇÃO POR USUÁRIO — o desvio de UMA pessoa sobre o cargo
+//
+// "Esta enfermeira também cobre o Bloco." Em vez de inventar um cargo novo
+// (o caminho para quarenta perfis que ninguém entende), a TI concede uma
+// exceção na pessoa: ela AMPLIA ou REDUZ o que o cargo dá, com motivo e
+// autor registrados. `permissoesEfetivas` já a aplica; aqui moram as regras
+// puras que a tela usa — testáveis, que é onde o controle de acesso não pode
+// afrouxar sem alguém perceber.
+// ═══════════════════════════════════════════════════════════
+
+/** Os três níveis que uma exceção pode conceder, do menor para o maior. */
+export const NIVEIS_EXCECAO = ["nenhum", "leitura", "escrita"];
+
+/**
+ * Os módulos que uma exceção individual PODE alcançar.
+ *
+ * Fora dela ficam os módulos com trava dura (`exigeMaster`, hoje só
+ * "Usuários e Perfis"): liberá-los por exceção não teria efeito nenhum — a
+ * trava anti-trancamento em `permissoesEfetivas` decide esse módulo pelo
+ * papel de sistema, não pelo grant. Oferecer na lista só enganaria a TI
+ * ("liberei e não funcionou"). Falha-fechada também na interface: não
+ * mostrar o que não pode valer.
+ */
+export function modulosExcecionaveis() {
+  return MODULOS
+    .filter(m => !m.exigeMaster)
+    .map(m => ({ chave: m.chave, label: m.label, grupo: m.grupo }));
+}
+
+/**
+ * Confere uma exceção ANTES de gravar. Devolve a mensagem do primeiro
+ * problema, ou `null` se está boa. Regra pura — validável por mutação.
+ *
+ * `motivo` é obrigatório de propósito: exceção sem justificativa é o começo
+ * do descontrole de acesso, e a trilha (NGS1) pede autoria e razão em toda
+ * mudança de permissão. Sem o motivo, ninguém audita por que fulano vê o que
+ * o cargo dele não daria.
+ */
+export function validarExcecao(ex) {
+  const m = MODULO_POR_CHAVE[ex?.modulo];
+  if (!m) return "Escolha o módulo da exceção.";
+  if (m.exigeMaster)
+    return `"${m.label}" não se libera por exceção — é sempre e só do ADM Master.`;
+  if (!NIVEIS_EXCECAO.includes(ex?.nivel))
+    return "Escolha o nível: sem acesso, consulta ou lança.";
+  if (!(ex?.motivo || "").trim())
+    return "Diga o motivo — a exceção fica registrada com a justificativa e quem concedeu.";
+  return null;
+}
+
+/** Rótulo curto de um nível, para a tela (reusa o catálogo de módulos). */
+export function rotuloNivel(nivel) {
+  return NIVEL_LABEL[nivel]?.label || "Sem acesso";
 }
