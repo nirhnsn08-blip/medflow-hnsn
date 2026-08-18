@@ -116,23 +116,25 @@ export default function PerfisAcesso({ sb, currentUser, usuarios = [], onMudou }
 }
 
 // ── AVISO DE ESCOPO ─────────────────────────────────────────
-// Fica no topo, permanente e sem enfeite. O risco desta fase não é técnico,
-// é de interpretação: alguém olhar a matriz bonita e concluir que os dados
-// estão segregados. Não estão — ainda.
+// Fica no topo, permanente e sem enfeite. Antes o risco era achar que a
+// matriz segregava o dado quando ela só escondia o menu. Isso mudou: o RLS
+// de leitura fechou o acesso por módulo. O que resta agora é o inverso —
+// não vender como resolvido o que ainda falta (linha e escrita).
 function AvisoEscopo() {
   return (
-    <div style={{ ...cartao, borderLeft: "4px solid #d97706", background: "#d9770610" }}>
-      <div style={{ fontSize: 13, fontWeight: 800, color: "#d97706", marginBottom: 5 }}>
-        Esta tela organiza o menu — ainda não é barreira de dados
+    <div style={{ ...cartao, borderLeft: "4px solid #2dd4bf", background: "#2dd4bf10" }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#2dd4bf", marginBottom: 5 }}>
+        A leitura do banco obedece ao perfil — com dois limites honestos
       </div>
       <div style={{ fontSize: 12.3, color: "var(--text-3)", lineHeight: 1.6 }}>
-        O perfil define o que cada pessoa <strong>vê no sistema</strong>, o que reduz exposição acidental
-        e deixa cada um com a tela do seu trabalho. Mas as políticas de leitura do banco ainda são
-        abertas a qualquer usuário autenticado: quem souber usar a API alcança dado que o menu esconde.
+        Tirar um módulo do perfil tira também o acesso ao dado pela API, não só o item do menu: cada
+        tabela tem política de leitura amarrada ao módulo. Recepção e faturamento não alcançam o
+        prontuário nem por fora da tela.
         <br />
-        Fechar isso de verdade é a próxima etapa, e ela exige medir antes quem realmente acessa o quê —
-        apertar no escuro tira acesso de quem tem direito no meio do plantão.
-        <strong> Até lá, não apresentar ao hospital como “acesso segregado”.</strong>
+        Duas coisas que ainda <strong>não</strong> se deve prometer como resolvidas: a leitura
+        <strong> não filtra por linha</strong> — quem abre o Paciente 360 abre o de qualquer paciente,
+        não só os do seu setor; e a <strong>escrita</strong> ainda é decidida pelo papel de sistema,
+        não pelo módulo.
       </div>
     </div>
   );
