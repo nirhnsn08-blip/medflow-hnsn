@@ -20,7 +20,8 @@ import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js
 import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 // Categorias profissionais — usadas na tela que classifica a equipe.
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
-import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
+import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
+         modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
@@ -581,6 +582,38 @@ async function adminUsuarios(action, payload = {}) {
     if (!res.ok) return { error: data.error || `erro ${res.status} (a Edge Function foi publicada?)` };
     return data;
   } catch { return { error: "sem conexão com o servidor" }; }
+}
+
+// ── Exceções de acesso por usuário ──────────────────────────
+// O desvio de UMA pessoa sobre o cargo (ver acesso/permissoes.js). Grava em
+// `usuarios_permissoes`; o RLS `usuarios_perm_write` só deixa adm_master.
+// Nenhuma migração nova — a tabela e as políticas já existem nos dois bancos.
+async function carregarExcecoesUsuario(userId) {
+  const rows = await sbFetch(`usuarios_permissoes?user_id=eq.${userId}&select=id,modulo,nivel,motivo,concedido_por,criado_em&order=modulo`).catch(() => null);
+  return Array.isArray(rows) ? rows : [];
+}
+async function carregarGrantsDoPerfil(chave) {
+  if (!chave) return {};
+  const rows = await sbFetch(`perfis_permissoes?perfil_chave=eq.${encodeURIComponent(chave)}&select=modulo,nivel`).catch(() => null);
+  const g = {};
+  for (const r of (Array.isArray(rows) ? rows : [])) g[r.modulo] = r.nivel;
+  return g;
+}
+// Upsert por (user_id, modulo): reconceder o mesmo módulo TROCA o nível em
+// vez de duplicar (a tabela tem `unique (user_id, modulo)`). `return=repre-
+// sentation` porque o PostgREST devolve 204 mesmo quando o RLS barra e nada
+// grava — conferimos o RETORNO, não o status.
+async function salvarExcecaoRemota(userId, ex, autor) {
+  return await sbFetch("usuarios_permissoes?on_conflict=user_id,modulo", {
+    method: "POST",
+    headers: { Prefer: "return=representation,resolution=merge-duplicates" },
+    body: JSON.stringify({ user_id: userId, modulo: ex.modulo, nivel: ex.nivel, motivo: (ex.motivo || "").trim(), concedido_por: autor || null }),
+  }).catch(() => null);
+}
+async function removerExcecaoRemota(id) {
+  return await sbFetch(`usuarios_permissoes?id=eq.${id}`, {
+    method: "DELETE", headers: { Prefer: "return=representation" },
+  }).catch(() => null);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -16231,8 +16264,49 @@ function AdminUsuarios({ currentUser }) {
   // gente e o cargo já sugere a categoria — ver duas tabelas iguais confundia.
   const [classificando, setClassificando] = useState(null);   // id em edição
   const [catForm, setCatForm] = useState({});
+  // Exceções de acesso de uma pessoa — a linha expansível espelha a de
+  // Categoria. O desvio individual sobre o cargo, com motivo e autor.
+  const [editandoExc, setEditandoExc] = useState(null);       // id em edição
+  const [excList, setExcList] = useState([]);                 // exceções da pessoa
+  const [grantsPerfil, setGrantsPerfil] = useState({});       // o que o cargo dela dá
+  const [excForm, setExcForm] = useState({ modulo: "", nivel: "leitura", motivo: "" });
+  const [excMsg, setExcMsg] = useState("");
+
+  async function abrirExcecoes(u) {
+    if (editandoExc === u.id) { setEditandoExc(null); return; }
+    setClassificando(null);
+    setEditandoExc(u.id); setExcMsg(""); setExcForm({ modulo: "", nivel: "leitura", motivo: "" });
+    setExcList([]); setGrantsPerfil({});
+    const [exc, grants] = await Promise.all([carregarExcecoesUsuario(u.id), carregarGrantsDoPerfil(u.perfil)]);
+    setExcList(exc); setGrantsPerfil(grants);
+  }
+  async function liberarExcecao(u) {
+    const erro = validarExcecao(excForm);
+    if (erro) { setExcMsg("⚠️ " + erro); return; }
+    setBusy(true);
+    const r = await salvarExcecaoRemota(u.id, excForm, currentUser?.name);
+    setBusy(false);
+    if (!r || (Array.isArray(r) && !r.length)) {
+      setExcMsg("⚠️ Nada foi gravado — só o ADM Master libera exceção (e a migração de perfis precisa estar aplicada neste banco)."); return;
+    }
+    addAuditLog(currentUser, "liberar exceção", `${u.username}: ${excForm.modulo} → ${excForm.nivel}`, { motivo: (excForm.motivo || "").trim() });
+    setExcList(await carregarExcecoesUsuario(u.id));
+    setExcForm({ modulo: "", nivel: "leitura", motivo: "" });
+    setExcMsg(`✓ Exceção aplicada. Vale no próximo login de ${u.nome}.`);
+  }
+  async function tirarExcecao(u, ex) {
+    if (!confirm(`Remover a exceção de "${ex.modulo}" de ${u.nome}?\n\nEle volta ao que o cargo "${u.perfil || "sem cargo"}" define.`)) return;
+    setBusy(true);
+    const r = await removerExcecaoRemota(ex.id);
+    setBusy(false);
+    if (!r || (Array.isArray(r) && !r.length)) { setExcMsg("⚠️ Nada foi removido."); return; }
+    addAuditLog(currentUser, "remover exceção", `${u.username}: ${ex.modulo}`, {});
+    setExcList(await carregarExcecoesUsuario(u.id));
+    setExcMsg("");
+  }
 
   function abrirClassificar(u) {
+    setEditandoExc(null);
     setClassificando(u.id);
     setCatForm({
       categoria: u.categoria || "administrativo", conselho: u.conselho || "",
@@ -16498,6 +16572,7 @@ function AdminUsuarios({ currentUser }) {
                     <td style={td}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <button onClick={() => classificando === u.id ? setClassificando(null) : abrirClassificar(u)} disabled={busy} style={miniBtn("#2dd4bf")}>Categoria</button>
+                        <button onClick={() => abrirExcecoes(u)} disabled={busy} style={miniBtn("#a78bfa")} title="Liberar ou suspender um módulo só para esta pessoa, fora do padrão do cargo">Exceções</button>
                         <button onClick={() => redefinirSenha(u)} disabled={busy} style={miniBtn("#22d3ee")}>Redefinir senha</button>
                         {!isMe && (u.ativo
                           ? <button onClick={() => alternarAtivo(u)} disabled={busy} style={miniBtn("#fb7185")}>Desativar</button>
@@ -16539,6 +16614,77 @@ function AdminUsuarios({ currentUser }) {
                       </td>
                     </tr>
                   )}
+                  {editandoExc === u.id && (() => {
+                    const efetivo = permissoesEfetivas(u, { grants: grantsPerfil }, excList);
+                    const resumo = resumoDeAcesso(efetivo);
+                    const desvios = excecoesAplicadas({ grants: grantsPerfil }, excList);
+                    const opcoes = modulosExcecionaveis();
+                    const grupos = [...new Set(opcoes.map(o => o.grupo))];
+                    const corNivel = { escrita: "#2dd4bf", leitura: "#38bdf8", nenhum: "var(--text-muted)" };
+                    return (
+                    <tr style={{ background: "var(--bg-2)" }}>
+                      <td colSpan={7} style={{ ...td, borderBottom: "2px solid var(--border)" }}>
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
+                          <strong style={{ color: "#a78bfa" }}>Exceções de acesso de {u.nome}</strong> — libera (ou suspende) um módulo <strong>só para esta pessoa</strong>, sem inventar um cargo novo.
+                          O cargo é <strong>{u.perfil ? (perfisDisp.find(p => p.chave === u.perfil)?.nome || u.perfil) : "— sem cargo —"}</strong>; a exceção fica registrada com o motivo e quem concedeu, e vale no próximo login dela.
+                        </div>
+
+                        <div style={{ fontSize: 12, color: "var(--text-3)", marginBottom: 12 }}>
+                          Hoje enxerga <strong style={{ color: "var(--text)" }}>{resumo.modulos}</strong> módulo(s) · <strong style={{ color: "#2dd4bf" }}>{resumo.escrita}</strong> em Lança ·
+                          Prontuário: <strong style={{ color: resumo.alcancaProntuario ? "#2dd4bf" : "var(--text-muted)" }}>{resumo.alcancaProntuario ? "sim" : "não"}</strong>
+                        </div>
+
+                        {/* Exceções já aplicadas — o desvio em relação ao cargo */}
+                        <div style={{ marginBottom: 12 }}>
+                          {desvios.length === 0
+                            ? <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Sem exceções — segue o que o cargo define.</div>
+                            : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                {desvios.map(d => {
+                                  const ex = excList.find(e => e.modulo === d.modulo);
+                                  return (
+                                  <div key={d.modulo} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
+                                    <span style={{ fontWeight: 700, color: "var(--text)", minWidth: 150 }}>{d.label}</span>
+                                    <span style={{ color: "var(--text-muted)" }}>{rotuloNivel(d.de)} <span style={{ color: d.ampliou ? "#2dd4bf" : "#fb7185", fontWeight: 700 }}>→ {rotuloNivel(d.para)}</span> {d.ampliou ? "↑" : "↓"}</span>
+                                    {d.motivo && <span style={{ color: "var(--text-3)", fontStyle: "italic" }}>“{d.motivo}”</span>}
+                                    {d.concedido_por && <span style={{ color: "var(--text-muted)", fontSize: 11 }}>por {d.concedido_por}</span>}
+                                    {ex && <button onClick={() => tirarExcecao(u, ex)} disabled={busy} style={{ ...miniBtn("#fb7185"), marginLeft: "auto" }}>Remover</button>}
+                                  </div>
+                                  );
+                                })}
+                              </div>}
+                        </div>
+
+                        {/* Nova exceção */}
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", borderTop: "1px dashed var(--border)", paddingTop: 12 }}>
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Módulo</label>
+                            <select value={excForm.modulo} onChange={e => { setExcForm(x => ({ ...x, modulo: e.target.value })); setExcMsg(""); }} style={{ ...inp, minWidth: 200 }}>
+                              <option value="">Escolha o módulo…</option>
+                              {grupos.map(g => (
+                                <optgroup key={g} label={g}>
+                                  {opcoes.filter(o => o.grupo === g).map(o => <option key={o.chave} value={o.chave}>{o.label}</option>)}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Nível</label>
+                            <select value={excForm.nivel} onChange={e => setExcForm(x => ({ ...x, nivel: e.target.value }))} style={{ ...inp, minWidth: 140, color: corNivel[excForm.nivel] }}>
+                              {NIVEIS_EXCECAO.map(n => <option key={n} value={n} style={{ color: "var(--text)" }}>{rotuloNivel(n)}{n === "nenhum" ? " (suspende)" : ""}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 200 }}>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>Motivo (obrigatório — fica na trilha)</label>
+                            <input value={excForm.motivo} onChange={e => { setExcForm(x => ({ ...x, motivo: e.target.value })); setExcMsg(""); }} placeholder="Ex.: cobre a escala do Bloco às quartas" style={{ ...inp, width: "100%" }} />
+                          </div>
+                          <button onClick={() => liberarExcecao(u)} disabled={busy} style={{ background: "#a78bfa22", color: "#a78bfa", border: "1px solid #a78bfa66", borderRadius: 6, padding: "8px 16px", fontWeight: 700, fontSize: 12.5, cursor: "pointer", whiteSpace: "nowrap" }}>{busy ? "…" : "Liberar"}</button>
+                          <button onClick={() => setEditandoExc(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 12.5 }}>Fechar</button>
+                        </div>
+                        {excMsg && <div style={{ marginTop: 10, fontSize: 12.5, color: excMsg.startsWith("✓") ? "#34d399" : "#fbbf24", fontWeight: 600 }}>{excMsg}</div>}
+                      </td>
+                    </tr>
+                    );
+                  })()}
                   </Fragment>
                 );
               })}
