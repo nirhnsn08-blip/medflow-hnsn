@@ -226,7 +226,7 @@ export const PERFIS_MODELO = [
     descricao: "Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º): acessa tudo do assistencial e a trilha de auditoria.",
     grants: p({ overview: "leitura", atendimento: "leitura", ambulatorio: "leitura", ps: "escrita", bloco: "leitura",
                 leitos: "leitura", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
-                controlados: "leitura", suprimentos: "leitura", print: "leitura", auditoria: "escrita" }),
+                controlados: "leitura", suprimentos: "leitura", print: "leitura", auditoria: "leitura" }),
   },
   {
     chave: "ti", nome: "TI / Analista de Sistemas", categoria: "administrativo", role: "adm_master",

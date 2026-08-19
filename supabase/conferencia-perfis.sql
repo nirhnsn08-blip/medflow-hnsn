@@ -41,7 +41,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('aux_farmacia','suprimentos','leitura'),
   ('diretor_tecnico','ambulatorio','leitura'),
   ('diretor_tecnico','atendimento','leitura'),
-  ('diretor_tecnico','auditoria','escrita'),
+  ('diretor_tecnico','auditoria','leitura'),
   ('diretor_tecnico','bloco','leitura'),
   ('diretor_tecnico','controlados','leitura'),
   ('diretor_tecnico','farmacia','leitura'),
