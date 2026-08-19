@@ -247,7 +247,7 @@ insert into public.perfis_permissoes (perfil_chave, modulo, nivel) values
   ('diretor_tecnico','scih','leitura'),('diretor_tecnico','nsp','escrita'),('diretor_tecnico','protocolos','escrita'),
   ('diretor_tecnico','paciente','escrita'),('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','controlados','leitura'),('diretor_tecnico','suprimentos','leitura'),
-  ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','escrita'),
+  ('diretor_tecnico','print','leitura'),('diretor_tecnico','auditoria','leitura'),
   -- TI
   ('ti','overview','escrita'),('ti','atendimento','escrita'),('ti','ambulatorio','escrita'),('ti','ps','escrita'),('ti','bloco','escrita'),
   ('ti','leitos','escrita'),('ti','scih','escrita'),('ti','nsp','escrita'),('ti','protocolos','escrita'),('ti','paciente','escrita'),('ti','farmacia','escrita'),
