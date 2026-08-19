@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-12 · `main` em `ee12422` (checkpoint-v58) · zero PRs abertos.
+**Atualizado em:** 2026-08-18 · `main` em `c37688d` · zero PRs abertos.
 
 ---
 
@@ -73,16 +73,52 @@ São gerados. Editar à mão cria divergência silenciosa:
 |---|---|
 | `supabase/auditoria-banco.sql` | `node supabase/gerar-auditoria.mjs` |
 | `supabase/reconstruir-banco.sql` | `node supabase/gerar-reconstrucao.mjs` |
+| `supabase/migracao-rls-leitura.sql` | `node supabase/gerar-rls.mjs` |
+| `supabase/conferencia-perfis.sql` | `node supabase/gerar-conferencia-perfis.mjs` |
 
-**Rode os dois depois de criar qualquer migração nova.** A auditoria mantida à mão já
+**Rode os quatro depois de criar qualquer migração nova.** A auditoria mantida à mão já
 ficou cega ao módulo mais recente duas vezes — e auditoria cega é pior que nenhuma,
-porque dá falsa confiança.
+porque dá falsa confiança. Ordem prática ao criar uma migração: classifique a tabela
+nova em `src/acesso/mapa-tabelas.js` (senão o teste quebra), depois regenere os quatro.
+
+---
+
+## Segurança de acesso — o que mudou, e o que te pega
+
+A leitura do banco **deixou de ser "menu que esconde" e virou barreira real**. Cada
+tabela tem uma política de `SELECT` amarrada a um módulo (via `public.pode_ver(...)`);
+tirar um módulo do perfil tira também o acesso ao dado pela API. O mapa de qual módulo
+lê qual tabela vive em `src/acesso/mapa-tabelas.js`.
+
+**Três coisas que precisam entrar no seu reflexo ao mexer no banco:**
+
+1. **Tabela nova nasce COM RLS.** Várias tabelas (NSP, enfermagem, protocolos) subiram
+   com `create table` e nenhuma política — RLS desligado é escrita e leitura abertas a
+   qualquer login. Tivemos que fechar depois, e fechar leitura sem cuidar da escrita
+   **trancou a gravação** de tabelas inteiras em produção até corrigir. Ao criar tabela:
+   classifique-a em `mapa-tabelas.js` e deixe `gerar-rls.mjs` cuidar da leitura (ele
+   preserva a escrita aberta onde não havia política).
+2. **`mapa-tabelas.test.js` quebra de propósito** se a tabela nova não for classificada.
+   Não é chateação — é o que impede o próximo hospital de nascer com dado exposto.
+3. **Grant novo no seed não chega a banco já migrado.** `on conflict do nothing` não
+   troca linha existente. Para mudar um grant que já está no banco, use um `UPDATE`
+   explícito (ver `migracao-perfis-auditoria-diretor.sql` como molde) e rode
+   `conferencia-perfis.sql` para conferir código × banco.
+
+**Duas coisas que a barreira ainda NÃO faz** (não prometer ao hospital como resolvidas):
+não filtra por **linha** (quem abre o Paciente 360 vê qualquer paciente, não só os do
+seu setor — depende de lotação confiável antes de apertar), e a **escrita** ainda é
+decidida pelo papel de sistema, não pelo módulo (`pode_editar` já existe no banco, sem uso).
+
+**Liberar acesso fora do padrão do cargo:** na tela de Usuários, botão **Exceções** — a
+TI (adm_master) libera ou suspende um módulo para UMA pessoa, com motivo e autor, sem
+inventar cargo novo.
 
 ---
 
 ## Testes — o que eles protegem
 
-`npm test` roda **1156 testes**. Três merecem atenção especial:
+`npm test` roda **1163 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -90,6 +126,10 @@ porque dá falsa confiança.
   gravado. Se você criar tela que grava, acrescente o caso aqui.
 - **`seed-perfis.test.js`** — confere que os perfis de acesso do código e do SQL não
   divergiram, grant por grant.
+- **`mapa-tabelas.test.js`** — confere que TODA tabela do banco tem classificação de
+  leitura (RLS) e que nenhuma tabela com dado de paciente ficou aberta. É ele que
+  **quebra de propósito** quando você cria tabela nova sem classificá-la em
+  `mapa-tabelas.js` — ver "Segurança de acesso" abaixo.
 - **`papeis.test.js`** — as regras de competência profissional (COFEN/CFM). Se
   afrouxarem por descuido, ninguém percebe até virar problema com o conselho.
 
@@ -99,7 +139,8 @@ porque dá falsa confiança.
 
 O **PEP está completo** (admissão → prescrição com aprazamento e checagem → sinais
 vitais com NEWS → evolução → reconciliação medicamentosa → alta com sumário), os
-**perfis de acesso por cargo** estão no ar, e a **jornada do paciente no PS está
+**perfis de acesso por cargo** estão no ar **e a leitura do banco já obedece a eles**
+(RLS por módulo — ver "Segurança de acesso"), e a **jornada do paciente no PS está
 completa (blocos 1–5)**: chegada → triagem → atendimento → medicação/checagem →
 exames (BI laboratorial × imagem) → desfecho (com aviso de exame pendente) →
 regulação de leito (NIR). A **triagem** agora usa **comorbidades marcáveis** (que
