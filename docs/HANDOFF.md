@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-12 · `main` em `df27530` (checkpoint-v57) · zero PRs abertos.
+**Atualizado em:** 2026-08-12 · `main` em `ee12422` (checkpoint-v58) · zero PRs abertos.
 
 ---
 
@@ -82,7 +82,7 @@ porque dá falsa confiança.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **1065 testes**. Três merecem atenção especial:
+`npm test` roda **1156 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -142,7 +142,13 @@ com os 4 protocolos tempo-dependentes — **Sepse** (porta→ATB, gatilho NEWS),
 (porta→ECG), **AVC** (porta→TC + janela terapêutica) e **TEV** (profilaxia por escore de Padua) —
 cada um com gatilho, bundle-relógio e indicadores porta→ação. E entrou a **Fase 3 de segurança:
 RLS de leitura por módulo** (`pode_ver` + `mapa-tabelas.js`), que fecha a exposição de SELECT
-`using(true)` das tabelas sensíveis.
+`using(true)` das tabelas sensíveis. E a **Fase 4 (Faturamento SUS)** ganhou a **conta que se
+monta do prontuário** (módulo Faturamento → aba Pendentes): lista as internações → monta do
+episódio (procedimento, medicação administrada, permanência real do leito) → antecipa glosa
+(permanência e **CID × procedimento**) → lança na conta do Atendimento. Os valores em R$ e os CIDs
+compatíveis vêm das **AIHs reais do SUS**, lidas de um `.dbc` do DATASUS por uma ferramenta
+versionada (`supabase/importar-aih.mjs`). Motores puros em `src/atendimento/montar-conta.js` +
+`sigtap.js`.
 
 **Ainda não há paciente real no sistema.**
 

@@ -1,19 +1,44 @@
-# 📍 Ponto de restauração — checkpoint-v57
+# 📍 Ponto de restauração — checkpoint-v58
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v57` (anteriores: `checkpoint-v56` … `checkpoint-v1`)
-- **Data:** 2026-08-12 · `main` em `df27530`
+- **Tag Git mais recente:** `checkpoint-v58` (anteriores: `checkpoint-v57` … `checkpoint-v1`)
+- **Data:** 2026-08-12 · `main` em `ee12422`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v56 para cá: a **conta do prontuário virou fluxo completo** (lançar na
-  conta · permanência real do leito · worklist de Pendentes) e ganhou **R$ real** dos
-  valores que o SUS pagou de verdade, lidos de um `.dbc` do DATASUS (PRs **#81**–**#84**).
-- **1143 testes** · **93 tabelas / 1461 colunas** · build limpo.
+  vai ao ar). Da v57 para cá: a leitura das **AIHs reais do DATASUS** virou uma
+  **ferramenta versionada** (`importar-aih.mjs`) e a antecipação de glosa passou a incluir
+  **CID × procedimento** — tudo derivado dos dados reais do SUS (PRs **#86**, **#87**).
+- **1156 testes** · **93 tabelas / 1462 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v58 (desde a v57): DATASUS vira ferramenta + glosa de CID (Tier 1 Fase 4)
+
+A capacidade de ler as AIHs reais do SUS deixou de ser scripts soltos e virou peça
+permanente do projeto; e a glosa ganhou a regra que mais rejeita conta no SUS.
+
+### 🧰 Importador de AIH versionado (PR #86)
+Os scripts de rascunho viraram `supabase/importar-aih.mjs` — testado e reproduzível. Um
+comando por competência: `node supabase/importar-aih.mjs <arquivo.dbc> [--cnes N]` lê o
+`.dbc` do DATASUS (descompactador **PKWARE-DCL/blast** escrito do zero — a máquina só tem
+Node), cruza com os 219 do seed e (re)gera `migracao-sigtap-valores.sql`. O `blast` é
+validado pelo **vetor canônico do blast.c**. `--cnes` filtra um hospital; sem ele, o estado
+inteiro. **Geral por padrão:** cada cliente importa o `.dbc` do seu estado.
+
+### 🩺 Glosa de CID × procedimento (PR #87)
+A antecipação de glosa passou a avisar o **CID atípico** (atenção, não bloqueio): quando o CID
+da conta não consta entre os vistos com o procedimento nas AIHs reais — a **causa nº 1 de glosa
+real** do AIH. A ferramenta deriva os CIDs (DIAG_PRINC vistos ≥2×) para a coluna nova
+`sigtap_procedimentos.cids`; o `montarSig` já mapeia `cids`, então a regra (que já existia no
+`sigtap.js`) **acende só com o dado — zero mudança no app**. Clinicamente coerente (doenças
+bacterianas ← CIDs A31x/A39x/A40x).
+
+**Falta da Fase 4:** refinar valores por CNES do HNSN (a ferramenta já aceita `--cnes`);
+sexo/idade como glosa (são *impedimento* — melhor com o pacote SIGTAP oficial); **Visão
+Executiva com dado real**; **arquivo de remessa** (parado até o layout do HNSN). **1156 testes + build verdes.**
 
 ## 🆕 Novidades da v57 (desde a v56): a conta do prontuário fecha o fluxo e ganha R$ real
 
