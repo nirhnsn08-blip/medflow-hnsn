@@ -1,19 +1,60 @@
-# 📍 Ponto de restauração — checkpoint-v58
+# 📍 Ponto de restauração — checkpoint-v59
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v58` (anteriores: `checkpoint-v57` … `checkpoint-v1`)
-- **Data:** 2026-08-12 · `main` em `ee12422`
+- **Tag Git mais recente:** `checkpoint-v59` (anteriores: `checkpoint-v58` … `checkpoint-v1`)
+- **Data:** 2026-08-19 · `main` em `fc05ef6`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v57 para cá: a leitura das **AIHs reais do DATASUS** virou uma
-  **ferramenta versionada** (`importar-aih.mjs`) e a antecipação de glosa passou a incluir
-  **CID × procedimento** — tudo derivado dos dados reais do SUS (PRs **#86**, **#87**).
-- **1156 testes** · **93 tabelas / 1462 colunas** · build limpo.
+  vai ao ar). Da v58 para cá: a **Visão Executiva do Faturamento** deixou de mostrar
+  números ilustrativos e passou a **ler a produção de verdade** — funil das internações,
+  **faturamento por via** (AIH/BPA/APAC/TISS/direta) e **R$ de referência SIGTAP** (PRs
+  **#93**, **#94**); e a **segurança de acesso** ganhou **exceção por usuário** e o ajuste
+  do **diretor técnico** na trilha de auditoria (PRs **#88**, **#89**, **#91**, **#92**).
+- **1186 testes** · **93 tabelas / 1462 colunas** · build limpo.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
 - ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
   para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
   roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+
+## 🆕 Novidades da v59 (desde a v58): a Visão Executiva do Faturamento passa a ler dado real
+
+A Visão Executiva era **layout com números ilustrativos** ("R$ 2,10 mi a receber",
+"índice de glosa 4,8%"). Deixou de ser — agora lê a produção de verdade. Nada de número
+inventado: o que o hospital ainda não tem (faturado × recebido × glosa real, projeção)
+**não é mostrado** até o dado existir.
+
+### 📊 Visão Executiva com dado real — o funil (PR #93)
+Motor puro `src/atendimento/resumo-faturamento.js` (`resumoFaturamento`, +15 testes): a
+partir da **worklist** (internações × conta) e do SIGTAP, deriva o **funil por situação**
+(esperando conta → aberta → fechada → faturada), o **backlog** (internações esperando
+conta), o **valor de referência SIGTAP** do backlog e um **farol de sinais reais** (backlog
+envelhecendo, contas a fechar, glosadas). Falta de dado é silêncio: sem backlog, o valor é
+`null`, não R$ 0,00. A tela lê a worklist (grants que o perfil faturamento já tem) e mostra
+KPIs/funil/farol reais + **empty-state honesto**. Cérebro 3D mantido.
+
+### 🧭 Faturamento por via + R$ de referência no hero (PR #94)
+Segundo motor puro `resumoPorVia` (+8 testes): resolve a via de cada atendimento faturável
+(`resolverVia`) — internação→**AIH**, ambulatório→**BPA/APAC** pelo `via_sus`, convênio→**TISS**,
+particular→**direta**, sem convênio→**"sem-via"** — e soma o **valor de referência SIGTAP**
+(SH+SP) por via. Para BPA/APAC aparecerem, um loader novo (`carregarProducaoFaturavel`) lê a
+**produção faturável inteira** (`status=finalizado` com procedimento), não só as internações —
+a worklist de internação só daria AIH. A tela ganhou o painel **"Faturamento por via"** e o
+**hero** passou a liderar com o **R$ de referência SIGTAP total**, rotulado **"não é o faturado
+real"**. Ambos os PRs **sem migração** — só leitura de tabelas já concedidas.
+
+### 🔐 Segurança de acesso afinada (PRs #88, #89, #91, #92)
+De passagem, a fatia de controle de acesso que o doc da v58 não citou: **exceção de acesso
+por usuário** (a TI libera/suspende um módulo para UMA pessoa, com motivo e autor — PR #88),
+**correção do aviso da tela de Perfis** (dizia o contrário do que a RLS faz — PR #89), o
+**diretor técnico passou a só CONSULTAR a trilha de auditoria** (escrita→leitura, com a
+migração `migracao-perfis-auditoria-diretor.sql` como molde de `UPDATE` de grant — PR #91) e
+o **HANDOFF ganhou a seção "Segurança de acesso"** (PR #92).
+
+**Falta da Fase 4:** **glosa por valor** (item acima do SIGTAP, incompatibilidades); refinar
+valores por **CNES do HNSN** (a ferramenta já aceita `--cnes`); o "por via" **acende sozinho**
+quando houver produção real; **arquivo de remessa** (parado até o layout do HNSN). Ainda **não
+há paciente real** no sistema. **1186 testes + build verdes.**
 
 ## 🆕 Novidades da v58 (desde a v57): DATASUS vira ferramenta + glosa de CID (Tier 1 Fase 4)
 

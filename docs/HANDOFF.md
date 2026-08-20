@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-18 · `main` em `c37688d` · zero PRs abertos.
+**Atualizado em:** 2026-08-19 · `main` em `fc05ef6` (checkpoint-v59) · zero PRs abertos.
 
 ---
 
@@ -118,7 +118,7 @@ inventar cargo novo.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **1163 testes**. Três merecem atenção especial:
+`npm test` roda **1186 testes**. Três merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -189,7 +189,9 @@ episódio (procedimento, medicação administrada, permanência real do leito) �
 (permanência e **CID × procedimento**) → lança na conta do Atendimento. Os valores em R$ e os CIDs
 compatíveis vêm das **AIHs reais do SUS**, lidas de um `.dbc` do DATASUS por uma ferramenta
 versionada (`supabase/importar-aih.mjs`). Motores puros em `src/atendimento/montar-conta.js` +
-`sigtap.js`.
+`sigtap.js`. E a **Visão Executiva** do Faturamento passou a **ler a produção de verdade** —
+funil das internações, **faturamento por via** (AIH/BPA/APAC/TISS/direta) e **R$ de referência
+SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
 
 **Ainda não há paciente real no sistema.**
 
