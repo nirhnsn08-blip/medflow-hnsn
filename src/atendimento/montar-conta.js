@@ -442,12 +442,15 @@ export function montarContaDoProntuario({
     avisos.push(`${semPreco} ${semPreco === 1 ? "item" : "itens"} sem preço — o total sai menor do que é até o pacote de valores do DATASUS entrar no SIGTAP.`);
   }
 
-  // Pré-glosa: o que anteciparia uma recusa (permanência, sexo, idade, CID).
+  // Pré-glosa: o que anteciparia uma recusa (permanência, sexo, idade, CID, valor).
+  // O valor cobrado do ato principal (catálogo do hospital, se houver) vai à glosa
+  // para bater com a referência SIGTAP — no SUS quem paga é a tabela.
   const glosa = avaliarGlosa({
     proc: sigProc,
     paciente: { sexo: paciente?.sexo ?? null, idade: numOuNull(atendimento?.idade) ?? numOuNull(paciente?.idade) },
     cidPrincipal: cid,
     permanenciaDias: perm.permanencia?.dias ?? null,
+    valorCobrado: centavos(prc.item?.valor_unitario ?? null),
   });
   const impedida = temImpedimento(glosa);
 
