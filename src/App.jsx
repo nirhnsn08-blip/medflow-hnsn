@@ -11675,6 +11675,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
       : { queixa: gForm.queixa || null, sugere: gatilhoQueixa.sugere, termo: gatilhoQueixa.termo, ...(protSel === "avc" ? { inicio_sintomas: gForm.inicio ? new Date(gForm.inicio).toISOString() : null } : {}) };
     setBusy(true);
     await registrarAtivacaoProt({ protocolo: protSel, setor: setorSel || null, prontuario: gForm.prontuario, paciente_nome: gForm.paciente, leito: gForm.leito, gatilho_ref: ref }, currentUser);
+    addAuditLog(currentUser, "protocolo: acionar", `${protSel.toUpperCase()} · ${gForm.paciente || gForm.prontuario || "—"}${setorSel ? " · " + setorSel : ""}`, { leito: gForm.leito || null });
     setBusy(false); setGForm({ paciente: "", prontuario: "", leito: "", queixa: "", inicio: "", fr: "", fc: "", pa_sist: "", spo2: "", temp: "", consciencia: "A" }); setAbrirAcionar(false); recarregar();
   }
   async function marcarPasso(a, passo, naoAplica) {
@@ -11686,13 +11687,16 @@ function ProtocolosPage({ currentUser, canEdit }) {
   }
   async function encerrar(a, desfecho) {
     if (busy || !canEdit) return;
-    setBusy(true); await encerrarAtivacaoProt(a, desfecho, null, currentUser); setBusy(false); setAtivSel(null); recarregar();
+    setBusy(true); await encerrarAtivacaoProt(a, desfecho, null, currentUser);
+    addAuditLog(currentUser, "protocolo: encerrar", `${(a.protocolo || "").toUpperCase()} · ${a.paciente_nome || a.prontuario || "—"} → ${desfecho}`, {});
+    setBusy(false); setAtivSel(null); recarregar();
   }
   async function salvarInstancia(setor, patch) {
     if (busy || !canEdit) return;
     const cur = instanciaDe(setor, protSel) || {};
     setBusy(true);
     await upsertProtSetorRemote({ setor, protocolo: protSel, ativo: cur.ativo !== false, janela_min: cur.janela_min ?? null, responsavel: cur.responsavel || null, validado: cur.validado, ...patch }, currentUser);
+    addAuditLog(currentUser, "protocolo: configurar setor", `${protSel.toUpperCase()} · ${setor}${patch.ativo !== undefined ? (patch.ativo ? " · ligado" : " · desligado") : ""}`, patch);
     setBusy(false); recarregar();
   }
   async function registrarAvaliacaoTev() {
@@ -11703,6 +11707,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
       gatilho_ref: { padua: tevForm.marcadas, score: padua.score, alto: padua.alto, sangramento_alto: tevForm.sangramentoAlto, recomendacao: recTev.chave, rec_label: recTev.label },
       status: "concluida", desfecho: recTev.chave, encerrado_em: new Date().toISOString(),
     }, currentUser);
+    addAuditLog(currentUser, "protocolo: avaliação TEV", `${gForm.paciente || gForm.prontuario || "—"} · Padua ${padua.score} → ${recTev.label}`, {});
     setBusy(false); setGForm(f => ({ ...f, paciente: "", prontuario: "", leito: "" })); setTevForm({ marcadas: [], sangramentoAlto: false }); setAbrirAcionar(false); recarregar();
   }
   const toggleFator = ch => setTevForm(f => ({ ...f, marcadas: f.marcadas.includes(ch) ? f.marcadas.filter(x => x !== ch) : [...f.marcadas, ch] }));
