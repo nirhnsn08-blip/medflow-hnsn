@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 93 tabelas, 1462 colunas.
+-- Cobertura atual: 93 tabelas, 1465 colunas.
 -- ============================================================
 
 with
@@ -1495,6 +1495,8 @@ colunas(tabela, coluna, origem) as (values
   ('sup_fornecedores','updated_at','suprimentos-faseA'),
   ('sup_fornecedores','usuario','suprimentos-faseA'),
   ('sup_inventarios','ajustado','suprimentos-inventario'),
+  ('sup_inventarios','ajuste_erro','suprimentos-ajuste-estorno'),
+  ('sup_inventarios','autorizado_por','suprimentos-ajuste-estorno'),
   ('sup_inventarios','contado','suprimentos-inventario'),
   ('sup_inventarios','created_at','suprimentos-inventario'),
   ('sup_inventarios','diferenca','suprimentos-inventario'),
@@ -1524,6 +1526,7 @@ colunas(tabela, coluna, origem) as (values
   ('sup_movimentos','created_at','suprimentos-faseA'),
   ('sup_movimentos','custo_unit','suprimentos-inventario'),
   ('sup_movimentos','documento','suprimentos-faseA'),
+  ('sup_movimentos','estorno_de','suprimentos-ajuste-estorno'),
   ('sup_movimentos','fornecedor_id','suprimentos-faseA'),
   ('sup_movimentos','id','suprimentos-faseA'),
   ('sup_movimentos','item_id','suprimentos-faseA'),
