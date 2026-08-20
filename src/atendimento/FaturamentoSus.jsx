@@ -7,10 +7,12 @@
 //   Referência:    Tabela SIGTAP · Assistente AI
 //
 // O QUE JÁ TEM MOTOR: a Tabela SIGTAP (os 219 + glosa de permanência,
-// lê `sigtap_procedimentos`). A Visão Executiva está com **layout pronto e
-// dados ILUSTRATIVOS** (marcados como prévia) — os números reais entram
-// quando a conta se montar do prontuário e o motor de glosa existir. As
-// demais abas são placeholders honestos do que vai viver ali.
+// lê `sigtap_procedimentos`), a conta do prontuário (aba Pendentes) e a
+// **Visão Executiva** — que agora lê a worklist de verdade (`resumoFaturamento`):
+// funil das internações, backlog esperando conta, valor de referência SIGTAP
+// e farol de sinais reais. Sem número inventado — o que não existe (faturado ×
+// recebido × glosa real) não é mostrado. As demais abas são placeholders
+// honestos do que vai viver ali.
 //
 // O cérebro do hero é canvas 2D puro (sem lib) — anatômico, girando, com
 // uma sinapse azul cruzando o centro. Anima em useEffect e limpa no unmount.
@@ -26,6 +28,7 @@ import {
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
 import { montarContaDoProntuario, escolherInternacao, montarWorklist } from "./montar-conta.js";
+import { resumoFaturamento } from "./resumo-faturamento.js";
 import { reais, centavos, STATUS_CONTA } from "./faturamento.js";
 import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
@@ -188,7 +191,7 @@ function BrainCanvas() {
   return <canvas ref={ref} style={{ display: "block", width: "100%", height: "100%" }} />;
 }
 
-// ── Visão Executiva (layout aprovado; dados ilustrativos) ───
+// ── Visão Executiva (motor real: resumoFaturamento lê a worklist) ──
 function Kpi({ lbl, val, un, trend }) {
   return (
     <div style={cx.card}>
@@ -200,14 +203,15 @@ function Kpi({ lbl, val, un, trend }) {
     </div>
   );
 }
-function ViaRow({ n, pct, val, w, op }) {
+function FunilRow({ label, n, max, dim }) {
+  const w = max > 0 ? Math.max(2, Math.round((n / max) * 100)) : 0;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "66px 1fr auto", alignItems: "center", gap: 13 }}>
-      <span style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>{n}</span>
+    <div style={{ display: "grid", gridTemplateColumns: "128px 1fr 34px", alignItems: "center", gap: 13 }}>
+      <span style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>{label}</span>
       <span style={{ height: 8, borderRadius: 5, background: "var(--surface-3)", overflow: "hidden" }}>
-        <i style={{ display: "block", height: "100%", width: w, background: TEAL, opacity: op }} />
+        <i style={{ display: "block", height: "100%", width: `${w}%`, background: TEAL, opacity: dim ? 0.4 : 1 }} />
       </span>
-      <span style={{ fontSize: 12.5, color: "var(--text-3)", minWidth: 118, textAlign: "right" }}>{pct} · <b style={{ color: "var(--text)", fontWeight: 600 }}>{val}</b></span>
+      <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 600, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{n}</span>
     </div>
   );
 }
@@ -222,22 +226,47 @@ function FarolRow({ sev, ic, titulo, desc, tag }) {
     </div>
   );
 }
-function VisaoExecutiva({ totalProcs }) {
+const FAROL_IC = {
+  "backlog-velho": <><path d="M12 9v4M12 17v.01" /><path d="M10.3 4l-7 12a2 2 0 001.7 3h14a2 2 0 001.7-3l-7-12a2 2 0 00-3.4 0z" /></>,
+  "aberta-a-fechar": <><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h7" /></>,
+  glosada: <><path d="M12 3l9 5v8l-9 5-9-5V8z" /><path d="M12 8v5M12 16.5v.01" /></>,
+  "em-dia": <path d="M5 12l5 5L20 7" />,
+};
+
+function VisaoExecutiva({ sb, sigtapRows }) {
+  const [worklist, setWorklist] = useState(null); // null = ainda carregando
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      try {
+        const { internacoes, contas } = await carregarWorklistFaturamento(sb, { limite: 200 });
+        if (vivo) setWorklist(montarWorklist(internacoes, contas));
+      } catch { if (vivo) setWorklist([]); }
+    })();
+    return () => { vivo = false; };
+  }, [sb]);
+
+  const carregando = worklist === null;
+  const R = useMemo(
+    () => resumoFaturamento({ worklist: worklist || [], sigtapProcs: sigtapRows || [] }),
+    [worklist, sigtapRows]
+  );
+  const maxFunil = Math.max(1, ...R.funil.map((f) => f.n));
+  const totalProcs = (sigtapRows || []).length;
+
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-.01em" }}>Visão executiva</h2>
-          <p style={{ margin: "5px 0 0", color: "var(--text-3)", fontSize: 13 }}>O motor de inteligência lê a produção, a glosa e os prazos — e diz onde agir.</p>
+          <p style={{ margin: "5px 0 0", color: "var(--text-3)", fontSize: 13 }}>Lê as internações faturáveis, o estágio da conta de cada uma e o que precisa de ação — em tempo real.</p>
         </div>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(245,158,11,.13)", color: "#f59e0b", border: "1px solid rgba(245,158,11,.4)", borderRadius: 8, padding: "6px 11px", fontSize: 12, fontWeight: 600 }}>
-          <Ico size={13}><><path d="M12 9v4M12 17v.01" /><path d="M10.3 4l-7 12a2 2 0 001.7 3h14a2 2 0 001.7-3l-7-12a2 2 0 00-3.4 0z" /></></Ico>
-          Prévia · dados ilustrativos
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "rgba(45,212,191,.12)", color: TEAL, border: "1px solid rgba(45,212,191,.35)", borderRadius: 8, padding: "6px 11px", fontSize: 12, fontWeight: 600 }}>
+          <Ico size={13}><><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></></Ico>
+          competência {R.competenciaAtual}
         </span>
       </div>
-      <p style={{ margin: "0 0 18px", fontSize: 12, color: "var(--text-muted)" }}>
-        Os indicadores abaixo são de <b>exemplo</b> para validar o layout. Os números reais entram quando a conta se montar do prontuário e o motor de glosa estiver no ar.
-      </p>
 
       {/* hero */}
       <section style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 1, background: "var(--border)", border: "1px solid var(--border)", borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
@@ -245,64 +274,88 @@ function VisaoExecutiva({ totalProcs }) {
           <div style={{ position: "absolute", inset: 0 }}><BrainCanvas /></div>
           <div style={{ position: "absolute", left: 20, top: 18, pointerEvents: "none" }}>
             <div style={{ fontSize: 10, color: TEAL, letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700 }}>Inteligência do faturamento</div>
-            <div style={{ marginTop: 7, fontSize: 13.5, color: "#b9c6da", maxWidth: 230, lineHeight: 1.5 }}>Cruza prontuário, SIGTAP e histórico de glosa para antecipar o que o hospital vai receber.</div>
+            <div style={{ marginTop: 7, fontSize: 13.5, color: "#b9c6da", maxWidth: 230, lineHeight: 1.5 }}>A conta se monta do prontuário e cruza com o SIGTAP — o painel mostra onde a produção está parada.</div>
           </div>
           <div style={{ position: "absolute", left: 20, right: 20, bottom: 15, display: "flex", gap: 18, fontSize: 11, color: "#516686", pointerEvents: "none" }}>
-            <span><b style={{ color: TEAL }}>1.842</b> contas lidas</span>
-            <span><b style={{ color: TEAL }}>{totalProcs || 219}</b> procedimentos</span>
+            <span><b style={{ color: TEAL }}>{carregando ? "—" : R.total}</b> internações lidas</span>
+            <span><b style={{ color: TEAL }}>{totalProcs || "—"}</b> procedimentos</span>
             <span><b style={{ color: TEAL }}>tempo real</b></span>
           </div>
         </div>
         <div style={{ background: "var(--surface)", padding: "22px 24px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700 }}>Projeção de recebimento</div>
-          <div style={{ fontSize: 32, fontWeight: 600, margin: "8px 0 2px", fontVariantNumeric: "tabular-nums" }}>R$ 2,10 mi</div>
-          <div style={{ color: "var(--text-3)", fontSize: 12.5, marginBottom: 14 }}>dos R$ 2,31 mi faturados a receber — confiança 92%</div>
-          {[
-            { c: TEAL, t: "Índice de glosa em queda", d: "4,8% · melhor mês do ano", v: "−0,7 pp" },
-            { c: "#f59e0b", t: "2 prazos críticos esta semana", d: "recurso Unimed · fechamento AIH", v: "R$ 61k" },
-            { c: TEAL, t: "SIGTAP evita 3 dos 5 motivos de glosa", d: "antes de a conta ser enviada", v: "−R$ 53k" },
-          ].map((s, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 0", borderTop: "1px solid var(--border)" }}>
-              <span style={{ width: 8, height: 8, borderRadius: 3, background: s.c, flex: "0 0 auto" }} />
-              <div><div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{s.t}</div><div style={{ fontSize: 12, color: "var(--text-3)" }}>{s.d}</div></div>
-              <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{s.v}</span>
-            </div>
-          ))}
+          <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700 }}>Pendência do faturamento</div>
+          {carregando ? (
+            <div style={{ color: "var(--text-3)", fontSize: 13, marginTop: 10 }}>Carregando…</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 32, fontWeight: 600, margin: "8px 0 2px", fontVariantNumeric: "tabular-nums" }}>{R.backlog}</div>
+              <div style={{ color: "var(--text-3)", fontSize: 12.5, marginBottom: 14 }}>
+                {R.backlog === 0 ? "internação esperando conta — nada a montar" : `${R.backlog === 1 ? "internação" : "internações"} esperando conta`}
+                {R.valorRefBacklog != null && (
+                  <> · <b style={{ color: "var(--text-2)" }}>{reais(R.valorRefBacklog)}</b> em referência SIGTAP{R.semValorRef > 0 ? ` (${R.semValorRef} sem preço)` : ""}</>
+                )}
+              </div>
+              {[
+                { c: R.emAberto > 0 ? "#f59e0b" : TEAL, t: `${R.emAberto} ${R.emAberto === 1 ? "conta aberta" : "contas abertas"}`, d: "a revisar e fechar na competência", v: String(R.emAberto) },
+                { c: TEAL, t: `${R.porSituacao.faturada} ${R.porSituacao.faturada === 1 ? "faturada" : "faturadas"}`, d: "já transmitidas ao SUS", v: String(R.porSituacao.faturada) },
+                { c: R.glosadas > 0 ? "#ef4444" : TEAL, t: R.glosadas > 0 ? `${R.glosadas} ${R.glosadas === 1 ? "glosada" : "glosadas"}` : "Nenhuma glosa", d: R.glosadas > 0 ? "recurso no prazo" : "nada em recurso", v: String(R.glosadas) },
+              ].map((s, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 0", borderTop: "1px solid var(--border)" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 3, background: s.c, flex: "0 0 auto" }} />
+                  <div><div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{s.t}</div><div style={{ fontSize: 12, color: "var(--text-3)" }}>{s.d}</div></div>
+                  <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, color: "var(--text-2)", fontVariantNumeric: "tabular-nums" }}>{s.v}</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
       </section>
 
-      {/* kpis */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
-        <Kpi lbl="Faturado no mês" val="R$ 1,84" un="mi" trend="▲ 6,2% vs jul" />
-        <Kpi lbl="A receber" val="R$ 2,31" un="mi" trend="SUS + convênios" />
-        <Kpi lbl="Índice de glosa" val="4,8" un="%" trend="▼ 0,7 pp vs jul" />
-        <Kpi lbl="Prazo de recebimento" val="52" un="dias" trend="▼ 4 dias vs jul" />
-      </div>
+      {carregando ? (
+        <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Carregando o resumo…</p>
+      ) : R.vazio ? (
+        <div style={{ ...cx.card, textAlign: "center", padding: "40px 24px" }}>
+          <div style={{ fontSize: 14, color: "var(--text-2)", maxWidth: 520, margin: "0 auto", lineHeight: 1.55 }}>
+            Ainda não há internação faturável. Assim que o PS internar um paciente (desfecho “internação”) e a conta for montada na aba <b>Pendentes</b>, os números aparecem aqui.
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* kpis reais */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
+            <Kpi lbl="Internações faturáveis" val={R.total} trend="com desfecho de internação" />
+            <Kpi lbl="Esperando conta" val={R.backlog} trend="a montar do prontuário" />
+            <Kpi lbl="Contas em aberto" val={R.emAberto} trend="a revisar e fechar" />
+            <Kpi lbl="Faturadas" val={R.porSituacao.faturada} trend="já transmitidas" />
+          </div>
 
-      {/* painéis */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <div style={cx.card}>
-          <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Faturamento por via</h3>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>De onde vem a receita do mês</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-            <ViaRow n="AIH" pct="62%" val="R$ 1,14 mi" w="100%" op={1} />
-            <ViaRow n="BPA" pct="21%" val="R$ 387 mil" w="34%" op={0.72} />
-            <ViaRow n="APAC" pct="11%" val="R$ 202 mil" w="18%" op={0.5} />
-            <ViaRow n="TISS" pct="4%" val="R$ 74 mil" w="7%" op={0.34} />
-            <ViaRow n="Particular" pct="2%" val="R$ 37 mil" w="4%" op={0.22} />
+          {/* painéis reais */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <div style={cx.card}>
+              <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Funil do faturamento</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>Onde as internações estão no caminho da conta</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+                {R.funil.map((f) => (
+                  <FunilRow key={f.chave} label={f.label} n={f.n} max={maxFunil} dim={f.n === 0} />
+                ))}
+              </div>
+            </div>
+            <div style={cx.card}>
+              <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Farol</h3>
+              <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>O que precisa de ação — só sinal real</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {R.farol.length === 0 ? (
+                  <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>Sem pendência a sinalizar.</p>
+                ) : (
+                  R.farol.map((f) => (
+                    <FarolRow key={f.chave} sev={f.sev} ic={FAROL_IC[f.chave]} titulo={f.titulo} desc={f.desc} tag={f.tag} />
+                  ))
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-        <div style={cx.card}>
-          <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Farol de prazos</h3>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>O que vence — perdeu o prazo, perdeu o dinheiro</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <FarolRow sev="red" ic={<><path d="M12 9v4M12 17v.01" /><circle cx="12" cy="12" r="9" /></>} titulo="Recurso de glosa — Unimed" desc="R$ 42 mil · prazo de reapresentação" tag="vence amanhã" />
-            <FarolRow sev="amb" ic={<><path d="M7 4v3M17 4v3M4 9h16M5 7h14v13H5z" /></>} titulo="Fechamento da AIH — ago/2026" desc="18 contas de internação a revisar" tag="3 dias" />
-            <FarolRow sev="amb" ic={<><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h7" /></>} titulo="Auditoria de conta pendente" desc="5 contas com item glosável sinalizado" tag="R$ 19 mil" />
-            <FarolRow sev="ok" ic={<path d="M5 12l5 5L20 7" />} titulo="BPA ago/2026" desc="produção conferida, pronta para remessa" tag="12 dias" />
-          </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
@@ -880,7 +933,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "22px 26px 40px" }}>
-        {sub === "visao" && <VisaoExecutiva totalProcs={rows.length} />}
+        {sub === "visao" && <VisaoExecutiva sb={sb} sigtapRows={rows} />}
         {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} canEdit={canEdit} currentUser={currentUser} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
