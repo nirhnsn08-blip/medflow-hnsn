@@ -24,6 +24,11 @@ import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
          modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
+import {
+  SUP_LEAD_PADRAO, SUP_MARGEM_SEG, supPrazoReposicao, supSaldoTotal,
+  supLeadTimeMap, custoMedioPonderado, supPedidoTotal,
+} from "./suprimentos/kardex.js";
+import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
@@ -2488,12 +2493,6 @@ const SUP_NAV = [
 // Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
 // (casam por nome ou princípio ativo; edite a lista conforme o hospital)
 const SUP_FARMACOS_MONITORADOS = ["morfina", "fentanil", "alteplase", "tenecteplase", "contraste", "albumina"];
-// Ponto de pedido: prazo de entrega padrão (fornecedor sem prazo) e margem de segurança
-const SUP_LEAD_PADRAO = 15;   // dias
-const SUP_MARGEM_SEG  = 3;    // dias de folga sobre o prazo de entrega
-// Prazo de reposição de um item = (prazo do último fornecedor OU padrão) + margem.
-// leadMap: { item_id → dias } montado por supLeadTimeMap.
-const supPrazoReposicao = (itemId, leadMap = {}) => (Number(leadMap[itemId]) || SUP_LEAD_PADRAO) + SUP_MARGEM_SEG;
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
 // Pedido de compra — estados e cores
 const SUP_PED_STATUS = {
@@ -2549,9 +2548,30 @@ async function upsertSupItemRemote(item, user) {
   delete body.id;
   return await sbFetch("sup_itens", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
 }
+// Exclusão de material: devolve { ok, erro }. O trigger `sup_item_protege_kardex`
+// RECUSA a exclusão quando há movimento no histórico — e o `sbFetch` engole a
+// mensagem (além de o PostgREST responder 204 mesmo sem apagar linha nenhuma).
+// Sem o fetch direto, a tela mandaria excluir, nada aconteceria, e ninguém
+// saberia por quê. Mesmo padrão de `addSupMovimentoRemote`.
 async function deleteSupItemRemote(id) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`sup_itens?id=eq.${id}`, { method: "DELETE" });
+  if (!USE_SUPABASE) return { ok: true };
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/sup_itens?id=eq.${id}`, {
+      method: "DELETE",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, erro: body?.message || `Erro ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: String(e?.message || e) };
+  }
 }
 // Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
 // e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
@@ -2577,10 +2597,6 @@ async function addSupMovimentoRemote(mov, user) {
     return { ok: false, erro: String(e?.message || e) };
   }
 }
-// Saldo total de um item = soma dos lotes
-function supSaldoTotal(itemId, lotes) {
-  return lotes.filter(l => l.item_id === itemId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
-}
 async function loadSupFornecedores() {
   const rows = await sbFetch("sup_fornecedores?select=*&order=nome");
   return Array.isArray(rows) ? rows : [];
@@ -2605,17 +2621,6 @@ async function loadSupEntradasComForn(fromISO) {
   const rows = await sbFetch(`sup_movimentos?tipo=eq.entrada&fornecedor_id=not.is.null&created_at=gte.${fromISO}&select=item_id,fornecedor_id,created_at&order=created_at.desc&limit=8000`);
   return Array.isArray(rows) ? rows : [];
 }
-// item_id → prazo de entrega (dias) do fornecedor da ENTRADA mais recente que o tem cadastrado
-function supLeadTimeMap(entradas, forns) {
-  const fById = {}; forns.forEach(f => fById[f.id] = f);
-  const seen = {}, map = {};
-  entradas.forEach(e => {                       // já vem do mais recente para o mais antigo
-    if (seen[e.item_id]) return;
-    const lt = fById[e.fornecedor_id]?.lead_time_dias;
-    if (lt != null && lt !== "") { map[e.item_id] = Number(lt); seen[e.item_id] = true; }
-  });
-  return map;
-}
 async function loadSupInventarios(limit = 400) {
   const rows = await sbFetch(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
   return Array.isArray(rows) ? rows : [];
@@ -2627,17 +2632,6 @@ async function addSupInventarioRemote(inv, user) {
     headers: { "Prefer": "return=representation" },
     body: JSON.stringify({ ...inv, usuario: user?.name || null }),
   });
-}
-// Custo médio ponderado móvel: mistura o saldo atual (ao custo vigente) com a
-// entrada nova (ao custo da nota). Retorna o novo custo unitário, ou null se a
-// entrada não trouxe custo (mantém o custo anterior).
-function custoMedioPonderado(custoAtual, saldoAntes, qtdEntrada, custoEntrada) {
-  const ce = Number(custoEntrada);
-  if (!ce || ce <= 0) return null;
-  const ca = Number(custoAtual || 0), sa = Math.max(0, Number(saldoAntes || 0)), qe = Number(qtdEntrada || 0);
-  if (qe <= 0) return null;
-  if (ca <= 0 || sa <= 0) return ce;                 // sem base anterior → adota o custo da entrada
-  return (sa * ca + qe * ce) / (sa + qe);
 }
 // Lê o XML de uma NF-e e extrai fornecedor + itens (código, EAN, nome, qtd,
 // unidade, custo unitário, lote/validade quando há rastreabilidade). Local, sem lib.
@@ -2728,11 +2722,6 @@ async function addSupCotacaoRemote(cot, user) {
 async function atualizarSupCotacaoRemote(id, campos) {
   if (!USE_SUPABASE) return;
   await sbFetch(`sup_cotacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
-// Valor total do pedido (qtd × custo unitário dos itens)
-function supPedidoTotal(ped) {
-  const its = Array.isArray(ped.itens) ? ped.itens : [];
-  return its.reduce((s, x) => s + Number(x.qtd || 0) * Number(x.custo_unit || 0), 0);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -13328,8 +13317,12 @@ function SuprimentosPage({ currentUser, canEdit }) {
     setTimeout(refresh, 350);
   }
   async function excluirItem(i) {
-    if (!confirm(`Excluir "${i.nome}" e todo o seu histórico de estoque? Essa ação não pode ser desfeita.`)) return;
-    await deleteSupItemRemote(i.id);
+    if (!confirm(`Excluir "${i.nome}"? Só é possível enquanto o material não tiver nenhum movimento de estoque.`)) return;
+    const r = await deleteSupItemRemote(i.id);
+    // O banco recusa a exclusão de material com histórico — o kardex é
+    // imutável de verdade agora. Mostrar o motivo em vez de deixar a tela
+    // parecer que obedeceu.
+    if (!r.ok) { alert("Não foi possível excluir o material.\n\n" + (r.erro || "")); return; }
     addAuditLog(currentUser, "excluir material", i.nome, {});
     setTimeout(refresh, 300);
   }
@@ -15770,6 +15763,13 @@ function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, inv
         <KPI label="Divergências (90d)" valor={divergencias.length} cor={divergencias.length ? "#f43f5e" : "#34d399"} sub="contagens que não bateram" />
         <KPI label="Impacto das divergências" valor={valorDiverg > 0 ? fmtReais(valorDiverg) : "—"} cor="#0d9488" sub="valor absoluto ajustado" />
       </div>
+
+      {/* Ao lado da acuracidade de propósito: as duas medem a mesma coisa
+          por caminhos diferentes. A acuracidade compara o sistema com a
+          PRATELEIRA e depende de alguém contar; a conciliação compara o
+          sistema com ELE MESMO e roda sozinha. Quando a contagem acusa
+          divergência, é esta que diz se o erro veio de dentro. */}
+      <ConciliacaoKardex sb={sbFetch} itens={itens} />
 
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 14, border: "1px dashed var(--border)", borderRadius: 8, padding: "9px 13px" }}>
         <strong>Contagem cega:</strong> você conta na prateleira e digita <em>sem ver o saldo do sistema</em>. Só depois de "Conferir" o sistema mostra a diferença — evita o viés de "confirmar" o número da tela. Itens de <strong style={{ color: "#e11d48" }}>classe A</strong> (maior giro em R$) entram na fila a cada 7 dias; B a cada 30; C a cada 90.

@@ -36,9 +36,18 @@ const limpa = s => s.toLowerCase().replace(/^public\./, "").replace(/"/g, "");
 // lista e a auditoria passava a reportar, para sempre, um
 // "❌ FALTANDO _confirmo_reconstruir" no topo. Ruído fixo no topo de um
 // relatório de problemas é o começo de ninguém mais ler o relatório.
+//
+// `seed-teste-*` fica de fora pelo MESMO motivo, descoberto depois: o seed
+// de 70 pacientes usa a mesma trava de confirmação deliberada
+// (`create table public._confirmo_seed_demo()`, que ele próprio dropa no
+// fim). Sem esta linha, uma tabela que nunca existe em banco nenhum entrava
+// na auditoria e, de quebra, quebrava o `mapa-tabelas.test.js` — que exige
+// classificação de leitura para toda tabela auditada. Seed é DADO de teste,
+// não estrutura; o `gerar-reconstrucao.mjs` já o excluía pela mesma razão.
 const arquivos = fs.readdirSync(dir)
   .filter(f => f.endsWith(".sql")
             && !f.startsWith("auditoria-")
+            && !f.startsWith("seed-teste-")
             && f !== "reconstruir-banco.sql")
   .sort();
 

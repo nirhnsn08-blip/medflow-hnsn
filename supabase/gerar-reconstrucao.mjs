@@ -113,6 +113,11 @@ const ORDEM = [
   // Ajuste de grant existente (escrita→leitura na Auditoria do diretor): UPDATE,
   // não seed — `on conflict do nothing` não troca linha que já existe.
   "migracao-perfis-auditoria-diretor.sql",
+  // Integridade do saldo do almoxarifado: CHECK de tipo, saldo não-negativo,
+  // `for update` no trigger de saldo e bloqueio da exclusão de material com
+  // histórico. Não cria tabela e não toca em política — por isso entra ANTES
+  // do rls-leitura, preservando a regra de que ele é o último.
+  "migracao-suprimentos-integridade.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
