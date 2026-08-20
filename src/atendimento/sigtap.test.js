@@ -7,7 +7,7 @@ import {
   codigoLimpo, codigoFormatado, codigoValido, grupoDe,
   VIAS_SUS, viaPorGrupo, viaDoProcedimento, montarProcedimento,
   permanenciaEmDias, avaliarPermanencia,
-  GRAVIDADES, avaliarGlosa, temImpedimento,
+  GRAVIDADES, avaliarGlosa, temImpedimento, valorReferencia,
 } from "./sigtap.js";
 
 const proc = (over = {}) => montarProcedimento({ codigo: "0303010037", nome: "Tratamento", mediaPermanencia: 6, ...over });
@@ -222,5 +222,55 @@ describe("avaliarGlosa", () => {
   it("proc ausente devolve lista vazia (não quebra)", () => {
     expect(avaliarGlosa({})).toEqual([]);
     expect(avaliarGlosa()).toEqual([]);
+  });
+});
+
+describe("valorReferencia", () => {
+  it("soma SH + SP em centavos", () => {
+    expect(valorReferencia(proc({ valorSh: 50000, valorSp: 30000 }))).toBe(80000);
+  });
+  it("um dos dois ausente ainda soma o que há", () => {
+    expect(valorReferencia(proc({ valorSh: 50000, valorSp: null }))).toBe(50000);
+  });
+  it("sem nenhum valor importado → null (não R$ 0,00)", () => {
+    expect(valorReferencia(proc())).toBeNull();
+    expect(valorReferencia(proc({ valorSh: null, valorSp: null }))).toBeNull();
+  });
+});
+
+describe("avaliarGlosa — valor (cobrado × referência SIGTAP)", () => {
+  const comValor = (over = {}) => proc({ valorSh: 50000, valorSp: 30000, ...over }); // ref = 80000
+
+  it("cobrado ACIMA da referência → atenção, com o excedente", () => {
+    const a = avaliarGlosa({ proc: comValor(), valorCobrado: 90000, permanenciaDias: 3 });
+    const v = a.find((x) => x.regra === "valor");
+    expect(v.gravidade).toBe(GRAVIDADES.ATENCAO);
+    expect(v.texto).toMatch(/acima/);
+    expect(v.texto).toContain("R$"); // mostra os valores em reais
+  });
+
+  it("cobrado ABAIXO da referência → atenção (conta menor que a tabela)", () => {
+    const a = avaliarGlosa({ proc: comValor(), valorCobrado: 70000, permanenciaDias: 3 });
+    expect(a.find((x) => x.regra === "valor").texto).toMatch(/abaixo/);
+  });
+
+  it("cobrado IGUAL à referência → não acende", () => {
+    const a = avaliarGlosa({ proc: comValor(), valorCobrado: 80000, permanenciaDias: 3 });
+    expect(a.map((x) => x.regra)).not.toContain("valor");
+  });
+
+  it("sem referência importada, CALA mesmo com valor cobrado", () => {
+    const a = avaliarGlosa({ proc: proc(), valorCobrado: 90000, permanenciaDias: 3 });
+    expect(a.map((x) => x.regra)).not.toContain("valor");
+  });
+
+  it("sem valor cobrado, CALA mesmo com referência", () => {
+    const a = avaliarGlosa({ proc: comValor(), permanenciaDias: 3 });
+    expect(a.map((x) => x.regra)).not.toContain("valor");
+  });
+
+  it("nunca é impedimento — divergência de valor é conferência, não recusa", () => {
+    const a = avaliarGlosa({ proc: comValor(), valorCobrado: 999999, permanenciaDias: 3 });
+    expect(temImpedimento(a)).toBe(false);
   });
 });

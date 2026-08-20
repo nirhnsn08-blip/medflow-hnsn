@@ -136,15 +136,34 @@ export const GRAVIDADES = {
   ATENCAO: "atencao",         // exige justificativa / conferência antes de fechar
 };
 
+// Diferença mínima (centavos) para a glosa de valor acender. Abaixo disso é
+// ruído de arredondamento reais↔centavos, não divergência de tabela.
+const TOLERANCIA_VALOR = 1;
+
+/**
+ * Valor de referência SIGTAP (SH + SP) em centavos, ou `null` quando nenhum dos
+ * dois foi importado — falta de valor é silêncio, não R$ 0,00 (item 2 do topo).
+ */
+export function valorReferencia(proc) {
+  const sh = proc?.valorSh ?? null;
+  const sp = proc?.valorSp ?? null;
+  if (sh == null && sp == null) return null;
+  return (sh || 0) + (sp || 0);
+}
+
 /**
  * O que anteciparia uma glosa nesta conta. Retorna uma lista (vazia = tudo
  * certo pelo que sabemos). Cada regra só entra se TEM o dado que precisa —
  * é o item 2 do cabeçalho: falta de dado é silêncio, não alarme.
  *
- * Regras hoje: permanência, sexo, idade, CID. Quantidade máxima, CBO,
+ * Regras hoje: permanência, sexo, idade, CID e valor. Quantidade máxima, CBO,
  * autorização e duplicidade entram quando o pacote do DATASUS chegar.
+ *
+ * `valorCobrado` (centavos) é o que a conta vai cobrar do procedimento principal
+ * — em geral o preço do catálogo do hospital. Comparado com a referência SIGTAP
+ * (SH+SP), acende quando divergem: no SUS quem paga é a tabela.
  */
-export function avaliarGlosa({ proc, paciente, cidPrincipal, permanenciaDias } = {}) {
+export function avaliarGlosa({ proc, paciente, cidPrincipal, permanenciaDias, valorCobrado } = {}) {
   const achados = [];
   if (!proc) return achados;
 
@@ -193,6 +212,24 @@ export function avaliarGlosa({ proc, paciente, cidPrincipal, permanenciaDias } =
     }
   }
 
+  // Valor cobrado × referência SIGTAP (SH+SP). Só quando os DOIS existem: sem
+  // valor importado ou sem valor na conta, CALA. Não é impedimento — é
+  // conferência: no SUS quem paga é a tabela, então a divergência ou vira
+  // excedente não pago (cobrança acima) ou conta menor que o devido (abaixo).
+  const ref = valorReferencia(proc);
+  if (ref != null && valorCobrado != null && Number.isFinite(valorCobrado)) {
+    const dif = valorCobrado - ref;
+    if (Math.abs(dif) >= TOLERANCIA_VALOR) {
+      achados.push({
+        regra: "valor",
+        gravidade: GRAVIDADES.ATENCAO,
+        texto: dif > 0
+          ? `Valor cobrado (${brl(valorCobrado)}) acima da referência SIGTAP (${brl(ref)}) — o SUS paga pela tabela; o excedente de ${brl(dif)} não entra.`
+          : `Valor cobrado (${brl(valorCobrado)}) abaixo da referência SIGTAP (${brl(ref)}) — a conta sai ${brl(-dif)} menor do que a tabela paga.`,
+      });
+    }
+  }
+
   return achados;
 }
 
@@ -233,4 +270,9 @@ function cidLimpo(cid) {
 
 function plural(n, sing, plur) {
   return n === 1 ? sing : plur;
+}
+
+/** Centavos → "R$ 1.234,56", só para o texto das glosas de valor. */
+function brl(cent) {
+  return (cent / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }

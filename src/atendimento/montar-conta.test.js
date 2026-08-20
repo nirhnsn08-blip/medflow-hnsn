@@ -329,6 +329,24 @@ describe("pré-glosa", () => {
     expect(r.glosa).toHaveLength(0);
     expect(r.temImpedimento).toBe(false);
   });
+  it("preço do catálogo divergente da referência SIGTAP vira glosa de valor (atenção)", () => {
+    const r = montarContaDoProntuario({
+      atendimento: atend(), convenio: SUS,
+      procedimentos: [catProc({ valor_sus: 850.0 })],               // R$ 850,00 no hospital
+      sigtapProcs: [sigProc({ valor_sh: 103796, valor_sp: 7222 })], // referência R$ 1.110,18
+    });
+    const g = r.glosa.find((x) => x.regra === "valor");
+    expect(g?.gravidade).toBe(SIG_GRAV.ATENCAO);
+    expect(g.texto).toMatch(/abaixo/);
+    expect(r.temImpedimento).toBe(false); // valor é conferência, nunca impedimento
+  });
+  it("preço vindo do próprio SIGTAP bate com a referência → sem glosa de valor", () => {
+    const r = montarContaDoProntuario({
+      atendimento: atend(), convenio: SUS,
+      sigtapProcs: [sigProc({ valor_sh: 103796, valor_sp: 7222 })], // sem catálogo: o item usa o SIGTAP
+    });
+    expect(r.glosa.map((x) => x.regra)).not.toContain("valor");
+  });
 });
 
 // ── TOTAL E REGRAS DURAS ────────────────────────────────────
