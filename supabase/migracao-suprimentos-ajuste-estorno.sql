@@ -126,8 +126,34 @@ create trigger sup_valida_estorno_trg before insert on public.sup_movimentos
   for each row execute function public.sup_valida_estorno();
 
 -- ───────────────────────────────────────────────────────────
--- PASSO 5 — conferência final (leitura). É a ÚLTIMA consulta de propósito:
--- o SQL Editor só mostra o resultado dela. As 5 linhas devem vir com "1".
+-- PASSO 5 — a contagem pode registrar o DESFECHO, e só ele
+--
+-- `sup_inventarios` nasceu append-only: só tinha política de SELECT e de
+-- INSERT. Isso é certo para a contagem em si (ninguém deve reescrever o
+-- que foi contado), mas impedia o passo seguinte — gravar se o ajuste
+-- entrou. Sem UPDATE, o PostgREST responde 200 com zero linhas alteradas,
+-- e o código acreditava. A contagem ficava para sempre com o desfecho em
+-- branco, que é a mesma cegueira de antes numa roupa nova.
+--
+-- A política abaixo abre uma JANELA, não uma porta: só dá para atualizar a
+-- linha enquanto ela ainda não tem desfecho (`ajustado` falso E
+-- `ajuste_erro` nulo). Assim que o desfecho é gravado, o `using` deixa de
+-- casar e a linha volta a ser imutável — inclusive para quem a criou.
+-- O que foi contado continua sem poder ser reescrito depois de decidido.
+-- ───────────────────────────────────────────────────────────
+drop policy if exists sup_inv_update_desfecho on public.sup_inventarios;
+create policy sup_inv_update_desfecho on public.sup_inventarios
+  for update to authenticated
+  using (
+    public.my_role() in ('adm_master','adm_silver')
+    and coalesce(ajustado, false) = false
+    and ajuste_erro is null
+  )
+  with check (public.my_role() in ('adm_master','adm_silver'));
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 6 — conferência final (leitura). É a ÚLTIMA consulta de propósito:
+-- o SQL Editor só mostra o resultado dela. As 6 linhas devem vir com "1".
 -- ───────────────────────────────────────────────────────────
 select 'coluna autorizado_por na contagem' as item,
        (select count(*) from information_schema.columns
@@ -145,4 +171,8 @@ select 'indice de estorno unico',
        (select count(*) from pg_indexes where indexname = 'sup_mov_estorno_unico')::text
 union all
 select 'trigger que valida o estorno',
-       (select count(*) from pg_trigger where tgname = 'sup_valida_estorno_trg')::text;
+       (select count(*) from pg_trigger where tgname = 'sup_valida_estorno_trg')::text
+union all
+select 'politica de desfecho da contagem',
+       (select count(*) from pg_policies
+         where tablename = 'sup_inventarios' and policyname = 'sup_inv_update_desfecho')::text;

@@ -2645,9 +2645,24 @@ async function addSupInventarioRemote(inv, user) {
   });
   return Array.isArray(r) ? r[0] : r;
 }
+// Grava o DESFECHO da contagem (o ajuste entrou? por que não?).
+//
+// Confere o retorno em vez do status, porque o status mente: sem política
+// de UPDATE, o PostgREST respondia 200 com `[]` — zero linhas alteradas — e
+// o código dava por gravado. A contagem ficava para sempre com o desfecho
+// em branco, que é a mesma cegueira que este PR veio consertar.
+// A política `sup_inv_update_desfecho` (migração) abre a janela; aqui se
+// confirma que ela pegou.
 async function marcarInventarioRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`sup_inventarios?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
+  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
+  const r = await sbFetch(`sup_inventarios?id=eq.${id}`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify(campos),
+  });
+  const linhas = Array.isArray(r) ? r : r ? [r] : [];
+  if (!linhas.length) return { ok: false, erro: "A gravação não alterou nenhuma linha." };
+  return { ok: true, linha: linhas[0] };
 }
 // Lê o XML de uma NF-e e extrai fornecedor + itens (código, EAN, nome, qtd,
 // unidade, custo unitário, lote/validade quando há rastreabilidade). Local, sem lib.
@@ -13434,11 +13449,18 @@ function SuprimentosPage({ currentUser, canEdit }) {
     // chegou ao valor contado, e dizer "ajustado" seria a mesma mentira de
     // antes, só que menor.
     const completo = erros.length === 0;
-    await marcarInventarioRemote(linha.id, {
+    const marcou = await marcarInventarioRemote(linha.id, {
       ajustado: completo,
       autorizado_por: currentUser?.name || null,
       ajuste_erro: completo ? null : erros.join(" · ").slice(0, 500),
     });
+    // O estoque já foi mexido; se só o desfecho não gravou, o problema é de
+    // registro, não de saldo — e dizer isso é melhor que deixar a contagem
+    // parecendo que nunca foi ajustada.
+    if (!marcou.ok) {
+      alert(`O ajuste do estoque foi feito, mas o desfecho não pôde ser gravado na contagem ${doc}.\n\n` +
+        `${marcou.erro}\n\nO kardex está correto; a contagem é que ficou sem o registro de quem autorizou.`);
+    }
     if (!completo) {
       alert(`A contagem foi registrada, mas o ajuste do estoque NÃO foi concluído.\n\n${erros.join("\n")}\n\n` +
         (lancados ? `${lancados} de ${plano.length} lançamento(s) entraram — o saldo ficou entre o antigo e o contado.\n\n` : "") +
