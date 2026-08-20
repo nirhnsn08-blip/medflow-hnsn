@@ -22,6 +22,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { codigoLimpo } from "./sigtap.js";
+import { resolverVia } from "./montar-conta.js";
+import { VIAS } from "./faturamento.js";
 
 // As situações da conta na worklist, na ORDEM do trabalho (não cronológica):
 // primeiro o que ainda não tem conta (é o que se monta), por fim o faturado.
@@ -168,5 +170,78 @@ export function resumoFaturamento({ worklist = [], sigtapProcs = [], hoje = new 
     maisAntigoBacklog,
     farol,
     competenciaAtual: competenciaLocal(hoje),
+  };
+}
+
+// ── POR VIA ─────────────────────────────────────────────────
+
+const arr = (x) => (Array.isArray(x) ? x : []);
+
+// A ordem natural do faturamento SUS + privado. Via fora dela (ou sem via)
+// cai no fim.
+const ORDEM_VIA = ["aih", "apac", "bpa", "tiss", "direta"];
+
+/**
+ * A produção faturável repartida por via de faturamento.
+ *
+ * Por que uma função à parte do funil: o funil olha as INTERNAÇÕES e o estágio
+ * da conta de cada uma (todas AIH). A via, não — ela nasce da produção inteira
+ * (`carregarProducaoFaturavel`): internação vira AIH, ambulatório vira BPA/APAC
+ * pelo `via_sus`, convênio vira TISS e particular vira cobrança direta. Só
+ * assim BPA e APAC aparecem; a worklist de internações jamais os mostraria.
+ *
+ * O valor é o de REFERÊNCIA SIGTAP (SH+SP) do procedimento — não o faturado
+ * real (que dependeria dos itens de cada conta). Falta de valor é silêncio:
+ * `valorRef` fica `null`, e a via conta em `semValor`. Sem convênio no
+ * atendimento, a via é indefinida e cai no balde `sem-via` — que é a verdade,
+ * não um chute.
+ */
+export function resumoPorVia({ producao = [], convenios = [], procedimentos = [], sigtapProcs = [] } = {}) {
+  const convMap = new Map();
+  for (const c of arr(convenios)) if (c && c.id != null) convMap.set(String(c.id), c);
+  const procMap = new Map();
+  for (const p of arr(procedimentos)) { const k = codigoLimpo(p?.codigo); if (k) procMap.set(k, p); }
+  const sigMap = new Map();
+  for (const s of arr(sigtapProcs)) { const k = codigoLimpo(s?.codigo); if (k) sigMap.set(k, s); }
+
+  const grupos = new Map(); // via → { n, valorRef, comValor, semValor }
+  let valorRefTotal = 0, comTotal = 0, semTotal = 0;
+
+  for (const a of arr(producao)) {
+    const convenio = a?.convenio_id != null ? convMap.get(String(a.convenio_id)) || null : null;
+    const k = codigoLimpo(a?.procedimento_cod);
+    const procCatalogo = k ? procMap.get(k) || null : null;
+    const sigtapProc = k ? sigMap.get(k) || null : null;
+    const via = resolverVia({ convenio, atendimento: a, procCatalogo, sigtapProc }) || "sem-via";
+    const v = valorRefDe(a?.procedimento_cod, sigMap);
+
+    const g = grupos.get(via) || { n: 0, valorRef: 0, comValor: 0, semValor: 0 };
+    g.n += 1;
+    if (v == null) { g.semValor += 1; semTotal += 1; }
+    else { g.valorRef += v; g.comValor += 1; valorRefTotal += v; comTotal += 1; }
+    grupos.set(via, g);
+  }
+
+  const porVia = [...grupos.entries()].map(([via, g]) => ({
+    via,
+    label: VIAS[via]?.label || (via === "sem-via" ? "Sem via" : via),
+    nome: VIAS[via]?.nome || (via === "sem-via" ? "Sem fonte pagadora definida" : ""),
+    n: g.n,
+    valorRef: g.comValor > 0 ? g.valorRef : null,
+    semValor: g.semValor,
+  })).sort((x, y) => {
+    const ix = ORDEM_VIA.indexOf(x.via), iy = ORDEM_VIA.indexOf(y.via);
+    const px = ix < 0 ? 99 : ix, py = iy < 0 ? 99 : iy;
+    if (px !== py) return px - py;
+    return y.n - x.n;
+  });
+
+  return {
+    total: arr(producao).length,
+    vazio: arr(producao).length === 0,
+    porVia,
+    valorRefTotal: comTotal > 0 ? valorRefTotal : null,
+    comValorRef: comTotal,
+    semValorRef: semTotal,
   };
 }

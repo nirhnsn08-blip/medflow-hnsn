@@ -7,7 +7,7 @@
 // silêncio (semValorRef), não R$ 0,00.
 
 import { describe, it, expect } from "vitest";
-import { resumoFaturamento, SITUACOES, DIAS_ALERTA_BACKLOG } from "./resumo-faturamento.js";
+import { resumoFaturamento, resumoPorVia, SITUACOES, DIAS_ALERTA_BACKLOG } from "./resumo-faturamento.js";
 
 // ── fábricas ────────────────────────────────────────────────
 const wl = (over = {}) => ({
@@ -191,5 +191,98 @@ describe("resumoFaturamento — invariantes", () => {
   it("SITUACOES e o limiar de alerta ficam expostos para a tela", () => {
     expect(SITUACOES).toContain("sem-conta");
     expect(DIAS_ALERTA_BACKLOG).toBeGreaterThan(0);
+  });
+});
+
+// ══ POR VIA ═════════════════════════════════════════════════
+// Convênios pela id que o atendimento referencia.
+const SUS = { id: 1, tipo: "sus" };
+const CONV = { id: 2, tipo: "convenio" };
+const PART = { id: 3, tipo: "particular" };
+const prod = (over = {}) => ({ id: 1, convenio_id: 1, procedimento_cod: "0303010037", desfecho: "internacao", ...over });
+
+describe("resumoPorVia", () => {
+  it("sem produção → vazio e nada inventado", () => {
+    const r = resumoPorVia({ producao: [], convenios: [SUS], sigtapProcs: [sig()] });
+    expect(r.vazio).toBe(true);
+    expect(r.porVia).toEqual([]);
+    expect(r.valorRefTotal).toBeNull();
+  });
+
+  it("internação pelo SUS → AIH, acima do procedimento", () => {
+    const r = resumoPorVia({
+      producao: [prod({ desfecho: "internacao" })],
+      convenios: [SUS], sigtapProcs: [sig()],
+    });
+    expect(r.porVia.map((v) => v.via)).toEqual(["aih"]);
+    expect(r.porVia[0].n).toBe(1);
+    expect(r.porVia[0].valorRef).toBe(80000); // 50000 + 30000
+    expect(r.valorRefTotal).toBe(80000);
+  });
+
+  it("ambulatório SUS herda BPA/APAC do via_sus do procedimento", () => {
+    const r = resumoPorVia({
+      producao: [
+        prod({ id: 1, desfecho: "alta", procedimento_cod: "0301010010" }),
+        prod({ id: 2, desfecho: "alta", procedimento_cod: "0304010203" }),
+      ],
+      convenios: [SUS],
+      procedimentos: [
+        { codigo: "0301010010", via_sus: "bpa" },
+        { codigo: "0304010203", via_sus: "apac" },
+      ],
+      sigtapProcs: [],
+    });
+    expect(r.porVia.map((v) => v.via)).toEqual(["apac", "bpa"]); // ordem SUS: apac antes de bpa
+  });
+
+  it("convênio → TISS; particular → cobrança direta", () => {
+    const r = resumoPorVia({
+      producao: [prod({ id: 1, convenio_id: 2 }), prod({ id: 2, convenio_id: 3 })],
+      convenios: [CONV, PART], sigtapProcs: [sig()],
+    });
+    const vias = r.porVia.map((v) => v.via);
+    expect(vias).toContain("tiss");
+    expect(vias).toContain("direta");
+  });
+
+  it("sem convênio no atendimento → balde 'sem-via' (a verdade, não um chute)", () => {
+    const r = resumoPorVia({ producao: [prod({ convenio_id: null })], convenios: [SUS], sigtapProcs: [sig()] });
+    expect(r.porVia.map((v) => v.via)).toEqual(["sem-via"]);
+    expect(r.porVia[0].valorRef).toBe(80000); // o valor de referência ainda sai do código
+  });
+
+  it("valor de referência é silêncio quando não há preço", () => {
+    const r = resumoPorVia({
+      producao: [prod({ procedimento_cod: "9999999999" })], // fora da tabela
+      convenios: [SUS], sigtapProcs: [sig()],
+    });
+    expect(r.porVia[0].valorRef).toBeNull();
+    expect(r.porVia[0].semValor).toBe(1);
+    expect(r.valorRefTotal).toBeNull();
+  });
+
+  it("ordena as vias na ordem do faturamento (AIH → APAC → BPA → TISS → direta)", () => {
+    const r = resumoPorVia({
+      producao: [
+        prod({ id: 1, convenio_id: 3 }),                                   // direta
+        prod({ id: 2, convenio_id: 2 }),                                   // tiss
+        prod({ id: 3, convenio_id: 1, desfecho: "internacao" }),           // aih
+      ],
+      convenios: [SUS, CONV, PART], sigtapProcs: [sig()],
+    });
+    expect(r.porVia.map((v) => v.via)).toEqual(["aih", "tiss", "direta"]);
+  });
+
+  it("agrega várias internações na mesma via e soma o valor", () => {
+    const r = resumoPorVia({
+      producao: [prod({ id: 1 }), prod({ id: 2 }), prod({ id: 3 })],
+      convenios: [SUS], sigtapProcs: [sig()],
+    });
+    expect(r.porVia).toHaveLength(1);
+    expect(r.porVia[0].via).toBe("aih");
+    expect(r.porVia[0].n).toBe(3);
+    expect(r.porVia[0].valorRef).toBe(240000); // 3 × 80000
+    expect(r.valorRefTotal).toBe(240000);
   });
 });

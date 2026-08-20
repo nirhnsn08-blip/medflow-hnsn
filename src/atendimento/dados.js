@@ -696,6 +696,21 @@ export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
 }
 
 /**
+ * A produção faturável para a visão por via: os atendimentos CONCLUÍDOS
+ * (`status=finalizado`) que têm procedimento — o universo que vira AIH (as
+ * internações), BPA/APAC (o ambulatório) ou TISS/direta (o privado). É mais
+ * amplo que a worklist de internações (essa é só o `desfecho=internacao`);
+ * aqui entra também o ambulatório, que é de onde nascem BPA e APAC. Só as
+ * colunas que a resolução da via e o valor de referência precisam. Cancelado
+ * fica de fora (não é `finalizado`). Grant de leitura de `ps_atendimentos`.
+ */
+export async function carregarProducaoFaturavel(sb, { limite = 500 } = {}) {
+  const r = await sb(`ps_atendimentos?status=eq.finalizado&procedimento_cod=not.is.null` +
+    `&select=id,convenio_id,procedimento_cod,desfecho&order=chegada_em.desc&limit=${limite}`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
  * Abre a conta de um atendimento.
  *
  * O índice único parcial do banco (`at_contas_atend_unica`) é a última
