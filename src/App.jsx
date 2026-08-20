@@ -23,6 +23,7 @@ import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
          modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
+import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
@@ -1148,7 +1149,7 @@ function ocupacaoSetor(leitos, solicitacoes, setor) {
   return { operacionais, ocupados, aguardando, maiorEsperaMin, pct, cor, restringir: pct != null && pct >= verm };
 }
 
-function Overview({ db, currentUser, canEdit }) {
+function Overview({ db, currentUser, canEdit, perms, onNav }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
@@ -1234,11 +1235,17 @@ function Overview({ db, currentUser, canEdit }) {
         <StatCard label="Em higienização" value={higienizando} color="#fbbf24" big />
       </div>
 
+      {/* CHECKLIST DE IMPLANTAÇÃO — some sozinho quando os cadastros-base
+          estiverem feitos. Fica aqui, e não numa tela escondida, porque é
+          logo abaixo que o vazio se manifesta: sem setor cadastrado a
+          "Ocupação por setor" nasce vazia e nada explica por quê. */}
+      <ChecklistImplantacao sb={sbFetch} perms={perms} canEdit={canEdit} onNav={onNav} />
+
       {/* ALERTAS POR SETOR */}
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Ocupação por setor</div>
       {setoresOrd.length === 0 ? (
         <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1.25rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginBottom: "1.25rem" }}>
-          Nenhum setor cadastrado. Cadastre em <strong>Giro de Leitos → Setores</strong> e marque o setor de cada leito.
+          Nenhum setor cadastrado. Cadastre em <strong>Giro de Leitos → aba Mapa de leitos → botão Setores</strong> (à direita da barra de cadastro) e marque o setor de cada leito.
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))", gap: 12, marginBottom: "1.5rem" }}>
@@ -12001,7 +12008,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
             );
           })()}
           <div style={{ fontSize: 13, fontWeight: 800, margin: "6px 2px 10px" }}>Instância por setor <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>— cada setor liga e ajusta o seu {protSel.toUpperCase()}</span></div>
-          {!setoresNomes.length && <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Cadastre setores em Giro de Leitos → Setores para ligar o protocolo por setor.</div>}
+          {!setoresNomes.length && <div style={{ ...card, color: "var(--text-muted)", fontSize: 12.5 }}>Cadastre setores em Giro de Leitos → aba Mapa de leitos → botão Setores (à direita da barra de cadastro) para ligar o protocolo por setor.</div>}
           {setoresNomes.map(nome => {
             const inst = instanciaDe(nome, protSel);
             const ligado = inst ? inst.ativo !== false : false;
@@ -17342,7 +17349,7 @@ export default function App() {
         {/* CONTENT */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <LimiteErro key={active}>
-          {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "overview"  && <Overview db={db} currentUser={currentUser} canEdit={canLaunch} perms={perms} onNav={setActive} />}
           {currentSpec            && <EspecialidadePage spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
           {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "ps"        && <PSPage currentUser={currentUser} canEdit={canLaunch} />}
