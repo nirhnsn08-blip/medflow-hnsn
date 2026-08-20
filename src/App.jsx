@@ -9377,17 +9377,24 @@ function FarmDashboardView({ currentUser, canEdit, onNav }) {
   const [intervs, setIntervs] = useState([]);
   const [interacoes, setInteracoes] = useState([]);
   const [incompatY, setIncompatY] = useState([]);
+  // O KPI de alertas cruza atendimentos × itens × base clínica, que chegam em
+  // rodadas separadas. Enquanto a primeira carga não fecha, o cartão mostra
+  // "—" em vez de piscar 0 — que se leria como "nenhum alerta" e é justo o
+  // oposto do que a farmácia precisa ver.
+  const [carregando, setCarregando] = useState(true);
   const [, setTick] = useState(0);
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
     loadFarmLotes().then(setLotes);
     loadFarmIntervencoes().then(setIntervs);
-    loadFarmInteracoes().then(setInteracoes);
-    loadFarmIncompatY().then(setIncompatY);
-    loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); });
     loadFarmPreparo().then(setPrep);
+    Promise.all([
+      loadFarmMedicamentos().then(setMeds),
+      loadFarmInteracoes().then(setInteracoes),
+      loadFarmIncompatY().then(setIncompatY),
+      loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); }),
+    ]).finally(() => setCarregando(false));
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => setTick(t => t + 1), 60000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
 
@@ -9418,7 +9425,7 @@ function FarmDashboardView({ currentUser, canEdit, onNav }) {
         <Card label="Solicitações a preparar" valor={aguardando} cor={VX.azul} sub="prescrições aguardando" nav="preparo" />
         <Card label="Em preparo" valor={emPreparo} cor="#d97706" sub="separando" nav="preparo" />
         <Card label="Prontos p/ retirada" valor={prontos} cor={VX.turquesa} sub="aguardando enfermagem" nav="preparo" />
-        <Card label="Prescrições com alerta" valor={comAlerta} cor="#f43f5e" sub="análise clínica" nav="analise" />
+        <Card label="Prescrições com alerta" valor={carregando ? "—" : comAlerta} cor="#f43f5e" sub="análise clínica" nav="analise" />
         <Card label="Intervenções pendentes" valor={intervPend} cor="#d97706" sub="aguardando resposta" nav="intervencao" />
         <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
         <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
