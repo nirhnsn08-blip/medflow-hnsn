@@ -20,6 +20,7 @@ import {
   carregarTudoPorId, conciliarAgora,
   COLUNAS_MOVIMENTO, COLUNAS_LOTE, PAGINA,
 } from "./dados.js";
+import { movimentoDeEstorno, planejarAjuste, documentoDaContagem, MOTIVO_AJUSTE } from "./inventario.js";
 
 const AUDITORIA = fs.readFileSync(
   path.join(process.cwd(), "supabase", "auditoria-banco.sql"), "utf8");
@@ -33,6 +34,40 @@ it("a auditoria foi lida (o parser não quebrou em silêncio)", () => {
   expect(Object.keys(COLUNAS).length).toBeGreaterThan(30);
   expect(COLUNAS.sup_movimentos?.has("lote_id")).toBe(true);
   expect(COLUNAS.sup_lotes?.has("quantidade")).toBe(true);
+  // Colunas da migração de ajuste/estorno: se a auditoria não foi
+  // regenerada, o contrato inteiro estaria conferindo contra um banco
+  // velho e passaria sem olhar o que é novo.
+  expect(COLUNAS.sup_movimentos?.has("estorno_de")).toBe(true);
+  expect(COLUNAS.sup_inventarios?.has("autorizado_por")).toBe(true);
+  expect(COLUNAS.sup_inventarios?.has("ajuste_erro")).toBe(true);
+});
+
+describe("o ajuste e o estorno só gravam colunas que existem", () => {
+  // Ao contrário do resto deste arquivo, aqui SE GRAVA — e o PostgREST
+  // recusa o INSERT inteiro, em silêncio, quando uma chave não é coluna
+  // real. Um estorno que não grava é pior que estorno nenhum: a pessoa
+  // acha que desfez.
+  it("movimentoDeEstorno", () => {
+    const mov = movimentoDeEstorno({ id: 7, item_id: 3, lote: "A", tipo: "saida", quantidade: 5, documento: "NF-1" });
+    for (const k of Object.keys(mov)) {
+      expect(COLUNAS.sup_movimentos.has(k), `sup_movimentos.${k}`).toBe(true);
+    }
+  });
+
+  it("os campos que a contagem grava depois do ajuste", () => {
+    for (const k of ["ajustado", "autorizado_por", "ajuste_erro"]) {
+      expect(COLUNAS.sup_inventarios.has(k), `sup_inventarios.${k}`).toBe(true);
+    }
+  });
+
+  it("os campos que cada passo do plano vira", () => {
+    const { passos } = planejarAjuste(-3, [{ lote: "A", quantidade: 10, validade: "2027-01-01" }]);
+    const mov = { item_id: 1, lote: passos[0].lote, validade: passos[0].validade, tipo: passos[0].tipo,
+                  quantidade: passos[0].quantidade, motivo: MOTIVO_AJUSTE, documento: documentoDaContagem(1) };
+    for (const k of Object.keys(mov)) {
+      expect(COLUNAS.sup_movimentos.has(k), `sup_movimentos.${k}`).toBe(true);
+    }
+  });
 });
 
 describe("as colunas lidas existem no banco", () => {

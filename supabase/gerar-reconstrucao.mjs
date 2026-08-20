@@ -118,6 +118,10 @@ const ORDEM = [
   // histórico. Não cria tabela e não toca em política — por isso entra ANTES
   // do rls-leitura, preservando a regra de que ele é o último.
   "migracao-suprimentos-integridade.sql",
+  // Ajuste de inventário rastreável (autorizado_por, ajuste_erro) e estorno
+  // com vínculo (`estorno_de` + índice único + trigger que exige o oposto
+  // exato). Depende do arquivo acima, que recria o trigger de saldo.
+  "migracao-suprimentos-ajuste-estorno.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

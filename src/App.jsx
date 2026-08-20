@@ -29,6 +29,10 @@ import {
   supLeadTimeMap, custoMedioPonderado, supPedidoTotal,
 } from "./suprimentos/kardex.js";
 import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
+import {
+  MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
+  podeEstornar, movimentoDeEstorno, idsJaEstornados,
+} from "./suprimentos/inventario.js";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
@@ -2592,7 +2596,12 @@ async function addSupMovimentoRemote(mov, user) {
       const body = await res.json().catch(() => null);
       return { ok: false, erro: body?.message || `Erro ${res.status}` };
     }
-    return { ok: true };
+    // Devolve a LINHA criada, não só o "deu certo": o ajuste de inventário
+    // precisa do id do movimento, e quem confere precisa poder provar que
+    // a gravação existiu — `Prefer: return=representation` já era pedido
+    // acima, o corpo é que era jogado fora.
+    const linha = await res.json().catch(() => null);
+    return { ok: true, linha: Array.isArray(linha) ? linha[0] : linha };
   } catch (e) {
     return { ok: false, erro: String(e?.message || e) };
   }
@@ -2625,13 +2634,20 @@ async function loadSupInventarios(limit = 400) {
   const rows = await sbFetch(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
   return Array.isArray(rows) ? rows : [];
 }
+// Devolve a linha criada (precisamos do id para amarrar os movimentos de
+// ajuste à contagem, via `documento = INV-<id>`).
 async function addSupInventarioRemote(inv, user) {
   if (!USE_SUPABASE) return null;
-  return await sbFetch("sup_inventarios", {
+  const r = await sbFetch("sup_inventarios", {
     method: "POST",
     headers: { "Prefer": "return=representation" },
     body: JSON.stringify({ ...inv, usuario: user?.name || null }),
   });
+  return Array.isArray(r) ? r[0] : r;
+}
+async function marcarInventarioRemote(id, campos) {
+  if (!USE_SUPABASE) return;
+  await sbFetch(`sup_inventarios?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
 }
 // Lê o XML de uma NF-e e extrai fornecedor + itens (código, EAN, nome, qtd,
 // unidade, custo unitário, lote/validade quando há rastreabilidade). Local, sem lib.
@@ -13379,19 +13395,83 @@ function SuprimentosPage({ currentUser, canEdit }) {
     setTimeout(refresh, 400);
     alert(`Importação concluída: ${ok} entrada(s) lançada(s).` + (erros.length ? `\n\nPendências:\n${erros.join("\n")}` : ""));
   }
-  async function salvarInventario(inv) {
-    await addSupInventarioRemote(inv, currentUser);
-    // Se houver diferença, lança o ajuste no kardex (entrada/saída) para casar o saldo
-    if (inv.ajustado && Number(inv.diferenca) !== 0) {
-      const dif = Number(inv.diferenca);
-      await addSupMovimentoRemote({
-        item_id: inv.item_id, tipo: dif > 0 ? "entrada" : "saida", quantidade: Math.abs(dif),
-        motivo: "Ajuste de inventário", documento: "INVENTARIO",
-      }, currentUser);
-    }
+  // A contagem é gravada SEMPRE; o ajuste é uma segunda etapa que pode
+  // falhar. A versão antiga misturava as duas: mandava o movimento sem
+  // lote, não conferia o retorno, e `ajustado` já vinha `true` do modal.
+  // Quando o trigger recusava ("Estoque insuficiente no lote", porque o
+  // balde genérico está vazio num item com lotes nomeados), o saldo não
+  // mudava e a acuracidade passava a mentir — e mentia para sempre, porque
+  // a contagem seguinte acharia a mesma divergência.
+  //
+  // Agora: grava a contagem com `ajustado: false`, tenta o plano de ajuste
+  // lote a lote, e só marca `ajustado` se o kardex realmente aceitou. Se
+  // não aceitou, a linha guarda o motivo em `ajuste_erro` em vez de fingir.
+  async function salvarInventario(inv, plano = []) {
+    const linha = await addSupInventarioRemote({ ...inv, ajustado: false }, currentUser);
     const it = itens.find(x => x.id === inv.item_id);
     addAuditLog(currentUser, "contagem de inventário", `${it?.nome || inv.item_id} · sistema ${farmFmtQtd(inv.saldo_sistema)} → contado ${farmFmtQtd(inv.contado)}`, {});
+
+    if (!plano.length) { setTimeout(refresh, 350); return { ok: true }; }
+    if (!linha?.id) {
+      alert("A contagem não pôde ser gravada, então o ajuste não foi lançado.");
+      setTimeout(refresh, 350);
+      return { ok: false, erro: "contagem não gravada" };
+    }
+
+    const doc = documentoDaContagem(linha.id);
+    const erros = [];
+    let lancados = 0;
+    for (const p of plano) {
+      const r = await addSupMovimentoRemote({
+        item_id: inv.item_id, lote: p.lote, validade: p.validade || null,
+        tipo: p.tipo, quantidade: p.quantidade,
+        motivo: MOTIVO_AJUSTE, documento: doc,
+      }, currentUser);
+      if (r.ok) lancados++; else erros.push(`${p.lote || "sem lote"}: ${r.erro}`);
+    }
+
+    // Parcial conta como NÃO ajustado: se um dos passos falhou, o saldo não
+    // chegou ao valor contado, e dizer "ajustado" seria a mesma mentira de
+    // antes, só que menor.
+    const completo = erros.length === 0;
+    await marcarInventarioRemote(linha.id, {
+      ajustado: completo,
+      autorizado_por: currentUser?.name || null,
+      ajuste_erro: completo ? null : erros.join(" · ").slice(0, 500),
+    });
+    if (!completo) {
+      alert(`A contagem foi registrada, mas o ajuste do estoque NÃO foi concluído.\n\n${erros.join("\n")}\n\n` +
+        (lancados ? `${lancados} de ${plano.length} lançamento(s) entraram — o saldo ficou entre o antigo e o contado.\n\n` : "") +
+        "O motivo ficou guardado na contagem. Confira e refaça.");
+    }
+    addAuditLog(currentUser, completo ? "ajuste de inventário" : "ajuste de inventário RECUSADO",
+      `${it?.nome || inv.item_id} · ${doc} · ${descreverPlano(plano)}${completo ? "" : ` · ${erros.join(" · ")}`}`, {});
     setTimeout(refresh, 350);
+    return { ok: completo, erro: erros.join(" · ") || null };
+  }
+
+  // Estorno: o kardex é append-only, então desfazer é criar o movimento
+  // oposto APONTANDO para o original — nunca apagar. O banco garante que
+  // cada movimento só é estornado uma vez (índice único em `estorno_de`) e
+  // que o estorno é mesmo o oposto (mesmo item, lote e quantidade).
+  async function estornarMovimento(mv, jaEstornados) {
+    const pode = podeEstornar(mv, jaEstornados);
+    if (!pode.ok) { alert(pode.motivo); return false; }
+    const it = itens.find(x => x.id === mv.item_id);
+    const oposto = mv.tipo === "entrada" ? "saída" : "entrada";
+    if (!confirm(
+      `Estornar este movimento?\n\n${mv.tipo === "entrada" ? "Entrada" : "Saída"} de ${farmFmtQtd(mv.quantidade)}` +
+      `${mv.lote ? ` no lote ${mv.lote}` : ""} — ${it?.nome || ""}\n\n` +
+      `Será criada uma ${oposto} de ${farmFmtQtd(mv.quantidade)} no mesmo lote. ` +
+      `O movimento original permanece no histórico: estorno não apaga nada.`
+    )) return false;
+
+    const r = await addSupMovimentoRemote(movimentoDeEstorno(mv), currentUser);
+    if (!r.ok) { alert("Não foi possível estornar.\n\n" + (r.erro || "")); return false; }
+    addAuditLog(currentUser, "estorno de movimento",
+      `${it?.nome || mv.item_id} · desfaz #${mv.id} (${mv.tipo} ${farmFmtQtd(mv.quantidade)}${mv.lote ? ` lote ${mv.lote}` : ""})`, {});
+    setTimeout(refresh, 350);
+    return true;
   }
   async function salvarForn(f) {
     await upsertSupFornecedorRemote(f, currentUser);
@@ -13663,7 +13743,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {showItem && <SupItemModal item={showItem} onClose={() => setShowItem(null)} onSave={salvarItem} />}
       {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} onClose={() => setMovItem(null)} onSave={registrarMov} />}
-      {kardex && <SupKardexModal item={kardex} fornecedores={forns} onClose={() => setKardex(null)} />}
+      {kardex && <SupKardexModal item={kardex} fornecedores={forns} canEdit={canEdit} onEstornar={estornarMovimento} onClose={() => setKardex(null)} />}
       {showForn && <SupFornecedorModal forn={showForn} onClose={() => setShowForn(null)} onSave={salvarForn} />}
       {showNfe && <SupNfeModal itens={itens} forns={forns} onClose={() => setShowNfe(false)} onConfirm={importarNfe} />}
       </div>
@@ -15812,19 +15892,32 @@ function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, inv
         </div>
       )}
 
-      {contar && <SupContagemModal item={contar} saldoSistema={supSaldoTotal(contar.id, lotes)} onClose={() => setContar(null)} onSave={async inv => { await onSave(inv); setContar(null); }} />}
+      {contar && <SupContagemModal item={contar} saldoSistema={supSaldoTotal(contar.id, lotes)} lotesDoItem={lotes.filter(l => l.item_id === contar.id)} onClose={() => setContar(null)} onSave={async (inv, plano) => { await onSave(inv, plano); setContar(null); }} />}
     </div>
   );
 }
 
 // Contagem cega de um item — só revela o saldo do sistema após "Conferir"
-function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
+function SupContagemModal({ item, saldoSistema, lotesDoItem = [], onClose, onSave }) {
   const [contado, setContado] = useState("");
   const [revelado, setRevelado] = useState(false);
   const [ajustar, setAjustar] = useState(true);
   const [obs, setObs] = useState("");
+  const [loteEscolhido, setLoteEscolhido] = useState("");
   const [busy, setBusy] = useState(false);
   const dif = revelado ? Number(contado) - Number(saldoSistema) : null;
+
+  // O estoque é por LOTE e a contagem é por ITEM — então o ajuste precisa
+  // decidir de qual lote tirar (FEFO) ou em qual pôr (só a pessoa sabe).
+  // O plano é calculado aqui e MOSTRADO antes de confirmar: ajuste que
+  // mexe no estoque sem dizer onde é caixa-preta, e caixa-preta em
+  // controle de estoque é onde material some.
+  const plano = revelado
+    ? planejarAjuste(dif, lotesDoItem, { loteEscolhido: loteEscolhido || null })
+    : { ok: true, passos: [], motivo: null };
+  const lotesComSaldo = lotesDoItem.filter(l => Number(l.quantidade || 0) > 0);
+  const precisaEscolher = revelado && dif > 0 && !plano.ok && lotesComSaldo.length > 1;
+  const bloqueado = revelado && ajustar && dif !== 0 && !plano.ok;
 
   function conferir() {
     if (contado === "" || Number(contado) < 0) { alert("Digite a quantidade contada na prateleira."); return; }
@@ -15837,9 +15930,12 @@ function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
       saldo_sistema: Number(saldoSistema),
       contado: Number(contado),
       diferenca: Number(contado) - Number(saldoSistema),
-      ajustado: !!ajustar && (Number(contado) - Number(saldoSistema)) !== 0,
+      // `ajustado` NUNCA sai daqui como verdadeiro: quem decide é a
+      // gravação no kardex, não a intenção da tela. Era exatamente essa
+      // confusão que fazia a acuracidade mentir.
+      ajustado: false,
       observacao: obs.trim() || null,
-    });
+    }, ajustar ? plano.passos : []);
     setBusy(false);
   }
   return (
@@ -15864,11 +15960,43 @@ function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
             </div>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: dif === 0 ? "#34d399" : "#f43f5e" }}>{dif === 0 ? "✓ Estoque bate — nada a ajustar" : "Divergência encontrada"}</div>
           </div>
-          {dif !== 0 && (
-            <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
+          {dif !== 0 && (<>
+            <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 10 }}>
               <input type="checkbox" checked={ajustar} onChange={e => setAjustar(e.target.checked)} style={{ accentColor: VX.turquesa, width: 15, height: 15 }} /> Lançar o ajuste no kardex (corrige o saldo para {farmFmtQtd(contado)})
             </label>
-          )}
+
+            {ajustar && precisaEscolher && (
+              // Sobra com vários lotes: o sistema não tem como adivinhar em
+              // qual entram as unidades a mais. Chutar corrompe a validade e
+              // o FEFO, e o erro só aparece meses depois — como material
+              // vencido que o sistema jurava estar bom.
+              <div style={{ marginBottom: 12 }}>
+                <label style={farmLbl}>Em qual lote entram as {farmFmtQtd(dif)} unidade(s) a mais? *</label>
+                <select value={loteEscolhido} onChange={e => setLoteEscolhido(e.target.value)} style={farmInp}>
+                  <option value="">Escolha o lote…</option>
+                  {lotesDoItem.map(l => (
+                    <option key={l.lote || "__generico__"} value={l.lote || ""}>
+                      {l.lote || "(sem lote)"}{l.validade ? ` · vence ${new Date(l.validade + "T00:00:00").toLocaleDateString("pt-BR")}` : ""} · saldo {farmFmtQtd(l.quantidade)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {ajustar && (
+              <div style={{
+                fontSize: 12, lineHeight: 1.5, marginBottom: 12, borderRadius: 8, padding: "8px 12px",
+                border: `1px solid ${plano.ok ? "var(--border)" : "#f43f5e55"}`,
+                background: plano.ok ? "var(--surface-2)" : "#3d0f1833",
+                color: plano.ok ? "var(--text-3)" : "#fb7185",
+              }}>
+                {plano.ok
+                  ? <><strong style={{ color: "var(--text-2)" }}>O ajuste vai:</strong> {descreverPlano(plano.passos)}.
+                      {plano.passos.length > 1 && <> A saída segue a ordem de validade (vence primeiro, sai primeiro).</>}</>
+                  : <>⚠ {plano.motivo}</>}
+              </div>
+            )}
+          </>)}
           <div style={{ marginBottom: 14 }}>
             <label style={farmLbl}>Observação {dif !== 0 ? "(motivo provável da divergência)" : ""}</label>
             <input value={obs} onChange={e => setObs(e.target.value)} placeholder={dif !== 0 ? "Ex.: quebra, saída não lançada, empréstimo a outro setor" : "opcional"} style={farmInp} />
@@ -15877,7 +16005,13 @@ function SupContagemModal({ item, saldoSistema, onClose, onSave }) {
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
-          {revelado && <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Registrar contagem"}</button>}
+          {revelado && (
+            <button onClick={salvar} disabled={busy || bloqueado}
+              title={bloqueado ? plano.motivo : undefined}
+              style={{ background: bloqueado ? "var(--surface-3)" : "#22d3ee", color: bloqueado ? "var(--text-muted)" : "#000", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: bloqueado ? "not-allowed" : "pointer", fontSize: 13 }}>
+              {busy ? "…" : bloqueado ? "Resolva o ajuste acima" : "Registrar contagem"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -16156,10 +16290,17 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
 }
 
 // Kardex — histórico de movimentos do material
-function SupKardexModal({ item, fornecedores, onClose }) {
+function SupKardexModal({ item, fornecedores, canEdit, onEstornar, onClose }) {
   const [movs, setMovs] = useState(null);
-  useEffect(() => { loadSupMovimentos(item.id).then(setMovs); }, [item.id]);
+  const [busyId, setBusyId] = useState(null);
+  const recarregar = () => loadSupMovimentos(item.id).then(setMovs);
+  useEffect(() => { recarregar(); }, [item.id]);
   const fornNome = id => fornecedores.find(f => f.id === id)?.nome;
+  // Quem já foi desfeito sai do próprio kardex: o banco garante a regra
+  // (índice único em `estorno_de`), aqui é só para não oferecer um botão
+  // que vai falhar.
+  const estornados = idsJaEstornados(movs || []);
+  const porId = Object.fromEntries((movs || []).map(m => [m.id, m]));
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>
@@ -16172,13 +16313,31 @@ function SupKardexModal({ item, fornecedores, onClose }) {
               {movs.map(mv => {
                 const ent = mv.tipo === "entrada";
                 const cor = ent ? "#34d399" : "#d97706";
+                const foiEstornado = estornados.has(mv.id);
+                const ehEstorno = mv.estorno_de != null;
+                const pode = podeEstornar(mv, estornados);
                 return (
-                  <div key={mv.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
-                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: cor, fontSize: 14, minWidth: 62, textAlign: "right" }}>{ent ? "+" : "−"}{farmFmtQtd(mv.quantidade)}</span>
+                  <div key={mv.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", opacity: foiEstornado ? 0.6 : 1 }}>
+                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: cor, fontSize: 14, minWidth: 62, textAlign: "right", textDecoration: foiEstornado ? "line-through" : "none" }}>{ent ? "+" : "−"}{farmFmtQtd(mv.quantidade)}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.setor ? ` · ${mv.setor}` : ""}{ent && fornNome(mv.fornecedor_id) ? ` · ${fornNome(mv.fornecedor_id)}` : ""}</div>
-                      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{mv.created_at ? new Date(mv.created_at).toLocaleString("pt-BR") : ""}{mv.documento ? ` · doc ${mv.documento}` : ""}{mv.usuario ? ` · ${mv.usuario}` : ""}</div>
+                      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>
+                        {ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.setor ? ` · ${mv.setor}` : ""}{ent && fornNome(mv.fornecedor_id) ? ` · ${fornNome(mv.fornecedor_id)}` : ""}
+                        {/* O vínculo em ambos os sentidos: a linha desfeita
+                            e a que desfez continuam as duas no histórico —
+                            é isso que torna o rastro legível. */}
+                        {ehEstorno && <span title={`Desfaz o movimento #${mv.estorno_de}`} style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>estorno de #{mv.estorno_de}</span>}
+                        {foiEstornado && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 7px" }}>estornado</span>}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>#{mv.id} · {mv.created_at ? new Date(mv.created_at).toLocaleString("pt-BR") : ""}{mv.documento ? ` · doc ${mv.documento}` : ""}{mv.usuario ? ` · ${mv.usuario}` : ""}</div>
                     </div>
+                    {canEdit && onEstornar && pode.ok && (
+                      <button disabled={busyId === mv.id}
+                        onClick={async () => { setBusyId(mv.id); const ok = await onEstornar(mv, estornados); setBusyId(null); if (ok) recarregar(); }}
+                        title="Cria o movimento oposto no mesmo lote. O original permanece no histórico."
+                        style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "4px 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "Inter, sans-serif" }}>
+                        {busyId === mv.id ? "…" : "Estornar"}
+                      </button>
+                    )}
                   </div>
                 );
               })}
