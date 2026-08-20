@@ -28,11 +28,12 @@ import {
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
 import { montarContaDoProntuario, escolherInternacao, montarWorklist } from "./montar-conta.js";
-import { resumoFaturamento } from "./resumo-faturamento.js";
+import { resumoFaturamento, resumoPorVia } from "./resumo-faturamento.js";
 import { reais, centavos, STATUS_CONTA } from "./faturamento.js";
 import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, carregarWorklistFaturamento,
+  carregarProducaoFaturavel,
 } from "./dados.js";
 
 const TEAL = "#2dd4bf";
@@ -215,6 +216,22 @@ function FunilRow({ label, n, max, dim }) {
     </div>
   );
 }
+function ViaBar({ label, n, valorRef, max }) {
+  const w = max > 0 && valorRef != null ? Math.max(2, Math.round((valorRef / max) * 100)) : 0;
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "150px 1fr auto", alignItems: "center", gap: 13 }}>
+      <span style={{ fontSize: 12.5, color: "var(--text-2)", fontWeight: 500 }}>
+        {label} <small style={{ color: "var(--text-muted)", fontWeight: 400 }}>· {n}</small>
+      </span>
+      <span style={{ height: 8, borderRadius: 5, background: "var(--surface-3)", overflow: "hidden" }}>
+        <i style={{ display: "block", height: "100%", width: `${w}%`, background: TEAL }} />
+      </span>
+      <span style={{ fontSize: 12.5, color: "var(--text)", fontWeight: 600, minWidth: 96, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+        {valorRef != null ? reais(valorRef) : "—"}
+      </span>
+    </div>
+  );
+}
 function FarolRow({ sev, ic, titulo, desc, tag }) {
   const cor = sev === "red" ? "#ef4444" : sev === "amb" ? "#f59e0b" : TEAL;
   const bg = sev === "red" ? "rgba(239,68,68,.13)" : sev === "amb" ? "rgba(245,158,11,.13)" : "rgba(45,212,191,.12)";
@@ -234,25 +251,45 @@ const FAROL_IC = {
 };
 
 function VisaoExecutiva({ sb, sigtapRows }) {
-  const [worklist, setWorklist] = useState(null); // null = ainda carregando
+  const [dados, setDados] = useState(null); // null = ainda carregando
 
   useEffect(() => {
     let vivo = true;
     (async () => {
       try {
-        const { internacoes, contas } = await carregarWorklistFaturamento(sb, { limite: 200 });
-        if (vivo) setWorklist(montarWorklist(internacoes, contas));
-      } catch { if (vivo) setWorklist([]); }
+        // A worklist (internações → conta) alimenta o funil; a produção
+        // faturável inteira + os catálogos alimentam a visão por via — é onde
+        // BPA/APAC aparecem, que a worklist de internações jamais mostraria.
+        const [wl, producao, cat] = await Promise.all([
+          carregarWorklistFaturamento(sb, { limite: 200 }),
+          carregarProducaoFaturavel(sb, { limite: 500 }),
+          carregarCatalogos(sb),
+        ]);
+        if (vivo) setDados({
+          worklist: montarWorklist(wl.internacoes, wl.contas),
+          producao,
+          convenios: cat.convenios || [],
+          procedimentos: cat.procedimentos || [],
+        });
+      } catch { if (vivo) setDados({ worklist: [], producao: [], convenios: [], procedimentos: [] }); }
     })();
     return () => { vivo = false; };
   }, [sb]);
 
-  const carregando = worklist === null;
+  const carregando = dados === null;
   const R = useMemo(
-    () => resumoFaturamento({ worklist: worklist || [], sigtapProcs: sigtapRows || [] }),
-    [worklist, sigtapRows]
+    () => resumoFaturamento({ worklist: dados?.worklist || [], sigtapProcs: sigtapRows || [] }),
+    [dados, sigtapRows]
+  );
+  const V = useMemo(
+    () => resumoPorVia({
+      producao: dados?.producao || [], convenios: dados?.convenios || [],
+      procedimentos: dados?.procedimentos || [], sigtapProcs: sigtapRows || [],
+    }),
+    [dados, sigtapRows]
   );
   const maxFunil = Math.max(1, ...R.funil.map((f) => f.n));
+  const maxVia = Math.max(1, ...V.porVia.map((v) => v.valorRef || 0));
   const totalProcs = (sigtapRows || []).length;
 
   return (
@@ -283,22 +320,19 @@ function VisaoExecutiva({ sb, sigtapRows }) {
           </div>
         </div>
         <div style={{ background: "var(--surface)", padding: "22px 24px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700 }}>Pendência do faturamento</div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: ".18em", textTransform: "uppercase", fontWeight: 700 }}>Valor de referência SIGTAP</div>
           {carregando ? (
             <div style={{ color: "var(--text-3)", fontSize: 13, marginTop: 10 }}>Carregando…</div>
           ) : (
             <>
-              <div style={{ fontSize: 32, fontWeight: 600, margin: "8px 0 2px", fontVariantNumeric: "tabular-nums" }}>{R.backlog}</div>
+              <div style={{ fontSize: 32, fontWeight: 600, margin: "8px 0 2px", fontVariantNumeric: "tabular-nums" }}>{V.valorRefTotal != null ? reais(V.valorRefTotal) : "—"}</div>
               <div style={{ color: "var(--text-3)", fontSize: 12.5, marginBottom: 14 }}>
-                {R.backlog === 0 ? "internação esperando conta — nada a montar" : `${R.backlog === 1 ? "internação" : "internações"} esperando conta`}
-                {R.valorRefBacklog != null && (
-                  <> · <b style={{ color: "var(--text-2)" }}>{reais(R.valorRefBacklog)}</b> em referência SIGTAP{R.semValorRef > 0 ? ` (${R.semValorRef} sem preço)` : ""}</>
-                )}
+                de {V.total} {V.total === 1 ? "atendimento faturável" : "atendimentos faturáveis"} na tabela SUS — <b style={{ color: "var(--text-2)" }}>não é o faturado real</b>{V.semValorRef > 0 ? ` · ${V.semValorRef} sem preço` : ""}
               </div>
               {[
-                { c: R.emAberto > 0 ? "#f59e0b" : TEAL, t: `${R.emAberto} ${R.emAberto === 1 ? "conta aberta" : "contas abertas"}`, d: "a revisar e fechar na competência", v: String(R.emAberto) },
+                { c: R.backlog > 0 ? "#f59e0b" : TEAL, t: `${R.backlog} ${R.backlog === 1 ? "internação esperando conta" : "internações esperando conta"}`, d: "a montar do prontuário", v: String(R.backlog) },
+                { c: R.emAberto > 0 ? "#f59e0b" : TEAL, t: `${R.emAberto} ${R.emAberto === 1 ? "conta aberta" : "contas abertas"}`, d: "a revisar e fechar", v: String(R.emAberto) },
                 { c: TEAL, t: `${R.porSituacao.faturada} ${R.porSituacao.faturada === 1 ? "faturada" : "faturadas"}`, d: "já transmitidas ao SUS", v: String(R.porSituacao.faturada) },
-                { c: R.glosadas > 0 ? "#ef4444" : TEAL, t: R.glosadas > 0 ? `${R.glosadas} ${R.glosadas === 1 ? "glosada" : "glosadas"}` : "Nenhuma glosa", d: R.glosadas > 0 ? "recurso no prazo" : "nada em recurso", v: String(R.glosadas) },
               ].map((s, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 0", borderTop: "1px solid var(--border)" }}>
                   <span style={{ width: 8, height: 8, borderRadius: 3, background: s.c, flex: "0 0 auto" }} />
@@ -313,47 +347,71 @@ function VisaoExecutiva({ sb, sigtapRows }) {
 
       {carregando ? (
         <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Carregando o resumo…</p>
-      ) : R.vazio ? (
+      ) : R.vazio && V.vazio ? (
         <div style={{ ...cx.card, textAlign: "center", padding: "40px 24px" }}>
           <div style={{ fontSize: 14, color: "var(--text-2)", maxWidth: 520, margin: "0 auto", lineHeight: 1.55 }}>
-            Ainda não há internação faturável. Assim que o PS internar um paciente (desfecho “internação”) e a conta for montada na aba <b>Pendentes</b>, os números aparecem aqui.
+            Ainda não há produção faturável. Assim que um atendimento for concluído com procedimento (e, na internação, a conta montada na aba <b>Pendentes</b>), os números aparecem aqui.
           </div>
         </div>
       ) : (
         <>
-          {/* kpis reais */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
-            <Kpi lbl="Internações faturáveis" val={R.total} trend="com desfecho de internação" />
-            <Kpi lbl="Esperando conta" val={R.backlog} trend="a montar do prontuário" />
-            <Kpi lbl="Contas em aberto" val={R.emAberto} trend="a revisar e fechar" />
-            <Kpi lbl="Faturadas" val={R.porSituacao.faturada} trend="já transmitidas" />
-          </div>
+          {/* kpis reais (internações) */}
+          {!R.vazio && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
+              <Kpi lbl="Internações faturáveis" val={R.total} trend="com desfecho de internação" />
+              <Kpi lbl="Esperando conta" val={R.backlog} trend="a montar do prontuário" />
+              <Kpi lbl="Contas em aberto" val={R.emAberto} trend="a revisar e fechar" />
+              <Kpi lbl="Faturadas" val={R.porSituacao.faturada} trend="já transmitidas" />
+            </div>
+          )}
 
-          {/* painéis reais */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <div style={cx.card}>
-              <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Funil do faturamento</h3>
-              <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>Onde as internações estão no caminho da conta</p>
+          {/* faturamento por via (produção faturável · referência SIGTAP) */}
+          {!V.vazio && (
+            <div style={{ ...cx.card, marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                <div>
+                  <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Faturamento por via</h3>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>Produção faturável concluída · valor de referência SIGTAP (não é o faturado real)</p>
+                </div>
+                {V.semValorRef > 0 && (
+                  <span style={{ fontSize: 11, color: "#f59e0b", background: "rgba(245,158,11,.12)", borderRadius: 6, padding: "3px 9px", fontWeight: 600, whiteSpace: "nowrap" }}>{V.semValorRef} sem preço</span>
+                )}
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-                {R.funil.map((f) => (
-                  <FunilRow key={f.chave} label={f.label} n={f.n} max={maxFunil} dim={f.n === 0} />
+                {V.porVia.map((v) => (
+                  <ViaBar key={v.via} label={v.label} n={v.n} valorRef={v.valorRef} max={maxVia} />
                 ))}
               </div>
             </div>
-            <div style={cx.card}>
-              <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Farol</h3>
-              <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>O que precisa de ação — só sinal real</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {R.farol.length === 0 ? (
-                  <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>Sem pendência a sinalizar.</p>
-                ) : (
-                  R.farol.map((f) => (
-                    <FarolRow key={f.chave} sev={f.sev} ic={FAROL_IC[f.chave]} titulo={f.titulo} desc={f.desc} tag={f.tag} />
-                  ))
-                )}
+          )}
+
+          {/* painéis reais (internações) */}
+          {!R.vazio && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <div style={cx.card}>
+                <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Funil do faturamento</h3>
+                <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>Onde as internações estão no caminho da conta</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+                  {R.funil.map((f) => (
+                    <FunilRow key={f.chave} label={f.label} n={f.n} max={maxFunil} dim={f.n === 0} />
+                  ))}
+                </div>
+              </div>
+              <div style={cx.card}>
+                <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Farol</h3>
+                <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--text-muted)" }}>O que precisa de ação — só sinal real</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {R.farol.length === 0 ? (
+                    <p style={{ margin: 0, color: "var(--text-muted)", fontSize: 13 }}>Sem pendência a sinalizar.</p>
+                  ) : (
+                    R.farol.map((f) => (
+                      <FarolRow key={f.chave} sev={f.sev} ic={FAROL_IC[f.chave]} titulo={f.titulo} desc={f.desc} tag={f.tag} />
+                    ))
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </div>
