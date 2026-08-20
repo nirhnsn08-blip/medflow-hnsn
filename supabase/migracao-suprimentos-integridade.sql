@@ -20,21 +20,15 @@
 -- que hoje funciona. Nada é apagado e nenhuma coluna muda de tipo.
 --
 -- Idempotente. Rodar no SQL Editor do Supabase ANTES do merge do código.
--- ═══════════════════════════════════════════════════════════
-
--- ───────────────────────────────────────────────────────────
--- PASSO 0 — CONFERÊNCIA (leitura). Rode SOZINHO primeiro.
 --
--- As travas abaixo entram como NOT VALID: as linhas que já existem não são
--- recusadas. Mas um lote JÁ negativo passa a ser difícil de consertar,
--- porque qualquer update nele volta a ser checado. Se o passo 0 acusar
--- alguma coisa, resolva antes de seguir.
--- ───────────────────────────────────────────────────────────
-select 'lote com saldo negativo' as achado, count(*) as linhas from public.sup_lotes where quantidade < 0
-union all
-select 'movimento com tipo fora de entrada/saida', count(*) from public.sup_movimentos where tipo not in ('entrada','saida')
-union all
-select 'material com movimento (bloqueio de exclusão passa a valer)', count(distinct item_id) from public.sup_movimentos;
+-- 🔴 ANTES DESTE ARQUIVO, rode `conferencia-suprimentos-integridade.sql`
+-- (só leitura), numa consulta separada. As travas abaixo entram como NOT
+-- VALID e não falham em linha que já existe — mas um lote JÁ negativo passa
+-- a recusar qualquer movimento, inclusive o que o consertaria. A
+-- conferência diz se existe algum. Ela está em arquivo próprio porque o SQL
+-- Editor mostra só o resultado da ÚLTIMA consulta: no meio daqui, sumiria
+-- da tela.
+-- ═══════════════════════════════════════════════════════════
 
 -- ───────────────────────────────────────────────────────────
 -- PASSO 1 — o tipo do movimento só pode ser um dos dois
@@ -139,7 +133,8 @@ create trigger sup_item_protege_kardex_trg before delete on public.sup_itens
   for each row execute function public.sup_item_protege_kardex();
 
 -- ───────────────────────────────────────────────────────────
--- PASSO 5 — conferência (leitura). Rode depois e confira as 4 linhas.
+-- PASSO 5 — conferência final (leitura). É a ÚLTIMA consulta de propósito:
+-- o SQL Editor só mostra o resultado dela. As 4 linhas devem vir com "1".
 -- ───────────────────────────────────────────────────────────
 select 'trava de tipo do movimento' as item,
        (select count(*) from pg_constraint where conname = 'sup_mov_tipo_chk')::text as presente
