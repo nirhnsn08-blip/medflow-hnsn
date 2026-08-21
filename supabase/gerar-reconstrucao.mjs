@@ -129,6 +129,11 @@ const ORDEM = [
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
+  // Trilha de auditoria atribuível: `usuario_id` carimbado pelo banco
+  // (`default auth.uid()`), política de insert que impede assinar no lugar
+  // de outro, e índices para a tela paginar. Não cria tabela — entra antes
+  // do rls-leitura, que segue por último.
+  "migracao-auditoria-atribuivel.sql",
   "migracao-rls-leitura.sql",
 ];
 

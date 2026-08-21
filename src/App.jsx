@@ -29,6 +29,7 @@ import {
   supLeadTimeMap, custoMedioPonderado, supPedidoTotal,
 } from "./suprimentos/kardex.js";
 import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
+import TrilhaAuditoria from "./auditoria/Trilha.jsx";
 import {
   MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
   podeEstornar, movimentoDeEstorno, idsJaEstornados,
@@ -1670,46 +1671,12 @@ function PrintDashboard({ db }) {
 // ═══════════════════════════════════════════════════════════
 // AUDITORIA PAGE
 // ═══════════════════════════════════════════════════════════
-function AuditoriaPage() {
-  const [logs, setLogs] = useState(() => loadAudit());
-  const [filtro, setFiltro] = useState("");
-  const filtered = logs.filter(l => !filtro || l.user.toLowerCase().includes(filtro.toLowerCase()) || l.alvo.includes(filtro));
-  const inp = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };
-  return (
-    <div style={{ padding: "1.5rem", overflowY: "auto", height: "100%" }}>
-      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Log de Auditoria</div>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.5rem" }}>Histórico de todas as alterações realizadas na plataforma</div>
-      <div style={{ display: "flex", gap: 10, marginBottom: "1rem", alignItems: "center" }}>
-        <input value={filtro} onChange={e => setFiltro(e.target.value)} placeholder="Filtrar por usuário ou data..." style={{ ...inp, width: 280 }} />
-        <button onClick={() => setLogs(loadAudit())} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 14px", color: "#22d3ee", cursor: "pointer", fontFamily: "Inter, sans-serif", fontSize: 13 }}>↺ Atualizar</button>
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{filtered.length} registro(s)</span>
-      </div>
-      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr>{["Data/Hora","Usuário","Ação","Alvo","Dados"].map(h => <th key={h} style={{ textAlign: "left", padding: "10px 14px", color: "var(--text-muted)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid var(--border)", background: "var(--bg-2)" }}>{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: "2rem", textAlign: "center", color: "var(--text-muted)" }}>Nenhum registro de auditoria encontrado.</td></tr>
-            )}
-            {filtered.map((l, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid var(--surface-3)" }}>
-                <td style={{ padding: "8px 14px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)", fontSize: 11 }}>{new Date(l.ts).toLocaleString("pt-BR")}</td>
-                <td style={{ padding: "8px 14px", fontWeight: 600, color: "#22d3ee" }}>{l.user}</td>
-                <td style={{ padding: "8px 14px" }}>
-                  <span style={{ background: "#0e4f5f", color: "#22d3ee", borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{l.acao}</span>
-                </td>
-                <td style={{ padding: "8px 14px", color: "var(--text)", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>{l.alvo}</td>
-                <td style={{ padding: "8px 14px", color: "var(--text-muted)", fontSize: 11, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.dados}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+// A tela antiga lia o `localStorage` (200 registros, do navegador de quem
+// olhava) enquanto anunciava "histórico de todas as alterações da
+// plataforma". Substituída por `src/auditoria/Trilha.jsx`, que lê a trilha
+// institucional do banco. `addAuditLog` segue gravando nos dois lugares: o
+// registro local ainda guarda o detalhe da ação, que por decisão de LGPD
+// não é enviado ao servidor.
 
 // ═══════════════════════════════════════════════════════════
 // IMPORTAR
@@ -17629,7 +17596,7 @@ export default function App() {
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard db={db} />}
-          {active === "auditoria" && canAudit    && <AuditoriaPage />}
+          {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
           {active === "import"    && canImport   && <ImportPage onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
           {active === "users"     && canUsers    && <UsersPage currentUser={currentUser} />}
           </LimiteErro>
