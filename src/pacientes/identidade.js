@@ -367,3 +367,68 @@ export function possiveisDuplicatas(novo, existentes = [], { limite = 5 } = {}) 
 
   return achados.sort((a, b) => b.confianca - a.confianca).slice(0, limite);
 }
+
+/**
+ * Este CPF/CNS já é de OUTRO prontuário?
+ *
+ * POR QUE ISTO EXISTE, E POR QUE A MENSAGEM IMPORTA TANTO
+ * `pacientes` tem índice único parcial em CPF e em CNS. Quando a
+ * recepcionista insiste e cadastra a segunda ficha da mesma pessoa, o
+ * PostgREST devolve **409** — e a tela dizia:
+ *
+ *   "⚠️ Nada foi gravado. Confirme que a migração ... foi aplicada neste
+ *    banco e que seu perfil permite cadastrar."
+ *
+ * Ou seja: culpava a migração e a permissão por um erro que era de DADO. E o
+ * que uma pessoa com fila na frente faz diante disso não é abrir um chamado
+ * — é **apagar o CPF e salvar de novo**. Aí o cadastro passa, sem documento,
+ * invisível ao índice único. A trava que existia para impedir a duplicata
+ * produzia exatamente a duplicata, e ainda por cima uma sem CPF, que nenhuma
+ * conferência futura consegue casar.
+ *
+ * Detectar ANTES de gravar transforma um erro sem saída numa instrução: o
+ * prontuário que já tem esse documento tem nome e número, e o caminho certo
+ * é abrir aquele, não criar outro.
+ *
+ * Compara com `limparDoc` dos dois lados porque "529.982.247-25" e
+ * "52998224725" são o mesmo CPF, e só um dos dois formatos casaria com `===`.
+ */
+export function documentoEmUso(novo, candidatos = []) {
+  // Desestruturar no parâmetro quebraria com `null`: o default `= {}` só
+  // vale para `undefined`. `possiveisDuplicatas` logo acima aceita nulo sem
+  // reclamar, e duas funções vizinhas discordando sobre isso é o tipo de
+  // diferença que só aparece na tela, em produção.
+  const { cpf, cns, prontuario } = novo || {};
+  const meuCpf = limparDoc(cpf);
+  const meuCns = limparDoc(cns);
+  const meu = String(prontuario ?? "").trim();
+  if (!meuCpf && !meuCns) return null;
+
+  for (const c of Array.isArray(candidatos) ? candidatos : []) {
+    // O próprio cadastro, em edição, não conflita consigo mesmo.
+    if (String(c?.prontuario ?? "").trim() === meu) continue;
+    if (meuCpf && limparDoc(c?.cpf) === meuCpf)
+      return { prontuario: c.prontuario, campo: "CPF", paciente: c };
+    if (meuCns && limparDoc(c?.cns) === meuCns)
+      return { prontuario: c.prontuario, campo: "Cartão SUS", paciente: c };
+  }
+  return null;
+}
+
+/**
+ * O que a tela diz quando o documento já é de outro prontuário.
+ *
+ * Diz o NÚMERO do prontuário e o nome, porque a ação certa depende de saber
+ * qual é. E fecha a porta que a mensagem antiga abria, em voz alta: apagar o
+ * documento faz salvar, e é a pior saída possível.
+ */
+export function mensagemDocumentoEmUso(conflito) {
+  if (!conflito) return "";
+  const nome = comoExibir(conflito.paciente, { completo: true })
+    || String(conflito.paciente?.iniciais ?? "").trim();
+  return `Este ${conflito.campo} já está no prontuário ${conflito.prontuario}` +
+    (nome ? ` (${nome})` : "") + ". " +
+    "É a mesma pessoa — abra o cadastro dele em vez de criar outro. " +
+    "Não apague o documento para conseguir salvar: isso cria um segundo prontuário " +
+    "sem documento, que ninguém mais consegue casar com o primeiro.";
+}

@@ -16,7 +16,9 @@
 // trata `null` como sucesso.
 // ═══════════════════════════════════════════════════════════
 
-import { filtroBuscaPacientes, normalizarProntuario, dadosNaoIdentificado } from "./recepcao.js";
+import {
+  filtroBuscaPacientes, filtroBuscaPacientesLegado, normalizarProntuario, dadosNaoIdentificado,
+} from "./recepcao.js";
 import { camposDaFicha, DOMINIOS } from "./ficha.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
@@ -44,8 +46,24 @@ const CAMPOS_BUSCA = [
 export async function buscarPacientes(sb, termo, { limite = 25 } = {}) {
   const filtro = filtroBuscaPacientes(termo);
   if (!filtro) return [];
-  const r = await sb(`pacientes?${filtro}&select=${CAMPOS_BUSCA}&limit=${limite}&order=prontuario`);
-  return Array.isArray(r) ? r : [];
+  const consulta = f => sb(`pacientes?${f}&select=${CAMPOS_BUSCA}&limit=${limite}&order=prontuario`);
+
+  const r = await consulta(filtro);
+  if (Array.isArray(r)) return r;
+
+  // `null` NÃO é lista vazia. Lista vazia é "procurei e não achei"; `null` é
+  // "não deu para perguntar" — e aqui a causa previsível é uma só: a coluna
+  // `nome_busca` ainda não existe neste banco, porque a migração é manual e
+  // roda DEPOIS do deploy. Sem este recuo, a recepção passaria o intervalo
+  // inteiro entre o merge e o SQL vendo "nenhum paciente encontrado" para
+  // TODO MUNDO, no balcão, sem nenhuma pista do motivo.
+  //
+  // O recuo é para a busca antiga, que é pior mas funciona. Depois que o SQL
+  // rodar nos dois bancos, nada mais passa por aqui.
+  const legado = filtroBuscaPacientesLegado(termo);
+  if (!legado || legado === filtro) return [];
+  const r2 = await consulta(legado);
+  return Array.isArray(r2) ? r2 : [];
 }
 
 /** O cadastro completo de um paciente, ou `null`. */

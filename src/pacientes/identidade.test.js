@@ -14,7 +14,7 @@ import {
   limparDoc, validarCPF, formatarCPF, validarCNS, formatarCNS, tipoCNS,
   normalizarNome, partesDoNome, iniciaisDe, comoExibir, normalizarSexo, rotuloSexo,
   idadeDetalhada, idadeMesesParaTriagem,
-  conferirCadastro, possiveisDuplicatas,
+  conferirCadastro, possiveisDuplicatas, documentoEmUso, mensagemDocumentoEmUso,
 } from "./identidade.js";
 
 const CPF_OK = "529.982.247-25";
@@ -333,5 +333,51 @@ describe("possiveisDuplicatas — evitar dois prontuários da mesma pessoa", () 
   it("lista vazia e entrada nula não quebram", () => {
     expect(possiveisDuplicatas({ nome_completo: "X" }, [])).toEqual([]);
     expect(possiveisDuplicatas(null, base)).toEqual([]);
+  });
+});
+
+// 🔴 O índice único de CPF recusava a segunda ficha com 409, e a tela dizia
+// "confirme que a migração foi aplicada". Quem está no balcão com fila não
+// abre chamado: apaga o CPF e salva — e aí o duplicado passa SEM documento,
+// invisível ao próprio índice que existia para impedi-lo.
+describe("documento que já é de outro prontuário", () => {
+  const outro = { prontuario: "T4471", nome_completo: "José da Silva", cpf: "52998224725", cns: null };
+
+  it("acha o dono do CPF, mesmo com pontuação de um lado só", () => {
+    const c = documentoEmUso({ cpf: "529.982.247-25", prontuario: "T9999" }, [outro]);
+    expect(c).not.toBeNull();
+    expect(c.prontuario).toBe("T4471");
+    expect(c.campo).toBe("CPF");
+  });
+
+  it("acha pelo Cartão SUS também", () => {
+    const dono = { prontuario: "T50", cns: "123456789012345" };
+    expect(documentoEmUso({ cns: "1234 5678 9012 345", prontuario: "T9" }, [dono]).campo).toBe("Cartão SUS");
+  });
+
+  it("o próprio cadastro em edição NÃO conflita consigo mesmo", () => {
+    expect(documentoEmUso({ cpf: "52998224725", prontuario: "T4471" }, [outro])).toBeNull();
+  });
+
+  it("sem documento não há conflito a apurar", () => {
+    expect(documentoEmUso({ prontuario: "T1" }, [outro])).toBeNull();
+    expect(documentoEmUso({ cpf: "", cns: "" }, [outro])).toBeNull();
+    expect(documentoEmUso(null, [outro])).toBeNull();
+    expect(documentoEmUso({ cpf: "52998224725" }, null)).toBeNull();
+  });
+
+  it("a mensagem diz o prontuário, o nome, e fecha a porta do 'apaga o CPF'", () => {
+    const texto = mensagemDocumentoEmUso(documentoEmUso({ cpf: "52998224725", prontuario: "T9" }, [outro]));
+    expect(texto).toMatch(/T4471/);
+    expect(texto).toMatch(/José da Silva/);
+    expect(texto).toMatch(/[Nn]ão apague/);
+    // e NÃO culpa migração nem permissão, que foi o que mandou a pessoa
+    // procurar o problema no lugar errado
+    expect(texto).not.toMatch(/migra[çc]/i);
+    expect(texto).not.toMatch(/perfil/i);
+  });
+
+  it("sem conflito, sem mensagem", () => {
+    expect(mensagemDocumentoEmUso(null)).toBe("");
   });
 });

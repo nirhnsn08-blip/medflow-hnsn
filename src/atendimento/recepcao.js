@@ -15,7 +15,7 @@
 // visível; atendimento órfão é histórico perdido.
 // ═══════════════════════════════════════════════════════════
 
-import { conferirCadastro, limparDoc, validarCPF, validarCNS, normalizarSexo } from "../pacientes/identidade.js";
+import { conferirCadastro, limparDoc, validarCPF, validarCNS, normalizarSexo, normalizarNome } from "../pacientes/identidade.js";
 
 // ── COMO O PACIENTE CHEGOU ──────────────────────────────────
 // Estas listas moraram no App.jsx enquanto a chegada só existia no PS.
@@ -132,9 +132,50 @@ export function filtroBuscaPacientes(termo) {
   // paciente que está lá, e a recepcionista concluía que ele não existe e
   // cadastrava de novo: busca que não acha é a máquina de duplicatas.
   if (c.tipo === "prontuario") return `or=(prontuario.ilike.${c.valor})`;
-  // Nome: procura pelo termo inteiro no nome de registro, no nome social e
-  // no nome da mãe. A mãe entra porque é como se desempata homônimo no
-  // balcão — "o João da dona Maria".
+  const palavras = palavrasDeBusca(c.valor);
+  if (!palavras.length) return null;
+  // Nome: TODAS as palavras têm que aparecer em `nome_busca` — a coluna
+  // gerada que guarda nome de registro + social + da mãe, em maiúscula e sem
+  // acento (ver migracao-pacientes-busca.sql).
+  return `and=(${palavras.map(p => `nome_busca.ilike.*${p}*`).join(",")})`;
+}
+
+/**
+ * As palavras que a busca por nome vai exigir.
+ *
+ * Reaproveita `normalizarNome`, que tira acento e derruba tudo que não é
+ * letra ou número — o que também torna o valor seguro para a URL do
+ * PostgREST por construção: vírgula, parêntese, `%` e `_` não sobrevivem, e
+ * são justamente os caracteres que quebrariam o filtro ou virariam curinga.
+ *
+ * Palavra de UMA letra sai fora: quase sempre é inicial ou sobra de
+ * pontuação ("J. SILVA"), e exigi-la só faria a busca achar menos.
+ *
+ * O mínimo de 3 caracteres é do TERMO INTEIRO, não de cada palavra — "Jo"
+ * segue recusado (varreria a tabela por nada), mas "Ana" passa.
+ */
+export function palavrasDeBusca(termo) {
+  const limpo = normalizarNome(termo);
+  if (limpo.replace(/\s/g, "").length < 3) return [];
+  return limpo.toUpperCase().split(" ").filter(p => p.length >= 2);
+}
+
+/**
+ * O filtro ANTIGO, por `ilike` em cada coluna de nome.
+ *
+ * Continua aqui porque a migração é MANUAL e roda DEPOIS do deploy — é a
+ * ordem inevitável neste projeto. No intervalo entre o merge e o SQL, a
+ * coluna `nome_busca` não existe, o PostgREST devolve 400, e a busca da
+ * recepção pararia INTEIRA: a tela diria "nenhum paciente encontrado" para
+ * todo mundo, no balcão, sem nenhuma pista do motivo.
+ *
+ * `buscarPacientes` cai aqui quando a consulta nova falha. Assim que o SQL
+ * roda, este caminho deixa de ser usado sozinho — e ele pode ser removido na
+ * limpeza seguinte, quando os dois bancos estiverem migrados.
+ */
+export function filtroBuscaPacientesLegado(termo) {
+  const c = classificarBusca(termo);
+  if (c.tipo !== "nome") return filtroBuscaPacientes(termo);
   const t = c.valor;
   if (t.length < 3) return null;
   return `or=(nome_completo.ilike.*${t}*,nome_social.ilike.*${t}*,nome_mae.ilike.*${t}*)`;
