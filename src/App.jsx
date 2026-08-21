@@ -30,6 +30,8 @@ import {
 } from "./suprimentos/kardex.js";
 import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
 import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
+import { podeAprovarPedido, descreverAlcada, validarLimite } from "./suprimentos/aprovacao.js";
+import { carregarAlcada, salvarAlcada } from "./suprimentos/parametros.js";
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
 import {
   MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
@@ -13246,6 +13248,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [entradasForn, setEntradasForn] = useState([]);
   const [cotacoes, setCotacoes] = useState([]);
   const [setoresCat, setSetoresCat] = useState([]);
+  const [alcada, setAlcada] = useState(null);   // limite em R$; null = desligada
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
@@ -13260,6 +13263,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     // O catálogo de setores alimenta a saída manual — sem ele, o destino é
     // texto livre e o consumo por setor se fragmenta por grafia.
     loadSetoresFromSupabase().then(r => r && setSetoresCat(r));
+    carregarAlcada(sbFetch).then(setAlcada);
   }
   const leadMap = supLeadTimeMap(entradasForn, forns);   // item_id → prazo de entrega (dias)
   useEffect(() => {
@@ -13573,7 +13577,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
       {sub === "cotacoes" && <SupCotacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} forns={forns.filter(f => f.ativo !== false)} cotacoes={cotacoes} onChanged={refresh} />}
       {sub === "compras" && <SupComprasView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
-      {sub === "aprovacoes" && <SupAprovacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} pedidos={pedidos} onChanged={refresh} />}
+      {sub === "aprovacoes" && <SupAprovacoesView currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} pedidos={pedidos} alcada={alcada} onAlcada={setAlcada} onChanged={refresh} />}
 
       {sub === "acoes" && <SupAcoesView itens={itens} lotes={lotes} saidasHist={saidasHist} reqs={reqs} pedidos={pedidos} invs={invs} leadMap={leadMap} onNav={setSub} />}
       {sub === "executivo" && <SupExecutivoView itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
@@ -14545,9 +14549,20 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
 // Aprovação de pedidos de compra pela matriz. Kanban de 3 colunas:
 // Aguardando aprovação | Aprovado | Negado. A ação (aprovar/negar) só aparece
 // para o perfil "matriz" ou o ADM Master; os demais acompanham em leitura.
-function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, onChanged }) {
+function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, alcada = null, onAlcada, onChanged }) {
   const [busyId, setBusyId] = useState(null);
-  const podeAprovar = (isMaster || currentUser?.perfil === "matriz") && canEdit;
+  const [editandoAlcada, setEditandoAlcada] = useState(false);
+  const [limiteTxt, setLimiteTxt] = useState(alcada == null ? "" : String(alcada));
+  const [msgAlcada, setMsgAlcada] = useState(null);
+  const ehMatriz = currentUser?.perfil === "matriz";
+
+  // A decisão de quem pode aprovar deixou de ser só cargo. Ela agora
+  // considera também quem CRIOU o pedido (segregação) e o valor (alçada) —
+  // e mora em regra pura, testada por mutação, em vez de espalhada aqui.
+  const vereditoDe = p => podeAprovarPedido(p, {
+    usuario: currentUser, isMaster, ehMatriz, canEdit,
+    limite: alcada, total: supPedidoTotal(p),
+  });
   const colunas = ["aguardando_aprovacao", "aprovado", "negado"];
   const daColuna = st => pedidos.filter(p => p.status === st)
     .sort((a, b) => new Date(b.aprovacao_em || b.created_at || 0) - new Date(a.aprovacao_em || a.created_at || 0));
@@ -14598,12 +14613,24 @@ function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, onChanged 
         {p.observacao && <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>{p.observacao}</div>}
         {p.status === "negado" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 6 }}><strong>Motivo:</strong> {p.negado_motivo || "—"}</div>}
         {["aprovado", "negado"].includes(p.status) && p.decidido_por && <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>{p.status === "aprovado" ? "aprovado" : "negado"} por {p.decidido_por}{p.decidido_em ? ` · ${new Date(p.decidido_em).toLocaleDateString("pt-BR")}` : ""}</div>}
-        {podeAprovar && p.status === "aguardando_aprovacao" && (
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <button disabled={busy} onClick={() => aprovar(p)} style={btnLeito("#34d399")}>Aprovar</button>
-            <button disabled={busy} onClick={() => negar(p)} style={btnLeito("#f43f5e")}>Negar</button>
-          </div>
-        )}
+        {p.status === "aguardando_aprovacao" && (() => {
+          const v = vereditoDe(p);
+          if (v.pode) return (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button disabled={busy} onClick={() => aprovar(p)} style={btnLeito("#34d399")}>Aprovar</button>
+              <button disabled={busy} onClick={() => negar(p)} style={btnLeito("#f43f5e")}>Negar</button>
+            </div>
+          );
+          // Só mostra o motivo a quem estaria apto pelo cargo. Para os
+          // demais, o pedido segue em leitura, sem explicação de recusa
+          // que não lhes diz respeito.
+          if (!isMaster && !ehMatriz) return null;
+          return (
+            <div style={{ fontSize: 11.5, color: "#d97706", background: "#33270c55", border: "1px solid #d9770655", borderRadius: 6, padding: "6px 10px" }}>
+              {v.motivo}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -14611,10 +14638,49 @@ function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, onChanged 
   const totalAg = daColuna("aguardando_aprovacao").length;
   return (
     <div>
-      <div style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", marginBottom: 14, lineHeight: 1.5 }}>
-        {podeAprovar
-          ? <>Você pode <strong>aprovar</strong> ou <strong>negar</strong> os pedidos. {totalAg > 0 ? `${totalAg} aguardando sua decisão.` : "Nenhum pedido aguardando decisão."}</>
+      <div style={{ fontSize: 12.5, color: "var(--text-2)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", marginBottom: 10, lineHeight: 1.5 }}>
+        {isMaster || ehMatriz
+          ? <>Você pode <strong>aprovar</strong> ou <strong>negar</strong> os pedidos — <strong>exceto os que você mesmo criou</strong>. {totalAg > 0 ? `${totalAg} aguardando decisão.` : "Nenhum pedido aguardando decisão."}</>
           : <>Acompanhamento das aprovações. A decisão (aprovar/negar) é da <strong>matriz</strong> (perfil próprio) ou do ADM Master.</>}
+      </div>
+
+      {/* ALÇADA — o controle mais básico de compra, e o primeiro que um
+          auditor procura. Nasce DESLIGADA: um número que a equipe não
+          escolheu travando compra de hospital seria pior que a ausência
+          de alçada. Só o ADM Master configura — quem opera a compra não
+          define o próprio teto. */}
+      <div style={{ fontSize: 12, color: "var(--text-3)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", lineHeight: 1.5 }}>
+        <span style={{ color: alcada == null ? "#d97706" : "var(--text-2)" }}>{descreverAlcada(alcada)}</span>
+        {isMaster && !editandoAlcada && (
+          <button onClick={() => { setEditandoAlcada(true); setMsgAlcada(null); setLimiteTxt(alcada == null ? "" : String(alcada)); }}
+            style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 6, padding: "4px 11px", fontSize: 11.5, fontWeight: 600, cursor: "pointer", marginLeft: "auto", fontFamily: "Inter, sans-serif" }}>
+            {alcada == null ? "Definir alçada" : "Alterar"}
+          </button>
+        )}
+        {isMaster && editandoAlcada && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+            <input value={limiteTxt} onChange={e => setLimiteTxt(e.target.value)} placeholder="em branco = desligada"
+              style={{ ...farmInp, width: 150, padding: "5px 8px", fontSize: 12 }} autoFocus />
+            <button disabled={busyId === "alcada"} onClick={async () => {
+              const v = validarLimite(limiteTxt);
+              if (!v.ok) { setMsgAlcada({ tom: "erro", texto: v.erro }); return; }
+              setBusyId("alcada"); setMsgAlcada(null);
+              const r = await salvarAlcada(sbFetch, v.valor, currentUser);
+              setBusyId(null);
+              if (!r.ok) { setMsgAlcada({ tom: "erro", texto: r.erro }); return; }
+              onAlcada && onAlcada(v.valor);
+              addAuditLog(currentUser, "configurar alçada de compra", v.valor == null ? "desligada" : fmtBRL(v.valor), {});
+              setEditandoAlcada(false);
+            }} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "5px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              {busyId === "alcada" ? "…" : "Salvar"}
+            </button>
+            <button onClick={() => { setEditandoAlcada(false); setMsgAlcada(null); }}
+              style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 11px", fontSize: 12, cursor: "pointer" }}>
+              Cancelar
+            </button>
+          </div>
+        )}
+        {msgAlcada && <div style={{ width: "100%", fontSize: 11.5, color: "#fb7185" }}>{msgAlcada.texto}</div>}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
         {colunas.map(col => {

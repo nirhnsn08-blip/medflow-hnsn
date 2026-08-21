@@ -222,6 +222,11 @@ export const MAPA_TABELAS = {
   sup_inventarios:          ["suprimentos"],
   sup_lotes:                ["suprimentos"],
   sup_pedidos:              ["suprimentos"],
+  // Parâmetros do módulo (hoje só a alçada de aprovação). Leitura para quem
+  // alcança Suprimentos ou Farmácia — a tela de aprovação precisa saber o
+  // limite para EXPLICAR a recusa. A escrita é restrita a adm_master por
+  // política própria: quem opera a compra não define o próprio teto.
+  sup_parametros:           ["suprimentos", "farmacia"],
   sup_requisicoes:          ["suprimentos"],
   // A farmácia consome o mesmo catálogo de itens e custos.
   sup_fornecedores:         ["suprimentos", "farmacia"],
