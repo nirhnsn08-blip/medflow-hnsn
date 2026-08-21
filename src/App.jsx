@@ -33,6 +33,10 @@ import {
   MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
   podeEstornar, movimentoDeEstorno, idsJaEstornados,
 } from "./suprimentos/inventario.js";
+import {
+  temConversao, comprarParaConsumo, custoPorUnidadeConsumo,
+  custoPorUnidadeCompra, consumoParaCompra, rotuloCompra, descreverEntrada, validarConversao,
+} from "./suprimentos/conversao.js";
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
@@ -13393,16 +13397,23 @@ function SuprimentosPage({ currentUser, canEdit }) {
         itemId = Array.isArray(novo) ? novo[0]?.id : null;
         if (!itemId) { erros.push(`${ln.nome}: falha ao criar o material`); continue; }
       }
+      // A NF-e traz quantidade e valor na unidade COMERCIAL do fornecedor
+      // (a caixa). Converter aqui, como no recebimento manual, senão a
+      // importação é justamente o caminho que entra mais rápido e mais
+      // errado. Material sem fator → 1, idêntico ao comportamento antigo.
+      const mat = itens.find(x => x.id === itemId);
+      const qConsumo = comprarParaConsumo(ln.qtd, mat);
+      const custoConsumo = custoPorUnidadeConsumo(ln.custo_unit, mat);
       const saldoAntes = supSaldoTotal(itemId, lotes);
       const r = await addSupMovimentoRemote({
-        item_id: itemId, tipo: "entrada", quantidade: Number(ln.qtd),
+        item_id: itemId, tipo: "entrada", quantidade: qConsumo,
         lote: ln.lote?.trim() || null, validade: ln.validade || null,
         motivo: "Compra / nota fiscal", documento: nf ? `NF ${nf}` : "NF-e",
-        fornecedor_id: fornId, custo_unit: ln.custo_unit || null,
+        fornecedor_id: fornId, custo_unit: custoConsumo,
       }, currentUser);
       if (r.ok) {
         ok++;
-        if (ln.custo_unit) { const c = custoMedioPonderado((itens.find(x => x.id === itemId) || {}).custo_unitario, saldoAntes, ln.qtd, ln.custo_unit); if (c != null) await setSupItemCustoRemote(itemId, c); }
+        if (custoConsumo != null) { const c = custoMedioPonderado(mat?.custo_unitario, saldoAntes, qConsumo, custoConsumo); if (c != null) await setSupItemCustoRemote(itemId, c); }
       } else erros.push(`${ln.nome}: ${r.erro || "falha"}`);
     }
     addAuditLog(currentUser, "importar NF-e", `${nf ? "NF " + nf : "NF-e"} · ${ok} entrada(s)`, {});
@@ -14358,7 +14369,21 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
       const cobertura = media > 0 ? saldo / media : null;
       const prazo = tipo === "material" ? supPrazoReposicao(i.id, leadMap) : (SUP_LEAD_PADRAO + SUP_MARGEM_SEG);
       const qtd = Math.max(0, Math.ceil(media * prazo + Number(i.estoque_minimo || 0) - saldo));
-      return { tipo, item_id: i.id, nome: i.nome, unidade: i.unidade || "", qtd, custo_unit: Number(i.custo_unitario || 0) || "", cobertura, media, prazo };
+      // A conta acima é toda em unidade de CONSUMO (saldo e média vêm do
+      // kardex). O pedido é digitado em unidade de COMPRA — sem converter,
+      // a sugestão de "250 pares" viraria "250 caixas" no pedido, ou seja,
+      // 25.000 luvas. Medicamento não tem conversão.
+      const ehMaterial = tipo === "material";
+      const qtdCompra = ehMaterial ? consumoParaCompra(qtd, i) : qtd;
+      const custoCompra = ehMaterial
+        ? (custoPorUnidadeCompra(i.custo_unitario, i) || "")
+        : (Number(i.custo_unitario || 0) || "");
+      return {
+        tipo, item_id: i.id, nome: i.nome,
+        unidade: ehMaterial ? rotuloCompra(i) : (i.unidade || ""),
+        qtd: qtdCompra, custo_unit: custoCompra,
+        cobertura, media, prazo,
+      };
     }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < x.prazo && x.qtd > 0)
       .sort((a, b) => a.cobertura - b.cobertura);
   }
@@ -14426,16 +14451,25 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
           if (novo != null) await setFarmMedCustoRemote(alvo.item_id, novo);
         }
       } else {
+        // ── ÚNICO ponto onde a compra vira estoque ──
+        // O pedido é digitado em unidade de COMPRA (caixa); o estoque, o
+        // kardex e todos os indicadores falam em unidade de CONSUMO (par).
+        // Converter aqui deixa tudo a jusante correto sem que nenhum deles
+        // precise saber que a conversão existe. Item sem fator → 1, e o
+        // comportamento é idêntico ao de antes.
+        const mat = matById[alvo.item_id];
+        const qConsumo = comprarParaConsumo(q, mat);
+        const custoConsumo = custoPorUnidadeConsumo(custoNota, mat);
         const saldoAntes = supSaldoTotal(alvo.item_id, lotes);
         r = await addSupMovimentoRemote({
-          item_id: alvo.item_id, tipo: "entrada", quantidade: q,
+          item_id: alvo.item_id, tipo: "entrada", quantidade: qConsumo,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
           fornecedor_id: p.fornecedor_id || null,
-          custo_unit: custoNota || null,
+          custo_unit: custoConsumo,
         }, currentUser);
-        if (r.ok && custoNota) {
-          const novo = custoMedioPonderado(matById[alvo.item_id]?.custo_unitario, saldoAntes, q, custoNota);
+        if (r.ok && custoConsumo != null) {
+          const novo = custoMedioPonderado(mat?.custo_unitario, saldoAntes, qConsumo, custoConsumo);
           if (novo != null) await setSupItemCustoRemote(alvo.item_id, novo);
         }
       }
@@ -14531,7 +14565,7 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
       )}
 
       {showNovo && <SupNovoPedidoModal forns={forns} materiais={materiais} meds={meds.filter(m => m.ativo !== false)} sugMat={sugMat} sugMed={sugMed} onClose={() => setShowNovo(false)} onSave={criarPedido} />}
-      {receb && <SupRecebModal pedido={receb} busy={busyId === receb.id} onClose={() => setReceb(null)} onConfirm={confirmarRecebimento} />}
+      {receb && <SupRecebModal pedido={receb} materiais={materiais} busy={busyId === receb.id} onClose={() => setReceb(null)} onConfirm={confirmarRecebimento} />}
     </div>
   );
 }
@@ -14754,8 +14788,11 @@ function SupNovoPedidoModal({ forns, materiais, meds, sugMat, sugMed, onClose, o
 }
 
 // Recebimento do pedido: informa qtd/lote/validade por item → entrada no estoque
-function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
+function SupRecebModal({ pedido, materiais = [], busy, onClose, onConfirm }) {
   const its = Array.isArray(pedido.itens) ? pedido.itens : [];
+  // Só materiais têm conversão de unidade; medicamento é sempre na própria.
+  const matById = {}; materiais.forEach(m => matById[m.id] = m);
+  const materialDa = x => (x.tipo === "medicamento" ? null : matById[x.item_id]);
   const [nf, setNf] = useState("");
   const [linhas, setLinhas] = useState(its.map((x, idx) => ({
     idx, qtd: Math.max(0, Number(x.qtd || 0) - Number(x.qtd_recebida || 0)), lote: "", validade: "",
@@ -14777,6 +14814,7 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
           {its.map((x, i) => {
             const restante = Math.max(0, Number(x.qtd || 0) - Number(x.qtd_recebida || 0));
             const ln = linhas[i];
+            const mat = materialDa(x);
             return (
               <div key={i} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
@@ -14784,13 +14822,22 @@ function SupRecebModal({ pedido, busy, onClose, onConfirm }) {
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-2)", flex: 1, minWidth: 0 }}>{x.nome}</span>
                   <span style={{ fontSize: 11, color: restante > 0 ? "var(--text-muted)" : "#34d399", fontFamily: "JetBrains Mono, monospace" }}>{restante > 0 ? `falta ${farmFmtQtd(restante)}` : "completo"}</span>
                 </div>
-                {restante > 0 && (
+                {restante > 0 && (<>
                   <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 1fr", gap: 8 }}>
-                    <div><label style={farmLbl}>Qtd recebida</label><input type="number" min="0" step="any" value={ln.qtd} onChange={e => set(i, "qtd", e.target.value)} style={farmInp} /></div>
+                    <div><label style={farmLbl}>Qtd recebida{mat && temConversao(mat) ? ` (${(mat.unidade_compra || "compra").trim()})` : ""}</label><input type="number" min="0" step="any" value={ln.qtd} onChange={e => set(i, "qtd", e.target.value)} style={farmInp} /></div>
                     <div><label style={farmLbl}>Lote</label><input value={ln.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="opcional" style={farmInp} /></div>
                     <div><label style={farmLbl}>Validade</label><input type="date" value={ln.validade} onChange={e => set(i, "validade", e.target.value)} style={farmInp} /></div>
                   </div>
-                )}
+                  {/* Conferir caixa contra unidade é o erro que a conversão
+                      existe para evitar — então a tela diz os dois lados
+                      antes de confirmar, em vez de converter escondido. */}
+                  {mat && temConversao(mat) && Number(ln.qtd) > 0 && (
+                    <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6 }}>
+                      Entra no estoque: <strong>{descreverEntrada(ln.qtd, mat)}</strong>
+                      {Number(x.custo_unit) > 0 && <> · custo <strong>{fmtBRL(custoPorUnidadeConsumo(x.custo_unit, mat) || 0)}</strong> por {mat.unidade || "un"}</>}
+                    </div>
+                  )}
+                </>)}
               </div>
             );
           })}
@@ -16147,14 +16194,21 @@ function SupItemModal({ item, onClose, onSave }) {
   const [f, setF] = useState({ ...item });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const conf = validarConversao(f);
   async function salvar() {
     if (!f.nome.trim()) { alert("Informe o nome / descrição do material."); return; }
+    // Fator inválido é bloqueio, não aviso: ele não dá erro em lugar
+    // nenhum — só contamina o custo médio de todas as entradas seguintes,
+    // em silêncio, e o custo médio é ponderado (carrega o erro adiante).
+    if (!conf.ok) { alert(conf.erros.join("\n")); return; }
     setBusy(true);
     await onSave({
       ...(item.id ? { id: item.id } : {}),
       nome: f.nome.trim(),
       categoria: f.categoria || null,
       unidade: f.unidade || "unidade",
+      unidade_compra: f.unidade_compra?.trim() || null,
+      fator_conversao: f.fator_conversao === "" || f.fator_conversao == null ? 1 : Number(f.fator_conversao),
       estoque_minimo: f.estoque_minimo === "" || f.estoque_minimo == null ? 0 : Number(f.estoque_minimo),
       custo_unitario: f.custo_unitario === "" || f.custo_unitario == null ? null : Number(f.custo_unitario),
       codigo_barras: f.codigo_barras?.trim() || null,
@@ -16180,11 +16234,42 @@ function SupItemModal({ item, onClose, onSave }) {
             </select>
           </div>
           <div>
-            <label style={farmLbl}>Unidade de controle</label>
+            <label style={farmLbl}>Unidade de consumo</label>
             <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={farmInp}>
               {SUP_UNIDADES.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
+        </div>
+
+        {/* COMO SE COMPRA × COMO SE CONSOME
+            O almoxarifado compra caixa de 100 luvas e entrega par. Sem
+            separar as duas unidades, o custo da caixa entra como custo do
+            par — e o custo médio é ponderado, então o erro não fica no
+            passado: contamina toda entrada seguinte. */}
+        <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 8, lineHeight: 1.5 }}>
+            Preencha <strong>só se comprar numa unidade diferente da que consome</strong> (ex.: compra caixa, entrega par).
+            O estoque e o kardex sempre falam em <strong>{f.unidade || "unidade"}</strong>.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <label style={farmLbl}>Unidade de compra</label>
+              <input value={f.unidade_compra || ""} onChange={e => set("unidade_compra", e.target.value)} placeholder="Ex.: caixa, fardo" style={farmInp} />
+            </div>
+            <div>
+              <label style={farmLbl}>{f.unidade || "unidade"}(s) por {f.unidade_compra?.trim() || "unidade de compra"}</label>
+              <input type="number" min="0" step="any" value={f.fator_conversao ?? ""} onChange={e => set("fator_conversao", e.target.value)} placeholder="1" style={farmInp} />
+            </div>
+          </div>
+          {temConversao(f) && conf.ok && (
+            <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 8 }}>
+              Comprar <strong>1 {f.unidade_compra?.trim() || "unidade de compra"}</strong> passa a dar entrada de{" "}
+              <strong>{comprarParaConsumo(1, f)} {f.unidade || "un"}</strong>. Um custo de R$ 100 na nota vira{" "}
+              <strong>{fmtBRL(custoPorUnidadeConsumo(100, f) || 0)}</strong> por {f.unidade || "un"}.
+            </div>
+          )}
+          {conf.erros.map((e, i) => <div key={i} style={{ fontSize: 12, color: "#fb7185", marginTop: 6 }}>⚠ {e}</div>)}
+          {conf.avisos.map((a, i) => <div key={i} style={{ fontSize: 12, color: "#d97706", marginTop: 6 }}>{a}</div>)}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>

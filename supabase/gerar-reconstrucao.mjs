@@ -122,6 +122,10 @@ const ORDEM = [
   // com vínculo (`estorno_de` + índice único + trigger que exige o oposto
   // exato). Depende do arquivo acima, que recria o trigger de saldo.
   "migracao-suprimentos-ajuste-estorno.sql",
+  // Unidade de compra × unidade de consumo (`unidade_compra`,
+  // `fator_conversao` + CHECK > 0). Sem isso, custo médio, curva ABC,
+  // ponto de pedido e total do pedido misturam caixa com unidade.
+  "migracao-suprimentos-unidade-compra.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

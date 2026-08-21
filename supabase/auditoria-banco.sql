@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 93 tabelas, 1465 colunas.
+-- Cobertura atual: 93 tabelas, 1467 colunas.
 -- ============================================================
 
 with
@@ -1511,10 +1511,12 @@ colunas(tabela, coluna, origem) as (values
   ('sup_itens','created_at','suprimentos-faseA'),
   ('sup_itens','custo_unitario','suprimentos-faseA'),
   ('sup_itens','estoque_minimo','suprimentos-faseA'),
+  ('sup_itens','fator_conversao','suprimentos-unidade-compra'),
   ('sup_itens','id','suprimentos-faseA'),
   ('sup_itens','nome','suprimentos-faseA'),
   ('sup_itens','observacao','suprimentos-faseA'),
   ('sup_itens','unidade','suprimentos-faseA'),
+  ('sup_itens','unidade_compra','suprimentos-unidade-compra'),
   ('sup_itens','updated_at','suprimentos-faseA'),
   ('sup_itens','usuario','suprimentos-faseA'),
   ('sup_lotes','id','suprimentos-faseA'),
