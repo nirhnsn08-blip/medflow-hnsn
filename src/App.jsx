@@ -143,6 +143,16 @@ function registrarFalhaSb({ alvo, metodo, status, detalhe }) {
   if (!escrita && !estrutural) return;
   // Migração ainda não aplicada: previsto, não é defeito. Ver TABELAS_OPCIONAIS.
   if (status === 404 && TABELAS_OPCIONAIS.has(alvo)) return;
+  // Mesma ideia, um nível abaixo: COLUNA que só passa a existir depois da
+  // migração. Aqui a tabela existe, então o PostgREST devolve 400 e não 404.
+  // Quem faz a leitura já sabe recuar sozinho (ver `buscarPacientes`), então
+  // a tela NÃO fica sem dado — mas sem esta linha a recepcionista levaria um
+  // alerta vermelho a CADA busca durante todo o intervalo entre o deploy e o
+  // SQL rodado. Alerta que aparece quando não há nada de errado é o que
+  // ensina a equipe a fechar alerta sem ler, e aí o próximo, que é de
+  // verdade, passa junto.
+  if (status === 400 && !escrita
+      && [...COLUNAS_OPCIONAIS].some(c => String(detalhe).includes(`.${c} does not exist`))) return;
   const falha = { alvo, metodo, status, detalhe, escrita, em: Date.now() };
   ouvintesFalhaSb.forEach(fn => { try { fn(falha); } catch {} });
 }
@@ -164,6 +174,17 @@ const TABELAS_OPCIONAIS = new Set(["perfis_acesso", "perfis_permissoes", "usuari
   "nsp_meta_faixas", "nsp_meta_medicoes", "nsp_protocolos", "nsp_capacitacoes", "nsp_comunicados",
   "prot_catalogo", "prot_setor", "prot_ativacoes", "prot_bundle_itens",
   "sigtap_procedimentos"]);
+
+// Colunas cuja ausência é esperada até a migração correspondente rodar. Só
+// entra aqui coluna com RECUO PRONTO no código que a lê — senão o alarme
+// estaria escondendo uma tela que de fato não funciona, que é o oposto do
+// motivo desta lista existir.
+//
+//   • nome_busca (migracao-pacientes-busca.sql) — `buscarPacientes` cai
+//     sozinha na busca antiga enquanto ela não existe.
+//
+// Ao rodar a migração nos DOIS bancos, a linha correspondente pode sair.
+const COLUNAS_OPCIONAIS = new Set(["nome_busca"]);
 
 async function sbFetch(path, opts = {}, _jaRenovou = false) {
   if (!USE_SUPABASE) return null;

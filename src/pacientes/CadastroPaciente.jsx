@@ -33,7 +33,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   validarCPF, formatarCPF, validarCNS, formatarCNS, tipoCNS, limparDoc,
   iniciaisDe, idadeDetalhada, conferirCadastro, possiveisDuplicatas,
-  normalizarSexo,
+  normalizarSexo, documentoEmUso, mensagemDocumentoEmUso,
 } from "./identidade.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -132,6 +132,13 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     const alvo = prontuario || paciente?.prontuario;
     if (!alvo) { setMsg("⚠️ Sem número de prontuário."); return; }
 
+    // O documento já é de outro prontuário? Isto vem ANTES do aviso de
+    // duplicidade porque não é um palpite: o índice único do banco vai
+    // recusar de qualquer jeito, e descobrir só depois deixa a pessoa com um
+    // erro sem saída. Ver `documentoEmUso` em identidade.js.
+    const conflito = documentoEmUso({ ...f, prontuario: alvo }, candidatos);
+    if (conflito) { setMsg("⚠️ " + mensagemDocumentoEmUso(conflito)); return; }
+
     const graves = duplicatas.filter(d => d.confianca >= 90);
     if (graves.length && !confirm(
       `Atenção: este paciente parece já estar cadastrado.\n\n` +
@@ -168,7 +175,21 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     // O PostgREST devolve 204 mesmo quando o RLS bloqueia e nada muda — por
     // isso conferimos o RETORNO, não o status.
     if (!r || (Array.isArray(r) && !r.length)) {
-      setMsg("⚠️ Nada foi gravado. Confirme que a migração `migracao-pacientes-identificacao.sql` foi aplicada neste banco e que seu perfil permite cadastrar.");
+      // Antes de culpar migração ou permissão, conferir a causa mais comum e
+      // a única que tem conserto na tela: o documento já ser de outro
+      // prontuário. A checagem de cima usa `candidatos`, que é debounced em
+      // 500ms — quem digita o CPF e salva em seguida passa por ela. Aqui a
+      // consulta é exata e sem espera, então a corrida também fica coberta.
+      const doc = { cpf: limparDoc(f.cpf), cns: limparDoc(f.cns) };
+      const filtros = [];
+      if (doc.cpf.length === 11) filtros.push(`cpf.eq.${doc.cpf}`);
+      if (doc.cns.length === 15) filtros.push(`cns.eq.${doc.cns}`);
+      if (filtros.length) {
+        const donos = await sb(`pacientes?or=(${filtros.join(",")})&select=prontuario,nome_completo,nome_social,iniciais,cpf,cns&limit=5`).catch(() => null);
+        const c2 = documentoEmUso({ ...f, prontuario: alvo }, Array.isArray(donos) ? donos : []);
+        if (c2) { setMsg("⚠️ " + mensagemDocumentoEmUso(c2)); return; }
+      }
+      setMsg("⚠️ Nada foi gravado — e o motivo não está na tela. Pode ser permissão do seu perfil ou uma migração pendente neste banco. Chame a TI com o número deste prontuário; NÃO apague campos para tentar de novo.");
       return;
     }
     onSalvo?.(Array.isArray(r) ? r[0] : r);

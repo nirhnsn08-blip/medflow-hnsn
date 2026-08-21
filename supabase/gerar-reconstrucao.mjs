@@ -134,6 +134,11 @@ const ORDEM = [
   // Alçada de aprovação de compra: tabela de parâmetros chave/valor, escrita
   // restrita a adm_master e CHECK de valor positivo. Nasce DESLIGADA.
   "migracao-suprimentos-alcada.sql",
+  // Busca de paciente por nome: coluna gerada `nome_busca` (maiúscula, sem
+  // acento, com nome de registro + social + da mãe) e índice GIN de trigrama.
+  // Não cria tabela e não toca em política — entra antes do rls-leitura,
+  // preservando a regra de que ele é o último.
+  "migracao-pacientes-busca.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

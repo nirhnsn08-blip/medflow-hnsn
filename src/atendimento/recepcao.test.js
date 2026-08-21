@@ -18,7 +18,8 @@
 import { describe, it, expect } from "vitest";
 import {
   validarProntuario, normalizarProntuario, escaparTermoBusca, classificarBusca,
-  filtroBuscaPacientes, dadosNaoIdentificado, aguardandoIdentificacao,
+  filtroBuscaPacientes, filtroBuscaPacientesLegado, palavrasDeBusca,
+  dadosNaoIdentificado, aguardandoIdentificacao,
   pendenciasDeIdentificacao, validarAbertura, TIPOS_ATENDIMENTO, psPedeDetalhe,
 } from "./recepcao.js";
 
@@ -127,11 +128,63 @@ describe("o que a recepção digitou", () => {
     expect(filtroBuscaPacientes("Jo")).toBeNull();
   });
 
-  it("busca por nome inclui o nome da mãe (é como se desempata homônimo)", () => {
+  // 🔴 A busca antiga era substring CONTÍGUA num `ilike` sem unaccent, sobre
+  // três colunas em OR. Não achava "JOSÉ" digitando "JOSE", nem "MARIA DA
+  // SILVA" digitando "MARIA SILVA" — e busca que não acha é a máquina de
+  // duplicatas, que aqui são PERMANENTES (não existe unificação).
+  it("exige TODAS as palavras, em qualquer ordem, na coluna normalizada", () => {
     const f = filtroBuscaPacientes("Maria Silva");
+    expect(f).toBe("and=(nome_busca.ilike.*MARIA*,nome_busca.ilike.*SILVA*)");
+  });
+
+  it("a partícula no meio deixa de atrapalhar", () => {
+    // "MARIA SILVA" tem que servir para "MARIA DA SILVA" e "MARIA DE SOUZA
+    // SILVA": as duas palavras aparecem, e é só isso que se exige.
+    expect(palavrasDeBusca("Maria Silva")).toEqual(["MARIA", "SILVA"]);
+    expect(palavrasDeBusca("silva maria")).toEqual(["SILVA", "MARIA"]);
+  });
+
+  it("acento sai dos dois lados — é o que faz JOSE achar JOSÉ", () => {
+    expect(palavrasDeBusca("José")).toEqual(["JOSE"]);
+    expect(palavrasDeBusca("CONCEIÇÃO")).toEqual(["CONCEICAO"]);
+    expect(palavrasDeBusca("Antônio")).toEqual(["ANTONIO"]);
+  });
+
+  it("inicial solta não vira exigência", () => {
+    // "J. SILVA" exigir "J" só faria achar menos; a inicial some.
+    expect(palavrasDeBusca("J. Silva")).toEqual(["SILVA"]);
+  });
+
+  it("o que quebraria a URL do PostgREST não sobrevive à normalização", () => {
+    // Vírgula e parêntese delimitam o filtro; `%` e `_` são curinga do like.
+    // O que se confere são os VALORES — os delimitadores do `and=(...)` são
+    // estrutura e têm que estar lá.
+    const f = filtroBuscaPacientes("Maria (Bia), 100%_x");
+    expect(f).toMatch(/^and=\(nome_busca\.ilike/);
+    const valores = [...f.matchAll(/nome_busca\.ilike\.\*([^*]*)\*/g)].map(m => m[1]);
+    expect(valores.length).toBeGreaterThan(0);
+    for (const v of valores) expect(v).toMatch(/^[A-Z0-9]+$/);
+  });
+
+  it("o mínimo de 3 é do termo inteiro, não de cada palavra", () => {
+    expect(filtroBuscaPacientes("Jo")).toBeNull();
+    expect(palavrasDeBusca("Ana")).toEqual(["ANA"]);
+  });
+
+  // O recuo que segura a recepção no intervalo entre o merge e o SQL rodado:
+  // sem `nome_busca` no banco, a consulta nova dá 400 e a busca pararia
+  // INTEIRA, dizendo "nenhum paciente encontrado" para todo mundo.
+  it("o filtro legado continua procurando nas três colunas de nome", () => {
+    const f = filtroBuscaPacientesLegado("Maria Silva");
     expect(f).toMatch(/nome_completo\.ilike/);
     expect(f).toMatch(/nome_social\.ilike/);
     expect(f).toMatch(/nome_mae\.ilike/);
+    expect(f).not.toMatch(/nome_busca/);
+  });
+
+  it("o legado não muda o que não é nome — documento e prontuário são iguais nos dois", () => {
+    expect(filtroBuscaPacientesLegado("529.982.247-25")).toBe(filtroBuscaPacientes("529.982.247-25"));
+    expect(filtroBuscaPacientesLegado("t9035")).toBe(filtroBuscaPacientes("t9035"));
   });
 
   it("documento vira igualdade exata, não busca parcial", () => {
