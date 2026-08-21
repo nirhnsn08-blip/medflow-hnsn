@@ -138,6 +138,31 @@ export const VIAS = {
 };
 
 /**
+ * Este episódio é uma internação, para efeito de via?
+ *
+ * FONTE ÚNICA, e existe porque havia DUAS regras divergentes decidindo a
+ * mesma coisa em pontos diferentes do mesmo fluxo:
+ *
+ *   • `viaDeFaturamento` (fechamento) olhava `tipo_atendimento === 'eletivo'`
+ *     **ou** `atendimento.internacao === true` — e essa segunda metade nunca
+ *     disparou, porque a coluna `internacao` NÃO EXISTE em `ps_atendimentos`;
+ *   • `resolverVia` (montagem, em montar-conta.js) olhava só
+ *     `desfecho === 'internacao'`.
+ *
+ * Cada uma pegava METADE dos casos. A internação eletiva entra pelo
+ * `tipo_atendimento` (nasce internação, nunca passa pelo PS, logo nunca tem
+ * desfecho); a internação vinda do pronto-socorro entra pelo `desfecho` (o
+ * episódio nasceu emergência e virou internação depois). Com as duas regras
+ * separadas, a conta era MONTADA como BPA e FECHADA como AIH — e a AIH exige
+ * autorização, então o fechamento travava por uma exigência que a via certa
+ * não teria, sem nada na tela explicando por quê.
+ */
+export function internouPeloSus(atendimento) {
+  return atendimento?.tipo_atendimento === "eletivo"
+      || atendimento?.desfecho === "internacao";
+}
+
+/**
  * Qual via este atendimento segue.
  *
  * A via SUS vem do CADASTRO do procedimento (`via_sus`), e não de regra
@@ -156,7 +181,7 @@ export function viaDeFaturamento({ convenio, atendimento, procedimento } = {}) {
   if (tipo === "convenio") return "tiss";
 
   // SUS
-  if (atendimento?.tipo_atendimento === "eletivo" || atendimento?.internacao === true) return "aih";
+  if (internouPeloSus(atendimento)) return "aih";
   const via = String(procedimento?.via_sus ?? "").trim().toLowerCase();
   if (via === "apac" || via === "aih" || via === "bpa") return via;
   return "bpa";

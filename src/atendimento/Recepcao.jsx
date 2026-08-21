@@ -176,11 +176,30 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     if (r.length === 1) escolher(r[0]);
   }
 
+  /**
+   * Troca o paciente da tela — e ZERA a ficha junto.
+   *
+   * O reset não é higiene: sem ele, a ficha do paciente ANTERIOR fica na
+   * tela. O caminho real é este: a recepcionista seleciona a Maria, escolhe
+   * Unimed, digita a carteira e o CID, é interrompida, e clica em
+   * "Completar cadastro" de outro paciente na faixa de pendências — que
+   * chama esta mesma função. A tela troca de pessoa e mantém convênio,
+   * carteira e CID preenchidos. Um clique em "Abrir atendimento" e o
+   * episódio nasce com a carteirinha de OUTRA pessoa: não é glosa, é
+   * problema com a operadora, e ninguém descobre pela tela.
+   *
+   * `termo`, `resultados` e `buscou` NÃO são zerados de propósito — a lista
+   * de busca precisa continuar na tela para a recepcionista poder voltar e
+   * escolher outro nome sem redigitar.
+   */
   async function escolher(p) {
     const completo = await carregarPaciente(sb, p.prontuario);
     const alvo = completo || p;
     setPaciente(alvo);
     setCadastrando(null);
+    setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
+    setFicha({}); setMedicoUser(""); setCorrigindo(null);
+    setImprimindo(null); setResponsaveis([]);
     setAbertos(await atendimentosAbertos(sb, alvo.prontuario));
     setMsg(null);
   }

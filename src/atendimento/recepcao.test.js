@@ -137,6 +137,18 @@ describe("o que a recepção digitou", () => {
   it("documento vira igualdade exata, não busca parcial", () => {
     expect(filtroBuscaPacientes("529.982.247-25")).toBe("or=(cpf.eq.52998224725)");
   });
+
+  // 🔴 O acervo é "T9035" e ninguém digita maiúscula com fila na frente. Com
+  // `eq` (case-sensitive) a tela dizia "nenhum paciente encontrado" para um
+  // paciente que está lá — e a recepcionista cadastrava de novo. Busca que
+  // não acha é a máquina de duplicatas, e duplicata aqui é permanente:
+  // não existe unificação de prontuário no sistema.
+  it("prontuário não diferencia maiúscula de minúscula", () => {
+    expect(filtroBuscaPacientes("t9035")).toBe("or=(prontuario.ilike.t9035)");
+    expect(filtroBuscaPacientes("T9035")).toBe("or=(prontuario.ilike.T9035)");
+    // e continua sem curinga: é comparação exata, não "começa com"
+    expect(filtroBuscaPacientes("T9035")).not.toMatch(/\*/);
+  });
 });
 
 describe("paciente que chega sem se identificar", () => {

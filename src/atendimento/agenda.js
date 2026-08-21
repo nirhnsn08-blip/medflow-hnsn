@@ -47,8 +47,21 @@ export const STATUS_AGENDAMENTO = {
   cancelado: { label: "Cancelado", vivo: false },
 };
 
-/** Agendamento que ainda ocupa a vaga. */
-export const ocupaVaga = a => !!STATUS_AGENDAMENTO[a?.status]?.vivo;
+/**
+ * Agendamento que ainda ocupa a vaga.
+ *
+ * Status DESCONHECIDO conta como ocupando — a mesma regra do
+ * `atendimentoAberto` em ciclo.js, e pelo mesmo motivo, com o sinal
+ * invertido. Se um dia alguma tela gravar um estado que este arquivo não
+ * conhece, a vaga fica RESERVADA em vez de voltar para a fila: oferecer de
+ * novo um horário que talvez já tenha dono põe duas pessoas na mesma hora,
+ * e quem vem de outra cidade descobre isso na porta. Reservar a mais é
+ * recuperável (alguém remarca); marcar em dobro não é.
+ *
+ * `falta` e `cancelado` continuam liberando de propósito: ali o estado é
+ * conhecido e a decisão é explícita.
+ */
+export const ocupaVaga = a => STATUS_AGENDAMENTO[a?.status]?.vivo ?? true;
 
 // ── DATA ────────────────────────────────────────────────────
 
@@ -245,6 +258,7 @@ export function horariosLivres(grade, data, agendamentos = []) {
  */
 export function podeMarcar({
   grade, data, hora, origem = "interna", agendamentos = [], bloqueios = [], hoje = null,
+  paciente = null,
 } = {}) {
   const erros = [];
   const avisos = [];
@@ -253,6 +267,22 @@ export function podeMarcar({
   if (!cfg) return { ok: false, erros: ["Origem de marcação desconhecida."], avisos };
   if (!grade) return { ok: false, erros: ["Escolha a grade (especialidade e dia)."], avisos };
   if (!diaCivil(data)) return { ok: false, erros: ["Informe a data."], avisos };
+
+  // ÓBITO REGISTRADO — recusa, e vem antes de qualquer conferência de vaga.
+  //
+  // A Recepção já tratava isto como bloqueante (`recepcao.js`, chave
+  // "obito"), e a Agenda não olhava: dava para marcar consulta para quem
+  // morreu, com um clique, e a família descobria pelo telefonema de
+  // confirmação da véspera. Duas telas do mesmo módulo discordando sobre o
+  // mesmo fato é como o dano chega ao paciente — e aqui o dano é a família.
+  //
+  // `paciente` é opcional na assinatura de propósito: quem não tem o
+  // cadastro em mãos continua conferindo a vaga normalmente, e a checagem
+  // não vira um erro falso de "sem paciente" numa chamada que só quer saber
+  // se o horário está livre.
+  if (paciente?.obito) {
+    erros.push("Este paciente tem óbito registrado no cadastro. Se for engano, corrija o cadastro antes de marcar.");
+  }
 
   if (!cfg.marcavelAqui) {
     erros.push(`Vaga de ${cfg.label.toLowerCase()} não é marcada aqui. ${cfg.quem} O sistema reserva a vaga; quem a ocupa é definido lá.`);
@@ -327,6 +357,7 @@ export function podeMarcar({
  */
 export function podeRegistrarDaRegulacao({
   grade, data, hora, protocolo, agendamentos = [], bloqueios = [], hoje = null,
+  paciente = null,
 } = {}) {
   const erros = [];
   const avisos = [];
@@ -335,8 +366,12 @@ export function podeRegistrarDaRegulacao({
     erros.push("Informe o protocolo da regulação. É ele que comprova que a vaga foi marcada pela central — sem o número, registrar aqui seria ocupar cota da regulação com paciente do hospital.");
   }
 
-  // Todo o resto vale igual: grade, bloqueio, cota e horário livre.
-  const base = podeMarcar({ grade, data, hora, origem: "regulacao", agendamentos, bloqueios, hoje });
+  // Todo o resto vale igual: grade, bloqueio, cota, horário livre — e o
+  // óbito. A recusa por óbito atravessa a transcrição de propósito: o que a
+  // central decidiu é DE QUEM É A VAGA, não se a pessoa está viva. Registrar
+  // a consulta de quem morreu não honra a decisão da regulação, só produz a
+  // ligação de confirmação para a família.
+  const base = podeMarcar({ grade, data, hora, origem: "regulacao", agendamentos, bloqueios, hoje, paciente });
   for (const e of base.erros) {
     // O único erro que NÃO se aplica é o da propriedade da vaga — é
     // justamente o que esta função autoriza.

@@ -159,10 +159,10 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   // ── ações ──
   async function marcar() {
     if (!canEdit || busy || !marcando) return;
-    const { grade, origem, hora, prontuario, protocolo, tipo, observacao } = marcando;
+    const { grade, origem, hora, prontuario, protocolo, tipo, observacao, paciente } = marcando;
     const v = origem === "regulacao"
-      ? podeRegistrarDaRegulacao({ grade, data, hora, protocolo, agendamentos, bloqueios })
-      : podeMarcar({ grade, data, hora, origem, agendamentos, bloqueios });
+      ? podeRegistrarDaRegulacao({ grade, data, hora, protocolo, agendamentos, bloqueios, paciente })
+      : podeMarcar({ grade, data, hora, origem, agendamentos, bloqueios, paciente });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
     if (v.avisos.length && !confirm(v.avisos.join("\n\n") + "\n\nSeguir?")) return;
 
@@ -518,9 +518,13 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
                     {achados.map(p => (
                       <button key={p.prontuario}
-                        onClick={() => { setMarcando(x => ({ ...x, prontuario: p.prontuario })); setAchados([]); }}
+                        // Guarda o CADASTRO, não só o número: é o que permite
+                        // a `podeMarcar` recusar óbito. Antes só o prontuário
+                        // sobrevivia à escolha, e a regra ficava cega.
+                        onClick={() => { setMarcando(x => ({ ...x, prontuario: p.prontuario, paciente: p })); setAchados([]); }}
                         style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>
                         {comoExibir(p) || p.iniciais} · reg. {p.prontuario}
+                        {p.obito ? <span style={{ color: "#fb7185" }}> · óbito registrado</span> : ""}
                       </button>
                     ))}
                   </div>

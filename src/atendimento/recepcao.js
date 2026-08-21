@@ -125,7 +125,13 @@ export function filtroBuscaPacientes(termo) {
   if (c.tipo === "vazio") return null;
   if (c.tipo === "cpf") return `or=(cpf.eq.${c.valor})`;
   if (c.tipo === "cns") return `or=(cns.eq.${c.valor})`;
-  if (c.tipo === "prontuario") return `or=(prontuario.eq.${c.valor})`;
+  // Prontuário por `ilike` SEM curinga, que é comparação exata sem
+  // diferenciar maiúscula de minúscula. Com `eq` (case-sensitive) digitar
+  // "t9035" não achava o "T9035" do acervo — e ninguém digita maiúscula com
+  // fila na frente. A tela então dizia "nenhum paciente encontrado" para um
+  // paciente que está lá, e a recepcionista concluía que ele não existe e
+  // cadastrava de novo: busca que não acha é a máquina de duplicatas.
+  if (c.tipo === "prontuario") return `or=(prontuario.ilike.${c.valor})`;
   // Nome: procura pelo termo inteiro no nome de registro, no nome social e
   // no nome da mãe. A mãe entra porque é como se desempata homônimo no
   // balcão — "o João da dona Maria".
