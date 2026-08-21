@@ -241,6 +241,34 @@ export const MAPA_TABELAS = {
  * nem por descuido de quem acrescentar tabela depois. É a lista que a
  * COFEN 754/2024 art. 6º e a LGPD art. 46 mandam separar do administrativo.
  */
+/**
+ * Tabelas cuja ESCRITA continua aberta a qualquer autenticado, mesmo depois
+ * de a escrita passar a ser por módulo.
+ *
+ * 🔴 Não é descuido — é o oposto. Estas são tabelas de REGISTRO: uma linha
+ * entra nelas toda vez que alguém age, e quem age não é necessariamente
+ * quem tem permissão de administrar aquele módulo.
+ *
+ *  • `auditoria` — a trilha grava a ação de QUALQUER pessoa. Exigir
+ *    `pode_editar('auditoria')` faria só o auditor conseguir registrar,
+ *    ou seja, a trilha pararia de registrar justamente as ações que
+ *    interessa auditar.
+ *  • `pep_acessos` — registra cada abertura de prontuário (LGPD). Toda
+ *    pessoa que abre um prontuário precisa conseguir gravar a linha; se
+ *    não conseguir, o acesso acontece sem rastro.
+ *
+ * As duas são de LEITURA restrita (módulo `auditoria`) e ESCRITA aberta —
+ * e continuam sem UPDATE nem DELETE, o que as mantém imutáveis.
+ *
+ * Antes de acrescentar algo aqui, a pergunta é: "quem grava nesta tabela é
+ * quem administra o módulo, ou é qualquer pessoa que trabalha?" Só o
+ * segundo caso entra.
+ */
+export const ESCRITA_ABERTA = new Set([
+  "auditoria",
+  "pep_acessos",
+]);
+
 export const SENSIVEIS = new Set([
   "ag_agendamentos", "at_conta_itens", "at_contas", "at_responsaveis",
   "auditoria", "cc_cirurgias",

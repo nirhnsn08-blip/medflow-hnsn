@@ -8585,7 +8585,7 @@ select 'alcada configurada (0 = desligada, e o esperado agora)',
 -- │ 68/68 — migracao-rls-leitura.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
--- Valentrax — RLS DE LEITURA: quem lê cada tabela
+-- Valentrax — RLS: quem LÊ e quem ESCREVE em cada tabela
 --
 -- ⚠️ ARQUIVO GERADO — não edite à mão.
 --    Regenere com:  node supabase/gerar-rls.mjs
@@ -8605,11 +8605,20 @@ select 'alcada configurada (0 = desligada, e o esperado agora)',
 --    Na prática o código nem depende dele: quem publica a barreira é este
 --    SQL. Rodar sozinho já fecha o acesso.
 --
--- QUEM NÃO PERDE NADA HOJE
--- Todo mundo ainda está no perfil "Provisório", que concede todos os
--- módulos. Ou seja: aplicar isto agora NÃO tira acesso de ninguém — ele
--- passa a valer sozinho, pessoa por pessoa, conforme a TI reclassifica.
--- É a ordem certa: fechar a porta antes de distribuir as chaves.
+-- QUEM PERDE O QUÊ — CONFIRA ANTES, NÃO DEPOIS
+-- A frase antiga aqui dizia que "todo mundo ainda está no Provisório" e
+-- que ninguém perderia acesso. Isso ENVELHECEU: a equipe foi reclassificada,
+-- e a PARTE 4 agora mexe em ESCRITA, que é onde o estrago é silencioso —
+-- o PostgREST responde 2xx alterando zero linhas.
+--
+-- 🔴 Rode `conferencia-escrita-por-modulo.sql` ANTES desta migração, nos
+-- dois bancos. Ele lista, pessoa a pessoa e módulo a módulo, quem deixaria
+-- de gravar. Zero = pode aplicar. Diferente de zero = corrija os perfis
+-- primeiro.
+--
+-- Isto existe porque já aconteceu: o PR #60 ligou RLS e trancou a escrita
+-- de 18 tabelas AO VIVO, e ninguém percebeu na hora porque as telas
+-- percorridas eram de leitura.
 --
 -- ⚠️ SE ALGUÉM REEXECUTAR UMA MIGRAÇÃO ANTIGA, RODE ESTA DE NOVO.
 --    As migrações antigas recriam a política `for select ... using (true)`
@@ -8623,7 +8632,7 @@ set search_path = public, extensions, pg_temp;
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 1/4 — AS FUNÇÕES DE PERMISSÃO
+-- PARTE 1/5 — AS FUNÇÕES DE PERMISSÃO
 --
 -- Espelham `src/acesso/permissoes.js`, nesta ordem: perfil → exceção
 -- individual → travas. `security definer` porque a função precisa ler
@@ -8702,9 +8711,22 @@ as $pode_editar$
   select public.meu_nivel(p_modulo) = 'escrita'
 $pode_editar$;
 
+-- Escreve em ALGUM destes módulos? Espelha `pode_ver_algum`, para a tabela
+-- que serve a mais de um módulo (`sup_itens` é do almoxarifado e da
+-- farmácia; quem tem escrita em qualquer um dos dois grava nela).
+create or replace function public.pode_editar_algum(variadic p_modulos text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_editar_algum$
+  select exists (select 1 from unnest(p_modulos) m where public.pode_editar(m))
+$pode_editar_algum$;
+
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 2/4 — DESARMAR AS POLÍTICAS "FOR ALL"
+-- PARTE 2/5 — DESARMAR AS POLÍTICAS "FOR ALL"
 --
 -- ISTO É O QUE FAZ A PARTE 3 VALER ALGUMA COISA. Treze tabelas têm uma
 -- política `for all to authenticated using (my_role() in
@@ -8774,7 +8796,7 @@ $converter$;
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — A POLÍTICA DE LEITURA DE CADA TABELA
+-- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
 -- a mesma coisa em português. 24 das 94 tabelas ficam abertas a
@@ -8955,7 +8977,138 @@ $leitura$;
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 4/4 — CONFERÊNCIA
+-- PARTE 4/5 — A ESCRITA PASSA A EXIGIR O MÓDULO
+--
+-- Antes: as políticas de escrita olhavam `my_role()`. Quem fosse
+-- `adm_silver` — médico, enfermeiro, recepção, quase todo mundo — gravava
+-- em QUALQUER tabela com política de escrita, independente do módulo. O
+-- menu escondia; a API não.
+--
+-- 🔴 POR QUE `as restrictive` E NÃO SUBSTITUIR AS POLÍTICAS EXISTENTES
+-- Política permissiva se SOMA (OR). Trocar as atuais por uma nova poderia
+-- AFROUXAR as que hoje são mais estritas — a alçada de compra, por
+-- exemplo, é escrita só de adm_master. Política RESTRITIVA combina com E:
+-- ela só aperta, nunca solta, e não precisa apagar nada. Para voltar
+-- atrás, basta apagar as três políticas `_mod_*` da tabela.
+--
+-- ⚠️ NÃO usar `for all`: isso incluiria SELECT, e uma restritiva sobre
+-- SELECT tiraria a LEITURA de quem tem só leitura no módulo — quebrando
+-- justamente o que a PARTE 3 acabou de montar. São três políticas
+-- separadas: insert, update e delete.
+--
+-- FICAM DE FORA, por decisão declarada em src/acesso/mapa-tabelas.js:
+--   • as tabelas de REGISTRO (`auditoria`, `pep_acessos`) — quem grava é
+--     qualquer pessoa que age, não quem administra o módulo. Exigir o
+--     módulo faria a trilha parar de registrar em silêncio.
+--   • os catálogos e a referência — não pertencem a um módulo; a escrita
+--     neles segue por papel, como hoje.
+-- ════════════════════════════════════════════════════════════
+do $escrita$
+declare
+  t record;
+  qtd int := 0;
+  pulou int := 0;
+begin
+  for t in
+    select * from (values
+      ('ag_agendamentos', 'public.pode_editar_algum(''atendimento'')'),                               -- atendimento
+      ('ag_bloqueios', 'public.pode_editar_algum(''atendimento'')'),                                  -- atendimento
+      ('ag_grades', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
+      ('at_conta_itens', 'public.pode_editar_algum(''atendimento'')'),                                -- atendimento
+      ('at_contas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
+      ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
+      ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
+      ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('enf_escalas', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                          -- paciente, leitos
+      ('enf_lesao_pressao', 'public.pode_editar_algum(''paciente'', ''leitos'', ''nsp'')'),           -- paciente, leitos, nsp
+      ('enf_sae_checagem', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                     -- paciente, leitos
+      ('enf_sae_diagnosticos', 'public.pode_editar_algum(''paciente'')'),                             -- paciente
+      ('enf_sae_historico', 'public.pode_editar_algum(''paciente'')'),                                -- paciente
+      ('enf_sae_prescricao_itens', 'public.pode_editar_algum(''paciente'', ''leitos'')'),             -- paciente, leitos
+      ('enf_sae_prescricoes', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                  -- paciente, leitos
+      ('farm_intervencoes', 'public.pode_editar_algum(''farmacia'')'),                                -- farmacia
+      ('farm_lotes', 'public.pode_editar_algum(''farmacia'')'),                                       -- farmacia
+      ('farm_movimentos', 'public.pode_editar_algum(''farmacia'', ''controlados'', ''ps'')'),         -- farmacia, controlados, ps
+      ('farm_nao_padronizados', 'public.pode_editar_algum(''farmacia'')'),                            -- farmacia
+      ('farm_preparo', 'public.pode_editar_algum(''farmacia'', ''ps'')'),                             -- farmacia, ps
+      ('leitos', 'public.pode_editar_algum(''leitos'', ''paciente'', ''scih'')'),                     -- leitos, paciente, scih
+      ('leitos_saidas', 'public.pode_editar_algum(''leitos'', ''paciente'')'),                        -- leitos, paciente
+      ('leitos_turnover', 'public.pode_editar_algum(''leitos'', ''overview'', ''print'')'),           -- leitos, overview, print
+      ('nsp_acoes', 'public.pode_editar_algum(''nsp'')'),                                             -- nsp
+      ('nsp_capacitacoes', 'public.pode_editar_algum(''nsp'')'),                                      -- nsp
+      ('nsp_comunicados', 'public.pode_editar_algum(''nsp'')'),                                       -- nsp
+      ('nsp_incidente_eventos', 'public.pode_editar_algum(''nsp'')'),                                 -- nsp
+      ('nsp_incidentes', 'public.pode_editar_algum(''nsp'')'),                                        -- nsp
+      ('nsp_meta_medicoes', 'public.pode_editar_algum(''nsp'')'),                                     -- nsp
+      ('nsp_rca', 'public.pode_editar_algum(''nsp'')'),                                               -- nsp
+      ('pacientes', 'public.pode_editar_algum(''atendimento'', ''ambulatorio'', ''ps'', ''paciente'')'), -- atendimento, ambulatorio, ps, paciente
+      ('pep_administracoes', 'public.pode_editar_algum(''paciente'')'),                               -- paciente
+      ('pep_alergias', 'public.pode_editar_algum(''paciente'')'),                                     -- paciente
+      ('pep_anamneses', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
+      ('pep_anotacoes_enfermagem', 'public.pode_editar_algum(''paciente'')'),                         -- paciente
+      ('pep_aprazamentos', 'public.pode_editar_algum(''paciente'')'),                                 -- paciente
+      ('pep_condicoes', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
+      ('pep_episodios', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
+      ('pep_evolucoes', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
+      ('pep_medicamentos_uso', 'public.pode_editar_algum(''paciente'')'),                             -- paciente
+      ('pep_prescricao_eventos', 'public.pode_editar_algum(''paciente'')'),                           -- paciente
+      ('pep_prescricao_itens', 'public.pode_editar_algum(''paciente'')'),                             -- paciente
+      ('pep_prescricoes', 'public.pode_editar_algum(''paciente'')'),                                  -- paciente
+      ('pep_reconciliacao_itens', 'public.pode_editar_algum(''paciente'')'),                          -- paciente
+      ('pep_reconciliacoes', 'public.pode_editar_algum(''paciente'')'),                               -- paciente
+      ('pep_sinais_vitais', 'public.pode_editar_algum(''paciente'')'),                                -- paciente
+      ('pep_sumarios_alta', 'public.pode_editar_algum(''paciente'')'),                                -- paciente
+      ('prot_ativacoes', 'public.pode_editar_algum(''protocolos'', ''ps'', ''paciente'')'),           -- protocolos, ps, paciente
+      ('prot_bundle_itens', 'public.pode_editar_algum(''protocolos'', ''ps'', ''paciente'')'),        -- protocolos, ps, paciente
+      ('ps_administracoes', 'public.pode_editar_algum(''ps'', ''paciente'', ''faturamento'')'),       -- ps, paciente, faturamento
+      ('ps_atendimentos', 'public.pode_editar_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'')'), -- ps, atendimento, ambulatorio, paciente
+      ('ps_prescricao_itens', 'public.pode_editar_algum(''ps'', ''paciente'', ''farmacia'')'),        -- ps, paciente, farmacia
+      ('ps_registros', 'public.pode_editar_algum(''ps'', ''paciente'', ''farmacia'')'),               -- ps, paciente, farmacia
+      ('ps_salas', 'public.pode_editar_algum(''ps'')'),                                               -- ps
+      ('ps_sinais', 'public.pode_editar_algum(''ps'', ''paciente'')'),                                -- ps, paciente
+      ('scih_casos', 'public.pode_editar_algum(''scih'', ''paciente'')'),                             -- scih, paciente
+      ('scih_indicadores', 'public.pode_editar_algum(''scih'', ''overview'', ''print'')'),            -- scih, overview, print
+      ('solicitacoes', 'public.pode_editar_algum(''ps'', ''leitos'')'),                               -- ps, leitos
+      ('sup_cotacoes', 'public.pode_editar_algum(''suprimentos'')'),                                  -- suprimentos
+      ('sup_fornecedores', 'public.pode_editar_algum(''suprimentos'', ''farmacia'')'),                -- suprimentos, farmacia
+      ('sup_inventarios', 'public.pode_editar_algum(''suprimentos'')'),                               -- suprimentos
+      ('sup_itens', 'public.pode_editar_algum(''suprimentos'', ''farmacia'')'),                       -- suprimentos, farmacia
+      ('sup_lotes', 'public.pode_editar_algum(''suprimentos'')'),                                     -- suprimentos
+      ('sup_movimentos', 'public.pode_editar_algum(''suprimentos'', ''farmacia'')'),                  -- suprimentos, farmacia
+      ('sup_parametros', 'public.pode_editar_algum(''suprimentos'', ''farmacia'')'),                  -- suprimentos, farmacia
+      ('sup_pedidos', 'public.pode_editar_algum(''suprimentos'')'),                                   -- suprimentos
+      ('sup_requisicoes', 'public.pode_editar_algum(''suprimentos'')'),                               -- suprimentos
+      ('usuarios_permissoes', 'public.pode_editar_algum(''users'') or user_id = auth.uid()')          -- users, @proprio
+    ) as v(tabela, cond)
+  loop
+    if not exists (
+      select 1 from information_schema.tables
+       where table_schema = 'public' and table_name = t.tabela
+    ) then
+      pulou := pulou + 1;
+      continue;
+    end if;
+
+    execute format('drop policy if exists %I on public.%I', t.tabela || '_mod_ins', t.tabela);
+    execute format('drop policy if exists %I on public.%I', t.tabela || '_mod_upd', t.tabela);
+    execute format('drop policy if exists %I on public.%I', t.tabela || '_mod_del', t.tabela);
+
+    execute format('create policy %I on public.%I as restrictive for insert to authenticated with check (%s)',
+                   t.tabela || '_mod_ins', t.tabela, t.cond);
+    execute format('create policy %I on public.%I as restrictive for update to authenticated using (%s) with check (%s)',
+                   t.tabela || '_mod_upd', t.tabela, t.cond, t.cond);
+    execute format('create policy %I on public.%I as restrictive for delete to authenticated using (%s)',
+                   t.tabela || '_mod_del', t.tabela, t.cond);
+    qtd := qtd + 1;
+  end loop;
+
+  raise notice 'escrita por modulo: % tabela(s); % ausente(s) no banco.', qtd, pulou;
+end
+$escrita$;
+
+
+-- ════════════════════════════════════════════════════════════
+-- PARTE 5/5 — CONFERÊNCIA
 --
 -- Uma consulta só, de propósito: o SQL Editor mostra o resultado da
 -- ÚLTIMA consulta, então três selects separados esconderiam justamente os

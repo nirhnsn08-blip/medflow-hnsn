@@ -22,9 +22,9 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { MAPA_TABELAS, SENSIVEIS, TODOS, PROPRIO, modulosCitados } from "./mapa-tabelas.js";
+import { MAPA_TABELAS, SENSIVEIS, ESCRITA_ABERTA, TODOS, PROPRIO, modulosCitados } from "./mapa-tabelas.js";
 import { MODULOS } from "./modulos.js";
-import { tabelasDoBanco, condicaoDe, conferir, gerarSql } from "../../supabase/gerar-rls.mjs";
+import { tabelasDoBanco, condicaoDe, condicaoDeEscrita, conferir, gerarSql } from "../../supabase/gerar-rls.mjs";
 
 const raiz = process.cwd();
 const leia = (...p) => fs.readFileSync(path.join(raiz, ...p), "utf8");
@@ -136,5 +136,68 @@ describe("o SQL gerado", () => {
 
   it("entra na reconstrução — hospital novo não pode nascer com o banco aberto", () => {
     expect(leia("supabase", "gerar-reconstrucao.mjs")).toContain(`"${ARQUIVO}"`);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// ESCRITA POR MÓDULO
+//
+// Antes, as políticas de escrita olhavam só `my_role()`: quem fosse
+// adm_silver — médico, enfermeiro, recepção, quase todo mundo — gravava em
+// qualquer tabela com política de escrita, independente do módulo. O menu
+// escondia; a API não.
+//
+// Validados por mutação:
+//   • tabela de registro deixando de ser exceção .... derruba a trilha
+//   • catálogo ganhando exigência de módulo ......... derruba a configuração
+//   • `@proprio` perdendo o acesso à própria linha .. derruba a exceção pessoal
+// ═══════════════════════════════════════════════════════════
+describe("condicaoDeEscrita", () => {
+  it("tabela de um módulo exige escrita naquele módulo", () => {
+    expect(condicaoDeEscrita(["ps"], "ps_atendimentos"))
+      .toBe("public.pode_editar_algum(''ps'')");
+  });
+
+  it("tabela de dois módulos aceita escrita em qualquer um dos dois", () => {
+    // `sup_itens` é do almoxarifado e da farmácia; quem tem escrita em um
+    // dos dois grava nela.
+    expect(condicaoDeEscrita(["suprimentos", "farmacia"], "sup_itens"))
+      .toBe("public.pode_editar_algum(''suprimentos'', ''farmacia'')");
+  });
+
+  it("🔴 tabela de REGISTRO fica de fora — a trilha não pode parar de gravar", () => {
+    // Exigir `pode_editar('auditoria')` faria só o auditor conseguir
+    // registrar, ou seja, a trilha pararia de registrar justamente as
+    // ações que interessa auditar. E pararia em silêncio.
+    for (const t of ESCRITA_ABERTA) {
+      expect(condicaoDeEscrita(MAPA_TABELAS[t], t), `${t} deveria ficar de fora`).toBeNull();
+    }
+    expect(condicaoDeEscrita(["auditoria"], "auditoria")).toBeNull();
+    expect(condicaoDeEscrita(["auditoria"], "pep_acessos")).toBeNull();
+  });
+
+  it("🔴 catálogo e referência ficam de fora — não pertencem a um módulo", () => {
+    expect(condicaoDeEscrita([TODOS], "sigtap_procedimentos")).toBeNull();
+    expect(condicaoDeEscrita([TODOS], "setores")).toBeNull();
+  });
+
+  it("🔴 com `@proprio`, a pessoa alcança a própria linha mesmo sem o módulo", () => {
+    expect(condicaoDeEscrita(["users", PROPRIO], "usuarios_permissoes"))
+      .toBe("public.pode_editar_algum(''users'') or user_id = auth.uid()");
+  });
+
+  it("só `@proprio`, sem módulo, não ganha exigência — a posse já é a trava", () => {
+    expect(condicaoDeEscrita([PROPRIO], "qualquer")).toBeNull();
+  });
+
+  it("as duas tabelas de registro estão declaradas, e só elas", () => {
+    // Se alguém acrescentar uma tabela aqui sem pensar, este teste obriga a
+    // atualizar a lista de propósito — a pergunta certa é: "quem grava é
+    // quem administra o módulo, ou qualquer pessoa que trabalha?"
+    expect([...ESCRITA_ABERTA].sort()).toEqual(["auditoria", "pep_acessos"]);
+  });
+
+  it("toda tabela de ESCRITA_ABERTA existe no mapa", () => {
+    for (const t of ESCRITA_ABERTA) expect(MAPA_TABELAS[t], t).toBeTruthy();
   });
 });
