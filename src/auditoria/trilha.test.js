@@ -115,6 +115,22 @@ describe("acoesDistintas", () => {
   it("ignora registro sem ação", () => {
     expect(acoesDistintas([{ acao: "" }, { acao: null }])).toEqual([]);
   });
+
+  it("🔴 acumular preserva as ações já conhecidas quando a busca não traz nada", () => {
+    // Achado percorrendo a tela: a lista era derivada das linhas visíveis,
+    // então uma busca sem resultado esvaziava o próprio filtro — e a pessoa
+    // ficava sem como desfazer o que tinha acabado de escolher.
+    const conhecidas = ["alta", "internar"];
+    const semResultado = [];
+    const depois = acoesDistintas([...conhecidas.map(a => ({ acao: a })), ...semResultado]);
+    expect(depois).toEqual(["alta", "internar"]);
+  });
+
+  it("acumular funde o novo com o conhecido, sem repetir", () => {
+    const conhecidas = ["internar"];
+    const novas = [{ acao: "alta" }, { acao: "internar" }];
+    expect(acoesDistintas([...conhecidas.map(a => ({ acao: a })), ...novas])).toEqual(["alta", "internar"]);
+  });
 });
 
 describe("filtrarLocal", () => {

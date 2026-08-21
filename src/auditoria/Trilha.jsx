@@ -23,6 +23,11 @@ const TURQUESA = "#22d3ee";
 
 export default function Trilha({ sb }) {
   const [linhas, setLinhas] = useState(undefined);   // undefined = ainda carregando
+  // As ações conhecidas ACUMULAM e nunca encolhem. Se a lista fosse
+  // derivada das linhas em tela, uma busca sem resultado esvaziaria o
+  // próprio filtro — e a pessoa ficaria sem como desfazer o que acabou de
+  // escolher. Filtro que se apaga ao ser usado é armadilha, não filtro.
+  const [acoes, setAcoes] = useState([]);
   const [temMais, setTemMais] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [texto, setTexto] = useState("");
@@ -39,6 +44,7 @@ export default function Trilha({ sb }) {
     if (r.linhas == null) { setLinhas(acumular ? (l => l) : null); return; }
     const novas = r.linhas.map(normalizar);
     setLinhas(prev => (acumular && Array.isArray(prev) ? [...prev, ...novas] : novas));
+    setAcoes(prev => acoesDistintas([...prev.map(a => ({ acao: a })), ...novas]));
   }, [sb]);
 
   useEffect(() => { buscar({}); }, [buscar]);
@@ -85,7 +91,7 @@ export default function Trilha({ sb }) {
           <label style={{ display: "block", fontSize: 10.5, color: "var(--text-muted)", marginBottom: 3, textTransform: "uppercase", letterSpacing: ".05em" }}>Ação</label>
           <select value={acao} onChange={e => setAcao(e.target.value)} style={{ ...inp, minWidth: 170 }}>
             <option value="">Todas</option>
-            {acoesDistintas(Array.isArray(linhas) ? linhas : []).map(a => <option key={a} value={a}>{a}</option>)}
+            {acoes.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         <div>

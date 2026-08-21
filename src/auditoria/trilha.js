@@ -64,7 +64,15 @@ export function normalizar(linha) {
   };
 }
 
-/** As ações distintas presentes, para alimentar o filtro. Ordem alfabética. */
+/**
+ * As ações distintas presentes, para alimentar o filtro. Ordem alfabética.
+ *
+ * Quem chama ACUMULA o resultado entre buscas, em vez de recalcular a
+ * partir das linhas em tela: se a lista fosse derivada do que está visível,
+ * uma busca sem resultado esvaziaria o próprio filtro e a pessoa ficaria
+ * sem como desfazer o que acabou de escolher. Filtro que se apaga ao ser
+ * usado é armadilha, não filtro.
+ */
 export function acoesDistintas(linhas = []) {
   const set = new Set();
   for (const l of linhas) if (l?.acao) set.add(l.acao);
