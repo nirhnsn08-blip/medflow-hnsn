@@ -126,14 +126,17 @@ const ORDEM = [
   // `fator_conversao` + CHECK > 0). Sem isso, custo médio, curva ABC,
   // ponto de pedido e total do pedido misturam caixa com unidade.
   "migracao-suprimentos-unidade-compra.sql",
-  // Por último de propósito: reescreve as políticas de SELECT de TODAS as
-  // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
-  // banco novo, é o que impede o hospital de nascer com a leitura aberta.
   // Trilha de auditoria atribuível: `usuario_id` carimbado pelo banco
   // (`default auth.uid()`), política de insert que impede assinar no lugar
   // de outro, e índices para a tela paginar. Não cria tabela — entra antes
   // do rls-leitura, que segue por último.
   "migracao-auditoria-atribuivel.sql",
+  // Alçada de aprovação de compra: tabela de parâmetros chave/valor, escrita
+  // restrita a adm_master e CHECK de valor positivo. Nasce DESLIGADA.
+  "migracao-suprimentos-alcada.sql",
+  // Por último de propósito: reescreve as políticas de SELECT de TODAS as
+  // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
+  // banco novo, é o que impede o hospital de nascer com a leitura aberta.
   "migracao-rls-leitura.sql",
 ];
 

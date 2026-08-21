@@ -191,7 +191,7 @@ $converter$;
 -- PARTE 3/4 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 24 das 93 tabelas ficam abertas a
+-- a mesma coisa em português. 24 das 94 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -309,6 +309,7 @@ begin
       ('sup_itens', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                          -- suprimentos, farmacia
       ('sup_lotes', 'public.pode_ver_algum(''suprimentos'')'),                                        -- suprimentos
       ('sup_movimentos', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
+      ('sup_parametros', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
       ('sup_pedidos', 'public.pode_ver_algum(''suprimentos'')'),                                      -- suprimentos
       ('sup_requisicoes', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
       ('usuarios_permissoes', 'public.pode_ver_algum(''users'') or user_id = auth.uid()')             -- users, @proprio
