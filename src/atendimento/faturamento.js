@@ -30,6 +30,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { conferirFicha, TIPOS_CONVENIO, tipoDoConvenio, conferirCbo } from "./ficha.js";
+import { GRAVIDADES } from "./sigtap.js";
 
 // ── DINHEIRO ────────────────────────────────────────────────
 
@@ -261,10 +262,30 @@ export const STATUS_CONTA = {
  * rejeitada, e ninguém está esperando na frente.
  */
 export function validarFechamento({
-  conta, itens = [], paciente, convenio, plano, atendimento, procedimento, medico, catalogos = {}, hoje = new Date(),
+  conta, itens = [], paciente, convenio, plano, atendimento, procedimento, medico, catalogos = {},
+  glosa = [], hoje = new Date(),
 } = {}) {
   const erros = [];
   const avisos = [];
+
+  // ── PRÉ-GLOSA ────────────────────────────────────────────
+  // O impedimento é determinístico: o SUS NÃO PAGA assim (sexo ou faixa
+  // etária incompatível com o procedimento). Fechar mesmo assim não é uma
+  // escolha de risco — é transmitir uma AIH que volta rejeitada, e a
+  // rejeição só aparece no processamento do mês seguinte, quando refazer
+  // já custa competência.
+  //
+  // Por isso é ERRO e não aviso, e por isso NÃO existe override: não há
+  // justificativa que faça o SUS pagar. O caminho é corrigir o cadastro do
+  // paciente ou o procedimento — que é justamente o que o impedimento está
+  // dizendo estar errado.
+  //
+  // `atencao` continua aviso: permanência acima da média e CID atípico são
+  // pagáveis com justificativa, e recusar aí travaria produção legítima.
+  for (const a of glosa) {
+    if (a?.gravidade === GRAVIDADES.IMPEDIMENTO) erros.push(`Impedimento de glosa: ${a.texto}`);
+    else if (a?.texto) avisos.push(a.texto);
+  }
 
   if (!conta?.id) erros.push("Conta inválida.");
   else if (!STATUS_CONTA[conta.status]?.fechavel) {

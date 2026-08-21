@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   montarContaDoProntuario, resolverVia, janelaInternacao, escolherInternacao, montarWorklist,
+  glosaDaContaSalva,
 } from "./montar-conta.js";
 import { camposDoItem } from "./faturamento.js";
 import { GRAVIDADES as SIG_GRAV } from "./sigtap.js";
@@ -416,5 +417,91 @@ describe("montarWorklist", () => {
   it("listas vazias não quebram", () => {
     expect(montarWorklist()).toEqual([]);
     expect(montarWorklist([], [])).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// A PRÉ-GLOSA DA CONTA JÁ SALVA
+//
+// `montarConta` avalia a glosa enquanto monta a partir do prontuário. A tela
+// de FECHAMENTO trabalha com os itens já gravados e não tem esse resultado —
+// e fechamento é o momento em que a conta vai para o SUS. Sem esta função,
+// era o único ponto do fluxo sem conferência de glosa.
+//
+// Validados por mutação:
+//   • item cancelado voltando a contar ......... derruba a conta corrigida
+//   • código fora do SIGTAP virando impedimento . derruba "falta de dado cala"
+// ═══════════════════════════════════════════════════════════
+describe("glosaDaContaSalva", () => {
+  const SIGTAP = [
+    { codigo: "0301010010", nome: "Consulta", sexo: "F", idade_min: 12, idade_max: 60, media_permanencia: 3, cids: ["O800"] },
+  ];
+  const itemProc = { tipo: "procedimento", codigo: "0301010010", cancelado: false };
+
+  it("acha o procedimento da conta e avalia", () => {
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP, itens: [itemProc],
+      paciente: { sexo: "M", idade: 30 },
+    });
+    expect(g.some(a => a.regra === "sexo" && a.gravidade === "impedimento")).toBe(true);
+  });
+
+  it("conta compatível não acusa impedimento", () => {
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP, itens: [itemProc],
+      paciente: { sexo: "F", idade: 30 },
+    });
+    expect(g.some(a => a.gravidade === "impedimento")).toBe(false);
+  });
+
+  it("idade fora da faixa é impedimento", () => {
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP, itens: [itemProc],
+      paciente: { sexo: "F", idade: 8 },
+    });
+    expect(g.some(a => a.regra === "idade" && a.gravidade === "impedimento")).toBe(true);
+  });
+
+  it("🔴 item CANCELADO não conta — a conta corrigida não pode ser travada pelo erro apagado", () => {
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP,
+      itens: [{ ...itemProc, cancelado: true }],
+      paciente: { sexo: "M", idade: 30 },
+    });
+    expect(g).toEqual([]);
+  });
+
+  it("🔴 código fora do SIGTAP CALA — falta de dado não é alarme", () => {
+    // Travar o fechamento porque o catálogo está incompleto seria punir o
+    // hospital pelo que falta ao sistema.
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP,
+      itens: [{ tipo: "procedimento", codigo: "9999999999" }],
+      paciente: { sexo: "M", idade: 30 },
+    });
+    expect(g).toEqual([]);
+  });
+
+  it("conta sem item de procedimento devolve lista vazia", () => {
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP,
+      itens: [{ tipo: "medicamento", codigo: "0301010010" }],
+      paciente: { sexo: "M", idade: 30 },
+    });
+    expect(g).toEqual([]);
+  });
+
+  it("sem SIGTAP carregado não inventa achado", () => {
+    expect(glosaDaContaSalva({ itens: [itemProc], paciente: { sexo: "M", idade: 30 } })).toEqual([]);
+    expect(glosaDaContaSalva({})).toEqual([]);
+  });
+
+  it("permanência acima da média é atenção, não impedimento", () => {
+    const g = glosaDaContaSalva({
+      sigtapProcs: SIGTAP, itens: [itemProc],
+      paciente: { sexo: "F", idade: 30 }, permanenciaDias: 10,
+    });
+    expect(g.some(a => a.regra === "permanencia" && a.gravidade === "atencao")).toBe(true);
+    expect(g.some(a => a.gravidade === "impedimento")).toBe(false);
   });
 });

@@ -631,7 +631,30 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         }
       }
 
-      const aviso = r.temImpedimento ? "\n\n⚠️ Há impedimento de glosa na conta — revise antes de faturar." : "";
+      // 🔴 IMPEDIMENTO NÃO É AVISO. Antes, isto era uma linha acrescentada
+      // ao texto do `confirm()`: quem clicasse OK lançava a conta com o
+      // impedimento. Mas impedimento é determinístico — o SUS não paga com
+      // sexo ou faixa etária incompatível —, então lançar assim é encaminhar
+      // uma AIH que volta rejeitada, e a rejeição só aparece no
+      // processamento do mês seguinte, quando refazer já custa competência.
+      //
+      // Não há override porque não há justificativa que faça o SUS pagar: o
+      // caminho é corrigir o cadastro do paciente ou o procedimento — que é
+      // exatamente o que o impedimento está apontando como errado.
+      const impedimentos = (r.glosa || []).filter(a => a?.gravidade === GRAVIDADES.IMPEDIMENTO);
+      if (impedimentos.length) {
+        setMsgLanc({
+          tom: "erro",
+          texto: `Não dá para lançar: ${impedimentos.map(a => a.texto).join(" ")} `
+               + "O SUS não paga assim. Corrija o cadastro do paciente ou o procedimento do atendimento e monte de novo.",
+        });
+        return;
+      }
+
+      const atencoes = (r.glosa || []).filter(a => a?.gravidade === GRAVIDADES.ATENCAO);
+      const aviso = atencoes.length
+        ? `\n\n⚠️ Exige justificativa no faturamento:\n${atencoes.map(a => `• ${a.texto}`).join("\n")}`
+        : "";
       if (!confirm(`Lançar ${r.itens.length} item(ns) montados do prontuário na conta do atendimento #${at.id}?\n\nEles vão para a conta do episódio — a mesma que aparece no módulo Atendimento.${aviso}`)) {
         return;
       }

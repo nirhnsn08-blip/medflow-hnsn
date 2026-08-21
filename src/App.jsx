@@ -29,6 +29,7 @@ import {
   supLeadTimeMap, custoMedioPonderado, supPedidoTotal,
 } from "./suprimentos/kardex.js";
 import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
+import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
 import {
   MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
@@ -13244,6 +13245,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [invs, setInvs] = useState([]);
   const [entradasForn, setEntradasForn] = useState([]);
   const [cotacoes, setCotacoes] = useState([]);
+  const [setoresCat, setSetoresCat] = useState([]);
   function refresh() {
     if (!USE_SUPABASE) return;
     loadSupItens().then(setItens);
@@ -13255,6 +13257,9 @@ function SuprimentosPage({ currentUser, canEdit }) {
     loadSupInventarios().then(setInvs);
     loadSupEntradasComForn(new Date(Date.now() - 180 * 86400000).toISOString()).then(setEntradasForn);
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
+    // O catálogo de setores alimenta a saída manual — sem ele, o destino é
+    // texto livre e o consumo por setor se fragmenta por grafia.
+    loadSetoresFromSupabase().then(r => r && setSetoresCat(r));
   }
   const leadMap = supLeadTimeMap(entradasForn, forns);   // item_id → prazo de entrega (dias)
   useEffect(() => {
@@ -13742,7 +13747,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       )}
 
       {showItem && <SupItemModal item={showItem} onClose={() => setShowItem(null)} onSave={salvarItem} />}
-      {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} onClose={() => setMovItem(null)} onSave={registrarMov} />}
+      {movItem && <SupMovModal item={movItem.item} tipoInicial={movItem.tipo} lotes={lotes.filter(l => l.item_id === movItem.item.id)} fornecedores={forns.filter(f => f.ativo !== false)} setores={setoresCat} onClose={() => setMovItem(null)} onSave={registrarMov} />}
       {kardex && <SupKardexModal item={kardex} fornecedores={forns} canEdit={canEdit} onEstornar={estornarMovimento} onClose={() => setKardex(null)} />}
       {showForn && <SupFornecedorModal forn={showForn} onClose={() => setShowForn(null)} onSave={salvarForn} />}
       {showNfe && <SupNfeModal itens={itens} forns={forns} onClose={() => setShowNfe(false)} onConfirm={importarNfe} />}
@@ -16270,8 +16275,12 @@ function SupItemModal({ item, onClose, onSave }) {
 }
 
 // Entrada / saída de estoque de material
-function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }) {
+function SupMovModal({ item, tipoInicial, lotes, fornecedores, setores = [], onClose, onSave }) {
   const [tipo, setTipo] = useState(tipoInicial || "entrada");
+  // "Outro…" continua existindo: um setor legítimo pode não estar cadastrado,
+  // e travar a saída por causa disso pararia o almoxarifado. O que se faz é
+  // encaixar o digitado no nome do catálogo quando dá para reconhecer.
+  const [setorLivre, setSetorLivre] = useState(false);
   const lotesComSaldo = [...lotes].filter(l => Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")); // vence primeiro sai primeiro
   const [f, setF] = useState({
     lote: "", validade: "", quantidade: "", documento: "", fornecedor_id: "", setor: "",
@@ -16291,7 +16300,13 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
     } else {
       if (!loteSel) { alert("Selecione o lote de onde sairá o material."); return; }
       if (q > Number(loteSel.quantidade)) { alert(`Saída maior que o saldo do lote (disponível: ${farmFmtQtd(loteSel.quantidade)}).`); return; }
-      mov = { item_id: item.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null, setor: f.setor.trim() || null };
+      // A normalização acontece na GRAVAÇÃO, não só na tela: digitar
+      // "posto 2" com "POSTO 2" cadastrado grava POSTO 2, e o relatório
+      // passa a somar as duas origens na mesma linha. Sem isto, o select
+      // resolveria só o caminho comum e a divergência voltaria pela opção
+      // "Outro…" — que é justamente por onde ela entrava.
+      const destino = casarComCatalogo(f.setor, setores).nome;
+      mov = { item_id: item.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null, setor: destino || null };
     }
     setBusy(true);
     const ok = await onSave(mov);
@@ -16348,7 +16363,34 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, onClose, onSave }
             </div>
             <div style={{ marginBottom: 12 }}>
               <label style={farmLbl}>Setor de destino</label>
-              <input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Ex.: Posto 2, Centro Cirúrgico" style={farmInp} />
+              {setores.length > 0 && !setorLivre ? (
+                <select value={f.setor} onChange={e => {
+                  if (e.target.value === "__outro__") { setSetorLivre(true); set("setor", ""); }
+                  else set("setor", e.target.value);
+                }} style={farmInp}>
+                  <option value="">—</option>
+                  {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
+                  <option value="__outro__">Outro…</option>
+                </select>
+              ) : (
+                <input value={f.setor} onChange={e => set("setor", e.target.value)}
+                  placeholder="Ex.: Posto 2, Centro Cirúrgico" style={farmInp} autoFocus={setorLivre} />
+              )}
+              {/* Avisa, não bloqueia. E só depois de digitar algo que o
+                  catálogo não reconhece — nem mesmo por diferença de acento
+                  ou de caixa, que é de onde vinha a fragmentação do BI. */}
+              {setorLivre && ehSetorNovo(f.setor, setores) && (
+                <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 5 }}>
+                  "{casarComCatalogo(f.setor, setores).nome}" não está no catálogo de setores. A saída é registrada assim mesmo —
+                  se for um setor permanente, vale cadastrá-lo em Giro de Leitos para o consumo não se dividir no relatório.
+                </div>
+              )}
+              {setorLivre && setores.length > 0 && (
+                <button type="button" onClick={() => { setSetorLivre(false); set("setor", ""); }}
+                  style={{ background: "transparent", border: "none", color: VX.turquesa, cursor: "pointer", fontSize: 11.5, padding: "5px 0 0", fontFamily: "Inter, sans-serif" }}>
+                  ← escolher do catálogo
+                </button>
+              )}
             </div>
             {loteSel && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16 }}>Saldo do lote: <strong style={{ color: "var(--text-2)" }}>{farmFmtQtd(loteSel.quantidade)} {item.unidade || ""}</strong></div>}
           </>)}
