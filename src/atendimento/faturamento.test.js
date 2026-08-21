@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  centavos, reais, competenciaDe, competenciaLabel, VIAS, viaDeFaturamento,
+  centavos, reais, competenciaDe, competenciaLabel, VIAS, viaDeFaturamento, internouPeloSus,
   TIPOS_ITEM, totalDaConta, conferirItem, STATUS_CONTA, validarFechamento,
   resumoDaConta, camposDaConta, camposDoItem,
 } from "./faturamento.js";
@@ -125,6 +125,31 @@ describe("por qual via a conta sai", () => {
 
   it("internação pelo SUS é AIH, mesmo com procedimento ambulatorial", () => {
     expect(viaDeFaturamento({ convenio: sus, atendimento: at({ tipo_atendimento: "eletivo" }), procedimento: { via_sus: "bpa" } })).toBe("aih");
+  });
+
+  // 🔴 As DUAS metades da internação, que já estiveram em funções separadas.
+  // A eletiva nasce internação e NUNCA tem desfecho (não passa pelo PS); a
+  // que veio do pronto-socorro nasce emergência e só vira internação no
+  // desfecho. Quem olhava só uma das duas pegava metade dos casos — e a
+  // conta era montada por uma via e fechada por outra.
+  it("as duas portas da internação levam a AIH", () => {
+    expect(internouPeloSus({ tipo_atendimento: "eletivo" })).toBe(true);
+    expect(internouPeloSus({ tipo_atendimento: "emergencia", desfecho: "internacao" })).toBe(true);
+    expect(viaDeFaturamento({
+      convenio: sus,
+      atendimento: at({ tipo_atendimento: "emergencia", desfecho: "internacao" }),
+      procedimento: { via_sus: "bpa" },
+    })).toBe("aih");
+  });
+
+  it("quem não internou não vira AIH por acidente", () => {
+    expect(internouPeloSus({ tipo_atendimento: "emergencia", desfecho: "alta" })).toBe(false);
+    expect(internouPeloSus({ tipo_atendimento: "ambulatorial" })).toBe(false);
+    expect(internouPeloSus({})).toBe(false);
+    expect(internouPeloSus(null)).toBe(false);
+    // a coluna `internacao` NÃO existe em ps_atendimentos: quem confiava nela
+    // nunca disparava, e é esse o buraco que este teste tranca.
+    expect(internouPeloSus({ internacao: true })).toBe(false);
   });
 
   it("sem convênio não há via — e não se chuta uma", () => {

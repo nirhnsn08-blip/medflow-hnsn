@@ -41,7 +41,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import {
-  centavos, totalDaConta, VIAS, viaDeFaturamento, competenciaDe,
+  centavos, totalDaConta, VIAS, viaDeFaturamento, competenciaDe, internouPeloSus,
 } from "./faturamento.js";
 import {
   codigoLimpo, codigoFormatado, montarProcedimento, viaDoProcedimento, viaPorGrupo,
@@ -96,8 +96,11 @@ export function resolverVia({ convenio, atendimento, procCatalogo, sigtapProc } 
   if (tipo === "particular") return "direta";
   if (tipo === "convenio") return "tiss";
 
-  // SUS
-  if (atendimento?.desfecho === "internacao") return "aih";
+  // SUS — a mesma regra do fechamento (`internouPeloSus`, em faturamento.js).
+  // Antes esta linha olhava só o `desfecho`, e o fechamento olhava só o
+  // `tipo_atendimento`: a internação eletiva era montada como BPA e fechada
+  // como AIH.
+  if (internouPeloSus(atendimento)) return "aih";
   const cad = String(procCatalogo?.via_sus ?? "").trim().toLowerCase();
   if (cad === "aih" || cad === "apac" || cad === "bpa") return cad;
   if (sigtapProc) {

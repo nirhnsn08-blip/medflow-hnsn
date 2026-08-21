@@ -208,6 +208,18 @@ describe("vagas do dia", () => {
     expect(ocupaVaga({ status: "presente" })).toBe(true);
   });
 
+  // Espelha a regra do `atendimentoAberto` (ciclo.js) com o sinal invertido:
+  // o que o arquivo NÃO conhece continua ocupando a vaga. Oferecer de novo um
+  // horário que talvez já tenha dono põe duas pessoas na mesma hora — e quem
+  // veio de outra cidade descobre na porta. Reservar a mais alguém remarca.
+  it("status desconhecido NÃO libera a vaga", () => {
+    expect(ocupaVaga({ status: "confirmado" })).toBe(true);
+    expect(ocupaVaga({ status: "reagendado" })).toBe(true);
+    expect(ocupaVaga({})).toBe(true);
+    const v = vagasDoDia(GRADE, TERCA, [agend({ status: "estado_que_ninguem_previu" })]);
+    expect(v.interna.ocupadas).toBe(1);
+  });
+
   it("agendamento de outro dia ou de outra especialidade não conta", () => {
     const v = vagasDoDia(GRADE, TERCA, [
       agend({ data: "2026-08-04" }),
@@ -232,6 +244,32 @@ describe("podeMarcar — a regra central", () => {
     const r = podeMarcar(base);
     expect(r.ok).toBe(true);
     expect(r.erros).toEqual([]);
+  });
+
+  // 🔴 A Recepção já recusava abrir atendimento de paciente com óbito
+  // registrado; a Agenda deixava MARCAR consulta para a mesma pessoa. Duas
+  // telas do mesmo módulo discordando sobre o mesmo fato — e aqui quem recebe
+  // o telefonema de confirmação da véspera é a família.
+  it("RECUSA marcar para paciente com óbito registrado", () => {
+    const r = podeMarcar({ ...base, paciente: { prontuario: "T1", obito: true } });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/óbito/i);
+  });
+
+  it("a recusa por óbito atravessa a transcrição da regulação", () => {
+    const r = podeRegistrarDaRegulacao({
+      ...base, origem: "regulacao", protocolo: "GERCON-123",
+      paciente: { prontuario: "T1", obito: true },
+    });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/óbito/i);
+  });
+
+  it("sem o cadastro em mãos, a conferência de vaga segue normal", () => {
+    // `paciente` é opcional: quem só quer saber se o horário está livre não
+    // recebe um erro falso de "sem paciente".
+    expect(podeMarcar({ ...base, paciente: null }).ok).toBe(true);
+    expect(podeMarcar({ ...base, paciente: { prontuario: "T1", obito: false } }).ok).toBe(true);
   });
 
   it("RECUSA marcar vaga da regulação", () => {

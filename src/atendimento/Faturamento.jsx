@@ -25,11 +25,11 @@ import {
 import {
   carregarAtendimento, carregarPaciente, carregarCatalogos,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
-  cancelarItem, fecharConta, reabrirConta,
+  cancelarItem, fecharConta, reabrirConta, carregarLeitosDoEpisodio,
 } from "./dados.js";
 import { comoExibir, idadeDetalhada } from "../pacientes/identidade.js";
-import { glosaDaContaSalva } from "./montar-conta.js";
-import { GRAVIDADES } from "./sigtap.js";
+import { glosaDaContaSalva, escolherInternacao, janelaInternacao } from "./montar-conta.js";
+import { GRAVIDADES, permanenciaEmDias } from "./sigtap.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -50,9 +50,14 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
   const [novo, setNovo] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
-  // O SIGTAP e a base da pre-glosa. Tabela pequena (219 linhas de
-  // referencia, sem paciente), carregada uma vez.
-  const [sigtapProcs, setSigtapProcs] = useState([]);
+  // O SIGTAP e a base da pré-glosa. Guardado JUNTO COM A COMPETÊNCIA a que
+  // pertence: a tabela é versionada por mês e `sigtap_procedimentos` tem uma
+  // linha por código POR competência. Lendo sem filtro, `indexarPorCodigo`
+  // fica com a primeira linha que chegar de cada código — hoje isso funciona
+  // por acidente, porque só a competência 2026-08 foi importada; na segunda
+  // importação a conta de agosto passaria a ser conferida contra a tabela de
+  // setembro, em silêncio.
+  const [sigtap, setSigtap] = useState({ competencia: null, linhas: [] });
 
   async function procurar() {
     const n = String(numero).replace(/\D/g, "");
@@ -65,21 +70,41 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
       setMsg({ tom: "erro", texto: `Nenhum atendimento com o número ${n}.` });
       return;
     }
-    const [paciente, conta, cat] = await Promise.all([
+    const [paciente, conta, cat, leitos] = await Promise.all([
       carregarPaciente(sb, atendimento.prontuario),
       carregarConta(sb, atendimento.id),
       catalogos ? Promise.resolve(catalogos) : carregarCatalogos(sb),
+      // As fontes de internação, para a permanência ser a da ESTADIA e não a
+      // da passagem pelo PS. É a mesma leitura que a montagem da conta faz.
+      carregarLeitosDoEpisodio(sb, { atendimentoId: atendimento.id, prontuario: atendimento.prontuario }),
     ]);
     setCatalogos(cat);
-    // O SIGTAP alimenta a pré-glosa do fechamento. Falha ao ler não pode
-    // travar a conferência: sem a tabela, a glosa CALA (falta de dado é
-    // silêncio) em vez de bloquear produção legítima.
-    if (!sigtapProcs.length) {
-      const sig = await sb("sigtap_procedimentos?select=*&order=codigo").catch(() => null);
-      setSigtapProcs(Array.isArray(sig) ? sig : []);
+
+    // A competência manda na leitura do SIGTAP. A da CONTA vem primeiro
+    // quando ela já existe (é a que foi gravada no momento da abertura); só
+    // sem conta é que a data de chegada decide — que é exatamente o que
+    // `abrirConta` usa para gravá-la.
+    const competencia = conta?.competencia || competenciaDe(atendimento.chegada_em);
+    let base = sigtap;
+    if (!base.linhas.length || base.competencia !== competencia) {
+      // Falha ao ler não pode travar a conferência: sem a tabela, a glosa
+      // CALA (falta de dado é silêncio) em vez de bloquear produção legítima.
+      const sig = competencia
+        ? await sb(`sigtap_procedimentos?competencia=eq.${encodeURIComponent(competencia)}&select=*&order=codigo`).catch(() => null)
+        : null;
+      base = { competencia, linhas: Array.isArray(sig) ? sig : [] };
+      setSigtap(base);
     }
+
+    // A janela da internação: o leito manda; sem leito, e só se o desfecho
+    // foi internação, estima pela passagem no PS — marcada como estimativa.
+    // Internação em curso tem alta `null`, e aí a permanência fica `null` e a
+    // regra cala: contar dias de uma estadia que não terminou seria inventar.
+    const internacao = escolherInternacao({ leitoAtivo: leitos?.leitoAtivo, saidas: leitos?.saidas, atendimento });
+    const janela = janelaInternacao({ atendimento, internacao });
+
     const itens = conta ? await carregarItensDaConta(sb, conta.id) : [];
-    setCtx({ atendimento, paciente, conta, itens });
+    setCtx({ atendimento, paciente, conta, itens, janela });
     setBusy(false);
   }
 
@@ -98,17 +123,41 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
     conta: ctx.conta, itens: ctx.itens, convenio, atendimento: ctx.atendimento, procedimento,
   }) : null;
 
+  // O profissional do episódio, no formato que `conferirCbo` espera. Vem
+  // CONGELADO na abertura do atendimento (`abrirAtendimento` grava `medico` e
+  // `medico_cbo` juntos), e é por isso que a conta de um mês antigo continua
+  // conferindo contra a ocupação que a pessoa tinha naquele mês.
+  const medico = ctx?.atendimento?.medico
+    ? { nome: ctx.atendimento.medico, cbo: ctx.atendimento.medico_cbo || null }
+    : null;
+
+  // A permanência da internação, em dias. `null` quando não houve internação
+  // ou quando a estadia ainda não terminou — e aí a regra CALA, em vez de
+  // contar dias de uma internação em curso.
+  const permanenciaDias = ctx?.janela
+    ? permanenciaEmDias(ctx.janela.admissao, ctx.janela.alta)
+    : null;
+
   // Pré-glosa da conta salva. O fechamento é o momento em que a produção vai
   // para o SUS — era o único ponto do fluxo que não conferia glosa nenhuma.
+  //
+  // 🔴 As quatro entradas abaixo já estiveram TODAS mudas ao mesmo tempo, e
+  // nenhuma delas dava erro na tela — o preço de uma regra que, por desenho,
+  // cala quando falta dado. `cid_principal` e `nascimento` são colunas que
+  // NÃO EXISTEM (as certas são `cid` e `data_nascimento`); `medico` nunca era
+  // passado, o que desarmava a conferência de CBO; e `permanenciaDias` estava
+  // cravado em `null`. Das cinco conferências, só o sexo funcionava. Se
+  // alguém for mexer aqui: confira o nome da coluna contra
+  // `supabase/auditoria-banco.sql` antes, não contra a memória.
   const glosa = ctx ? glosaDaContaSalva({
-    sigtapProcs,
+    sigtapProcs: sigtap.linhas,
     itens: ctx.itens,
     paciente: {
       sexo: ctx.paciente?.sexo ?? null,
-      idade: idadeDetalhada(ctx.paciente?.nascimento)?.anos ?? null,
+      idade: idadeDetalhada(ctx.paciente?.data_nascimento)?.anos ?? null,
     },
-    cidPrincipal: ctx.atendimento?.cid_principal ?? null,
-    permanenciaDias: null,
+    cidPrincipal: ctx.atendimento?.cid ?? null,
+    permanenciaDias,
   }) : [];
   const impedimentos = glosa.filter(a => a?.gravidade === GRAVIDADES.IMPEDIMENTO);
 
@@ -170,6 +219,19 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
     const v = validarFechamento({
       conta: ctx.conta, itens: ctx.itens, paciente: ctx.paciente, convenio, plano,
       atendimento: ctx.atendimento, procedimento, catalogos: cat, glosa,
+      // `medico` desarmava a conferência de CBO quando faltava: o ramo
+      // `sem_cbo` de `conferirFicha` exige o profissional para poder cobrar
+      // o CBO dele. Sem CBO a produção SUS não é PROCESSADA — não é glosa,
+      // é rejeição, e a produção não entra.
+      medico,
+      // 🔴 `hoje` é a data do ATENDIMENTO, não a de agora. A validade da
+      // carteirinha tem que ser conferida contra o dia em que o paciente foi
+      // atendido — conferir contra hoje reprova carteira que ESTAVA válida
+      // na data do atendimento e foi renovada depois. E o aviso de carteira
+      // vencida é gravidade alta, que no fechamento vira ERRO: toda conta de
+      // competência anterior ficava travada, e o caminho que sobrava para o
+      // faturista era adulterar o cadastro da carteira para conseguir fechar.
+      hoje: ctx.atendimento?.chegada_em ? new Date(ctx.atendimento.chegada_em) : new Date(),
     });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
     if (v.avisos.length && !confirm(v.avisos.map(a => `• ${a}`).join("\n\n") + "\n\nFechar assim mesmo?")) return;
@@ -300,6 +362,21 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
                     <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
                       Não há justificativa que faça o SUS pagar — corrija o cadastro do paciente ou o procedimento do atendimento.
                     </div>
+                  </div>
+                )}
+
+                {/* O SILÊNCIO DA PRÉ-GLOSA, DITO EM VOZ ALTA.
+                    A regra cala quando falta dado, e isso está certo — o que
+                    não pode é a tela parecer conferida quando ninguém
+                    conferiu. Sem a tabela da competência, "nenhum
+                    impedimento" e "não olhei" ficam idênticos na tela, e é
+                    dessa igualdade que nasce a confiança falsa. */}
+                {ctx.conta && !sigtap.linhas.length && (
+                  <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: "3px solid #d97706", borderRadius: 8, padding: "10px 13px", margin: "10px 0 0", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55 }}>
+                    <strong style={{ color: "#d97706" }}>A pré-glosa não foi conferida nesta conta.</strong>{" "}
+                    A tabela SIGTAP da competência {competenciaLabel(sigtap.competencia) || "—"} não está carregada,
+                    então sexo, idade, faixa etária, CID e permanência não foram olhados. Isto não impede fechar —
+                    mas o que voltar do processamento não terá passado por nenhuma conferência aqui.
                   </div>
                 )}
 
