@@ -40,6 +40,19 @@ it("a auditoria foi lida (o parser não quebrou em silêncio)", () => {
   expect(COLUNAS.sup_movimentos?.has("estorno_de")).toBe(true);
   expect(COLUNAS.sup_inventarios?.has("autorizado_por")).toBe(true);
   expect(COLUNAS.sup_inventarios?.has("ajuste_erro")).toBe(true);
+  expect(COLUNAS.sup_itens?.has("unidade_compra")).toBe(true);
+  expect(COLUNAS.sup_itens?.has("fator_conversao")).toBe(true);
+});
+
+describe("o cadastro do material grava colunas que existem", () => {
+  it("os campos de conversão", () => {
+    // A tela grava estes dois no mesmo INSERT do material. Chave que não é
+    // coluna real faz o PostgREST recusar o INSERT INTEIRO, em silêncio —
+    // e o material simplesmente não seria salvo.
+    for (const k of ["unidade", "unidade_compra", "fator_conversao"]) {
+      expect(COLUNAS.sup_itens.has(k), `sup_itens.${k}`).toBe(true);
+    }
+  });
 });
 
 describe("o ajuste e o estorno só gravam colunas que existem", () => {
