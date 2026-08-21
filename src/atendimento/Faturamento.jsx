@@ -27,7 +27,9 @@ import {
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
   cancelarItem, fecharConta, reabrirConta,
 } from "./dados.js";
-import { comoExibir } from "../pacientes/identidade.js";
+import { comoExibir, idadeDetalhada } from "../pacientes/identidade.js";
+import { glosaDaContaSalva } from "./montar-conta.js";
+import { GRAVIDADES } from "./sigtap.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -48,6 +50,9 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
   const [novo, setNovo] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  // O SIGTAP e a base da pre-glosa. Tabela pequena (219 linhas de
+  // referencia, sem paciente), carregada uma vez.
+  const [sigtapProcs, setSigtapProcs] = useState([]);
 
   async function procurar() {
     const n = String(numero).replace(/\D/g, "");
@@ -66,6 +71,13 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
       catalogos ? Promise.resolve(catalogos) : carregarCatalogos(sb),
     ]);
     setCatalogos(cat);
+    // O SIGTAP alimenta a pré-glosa do fechamento. Falha ao ler não pode
+    // travar a conferência: sem a tabela, a glosa CALA (falta de dado é
+    // silêncio) em vez de bloquear produção legítima.
+    if (!sigtapProcs.length) {
+      const sig = await sb("sigtap_procedimentos?select=*&order=codigo").catch(() => null);
+      setSigtapProcs(Array.isArray(sig) ? sig : []);
+    }
     const itens = conta ? await carregarItensDaConta(sb, conta.id) : [];
     setCtx({ atendimento, paciente, conta, itens });
     setBusy(false);
@@ -85,6 +97,20 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
   const resumo = ctx ? resumoDaConta({
     conta: ctx.conta, itens: ctx.itens, convenio, atendimento: ctx.atendimento, procedimento,
   }) : null;
+
+  // Pré-glosa da conta salva. O fechamento é o momento em que a produção vai
+  // para o SUS — era o único ponto do fluxo que não conferia glosa nenhuma.
+  const glosa = ctx ? glosaDaContaSalva({
+    sigtapProcs,
+    itens: ctx.itens,
+    paciente: {
+      sexo: ctx.paciente?.sexo ?? null,
+      idade: idadeDetalhada(ctx.paciente?.nascimento)?.anos ?? null,
+    },
+    cidPrincipal: ctx.atendimento?.cid_principal ?? null,
+    permanenciaDias: null,
+  }) : [];
+  const impedimentos = glosa.filter(a => a?.gravidade === GRAVIDADES.IMPEDIMENTO);
 
   async function abrir() {
     if (!canEdit || busy || !ctx) return;
@@ -143,7 +169,7 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
     if (!canEdit || busy || !ctx?.conta) return;
     const v = validarFechamento({
       conta: ctx.conta, itens: ctx.itens, paciente: ctx.paciente, convenio, plano,
-      atendimento: ctx.atendimento, procedimento, catalogos: cat,
+      atendimento: ctx.atendimento, procedimento, catalogos: cat, glosa,
     });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
     if (v.avisos.length && !confirm(v.avisos.map(a => `• ${a}`).join("\n\n") + "\n\nFechar assim mesmo?")) return;
@@ -250,12 +276,32 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
                     <button onClick={abrirItem} style={{ ...btn("#34d399"), marginLeft: "auto" }}>+ Item</button>
                   )}
                   {canEdit && podeFechar && (
-                    <button onClick={fechar} disabled={busy} style={btn("#22d3ee", !busy)}>Fechar conta</button>
+                    <button onClick={fechar} disabled={busy || impedimentos.length > 0}
+                      title={impedimentos.length ? "Há impedimento de glosa — o SUS não paga esta conta assim" : undefined}
+                      style={btn("#22d3ee", !busy && impedimentos.length === 0)}>
+                      {impedimentos.length ? "Fechamento bloqueado" : "Fechar conta"}
+                    </button>
                   )}
                   {canEdit && podeReabrir && (
                     <button onClick={reabrir} style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>Reabrir</button>
                   )}
                 </div>
+
+                {/* O impedimento aparece ANTES de a pessoa tentar fechar.
+                    Deixar descobrir no clique é fazer refazer trabalho — e
+                    a rejeição de verdade só voltaria no processamento do
+                    mês seguinte. */}
+                {impedimentos.length > 0 && (
+                  <div style={{ background: "#3d0f1833", border: "1px solid #f43f5e55", borderLeft: "3px solid #f43f5e", borderRadius: 8, padding: "10px 13px", margin: "10px 0 0", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
+                    <strong style={{ color: "#fb7185" }}>Impedimento de glosa — o SUS não paga esta conta assim.</strong>
+                    <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                      {impedimentos.map((a, i) => <li key={i}>{a.texto}</li>)}
+                    </ul>
+                    <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
+                      Não há justificativa que faça o SUS pagar — corrija o cadastro do paciente ou o procedimento do atendimento.
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
                   <Kpi label="Total" valor={resumo.total} cor="#0d9488" />

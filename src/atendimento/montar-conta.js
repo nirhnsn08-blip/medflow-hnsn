@@ -488,6 +488,36 @@ function indexarPorCodigo(lista) {
   return m;
 }
 
+/**
+ * A pré-glosa de uma conta JÁ SALVA — a que a tela de fechamento tem em mãos.
+ *
+ * `montarConta` avalia a glosa enquanto monta a partir do prontuário; a tela
+ * de fechamento trabalha com os itens gravados, e não tem esse resultado. Sem
+ * esta função, o fechamento — que é o momento em que a conta de fato vai para
+ * o SUS — seria o único ponto do fluxo sem conferência de glosa.
+ *
+ * Acha o item de PROCEDIMENTO na conta, casa o código no SIGTAP e avalia. Se
+ * não achar procedimento ou não achar o código no SIGTAP, devolve lista vazia:
+ * falta de dado é silêncio, não alarme — travar o fechamento porque o catálogo
+ * está incompleto seria punir o hospital pelo que falta ao sistema.
+ */
+export function glosaDaContaSalva({ sigtapProcs = [], itens = [], paciente, cidPrincipal, permanenciaDias } = {}) {
+  const ativos = (itens || []).filter(i => !i?.cancelado);
+  const item = ativos.find(i => i?.tipo === "procedimento" && codigoLimpo(i?.codigo));
+  if (!item) return [];
+
+  const mapa = indexarPorCodigo(sigtapProcs);
+  const row = mapa.get(codigoLimpo(item.codigo));
+  if (!row) return [];
+
+  return avaliarGlosa({
+    proc: montarSig(row),
+    paciente: { sexo: paciente?.sexo ?? null, idade: numOuNull(paciente?.idade) },
+    cidPrincipal,
+    permanenciaDias: permanenciaDias ?? null,
+  });
+}
+
 /** Linha crua de sigtap_procedimentos → procedimento normalizado do motor. */
 function montarSig(row) {
   return montarProcedimento({

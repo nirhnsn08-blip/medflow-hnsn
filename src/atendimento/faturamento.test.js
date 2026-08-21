@@ -323,3 +323,66 @@ describe("o corpo que vai para o banco", () => {
     for (const t of TIPOS_ITEM) expect(t.label, t.chave).toBeTruthy();
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// A TRAVA DE GLOSA NO FECHAMENTO
+//
+// Antes desta correção, `validarFechamento` nem importava a avaliação de
+// glosa: a conta com impedimento era lançada E fechada. O impedimento é
+// determinístico — o SUS não paga com sexo ou faixa etária incompatível —,
+// então fechar assim é transmitir uma AIH que volta rejeitada, e a rejeição
+// só aparece no processamento do mês seguinte.
+//
+// Validados por mutação:
+//   • impedimento virando aviso ......... derruba a trava inteira
+//   • atenção virando erro .............. derruba a produção legítima
+// ═══════════════════════════════════════════════════════════
+describe("validarFechamento — pré-glosa", () => {
+  const base = () => ({
+    conta: { id: 1, status: "aberta" },
+    itens: [{ id: 1, tipo: "procedimento", codigo: "0301010010", descricao: "Consulta", quantidade: 1, valor_unitario: 1000 }],
+    paciente: { nome: "Maria", nascimento: "1990-01-01", sexo: "F", cns: "700000000000000" },
+    convenio: { id: 1, nome: "SUS", tipo: "sus" },
+    atendimento: { id: 9, chegada_em: "2026-08-01T10:00:00Z", convenio_id: 1 },
+  });
+
+  it("🔴 impedimento BLOQUEIA o fechamento", () => {
+    const v = validarFechamento({
+      ...base(),
+      glosa: [{ regra: "sexo", gravidade: "impedimento", texto: "Procedimento restrito ao sexo feminino; paciente masculino." }],
+    });
+    expect(v.ok).toBe(false);
+    expect(v.erros.some(e => /Impedimento de glosa/.test(e))).toBe(true);
+    expect(v.erros.some(e => /sexo feminino/.test(e))).toBe(true);
+  });
+
+  it("🔴 atenção NÃO bloqueia — é pagável com justificativa", () => {
+    // Recusar aqui travaria produção legítima: permanência acima da média e
+    // CID atípico são pagos, só exigem justificativa.
+    const v = validarFechamento({
+      ...base(),
+      glosa: [{ regra: "permanencia", gravidade: "atencao", texto: "Permanência de 10 dias acima da média SUS (3)." }],
+    });
+    expect(v.erros.some(e => /Impedimento de glosa/.test(e))).toBe(false);
+    expect(v.avisos.some(a => /Permanência de 10 dias/.test(a))).toBe(true);
+  });
+
+  it("sem glosa informada o comportamento não muda (compatível com quem já chamava)", () => {
+    const semParam = validarFechamento(base());
+    const comVazia = validarFechamento({ ...base(), glosa: [] });
+    expect(semParam.erros).toEqual(comVazia.erros);
+  });
+
+  it("impedimento e atenção juntos: um bloqueia, o outro só avisa", () => {
+    const v = validarFechamento({
+      ...base(),
+      glosa: [
+        { regra: "idade", gravidade: "impedimento", texto: "Idade 8 abaixo do mínimo do procedimento (12)." },
+        { regra: "cid", gravidade: "atencao", texto: "CID A00 não consta entre os compatíveis." },
+      ],
+    });
+    expect(v.ok).toBe(false);
+    expect(v.erros.filter(e => /Impedimento de glosa/.test(e))).toHaveLength(1);
+    expect(v.avisos.some(a => /CID A00/.test(a))).toBe(true);
+  });
+});
