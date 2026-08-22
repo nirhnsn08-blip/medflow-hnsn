@@ -22,7 +22,7 @@ import {
   ORIGENS_MARCACAO, diaCivil, diaSemanaDe, minutosDe, horariosDaGrade,
   totalVagasDaGrade, cotasSomadas, validarGrade, gradeValeEm, gradesDoDia,
   bloqueioDoDia, vagasDoDia, horariosLivres, podeMarcar, podeRegistrarDaRegulacao,
-  producaoDoDia, ocupaVaga,
+  producaoDoDia, ocupaVaga, donoDaVaga,
 } from "./agenda.js";
 
 // 2026-07-28 é uma TERÇA. dia_semana 2.
@@ -220,6 +220,51 @@ describe("vagas do dia", () => {
     expect(v.interna.ocupadas).toBe(1);
   });
 
+  // 🔴 A vaga era da ESPECIALIDADE. Dois oftalmologistas às terças 08:00 era
+  // impossível: o banco recusava o segundo, e o card da Dra. B mostrava a
+  // cota consumida pelo Dr. A. A chave aqui tem que ser IDÊNTICA à do índice
+  // `ag_agend_vaga_unica_prof` — tela e banco contando diferente fazem a
+  // recepcionista ver "livre", clicar, e levar uma recusa sem explicação.
+  describe("a vaga é do profissional, não da especialidade", () => {
+    const gradeA = { ...GRADE, id: 10, profissional_username: "dr.a" };
+    const gradeB = { ...GRADE, id: 11, profissional_username: "dra.b" };
+
+    it("o horário de um médico não é o horário do outro", () => {
+      const soDoA = [agend({ profissional_username: "dr.a", hora: "08:00" })];
+      expect(horariosLivres(gradeA, TERCA, soDoA)).not.toContain("08:00");
+      expect(horariosLivres(gradeB, TERCA, soDoA)).toContain("08:00");
+    });
+
+    it("a cota de um não come a do outro", () => {
+      const doA = [
+        agend({ profissional_username: "dr.a", hora: "08:00" }),
+        agend({ profissional_username: "dr.a", hora: "08:20" }),
+      ];
+      expect(vagasDoDia(gradeA, TERCA, doA).interna.ocupadas).toBe(2);
+      expect(vagasDoDia(gradeB, TERCA, doA).interna.ocupadas).toBe(0);
+      expect(vagasDoDia(gradeB, TERCA, doA).interna.livres).toBe(4);
+    });
+
+    it("grade SEM profissional continua valendo pela especialidade", () => {
+      // É o comportamento antigo, e ele tem que sobreviver: nada que
+      // funciona hoje pode passar a falhar.
+      const semDono = [agend({ hora: "08:00" })];
+      expect(horariosLivres(GRADE, TERCA, semDono)).not.toContain("08:00");
+      expect(vagasDoDia(GRADE, TERCA, semDono).interna.ocupadas).toBe(1);
+    });
+
+    it("agendamento sem profissional NÃO ocupa a vaga de um médico nomeado", () => {
+      const semDono = [agend({ hora: "08:00" })];
+      expect(horariosLivres(gradeA, TERCA, semDono)).toContain("08:00");
+    });
+
+    it("o dono da vaga distingue username de código de especialidade", () => {
+      // sem os prefixos, um username igual a um código misturaria as chaves
+      expect(donoDaVaga({ profissional_username: "ortopedia" }))
+        .not.toBe(donoDaVaga({ especialidade_cod: "ortopedia" }));
+    });
+  });
+
   it("agendamento de outro dia ou de outra especialidade não conta", () => {
     const v = vagasDoDia(GRADE, TERCA, [
       agend({ data: "2026-08-04" }),
@@ -250,6 +295,20 @@ describe("podeMarcar — a regra central", () => {
   // registrado; a Agenda deixava MARCAR consulta para a mesma pessoa. Duas
   // telas do mesmo módulo discordando sobre o mesmo fato — e aqui quem recebe
   // o telefonema de confirmação da véspera é a família.
+  // O desfecho de tudo isto, na regra que a tela chama: o segundo médico da
+  // mesma especialidade PASSA a caber no mesmo horário — e o mesmo médico
+  // continua não cabendo duas vezes.
+  it("dois médicos da mesma especialidade cabem no mesmo horário", () => {
+    const gradeA = { ...GRADE, id: 10, profissional_username: "dr.a" };
+    const gradeB = { ...GRADE, id: 11, profissional_username: "dra.b" };
+    const doA = [agend({ profissional_username: "dr.a", hora: "08:00" })];
+
+    expect(podeMarcar({ ...base, grade: gradeB, agendamentos: doA }).ok).toBe(true);
+    const mesmoMedico = podeMarcar({ ...base, grade: gradeA, agendamentos: doA });
+    expect(mesmoMedico.ok).toBe(false);
+    expect(mesmoMedico.erros.join(" ")).toMatch(/já está ocupado/i);
+  });
+
   it("RECUSA marcar para paciente com óbito registrado", () => {
     const r = podeMarcar({ ...base, paciente: { prontuario: "T1", obito: true } });
     expect(r.ok).toBe(false);

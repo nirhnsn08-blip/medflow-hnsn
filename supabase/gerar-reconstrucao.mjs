@@ -139,6 +139,11 @@ const ORDEM = [
   // Não cria tabela e não toca em política — entra antes do rls-leitura,
   // preservando a regra de que ele é o último.
   "migracao-pacientes-busca.sql",
+  // A vaga da agenda passa a ser do PROFISSIONAL, não da especialidade:
+  // troca o índice único `ag_agend_vaga_unica` por `ag_agend_vaga_unica_prof`.
+  // Precisa vir DEPOIS da migração que cria `ag_agendamentos`, e não toca em
+  // política — por isso entra antes do rls-leitura, que segue por último.
+  "migracao-agenda-vaga-por-profissional.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

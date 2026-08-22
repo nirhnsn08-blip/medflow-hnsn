@@ -23,7 +23,7 @@ import { comoExibir } from "../pacientes/identidade.js";
 import {
   ORIGENS_MARCACAO, STATUS_AGENDAMENTO, gradesDoDia, vagasDoDia, horariosLivres,
   validarGrade, podeMarcar, podeRegistrarDaRegulacao, producaoDoDia, bloqueioDoDia,
-  horariosDaGrade, cotasSomadas,
+  horariosDaGrade, cotasSomadas, donoDaVaga,
 } from "./agenda.js";
 import {
   DESFECHOS_AMBULATORIAL, validarEncerramento, STATUS_ATENDIMENTO,
@@ -377,7 +377,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             const vagas = vagasDoDia(g, data, agendamentos);
             const bloqueado = bloqueioDoDia(bloqueios, data, {
               especialidade: g.especialidade_cod, profissional: g.profissional_username });
-            const doDia = agendamentos.filter(a => a.especialidade_cod === g.especialidade_cod);
+            // Pelo MESMO dono que `vagasDoDia` usa para contar. Filtrar a
+            // lista por especialidade enquanto o contador conta por
+            // profissional fazia o card dizer "1/4" e listar dois pacientes
+            // logo abaixo — cada médico via os agendamentos do outro na
+            // própria agenda. Contador e lista têm que sair da mesma chave.
+            const doDia = agendamentos.filter(a => donoDaVaga(a) === donoDaVaga(g));
             return (
               <div key={g.id} style={cartao}>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
@@ -411,7 +416,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 {doDia.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "0.8rem",
                                 border: "1px dashed var(--border)", borderRadius: 8 }}>
-                    Ninguém registrado nesta especialidade hoje.
+                    Ninguém registrado nesta agenda hoje.
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
