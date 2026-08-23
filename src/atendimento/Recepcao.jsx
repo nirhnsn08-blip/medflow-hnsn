@@ -321,19 +321,29 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
 
-    // Avisos NÃO impedem — mas precisam ser lidos antes de seguir.
+    // 🔴 O MODAL DE PENDÊNCIA DE FATURAMENTO SAIU DAQUI, e a razão é a
+    // própria regra que ele tentava servir.
+    //
+    // Ele disparava em praticamente TODO atendimento: nenhum convênio vem
+    // pré-selecionado, então "Sem convênio informado" é o estado padrão da
+    // tela. Oitenta cliques em OK por dia não fazem ninguém ler — fazem o
+    // contrário: ensinam o reflexo de fechar aviso sem olhar. E é nesse
+    // mesmo balde que caem "a carteira está vencida" e "este paciente já
+    // tem atendimento em aberto", que são os que valem dinheiro e segurança.
+    //
+    // A pendência não sumiu: ela mora ao lado do botão, e o RÓTULO DO BOTÃO
+    // carrega a contagem ("Abrir com 2 pendência(s)"). É o padrão que a
+    // chegada da Agenda já usa. Quem clica num botão que diz o que está
+    // faltando decidiu seguir assim — que era exatamente o que o modal
+    // queria garantir, e deixava de garantir por repetição.
+    //
+    // O confirm de BLOQUEANTES fica, e a diferença é o que o justifica:
+    // óbito registrado e atendimento já aberto são raros. Alarme que
+    // dispara raramente continua sendo lido — e os dois dizem que a pessoa
+    // pode estar prestes a abrir episódio para quem não devia.
     const bloqueantes = v.avisos.filter(a => a.chave === "atendimento_aberto" || a.chave === "obito");
     if (bloqueantes.length &&
         !confirm(bloqueantes.map(a => `• ${a.texto}`).join("\n\n") + "\n\nAbrir mesmo assim?")) return;
-
-    // Pendência de faturamento também não impede — mas quem abre precisa
-    // ter visto. Confirmar aqui é o que separa "ninguém percebeu" de
-    // "alguém decidiu seguir assim".
-    if (conf.pendenciasGraves > 0 &&
-        !confirm(
-          "Este atendimento tem pendência que impede o faturamento:\n\n" +
-          conf.avisos.filter(a => a.gravidade === "alta").map(a => `• ${a.texto}`).join("\n\n") +
-          "\n\nO atendimento pode ser aberto assim mesmo — a conta é que não fecha.\n\nAbrir?")) return;
 
     setBusy(true);
     const r = await abrirAtendimento(sb, {
@@ -375,6 +385,10 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     paciente, convenio, plano, ficha, procedimento,
     medico: medicoEscolhido, catalogos: cat,
   });
+  // As de gravidade baixa são campos de classificação em branco. Ficam
+  // separadas para a caixa poder colapsá-las: são elas que faziam a lista
+  // ter oito marcadores idênticos em todo atendimento.
+  const menores = conf.avisos.filter(a => a.gravidade !== "alta");
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -685,13 +699,29 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                       ? `${conf.pendenciasGraves} pendência(s) que impedem o faturamento`
                       : "Pendências menores"}
                   </strong>
+                  {/* As GRAVES por extenso; as menores colapsadas numa linha.
+                      Listar as oito juntas fazia a caixa ter o mesmo tamanho
+                      e a mesma cara em 100% dos atendimentos — e lista que
+                      nunca muda ninguém lê. As menores são campos de
+                      classificação em branco: importam para o relatório, não
+                      para a conta, e cabem num resumo que se expande. */}
                   <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-                    {conf.avisos.map(a => (
-                      <div key={a.chave} style={{ color: a.gravidade === "alta" ? "var(--text)" : "var(--text-muted)" }}>
-                        • {a.texto}
-                      </div>
+                    {conf.avisos.filter(a => a.gravidade === "alta").map(a => (
+                      <div key={a.chave} style={{ color: "var(--text)" }}>• {a.texto}</div>
                     ))}
                   </div>
+                  {menores.length > 0 && (
+                    <details style={{ marginTop: 6 }}>
+                      <summary style={{ cursor: "pointer", color: "var(--text-muted)", fontSize: 11.5 }}>
+                        {menores.length} campo(s) de classificação em branco
+                      </summary>
+                      <div style={{ marginTop: 5, display: "flex", flexDirection: "column", gap: 3 }}>
+                        {menores.map(a => (
+                          <div key={a.chave} style={{ color: "var(--text-muted)" }}>• {a.texto}</div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                   <div style={{ color: "var(--text-muted)", marginTop: 7 }}>
                     Nada disso impede o atendimento. O que não fecha é a conta.
                   </div>
@@ -699,8 +729,14 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               )}
 
               <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+                {/* O botão carrega a pendência — é o que substituiu o modal
+                    que disparava em todo atendimento. Quem clica num botão
+                    que diz o que falta decidiu seguir assim. */}
                 <button onClick={abrir} disabled={busy} style={btn("#22d3ee", !busy)}>
-                  {busy ? "Abrindo…" : "Abrir atendimento"}
+                  {busy ? "Abrindo…"
+                    : conf.pendenciasGraves
+                      ? `Abrir com ${conf.pendenciasGraves} pendência(s)`
+                      : "Abrir atendimento"}
                 </button>
                 <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                   O paciente entra na fila de triagem do Pronto-Socorro.
