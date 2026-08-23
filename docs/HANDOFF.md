@@ -6,7 +6,20 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-19 · `main` em `fc05ef6` (checkpoint-v59) · zero PRs abertos.
+**Atualizado em:** 2026-08-22 · `main` em `1ee00a6` · zero PRs abertos · **nada pendente de SQL**.
+
+## 👥 Quem está com o quê (combinado em 22/08/2026)
+
+| Território | Dono |
+|---|---|
+| **Atendimento** — recepção, agenda, consultas, tabelas | **Adauam** |
+| **Faturamento** — conta do episódio, SUS, glosa, preço | **Laura** |
+
+**A fila de cada um, com âncora de linha, está em
+[DIAGNOSTICO-ATENDIMENTO.md](DIAGNOSTICO-ATENDIMENTO.md)** — levantamento de
+21-22/08 com quatro revisões do código e o percurso das cinco abas no demo. Leia de
+lá antes de escolher o próximo trabalho; ele também lista **o que está bem-feito e
+não se mexe**, e um **alarme falso** que já custou tempo (RLS de `pacientes`).
 
 ---
 
@@ -205,6 +218,31 @@ SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
    (só os pacientes do meu setor — depende de lotação confiável em `profiles.setor`) e **RLS de
    ESCRITA** (insert/update/delete seguem pelo `role`, não pelo módulo).
 3. **Modularizar o `App.jsx`** — dívida estrutural que trava o trabalho em paralelo.
+4. **A fila do Atendimento e a do Faturamento** — ver
+   [DIAGNOSTICO-ATENDIMENTO.md](DIAGNOSTICO-ATENDIMENTO.md). Os dois primeiros de
+   cada uma, para quem só quer o essencial:
+   - **Atendimento:** a presença pela Agenda abre atendimento **sem convênio,
+     carteira nem senha** (`conferirFicha` nunca é chamada em `Agenda.jsx`) → glosa
+     integral; e `tipo_atendimento_cod` é opcional, o que zera a coluna de 1ª
+     consulta na prestação de contas sem erro nenhum em tela.
+   - **Faturamento:** a conta se **monta num módulo e fecha em outro**; e não existe
+     **preço de convênio** em lugar nenhum (nem TUSS/CBHPM), então a tela sugere o
+     valor SUS independente da via.
+
+### O que foi corrigido em 21-22/08/2026 (PRs #107, #108, #109 — em produção)
+
+Todos achados **relendo o código**, nenhum reportado como bug. O que os une é o modo
+de falhar: a regra existe, roda, e não faz nada.
+
+- **#107** — 4 das 5 conferências de pré-glosa do fechamento estavam mudas (colunas
+  que não existem: `cid_principal`, `nascimento`); duas regras de via divergentes
+  (conta montada como BPA, fechada como AIH); carteirinha conferida contra hoje;
+  ficha vazando de um paciente para outro; e dava para **agendar paciente falecido**.
+- **#108** — a busca por nome não achava quem está cadastrado (`ilike` sem unaccent,
+  substring contígua, índice inútil). Coluna gerada `nome_busca` + índice GIN. E a
+  mensagem do CPF duplicado parou de mandar a recepcionista **apagar o CPF**.
+- **#109** — a vaga da agenda era da **especialidade**, o que tornava impossível dois
+  médicos da mesma especialidade no mesmo horário. Passou a ser do **profissional**.
 
 ---
 
