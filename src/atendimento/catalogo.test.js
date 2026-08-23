@@ -195,3 +195,57 @@ describe("o corpo que vai para o banco", () => {
     expect(corpoDoCatalogo("carater", { id: 7, codigo: "X", nome: "X" }).id).toBe(7);
   });
 });
+
+// 🔴 `valor_sus` e `via_sus` existiam no banco desde a fase de faturamento e o
+// `corpoDoCatalogo` NÃO os mandava — a única forma de cadastrar preço e via
+// era pelo SQL Editor. E a via muda por PORTARIA, várias vezes por ano: era
+// exatamente o que o cabeçalho da migração dizia que a tela existia para
+// evitar.
+describe("preço e via do procedimento", () => {
+  const proc = extra => ({ codigo: "0301010010", nome: "Consulta", tabela: "sigtap", cbos_compativeis: "225125", ...extra });
+
+  it("o preço vai para o banco em REAIS, e o ponto ambíguo é resolvido", () => {
+    // a coluna é numeric(12,2), em reais — e "10.50" é dez e cinquenta,
+    // enquanto "1.234,56" é mil duzentos e trinta e quatro.
+    expect(corpoDoCatalogo("procedimentos", proc({ valor_sus: "10,50" })).valor_sus).toBe(10.5);
+    expect(corpoDoCatalogo("procedimentos", proc({ valor_sus: "10.50" })).valor_sus).toBe(10.5);
+    expect(corpoDoCatalogo("procedimentos", proc({ valor_sus: "1.234,56" })).valor_sus).toBe(1234.56);
+  });
+
+  it("SEM preço é `null`, e de graça é 0 — não são a mesma coisa", () => {
+    // nulo é "ninguém cadastrou" e a tela imprime "—"; zero é "de graça" e
+    // imprime R$ 0,00. Colapsar os dois faz a conta fechar zerada com cara
+    // de conta fechada.
+    expect(corpoDoCatalogo("procedimentos", proc({ valor_sus: "" })).valor_sus).toBeNull();
+    expect(corpoDoCatalogo("procedimentos", proc({})).valor_sus).toBeNull();
+    expect(corpoDoCatalogo("procedimentos", proc({ valor_sus: "0" })).valor_sus).toBe(0);
+  });
+
+  it("a via só aceita as três do SUS — TISS e direta vêm do convênio", () => {
+    for (const v of ["bpa", "apac", "aih"]) {
+      expect(corpoDoCatalogo("procedimentos", proc({ via_sus: v })).via_sus).toBe(v);
+    }
+    // marcar "tiss" num procedimento faria alguém esperar que isso mudasse
+    // a via de um atendimento SUS — não muda, então nem entra.
+    for (const v of ["tiss", "direta", "xpto", "", null]) {
+      expect(corpoDoCatalogo("procedimentos", proc({ via_sus: v })).via_sus).toBeNull();
+    }
+  });
+
+  it("valor que não vira número é ERRO, não `null` calado", () => {
+    // gravar null em silencio faz a tela mostrar "—" e a pessoa achar que
+    // cadastrou o preço.
+    const r = validarCatalogo("procedimentos", proc({ valor_sus: "dez reais" }), []);
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/não é um valor/i);
+  });
+
+  it("via em branco NÃO avisa — em branco é o caso normal, e cai em BPA", () => {
+    // Avisar aqui dispararia em quase todo procedimento do catálogo, e
+    // alarme que sempre dispara ensina a ignorar a lista onde mora "algum
+    // CBO não tem 6 dígitos". A consequência é dita no campo, na tela.
+    const r = validarCatalogo("procedimentos", proc({}), []);
+    expect(r.ok).toBe(true);
+    expect(r.avisos).toEqual([]);
+  });
+});
