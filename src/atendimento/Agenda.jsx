@@ -36,8 +36,10 @@ import {
   carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao,
 } from "./dados.js";
-import { conferirFicha } from "./ficha.js";
-import FontePagadora from "./FontePagadora.jsx";
+import { conferirFicha, DOMINIOS } from "./ficha.js";
+import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
+import Impressos from "./Impressos.jsx";
+import ResponsavelDoEpisodio from "./Responsavel.jsx";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
 import RelatorioAmbulatorio from "./RelatorioAmbulatorio.jsx";
 
@@ -83,8 +85,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
   const [verAbertos, setVerAbertos] = useState(false);
-  // A chegada em andamento: { agendamento, paciente, ficha }.
+  // A chegada em andamento: { agendamento, paciente, ficha, medico }.
   const [presenca, setPresenca] = useState(null);
+  // Depois de confirmada: { paciente, atendimento } — a etapa de responsável
+  // e impressos, a mesma que a Recepção faz.
+  const [imprimindo, setImprimindo] = useState(null);
+  const [responsaveis, setResponsaveis] = useState([]);
   const [producaoGravada, setProducaoGravada] = useState([]);
 
   const recarregarDia = useCallback(async () => {
@@ -219,6 +225,11 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     setPresenca({
       agendamento: a,
       paciente,
+      // Quem vai atender, congelado com o CBO no momento da abertura — a
+      // agenda SABE quem é, e mesmo assim a presença abria o episódio sem
+      // médico nenhum. Sem CBO a produção SUS não é glosada: é REJEITADA no
+      // processamento, e some inteira.
+      medico: profissionais.find(p => p.username === a.profissional_username) || null,
       // O que a marcação já sabe vem preenchido; o que só se descobre com a
       // pessoa na frente (a carteirinha na mão) fica para a recepcionista.
       ficha: {
@@ -226,20 +237,35 @@ export default function Agenda({ sb, currentUser, canEdit }) {
         guia_numero: "", autorizacao_senha: "",
         tipo_atendimento_cod: a.tipo_atendimento_cod || "",
         especialidade_cod: a.especialidade_cod || "",
+        // 🔴 NÃO é chute: `confirmarPresenca` grava exatamente este valor.
+        // Sem ele aqui, a tela cobrava "Origem do atendimento não informado"
+        // — um aviso FALSO, para um campo que o painel nem desenhava. Aviso
+        // que a pessoa não pode resolver é o que ensina a não ler a lista
+        // onde mora "a carteira está vencida".
+        unidade_origem_cod: "ambulatorio",
+        tipo_paciente_cod: "", carater_cod: "",
+        local_procedencia_cod: "", destino_cod: "",
       },
     });
   }
 
   async function confirmarAPresenca() {
     if (!canEdit || busy || !presenca) return;
-    const { agendamento, paciente, ficha } = presenca;
+    const { agendamento, paciente, ficha, medico } = presenca;
     setBusy(true);
-    const r = await confirmarPresenca(sb, agendamento, { paciente, ficha }, currentUser);
+    const r = await confirmarPresenca(sb, agendamento, { paciente, ficha, medico }, currentUser);
     setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
     setPresenca(null);
     setMsg({ tom: r.aviso ? "erro" : "ok",
              texto: r.aviso || `Presença confirmada — atendimento ${r.atendimento.id} aberto.` });
+    // A chegada não termina na gravação: quem trouxe o paciente ainda está
+    // na frente, e a pulseira sai agora. Antes o fluxo da Agenda parava
+    // aqui, e quem entrava pelo ambulatório — criança em consulta de
+    // ortopedia, idoso frágil — nunca tinha responsável registrado nem
+    // pulseira impressa. A Recepção já encadeia os dois; a chegada passa a
+    // encadear também.
+    if (r.atendimento) setImprimindo({ paciente, atendimento: r.atendimento });
     recarregarDia();
   }
 
@@ -323,6 +349,11 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     plano: planoPresenca,
     ficha: presenca.ficha,
     catalogos,
+    // Com o médico em mãos, a conferência de CBO deixa de ficar muda: o ramo
+    // `sem_cbo` de `conferirFicha` exige o profissional para poder cobrar o
+    // CBO dele.
+    medico: presenca.medico,
+    procedimento: (catalogos.procedimentos || []).find(p => p.codigo === presenca.ficha.procedimento_cod) || null,
     hoje: presenca.agendamento?.data ? new Date(`${String(presenca.agendamento.data).slice(0, 10)}T12:00:00`) : new Date(),
   }) : null;
 
@@ -534,6 +565,33 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             );
           })}
 
+          {/* ── DEPOIS DA CHEGADA: responsável e impressos ──
+              A mesma sequência da Recepção, pelo mesmo motivo escrito lá:
+              quem trouxe o paciente ainda está na frente, e depois que sai,
+              descobrir quem era vira telefonema. `pendenciaDeResponsavel`
+              (menor de idade, curatela) nunca era avaliada para quem entrava
+              pelo ambulatório — e a pulseira, que o hospital exige, não saía. */}
+          {imprimindo && (
+            <>
+              <ResponsavelDoEpisodio
+                sb={sb} currentUser={currentUser} canEdit={canEdit}
+                paciente={imprimindo.paciente} atendimento={imprimindo.atendimento}
+                onMudou={setResponsaveis}
+              />
+              <Impressos
+                responsaveis={responsaveis}
+                paciente={imprimindo.paciente}
+                atendimento={imprimindo.atendimento}
+                catalogos={catalogos}
+                convenio={(catalogos.convenios || []).find(c => String(c.id) === String(imprimindo.atendimento?.convenio_id)) || null}
+                plano={(catalogos.planos || []).find(p => String(p.id) === String(imprimindo.atendimento?.plano_id)) || null}
+                procedimento={(catalogos.procedimentos || []).find(p => p.codigo === imprimindo.atendimento?.procedimento_cod) || null}
+                currentUser={currentUser}
+                onFechar={() => { setImprimindo(null); setResponsaveis([]); }}
+              />
+            </>
+          )}
+
           {/* ── CHEGADA: quem paga esta consulta ──
               A pergunta que faltava. Aparece com o paciente na frente, que é
               o único momento em que a carteirinha está na mão. */}
@@ -554,6 +612,36 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 ficha={presenca.ficha}
                 onChange={f => setPresenca(p => ({ ...p, ficha: f }))}
               />
+
+              {/* CLASSIFICAÇÃO — o que o painel COBRAVA e não oferecia.
+                  `conferirFicha` avisa por domínio em branco cujo catálogo
+                  tenha linhas; o painel só desenhava a fonte pagadora, então
+                  a lista pedia "Caráter não informado" sem existir onde
+                  informar. Agora todo aviso que aparece tem campo ao lado.
+                  Origem e especialidade ficam de fora porque já são
+                  conhecidas: uma vem cravada na gravação, a outra vem do
+                  agendamento. */}
+              <div style={{ ...rotulo, marginTop: 16, marginBottom: 8 }}>Classificação do atendimento</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
+                {DOMINIOS.filter(d => !["unidade_origem", "especialidade"].includes(d.chave)).map(d => (
+                  <CampoCatalogo key={d.chave} label={d.label} dica={d.dica}
+                    lista={catalogos[d.chave]} valor={presenca.ficha[`${d.chave}_cod`]}
+                    onChange={v => setPresenca(p => ({ ...p, ficha: { ...p.ficha, [`${d.chave}_cod`]: v } }))} />
+                ))}
+              </div>
+
+              {/* Quem atende, e o CBO — porque é o CBO que decide se a
+                  produção é PROCESSADA. Sem grade com profissional, a agenda
+                  não sabe, e a tela diz isso em vez de fingir. */}
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 10 }}>
+                {presenca.medico
+                  ? <>Atende: <strong>{presenca.medico.nome || presenca.medico.username}</strong>
+                      {presenca.medico.cbo
+                        ? <> · CBO {presenca.medico.cbo}</>
+                        : <span style={{ color: "#d97706" }}> · sem CBO no cadastro — a produção SUS não é processada sem ele</span>}
+                    </>
+                  : <span style={{ color: "#d97706" }}>Esta grade não tem profissional definido — o atendimento nasce sem médico e sem CBO.</span>}
+              </div>
 
               {/* As pendências ditas em voz alta, e SEM modal.
                   A Recepção usa um `confirm()` aqui e ele dispara em todo
