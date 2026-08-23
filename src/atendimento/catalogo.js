@@ -19,6 +19,10 @@
 // ═══════════════════════════════════════════════════════════
 
 import { DOMINIOS } from "./ficha.js";
+// `centavos` mora no faturamento e resolve o ponto ambíguo do dinheiro. O
+// catálogo pode importá-lo: `faturamento.js` não conhece este arquivo, então
+// não há ciclo.
+import { centavos } from "./faturamento.js";
 
 /** Os tipos de convênio que o sistema entende. */
 export const TIPOS_DE_CONVENIO = [
@@ -59,6 +63,40 @@ export const CATALOGO_POR_CHAVE = Object.fromEntries(CATALOGOS.map(c => [c.chave
 /** Código canônico: sem espaço nas pontas, maiúsculo, sem acento. */
 export const normalizarCodigo = v =>
   String(v ?? "").trim().normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+
+/**
+ * As vias SUS que um procedimento pode seguir.
+ *
+ * Só as três do SUS: TISS e cobrança direta saem do TIPO DO CONVÊNIO, não do
+ * cadastro do procedimento — oferecê-las aqui faria alguém marcar "TISS" num
+ * procedimento e esperar que isso mudasse a via de um atendimento SUS.
+ *
+ * Em branco é uma escolha legítima e o padrão: sem cadastro, a regra cai em
+ * BPA, que é a via da maioria esmagadora da produção ambulatorial.
+ */
+export const VIAS_SUS = [
+  { chave: "bpa",  label: "BPA — produção ambulatorial" },
+  { chave: "apac", label: "APAC — alta complexidade (exige autorização)" },
+  { chave: "aih",  label: "AIH — internação (exige autorização)" },
+];
+
+/**
+ * O valor da tabela em REAIS, ou `null`.
+ *
+ * `null` e `0` são coisas diferentes e a coluna existe para distinguir: a
+ * migração diz com todas as letras que nulo é "ninguém cadastrou" e zero é
+ * "de graça". A tela imprime "—" para o primeiro e R$ 0,00 para o segundo,
+ * e o contador `semPreco` da conta depende disso para não fechar uma conta
+ * zerada com cara de conta fechada.
+ *
+ * Reaproveita `centavos`, que já resolve o ponto ambíguo do dinheiro
+ * ("10.50" é dez e cinquenta; "1.234,56" é mil duzentos e trinta e quatro) —
+ * a coluna é `numeric(12,2)`, em reais, então divide no fim.
+ */
+export function valorSusEmReais(valor) {
+  const c = centavos(valor);
+  return c === null ? null : c / 100;
+}
 
 /** CBO só tem dígitos. Aceita a lista separada por vírgula, ponto e vírgula ou espaço. */
 export function lerCbos(texto) {
@@ -129,6 +167,21 @@ export function validarCatalogo(chave, dados = {}, existentes = []) {
     } else if (cbos.some(c => c.length !== 6)) {
       avisos.push("Algum CBO não tem 6 dígitos. Confira — CBO errado reprova atendimento que estava certo.");
     }
+
+    // Valor: digitou algo que não vira número? Isso é ERRO, não aviso —
+    // gravar `null` calado faria a tela mostrar "—" e a pessoa achar que
+    // cadastrou o preço.
+    const valorBruto = String(dados.valor_sus ?? "").trim();
+    if (valorBruto && valorSusEmReais(dados.valor_sus) === null) {
+      erros.push(`"${valorBruto}" não é um valor. Use 10,50 ou 10.50 — e deixe em branco se ainda não há preço de tabela.`);
+    }
+    // Via em branco NÃO gera aviso, de propósito. Sem cadastro a regra cai
+    // em BPA, que é a via da maioria esmagadora da produção ambulatorial —
+    // ou seja, em branco é o caso NORMAL. Avisar no caso normal é a mesma
+    // fadiga de alarme que o resto do módulo combate: dispararia em quase
+    // todo procedimento e ensinaria a ignorar a lista onde mora "algum CBO
+    // não tem 6 dígitos". A consequência de deixar em branco é dita no
+    // próprio campo, na tela, que é informação e não alarme.
   }
 
   return { ok: erros.length === 0, erros, avisos };
@@ -175,6 +228,13 @@ export function corpoDoCatalogo(chave, dados = {}) {
       ...base,
       tabela: dados.tabela || "sigtap",
       cbos_compativeis: lerCbos(dados.cbos_compativeis),
+      // Estes dois existiam no banco desde a fase de faturamento e o
+      // `corpoDoCatalogo` não os mandava — então a única forma de cadastrar
+      // preço e via era pelo SQL Editor, e a via muda por PORTARIA, várias
+      // vezes por ano. Era exatamente o que o cabeçalho da migração dizia
+      // que a tela existia para evitar.
+      valor_sus: valorSusEmReais(dados.valor_sus),
+      via_sus: VIAS_SUS.some(v => v.chave === dados.via_sus) ? dados.via_sus : null,
     };
   }
   // Domínios: a linha carrega de qual lista ela é.

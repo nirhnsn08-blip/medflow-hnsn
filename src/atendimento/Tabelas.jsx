@@ -22,8 +22,9 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   CATALOGOS, CATALOGO_POR_CHAVE, TIPOS_DE_CONVENIO, TABELAS_DE_PROCEDIMENTO,
-  validarCatalogo, lerCbos,
+  validarCatalogo, lerCbos, VIAS_SUS, valorSusEmReais,
 } from "./catalogo.js";
+import { reais } from "./faturamento.js";
 import { salvarCatalogo, alternarAtivoCatalogo, carregarCatalogoCompleto } from "./dados.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -200,6 +201,34 @@ export default function Tabelas({ sb, currentUser, canEdit }) {
                         {TABELAS_DE_PROCEDIMENTO.map(t => <option key={t.chave} value={t.chave}>{t.label}</option>)}
                       </select>
                     </div>
+
+                    {/* VIA e VALOR — os dois existiam no banco e não tinham
+                        campo aqui, então só mudavam pelo SQL Editor. A via
+                        muda por PORTARIA, várias vezes por ano: é a razão
+                        declarada de este cadastro existir. */}
+                    <div>
+                      <label style={lbl}>Via SUS</label>
+                      <select value={edit.via_sus || ""} onChange={e => set("via_sus", e.target.value)} style={inp}>
+                        <option value="">— em branco: sai por BPA</option>
+                        {VIAS_SUS.map(v => <option key={v.chave} value={v.chave}>{v.label}</option>)}
+                      </select>
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+                        Em branco é o normal — a maioria da produção ambulatorial é BPA. Marque só o que
+                        for APAC ou AIH, que <strong>exigem autorização prévia</strong> e sem ela não são pagos.
+                      </div>
+                    </div>
+                    <div>
+                      <label style={lbl}>Valor SIGTAP (R$)</label>
+                      <input value={edit.valor_sus ?? ""} onChange={e => set("valor_sus", e.target.value)}
+                        style={inp} placeholder="10,50" inputMode="decimal" />
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+                        {String(edit.valor_sus ?? "").trim() === ""
+                          ? "Em branco é “ninguém cadastrou”, e a conta mostra “—”. Diferente de 0, que é “de graça”."
+                          : valorSusEmReais(edit.valor_sus) === null
+                            ? <span style={{ color: "#fb7185" }}>Isso não é um valor. Use 10,50 ou 10.50.</span>
+                            : `Vai para a conta como ${reais(Math.round(valorSusEmReais(edit.valor_sus) * 100))}.`}
+                      </div>
+                    </div>
                     <div style={{ gridColumn: "1 / -1" }}>
                       <label style={lbl}>CBOs que podem executar</label>
                       <input value={edit.cbos_compativeis || ""} onChange={e => set("cbos_compativeis", e.target.value)}
@@ -272,6 +301,10 @@ export default function Tabelas({ sb, currentUser, canEdit }) {
                 {chave === "procedimentos" && (
                   <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                     {l.tabela} · {(l.cbos_compativeis || []).length} CBO(s)
+                    {" · "}{l.via_sus ? l.via_sus.toUpperCase() : "BPA (por omissão)"}
+                    {/* `null` e 0 não são a mesma coisa: sem preço mostra "—",
+                        de graça mostra R$ 0,00. */}
+                    {" · "}{l.valor_sus == null ? "—" : reais(Math.round(Number(l.valor_sus) * 100))}
                   </span>
                 )}
                 {l.sistema && (
