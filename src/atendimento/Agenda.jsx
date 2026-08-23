@@ -294,7 +294,13 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   }
 
   async function procurarPaciente() {
-    setAchados(await buscarPacientes(sb, buscaPac));
+    const r = await buscarPacientes(sb, buscaPac);
+    // Falha de consulta não vira lista vazia: aqui a lista vazia faz a
+    // recepcionista concluir que o paciente não está cadastrado e marcar
+    // para outra pessoa, ou desistir da vaga.
+    if (!r.ok) { setAchados([]); setMsg({ tom: "erro", texto: `${r.motivo} Tente de novo — não é que o paciente não exista.` }); return; }
+    setAchados(r.lista);
+    if (!r.lista.length) setMsg({ tom: "erro", texto: "Nenhum paciente encontrado com esse dado." });
   }
 
   const espec = cod => (catalogos.especialidade || []).find(e => e.codigo === cod)?.nome || cod;

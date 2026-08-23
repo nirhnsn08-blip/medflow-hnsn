@@ -122,9 +122,13 @@ export default function Consultas({ sb }) {
   async function procurarPaciente() {
     setMsg(null);
     const r = await buscarPacientes(sb, termo);
-    if (!r.length) { setMsg({ tom: "erro", texto: "Nenhum paciente encontrado com esse dado." }); return; }
-    if (r.length === 1) { abrirPaciente(r[0]); return; }
-    setAchados(r);
+    // "Não consegui perguntar" é diferente de "não achei" — aqui a tela é só
+    // de consulta, mas dizer "não existe" para quem existe manda a pessoa
+    // procurar no lugar errado.
+    if (!r.ok) { setMsg({ tom: "erro", texto: `${r.motivo} Tente de novo — não é que o paciente não exista.` }); return; }
+    if (!r.lista.length) { setMsg({ tom: "erro", texto: "Nenhum paciente encontrado com esse dado." }); return; }
+    if (r.lista.length === 1) { abrirPaciente(r.lista[0]); return; }
+    setAchados(r.lista);
   }
 
   async function abrirPaciente(p) {
