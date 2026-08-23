@@ -21,6 +21,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import CadastroPaciente from "../pacientes/CadastroPaciente.jsx";
+// O bloco de fonte pagadora e o campo de catálogo moram fora desde que a
+// Agenda passou a precisar dos dois. Duas cópias divergiriam na primeira
+// regra nova de convênio — e regra de convênio muda por contrato.
+import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
 import { comoExibir, idadeDetalhada, rotuloSexo } from "../pacientes/identidade.js";
 import {
   PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe, TIPOS_DISPONIVEIS,
@@ -36,7 +40,7 @@ import {
   contarRegistrosClinicos,
 } from "./dados.js";
 import {
-  DOMINIOS, exigenciasDoConvenio, conferirFicha, tipoDoConvenio,
+  DOMINIOS, conferirFicha,
 } from "./ficha.js";
 import {
   STATUS_ATENDIMENTO, validarCorrecao, validarCancelamento,
@@ -74,44 +78,6 @@ function LinhaResultado({ p, onEscolher }) {
         {p.obito ? " · óbito registrado" : ""}
       </div>
     </button>
-  );
-}
-
-/**
- * Um campo de catálogo.
- *
- * Quando a lista está VAZIA a tela não mostra um `select` vazio, que parece
- * defeito — mostra a frase que diz de quem é a pendência. Recepcionista
- * olhando para um campo que ela não tem como preencher aprende a ignorar a
- * tela inteira.
- */
-function CampoCatalogo({ label, dica, lista, valor, onChange, largura, campoValor = "codigo" }) {
-  if (!lista?.length) {
-    return (
-      <div style={largura ? { width: largura } : undefined}>
-        <label style={lbl}>{label}</label>
-        <div style={{ ...inp, color: "var(--text-muted)", fontSize: 11.5, lineHeight: 1.35, paddingTop: 7, paddingBottom: 7 }}>
-          Nenhum cadastrado ainda
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div style={largura ? { width: largura } : undefined}>
-      <label style={lbl}>{label}</label>
-      <select value={valor ?? ""} onChange={e => onChange(e.target.value)} style={inp}>
-        <option value="">—</option>
-        {/* Convênio e plano são guardados no atendimento por ID (são chave
-            estrangeira); os domínios, por CÓDIGO. Usar `codigo ?? id` para
-            os dois fazia o seletor devolver o código do convênio enquanto a
-            busca procurava pelo id — e o convênio escolhido nunca era
-            encontrado, sem erro nenhum na tela. */}
-        {lista.map(o => (
-          <option key={o.id ?? o.codigo} value={o[campoValor] ?? o.id}>{o.nome}</option>
-        ))}
-      </select>
-      {dica && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{dica}</div>}
-    </div>
   );
 }
 
@@ -388,11 +354,11 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const cat = catalogos || {};
   const convenio = (cat.convenios || []).find(c => String(c.id) === String(ficha.convenio_id)) || null;
   const plano = (cat.planos || []).find(p => String(p.id) === String(ficha.plano_id)) || null;
-  const planosDoConvenio = (cat.planos || []).filter(p => convenio && p.convenio_id === convenio.id);
   const procedimento = (cat.procedimentos || []).find(p => p.codigo === ficha.procedimento_cod) || null;
   const medicoEscolhido = profissionais.find(p => p.username === medicoUser) || null;
-  const exig = exigenciasDoConvenio(convenio);
-  const tipoConv = tipoDoConvenio(convenio);
+  // `convenio` continua aqui porque `conferirFicha` precisa dele. O plano do
+  // convênio, as exigências e o tipo passaram a ser calculados dentro do
+  // <FontePagadora>, que é quem os desenha.
   const conf = conferirFicha({
     paciente, convenio, plano, ficha, procedimento,
     medico: medicoEscolhido, catalogos: cat,
@@ -626,50 +592,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               </div>
 
               {/* ── FONTE PAGADORA ── */}
-              <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Fonte pagadora</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-                <CampoCatalogo label="Convênio" lista={cat.convenios} campoValor="id"
-                  valor={ficha.convenio_id}
-                  onChange={v => setFicha(p => ({ ...p, convenio_id: v, plano_id: "" }))} />
-                {convenio && planosDoConvenio.length > 0 && (
-                  <CampoCatalogo label="Plano" lista={planosDoConvenio} campoValor="id"
-                    valor={ficha.plano_id} onChange={v => setFi("plano_id", v)} />
-                )}
-                {/* Carteira, validade e senha só aparecem quando o convênio
-                    escolhido exige. No SUS não existe carteirinha, e campo
-                    que não se aplica só ensina a preencher qualquer coisa. */}
-                {exig.carteira && (
-                  <>
-                    <div>
-                      <label style={lbl}>Carteira</label>
-                      <input value={ficha.carteira || ""} onChange={e => setFi("carteira", e.target.value)} style={inp} />
-                    </div>
-                    <div>
-                      <label style={lbl}>Validade da carteira</label>
-                      <input type="date" value={ficha.carteira_validade || ""}
-                        onChange={e => setFi("carteira_validade", e.target.value)} style={inp} />
-                    </div>
-                  </>
-                )}
-                {exig.autorizacao && (
-                  <>
-                    <div>
-                      <label style={lbl}>Nº da guia</label>
-                      <input value={ficha.guia_numero || ""} onChange={e => setFi("guia_numero", e.target.value)} style={inp} />
-                    </div>
-                    <div>
-                      <label style={lbl}>Senha de autorização</label>
-                      <input value={ficha.autorizacao_senha || ""} onChange={e => setFi("autorizacao_senha", e.target.value)} style={inp} />
-                    </div>
-                  </>
-                )}
-              </div>
-              {tipoConv && (
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 7 }}>
-                  {tipoConv.label} · fatura por <strong>{tipoConv.faturamento}</strong>
-                  {tipoConv.cobraDoPaciente ? "" : " · o paciente não pode ser cobrado"}
-                </div>
-              )}
+              <FontePagadora catalogos={cat} ficha={ficha} onChange={setFicha} />
 
               {/* ── CLASSIFICAÇÃO ── */}
               <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Classificação do atendimento</div>
