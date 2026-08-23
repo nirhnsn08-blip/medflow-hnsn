@@ -41,16 +41,32 @@ const CAMPOS_BUSCA = [
 /**
  * Procura o paciente pelo que a recepção digitou.
  *
- * Devolve `[]` tanto para "não achei" quanto para "termo curto demais" —
- * quem distingue os dois é a tela, com `filtroBuscaPacientes`.
+ * 🔴 DEVOLVE `{ ok, lista }`, E NÃO UMA LISTA — a distinção é a defesa.
+ *
+ * "Procurei e não achei" e "não consegui perguntar" levam a tela ao MESMO
+ * lugar quando os dois viram `[]`: "Nenhum paciente encontrado", com os
+ * botões de cadastrar logo abaixo. Aí uma oscilação de rede, ou uma coluna
+ * que o banco ainda não tem, produz um prontuário DUPLICADO — e duplicata
+ * neste sistema é permanente, porque não existe unificação.
+ *
+ * O comentário abaixo já defendia essa diferença desde o PR #108 e mesmo
+ * assim as três saídas seguintes colapsavam em `[]`. Defender no comentário
+ * e perder no `return` é o modo de falhar mais caro que este módulo tem.
+ *
+ *   { ok: true,  lista }        → perguntei e esta é a resposta (pode ser [])
+ *   { ok: false, motivo }       → NÃO deu para perguntar. A tela não pode
+ *                                 oferecer "cadastrar novo" neste caso.
+ *
+ * `curto: true` acompanha o termo curto demais para consultar: também é
+ * `ok`, porque a decisão de não perguntar foi nossa e não do banco.
  */
 export async function buscarPacientes(sb, termo, { limite = 25 } = {}) {
   const filtro = filtroBuscaPacientes(termo);
-  if (!filtro) return [];
+  if (!filtro) return { ok: true, lista: [], curto: true };
   const consulta = f => sb(`pacientes?${f}&select=${CAMPOS_BUSCA}&limit=${limite}&order=prontuario`);
 
   const r = await consulta(filtro);
-  if (Array.isArray(r)) return r;
+  if (Array.isArray(r)) return { ok: true, lista: r };
 
   // `null` NÃO é lista vazia. Lista vazia é "procurei e não achei"; `null` é
   // "não deu para perguntar" — e aqui a causa previsível é uma só: a coluna
@@ -62,9 +78,16 @@ export async function buscarPacientes(sb, termo, { limite = 25 } = {}) {
   // O recuo é para a busca antiga, que é pior mas funciona. Depois que o SQL
   // rodar nos dois bancos, nada mais passa por aqui.
   const legado = filtroBuscaPacientesLegado(termo);
-  if (!legado || legado === filtro) return [];
+  // Busca por documento ou prontuário tem o mesmo filtro nos dois caminhos:
+  // não há recuo a tentar, e a falha é falha. Antes esta linha devolvia `[]`
+  // e a tela dizia "não existe" para um paciente que ninguém conseguiu
+  // procurar.
+  if (!legado || legado === filtro) {
+    return { ok: false, motivo: "Não consegui consultar o cadastro agora." };
+  }
   const r2 = await consulta(legado);
-  return Array.isArray(r2) ? r2 : [];
+  if (Array.isArray(r2)) return { ok: true, lista: r2 };
+  return { ok: false, motivo: "Não consegui consultar o cadastro agora." };
 }
 
 /** O cadastro completo de um paciente, ou `null`. */

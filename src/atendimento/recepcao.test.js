@@ -16,6 +16,9 @@
 // ═══════════════════════════════════════════════════════════
 
 import { describe, it, expect } from "vitest";
+// A busca mora em `dados.js`, mas o que ela devolve é regra da recepção — e
+// `buscarPacientes` recebe o `sb` por parâmetro, então testa com um dublê.
+import { buscarPacientes } from "./dados.js";
 import {
   validarProntuario, normalizarProntuario, escaparTermoBusca, classificarBusca,
   filtroBuscaPacientes, filtroBuscaPacientesLegado, palavrasDeBusca,
@@ -201,6 +204,63 @@ describe("o que a recepção digitou", () => {
     expect(filtroBuscaPacientes("T9035")).toBe("or=(prontuario.ilike.T9035)");
     // e continua sem curinga: é comparação exata, não "começa com"
     expect(filtroBuscaPacientes("T9035")).not.toMatch(/\*/);
+  });
+});
+
+// 🔴 A distinção que este bloco protege já esteve escrita num comentário de
+// `buscarPacientes` — e perdida nos três `return []` logo abaixo dele.
+// Defender no comentário e perder no retorno faz a tela dizer "esse paciente
+// não existe" quando ninguém conseguiu perguntar, e é assim que uma queda de
+// rede vira prontuário duplicado. Duplicata aqui é PERMANENTE.
+describe("busca: 'não achei' nunca pode virar 'não deu para perguntar'", () => {
+  const UM = [{ prontuario: "T1", nome_completo: "Maria" }];
+
+  it("achou devolve ok com a lista", async () => {
+    const r = await buscarPacientes(async () => UM, "Maria Silva");
+    expect(r.ok).toBe(true);
+    expect(r.lista).toEqual(UM);
+  });
+
+  it("procurou e não achou é ok com lista VAZIA — a tela pode oferecer cadastrar", async () => {
+    const r = await buscarPacientes(async () => [], "Maria Silva");
+    expect(r.ok).toBe(true);
+    expect(r.lista).toEqual([]);
+  });
+
+  it("consulta que FALHA não é lista vazia — nem depois do recuo", async () => {
+    // `sb` devolve null em qualquer falha (rede, RLS, coluna inexistente).
+    const r = await buscarPacientes(async () => null, "Maria Silva");
+    expect(r.ok).toBe(false);
+    expect(r.lista).toBeUndefined();
+    expect(r.motivo).toBeTruthy();
+  });
+
+  it("documento e prontuário não têm recuo — a falha é falha na primeira", async () => {
+    // Aqui o filtro legado é idêntico ao novo: não há segunda tentativa, e
+    // era ESTE o ramo que devolvia `[]` calado.
+    for (const termo of ["529.982.247-25", "T9035"]) {
+      const r = await buscarPacientes(async () => null, termo);
+      expect(r.ok).toBe(false);
+    }
+  });
+
+  it("o recuo salva quando só a consulta nova falha", async () => {
+    let chamadas = 0;
+    const sb = async url => {
+      chamadas += 1;
+      return url.includes("nome_busca") ? null : UM;   // a nova falha, a antiga responde
+    };
+    const r = await buscarPacientes(sb, "Maria Silva");
+    expect(chamadas).toBe(2);
+    expect(r.ok).toBe(true);
+    expect(r.lista).toEqual(UM);
+  });
+
+  it("termo curto é ok, não falha — a decisão de não perguntar foi nossa", async () => {
+    const r = await buscarPacientes(async () => { throw new Error("não devia consultar"); }, "Jo");
+    expect(r.ok).toBe(true);
+    expect(r.lista).toEqual([]);
+    expect(r.curto).toBe(true);
   });
 });
 

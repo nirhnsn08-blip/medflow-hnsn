@@ -86,6 +86,9 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [resultados, setResultados] = useState([]);
   const [buscou, setBuscou] = useState(false);
   const [buscando, setBuscando] = useState(false);
+  // A consulta falhou — diferente de "não achou". Enquanto isto for
+  // verdade, a tela NÃO oferece cadastrar paciente novo.
+  const [buscaFalhou, setBuscaFalhou] = useState(false);
 
   const [paciente, setPaciente] = useState(null);
   const [abertos, setAbertos] = useState([]);
@@ -136,10 +139,19 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
         : "Digite pelo menos 3 letras do nome." });
       return;
     }
-    setBuscando(true); setMsg(null);
+    setBuscando(true); setMsg(null); setBuscaFalhou(false);
     const r = await buscarPacientes(sb, termo);
-    setResultados(r); setBuscou(true); setBuscando(false);
-    if (r.length === 1) escolher(r[0]);
+    setBuscando(false);
+    // 🔴 "Não consegui perguntar" NÃO vira "não existe". Se a consulta
+    // falhou, a tela não mostra a lista vazia nem os botões de cadastrar:
+    // é exatamente nesse ponto que uma queda de rede vira um prontuário
+    // duplicado — e duplicata aqui é permanente.
+    if (!r.ok) {
+      setResultados([]); setBuscou(false); setBuscaFalhou(true);
+      return;
+    }
+    setResultados(r.lista); setBuscou(true);
+    if (r.lista.length === 1) escolher(r.lista[0]);
   }
 
   /**
@@ -452,6 +464,31 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
             Procurar primeiro é o que evita dois prontuários para a mesma pessoa — com o histórico dividido entre eles.
           </div>
+
+          {/* A CONSULTA FALHOU — e isso não é "não existe".
+              Sem este bloco, queda de rede, sessão vencida ou coluna que o
+              banco ainda não tem apareciam como "Nenhum paciente
+              encontrado", com "Cadastrar paciente novo" logo abaixo. Aqui a
+              tela diz o que houve e NÃO oferece o botão que cria a
+              duplicata — que neste sistema é permanente, porque não existe
+              unificação de prontuário. */}
+          {buscaFalhou && (
+            <div style={{ marginTop: 14, fontSize: 12.5, color: "var(--text-2)", padding: "0.9rem",
+                          background: "#3d0f1833", border: "1px solid #f43f5e55",
+                          borderLeft: "3px solid #f43f5e", borderRadius: 8, lineHeight: 1.55 }}>
+              <strong style={{ color: "#fb7185" }}>Não consegui consultar o cadastro agora.</strong>{" "}
+              Isto <strong>não</strong> quer dizer que o paciente não existe — quer dizer que a pergunta
+              não chegou ao banco. Pode ser a conexão ou a sua sessão.
+              <div style={{ color: "var(--text-muted)", marginTop: 6 }}>
+                Tente de novo em alguns segundos. <strong>Não cadastre o paciente ainda</strong> —
+                se ele já tiver prontuário, um segundo cadastro divide o histórico em dois, e isso não se desfaz.
+              </div>
+              <button onClick={fazerBusca} disabled={buscando}
+                style={{ ...btn("#f43f5e", !buscando), color: "#fff", marginTop: 10, padding: "6px 14px", fontSize: 12 }}>
+                {buscando ? "Procurando…" : "Tentar de novo"}
+              </button>
+            </div>
+          )}
 
           {buscou && (
             <div style={{ marginTop: 14 }}>
