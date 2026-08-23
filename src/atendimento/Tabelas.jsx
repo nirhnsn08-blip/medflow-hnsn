@@ -22,7 +22,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   CATALOGOS, CATALOGO_POR_CHAVE, TIPOS_DE_CONVENIO, TABELAS_DE_PROCEDIMENTO,
-  validarCatalogo, lerCbos, VIAS_SUS, valorSusEmReais,
+  validarCatalogo, lerCbos, VIAS_SUS, valorSusEmReais, CONTA_COMO,
 } from "./catalogo.js";
 import { reais } from "./faturamento.js";
 import { salvarCatalogo, alternarAtivoCatalogo, carregarCatalogoCompleto } from "./dados.js";
@@ -191,6 +191,25 @@ export default function Tabelas({ sb, currentUser, canEdit }) {
                       <label htmlFor="tab-copart" style={{ fontSize: 12.5, cursor: "pointer" }}>Tem coparticipação</label>
                     </div>
                   </>
+                )}
+
+                {/* CONTA COMO — o que faz o tipo aparecer na coluna certa do
+                    relatório. A migração planta isto em `extras` e nada lia:
+                    tipo novo cadastrado pela tela somava ZERO no indicador,
+                    sem errar em lugar nenhum. */}
+                {chave === "tipo_atendimento" && (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <label style={lbl}>Conta como, na produção</label>
+                    <select value={edit.conta_como ?? edit.extras?.conta_como ?? ""}
+                      onChange={e => set("conta_como", e.target.value)} style={inp}>
+                      <option value="">— não entra em nenhuma coluna</option>
+                      {CONTA_COMO.map(c => <option key={c.chave} value={c.chave}>{c.label}</option>)}
+                    </select>
+                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+                      {CONTA_COMO.find(c => c.chave === (edit.conta_como ?? edit.extras?.conta_como))?.dica
+                        || "Sem isto, este tipo não soma na coluna de 1ª consulta nem na de retorno do relatório do mês — e a pactuação separa as duas."}
+                    </div>
+                  </div>
                 )}
 
                 {chave === "procedimentos" && (

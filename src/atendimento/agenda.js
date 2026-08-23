@@ -18,6 +18,10 @@
 // sempre por `diaCivil()`, que força meia-noite LOCAL.
 // ═══════════════════════════════════════════════════════════
 
+// `contaComo` mora no catálogo porque é atributo do CADASTRO do tipo de
+// atendimento, não da agenda. `catalogo.js` não conhece este arquivo: sem ciclo.
+import { contaComo } from "./catalogo.js";
+
 /** Os três donos de vaga, e o que cada um implica. */
 export const ORIGENS_MARCACAO = {
   regulacao: {
@@ -427,7 +431,7 @@ export function podeRegistrarDaRegulacao({
  * foi MARCADO, não sobre quem chegou por ordem de chegada, que não podia
  * faltar a nada.
  */
-export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios = [] } = {}) {
+export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios = [], tiposDeAtendimento = [] } = {}) {
   const doDia = (agendamentos || []).filter(a => String(a.data).slice(0, 10) === String(data).slice(0, 10));
   const aplicaveis = gradesDoDia(grades, data)
     .filter(g => !bloqueioDoDia(bloqueios, data, {
@@ -441,8 +445,11 @@ export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios 
                                   && ["agendado", "presente", "falta"].includes(a.status)).length;
 
   const presentes = doDia.filter(a => a.status === "presente");
-  const primeiras = presentes.filter(a => a.tipo_atendimento_cod === "primeira_consulta").length;
-  const retornos = presentes.filter(a => a.tipo_atendimento_cod === "retorno").length;
+  // Pelo `conta_como` do CADASTRO, não pelo código cravado aqui. Um tipo
+  // novo criado em Tabelas ("retorno pós-operatório") passa a somar na
+  // coluna certa em vez de sumir do relatório sem erro nenhum.
+  const primeiras = presentes.filter(a => contaComo(a.tipo_atendimento_cod, tiposDeAtendimento) === "primeira").length;
+  const retornos = presentes.filter(a => contaComo(a.tipo_atendimento_cod, tiposDeAtendimento) === "retorno").length;
 
   return {
     ofertadas,

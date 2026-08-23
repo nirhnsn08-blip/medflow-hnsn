@@ -98,6 +98,46 @@ export function valorSusEmReais(valor) {
   return c === null ? null : c / 100;
 }
 
+/**
+ * Como um tipo de atendimento CONTA no indicador de produção.
+ *
+ * 🔴 POR QUE ISTO NÃO É O PRÓPRIO CÓDIGO
+ * A migração da fase 2 planta `extras: {"conta_como":"primeira"}` nos tipos
+ * de sistema, com um comentário dizendo que é isso que o indicador usa. E
+ * nada no código lia `extras`: `producaoDoDia` comparava o código direto
+ * com a string "primeira_consulta".
+ *
+ * O efeito é o modo de falhar mais caro deste módulo — o silencioso. Um
+ * tipo novo cadastrado pela tela ("primeira consulta de especialidade",
+ * "retorno pós-operatório") entra INVISÍVEL ao indicador: soma zero, não
+ * aparece em coluna nenhuma do relatório do mês, e não erra em lugar
+ * nenhum. Quem cadastrou acha que cadastrou.
+ *
+ * O código continua servindo de recuo, e é o que mantém o comportamento
+ * atual em banco que ainda não tenha `extras` preenchido.
+ */
+export const CONTA_COMO = [
+  { chave: "primeira", label: "Primeira consulta", dica: "Entra na coluna de 1ª consulta da produção — é o que a pactuação separa." },
+  { chave: "retorno",  label: "Retorno",           dica: "Entra como retorno. O SUS não paga retorno no prazo como consulta nova." },
+  { chave: "urgencia", label: "Urgência",          dica: "Não entra em nenhuma das duas colunas." },
+  { chave: "exame",    label: "Exame",             dica: "Não entra em nenhuma das duas colunas." },
+];
+
+export function contaComo(codigo, tiposDeAtendimento = []) {
+  const cod = String(codigo ?? "").trim();
+  if (!cod) return null;
+  const linha = (Array.isArray(tiposDeAtendimento) ? tiposDeAtendimento : [])
+    .find(t => String(t?.codigo ?? "").trim() === cod);
+  const doCadastro = String(linha?.extras?.conta_como ?? "").trim();
+  if (doCadastro) return doCadastro;
+  // Recuo: os códigos que a migração plantou. Mantém o comportamento antigo
+  // em banco sem `extras`, e sem ele esta mudança apagaria a produção de
+  // quem já usa os tipos de sistema.
+  if (cod === "primeira_consulta") return "primeira";
+  if (CONTA_COMO.some(c => c.chave === cod)) return cod;
+  return null;
+}
+
 /** CBO só tem dígitos. Aceita a lista separada por vírgula, ponto e vírgula ou espaço. */
 export function lerCbos(texto) {
   return String(texto ?? "")
@@ -238,9 +278,17 @@ export function corpoDoCatalogo(chave, dados = {}) {
     };
   }
   // Domínios: a linha carrega de qual lista ela é.
-  return {
+  const corpo = {
     ...base,
     dominio: cat?.dominio || chave,
     ordem: Number(dados.ordem) || 0,
   };
+  // `extras` só existe, por ora, para o `conta_como` do tipo de atendimento.
+  // Mandar `{}` nos outros domínios sobrescreveria de graça o que o banco
+  // já tem — então só vai quando há o que dizer.
+  if (chave === "tipo_atendimento") {
+    const cc = CONTA_COMO.some(c => c.chave === dados.conta_como) ? dados.conta_como : null;
+    corpo.extras = cc ? { ...(dados.extras || {}), conta_como: cc } : (dados.extras || {});
+  }
+  return corpo;
 }
