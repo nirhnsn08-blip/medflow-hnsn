@@ -23,6 +23,7 @@ import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
          modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
+import { validarCbo, formatarCbo, cbosDoCatalogo } from "./acesso/cbo.js";
 import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
 import {
   SUP_LEAD_PADRAO, SUP_MARGEM_SEG, supPrazoReposicao, supSaldoTotal,
@@ -601,6 +602,11 @@ async function salvarCategoriaProfissional(username, dados) {
       conselho: dados.conselho || null,
       registro_conselho: dados.registro_conselho || null,
       uf_conselho: dados.uf_conselho || null,
+      // O CBO entra aqui já normalizado por `validarCbo` — quem chama
+      // recusa o formato errado antes de gravar. É a ocupação que decide se
+      // a produção SUS é PROCESSADA, e a coluna existia desde a fase 2 sem
+      // nenhuma tela que a preenchesse.
+      cbo: dados.cbo || null,
     }),
   });
 }
@@ -16645,6 +16651,15 @@ function AdminUsuarios({ currentUser }) {
   // gente e o cargo já sugere a categoria — ver duas tabelas iguais confundia.
   const [classificando, setClassificando] = useState(null);   // id em edição
   const [catForm, setCatForm] = useState({});
+  const [catMsg, setCatMsg] = useState("");                   // recusa do CBO, na linha
+  // Sugestões de CBO: só os que JÁ estão no catálogo de procedimentos deste
+  // hospital. Nenhuma tabela de CBO inventada — ver o cabeçalho de cbo.js.
+  const [cbosSugeridos, setCbosSugeridos] = useState([]);
+  useEffect(() => {
+    sbFetch("at_procedimentos?select=cbos_compativeis&ativo=eq.true")
+      .then(r => setCbosSugeridos(cbosDoCatalogo(Array.isArray(r) ? r : [])))
+      .catch(() => setCbosSugeridos([]));
+  }, []);
   // Exceções de acesso de uma pessoa — a linha expansível espelha a de
   // Categoria. O desvio individual sobre o cargo, com motivo e autor.
   const [editandoExc, setEditandoExc] = useState(null);       // id em edição
@@ -16692,11 +16707,20 @@ function AdminUsuarios({ currentUser }) {
     setCatForm({
       categoria: u.categoria || "administrativo", conselho: u.conselho || "",
       registro_conselho: u.registro_conselho || "", uf_conselho: u.uf_conselho || "RS",
+      cbo: u.cbo || "",
     });
+    setCatMsg("");
   }
   async function salvarCategoria(u) {
+    // CBO errado é PIOR que CBO vazio: vazio a tela avisa, errado atravessa
+    // tudo e só falha no processamento do mês seguinte, quando a produção
+    // já sumiu. Aqui é tela de cadastro da TI, sem paciente na frente —
+    // recusar é o certo.
+    const vCbo = validarCbo(catForm.cbo);
+    if (!vCbo.ok) { setCatMsg("⚠️ " + vCbo.erro); return; }
+    setCatMsg("");
     setBusy(true);
-    const r = await salvarCategoriaProfissional(u.username, catForm);
+    const r = await salvarCategoriaProfissional(u.username, { ...catForm, cbo: vCbo.valor });
     setBusy(false);
     // PostgREST devolve 204 mesmo quando o RLS bloqueia e nada muda; por isso
     // conferimos o RETORNO, não o status.
@@ -16730,7 +16754,7 @@ function AdminUsuarios({ currentUser }) {
     // quadro inteiro, então juntamos aqui.
     const [r, profs] = await Promise.all([
       adminUsuarios("list"),
-      sbFetch("profiles?select=id,perfil,categoria,conselho,registro_conselho,uf_conselho,setor").catch(() => []),
+      sbFetch("profiles?select=id,perfil,categoria,conselho,registro_conselho,uf_conselho,setor,cbo").catch(() => []),
     ]);
     if (r.error) { setErro(r.error); setRows([]); return; }
     const porId = Object.fromEntries((Array.isArray(profs) ? profs : []).map(p => [p.id, p]));
@@ -16989,8 +17013,32 @@ function AdminUsuarios({ currentUser }) {
                             <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>UF</label>
                             <input value={catForm.uf_conselho} onChange={e => setCatForm(x => ({ ...x, uf_conselho: e.target.value }))} placeholder="RS" style={{ ...inp, width: 54 }} />
                           </div>
+                          {/* CBO — a coluna existia desde a fase 2 e não tinha
+                              onde ser preenchida. É ela que `conferirCbo`
+                              compara com os CBOs do procedimento: sem ela, a
+                              produção SUS não é glosada, é REJEITADA.
+                              A lista de sugestões vem dos CBOs que já estão no
+                              catálogo de procedimentos deste hospital — dado
+                              real. Não há tabela de CBO chutada aqui: código
+                              inventado causa a rejeição que o campo evita. */}
+                          <div>
+                            <label style={{ fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 }}>CBO</label>
+                            <input list="cbos-do-catalogo" value={catForm.cbo || ""}
+                              onChange={e => setCatForm(x => ({ ...x, cbo: e.target.value }))}
+                              placeholder="0000-00" style={{ ...inp, width: 110 }} />
+                            <datalist id="cbos-do-catalogo">
+                              {cbosSugeridos.map(c => <option key={c} value={formatarCbo(c)} />)}
+                            </datalist>
+                          </div>
                           <button onClick={() => salvarCategoria(u)} disabled={busy} style={{ background: "#2dd4bf22", color: "#2dd4bf", border: "1px solid #2dd4bf66", borderRadius: 6, padding: "8px 16px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>{busy ? "…" : "Salvar categoria"}</button>
-                          <button onClick={() => setClassificando(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 12.5 }}>Cancelar</button>
+                          <button onClick={() => { setClassificando(null); setCatMsg(""); }} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 12.5 }}>Cancelar</button>
+                          {catMsg && (
+                            <div style={{ width: "100%", fontSize: 12, color: "#fb7185", marginTop: 4 }}>{catMsg}</div>
+                          )}
+                          <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                            O CBO é o código de ocupação (6 dígitos) que vai na produção SUS. Sem ele, o BPA
+                            do procedimento deste profissional é <strong>rejeitado</strong> no processamento — não glosado depois.
+                          </div>
                         </div>
                       </td>
                     </tr>
