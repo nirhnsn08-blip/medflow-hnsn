@@ -215,16 +215,40 @@ export function bloqueioDoDia(bloqueios, data, { especialidade, profissional } =
 // ── VAGAS DO DIA ────────────────────────────────────────────
 
 /**
+ * De quem é esta vaga.
+ *
+ * FONTE ÚNICA — e tem que ser IDÊNTICA à chave do índice único
+ * `ag_agend_vaga_unica_prof` (migracao-agenda-vaga-por-profissional.sql).
+ * Se a tela contar de um jeito e o banco travar de outro, a recepcionista vê
+ * "livre", clica, e leva uma recusa que a tela não sabe explicar.
+ *
+ * A vaga pertence a QUEM ATENDE. Quando a grade não tem profissional
+ * definido — o que `validarGrade` permite —, ela volta a pertencer à
+ * especialidade, que era o comportamento antigo para todo mundo.
+ *
+ * O prefixo evita que um username coincidente com um código de
+ * especialidade misture as duas chaves.
+ */
+export const donoDaVaga = x =>
+  x?.profissional_username ? `p:${x.profissional_username}` : `e:${x?.especialidade_cod ?? ""}`;
+
+/**
  * Quantas vagas de cada dono existem, estão ocupadas e sobram.
  *
  * Só conta agendamento VIVO (agendado ou presente). Falta e cancelado
  * liberam a vaga de propósito: o horário volta para quem remarca, e o
  * histórico do que foi desmarcado continua gravado.
+ *
+ * 🔴 Contava por ESPECIALIDADE, e por isso o card da Dra. B mostrava a cota
+ * consumida pelo Dr. A: dois profissionais da mesma especialidade no mesmo
+ * turno apareciam como um só, com as vagas de um comendo as do outro. Agora
+ * cada agenda conta a sua.
  */
 export function vagasDoDia(grade, data, agendamentos = []) {
+  const dono = donoDaVaga(grade);
   const doDia = (agendamentos || []).filter(a =>
     String(a.data).slice(0, 10) === String(data).slice(0, 10) &&
-    a.especialidade_cod === grade?.especialidade_cod &&
+    donoDaVaga(a) === dono &&
     ocupaVaga(a));
 
   const out = {};
@@ -236,11 +260,18 @@ export function vagasDoDia(grade, data, agendamentos = []) {
   return out;
 }
 
-/** Os horários da grade que ainda não estão tomados neste dia. */
+/**
+ * Os horários da grade que ainda não estão tomados neste dia.
+ *
+ * Pelo mesmo dono da vaga: o horário das 08:00 do Dr. A não é o das 08:00 da
+ * Dra. B, e tratar os dois como o mesmo era o que impedia o hospital de pôr
+ * dois médicos da mesma especialidade no mesmo turno.
+ */
 export function horariosLivres(grade, data, agendamentos = []) {
+  const dono = donoDaVaga(grade);
   const tomados = new Set((agendamentos || [])
     .filter(a => String(a.data).slice(0, 10) === String(data).slice(0, 10)
-              && a.especialidade_cod === grade?.especialidade_cod
+              && donoDaVaga(a) === dono
               && ocupaVaga(a) && a.hora)
     .map(a => String(a.hora).slice(0, 5)));
   return horariosDaGrade(grade).filter(h => !tomados.has(h));
