@@ -76,11 +76,11 @@ export function especialidadesDoDia({ grades = [], agendamentos = [], data } = {
 }
 
 /** A produção apurada de UMA especialidade — `producaoDoDia` com o recorte. */
-export function producaoDaEspecialidade({ grades = [], agendamentos = [], bloqueios = [], data, especialidadeCod } = {}) {
+export function producaoDaEspecialidade({ grades = [], agendamentos = [], bloqueios = [], data, especialidadeCod, tiposDeAtendimento = [] } = {}) {
   return producaoDoDia({
     grades: grades.filter(g => g.especialidade_cod === especialidadeCod),
     agendamentos: agendamentos.filter(a => a.especialidade_cod === especialidadeCod),
-    bloqueios, data,
+    bloqueios, data, tiposDeAtendimento,
   });
 }
 

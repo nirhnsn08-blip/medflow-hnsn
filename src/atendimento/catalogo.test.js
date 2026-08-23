@@ -19,7 +19,7 @@
 import { describe, it, expect } from "vitest";
 import {
   CATALOGOS, CATALOGO_POR_CHAVE, TIPOS_DE_CONVENIO, TABELAS_DE_PROCEDIMENTO,
-  normalizarCodigo, lerCbos, validarCatalogo, corpoDoCatalogo,
+  normalizarCodigo, lerCbos, validarCatalogo, corpoDoCatalogo, contaComo, CONTA_COMO,
 } from "./catalogo.js";
 import { DOMINIOS } from "./ficha.js";
 
@@ -247,5 +247,50 @@ describe("preço e via do procedimento", () => {
     const r = validarCatalogo("procedimentos", proc({}), []);
     expect(r.ok).toBe(true);
     expect(r.avisos).toEqual([]);
+  });
+});
+
+// 🔴 A migração da fase 2 planta `extras: {"conta_como":"primeira"}` nos tipos
+// de sistema, com um comentário dizendo que é isso que o indicador usa — e
+// NADA no código lia `extras`. Um tipo novo cadastrado pela tela somava zero
+// no relatório e não errava em lugar nenhum. Semente morta no banco.
+describe("conta_como — o que faz o tipo aparecer na coluna certa", () => {
+  const tipos = [
+    { codigo: "primeira_consulta", extras: { conta_como: "primeira" } },
+    { codigo: "retorno", extras: { conta_como: "retorno" } },
+    { codigo: "retorno_pos_op", extras: { conta_como: "retorno" } },   // criado pela tela
+    { codigo: "avulso", extras: {} },
+  ];
+
+  it("lê do CADASTRO, não do código — é o que faz o tipo novo somar", () => {
+    expect(contaComo("retorno_pos_op", tipos)).toBe("retorno");
+    expect(contaComo("primeira_consulta", tipos)).toBe("primeira");
+  });
+
+  it("tipo sem conta_como não entra em coluna nenhuma", () => {
+    expect(contaComo("avulso", tipos)).toBeNull();
+  });
+
+  it("sem catálogo em mãos, o código de sistema ainda vale — não apaga produção", () => {
+    // Este recuo é o que impede a mudança de zerar o relatório de quem já
+    // usa os tipos plantados pela migração, em banco sem `extras`.
+    expect(contaComo("primeira_consulta", [])).toBe("primeira");
+    expect(contaComo("retorno", [])).toBe("retorno");
+    expect(contaComo("inventado", [])).toBeNull();
+    expect(contaComo("", [])).toBeNull();
+    expect(contaComo(null, null)).toBeNull();
+  });
+
+  it("o corpo manda `extras` só no tipo de atendimento", () => {
+    const t = corpoDoCatalogo("tipo_atendimento", { codigo: "X", nome: "X", conta_como: "retorno" });
+    expect(t.extras).toEqual({ conta_como: "retorno" });
+    // Nos outros domínios `extras` nem vai: mandar `{}` sobrescreveria de
+    // graça o que o banco já tem.
+    expect(corpoDoCatalogo("carater", { codigo: "X", nome: "X" }).extras).toBeUndefined();
+  });
+
+  it("conta_como inválido não vira extras", () => {
+    const t = corpoDoCatalogo("tipo_atendimento", { codigo: "X", nome: "X", conta_como: "xpto" });
+    expect(t.extras).toEqual({});
   });
 });

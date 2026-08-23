@@ -137,7 +137,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   }, [sb]);
 
   const aplicaveis = gradesDoDia(grades, data);
-  const producao = producaoDoDia({ grades, data, agendamentos, bloqueios });
+  const producao = producaoDoDia({ grades, data, agendamentos, bloqueios, tiposDeAtendimento: catalogos.tipo_atendimento });
   const bloqueioGeral = bloqueioDoDia(bloqueios, data, {});
   const conciliacao = conciliarProducao({
     grades, agendamentos, bloqueios, data,
