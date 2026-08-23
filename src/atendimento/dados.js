@@ -20,6 +20,7 @@ import {
   filtroBuscaPacientes, filtroBuscaPacientesLegado, normalizarProntuario, dadosNaoIdentificado,
 } from "./recepcao.js";
 import { camposDaFicha, DOMINIOS } from "./ficha.js";
+import { iniciaisDe } from "../pacientes/identidade.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
@@ -137,7 +138,14 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
 
   const corpo = {
     prontuario,
-    iniciais: String(paciente?.iniciais || "?").trim(),
+    // As iniciais SAEM DO NOME quando há nome, e só caem na coluna
+    // `iniciais` do cadastro quando não há. A coluna é denormalizada e pode
+    // ficar velha: quem corrige um nome por um caminho que não a atualiza
+    // deixa as duas divergindo, e é a `iniciais` que aparece na fila do PS e
+    // na pulseira. `CadastroPaciente` já deriva assim ao gravar — aqui a
+    // regra passa a ser a mesma, em vez de confiar no que estiver guardado.
+    iniciais: iniciaisDe(paciente?.nome_social || paciente?.nome_completo)
+      || String(paciente?.iniciais || "?").trim(),
     queixa: String(queixa ?? "").trim() || null,
     origem: origem || null,
     origem_detalhe: String(origemDetalhe ?? "").trim() || null,

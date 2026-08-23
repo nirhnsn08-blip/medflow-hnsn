@@ -33,9 +33,11 @@ import {
   carregarGrades, salvarGrade, alternarAtivoGrade, carregarBloqueios, salvarBloqueio,
   carregarAgendaDoDia, marcarAgendamento, confirmarPresenca, registrarFalta,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
-  carregarProfissionais, buscarPacientes,
+  carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao,
 } from "./dados.js";
+import { conferirFicha } from "./ficha.js";
+import FontePagadora from "./FontePagadora.jsx";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
 import RelatorioAmbulatorio from "./RelatorioAmbulatorio.jsx";
 
@@ -81,6 +83,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
   const [verAbertos, setVerAbertos] = useState(false);
+  // A chegada em andamento: { agendamento, paciente, ficha }.
+  const [presenca, setPresenca] = useState(null);
   const [producaoGravada, setProducaoGravada] = useState([]);
 
   const recarregarDia = useCallback(async () => {
@@ -180,19 +184,60 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     recarregarDia();
   }
 
-  async function darPresenca(a) {
+  /**
+   * Abre a CHEGADA — a etapa que faltava entre o agendamento e o atendimento.
+   *
+   * POR QUE ISTO DEIXOU DE SER UM CLIQUE SÓ
+   * "Presença" gravava direto e abria o atendimento com a ficha vazia: sem
+   * convênio, sem carteira, sem plano, sem senha de autorização. As colunas
+   * existem em `ps_atendimentos` e ficavam todas nulas. `conferirFicha` — que
+   * já sabe cobrar carteira, validade e autorização — era chamada na Recepção
+   * e no fechamento da conta, e NUNCA aqui.
+   *
+   * O custo aparecia 40 dias depois: toda consulta de convênio que entrasse
+   * pela Agenda chegava ao faturamento sem carteira e sem senha, com o
+   * paciente em casa. Glosa integral, e o retrabalho é telefone.
+   *
+   * Carrega o cadastro do paciente de verdade, e não um `{ prontuario,
+   * iniciais: "?" }` montado na hora — era isso que fazia TODO atendimento
+   * ambulatorial nascer com as iniciais "?" gravadas no episódio.
+   */
+  async function abrirPresenca(a) {
     if (!canEdit) return;
     if (!a.prontuario) {
       setMsg({ tom: "erro", texto: "Esta vaga está reservada sem paciente. Use \"Quem veio?\" para dizer quem chegou antes de dar presença." });
       return;
     }
     setBusy(true);
-    const r = await confirmarPresenca(sb, a, {
-      paciente: { prontuario: a.prontuario, iniciais: "?" },
-      ficha: { tipo_atendimento_cod: a.tipo_atendimento_cod, especialidade_cod: a.especialidade_cod },
-    }, currentUser);
+    const paciente = await carregarPaciente(sb, a.prontuario);
+    setBusy(false);
+    if (!paciente) {
+      setMsg({ tom: "erro", texto: `Não achei o cadastro do prontuário ${a.prontuario}. A presença não foi registrada.` });
+      return;
+    }
+    setMsg(null);
+    setPresenca({
+      agendamento: a,
+      paciente,
+      // O que a marcação já sabe vem preenchido; o que só se descobre com a
+      // pessoa na frente (a carteirinha na mão) fica para a recepcionista.
+      ficha: {
+        convenio_id: "", plano_id: "", carteira: "", carteira_validade: "",
+        guia_numero: "", autorizacao_senha: "",
+        tipo_atendimento_cod: a.tipo_atendimento_cod || "",
+        especialidade_cod: a.especialidade_cod || "",
+      },
+    });
+  }
+
+  async function confirmarAPresenca() {
+    if (!canEdit || busy || !presenca) return;
+    const { agendamento, paciente, ficha } = presenca;
+    setBusy(true);
+    const r = await confirmarPresenca(sb, agendamento, { paciente, ficha }, currentUser);
     setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setPresenca(null);
     setMsg({ tom: r.aviso ? "erro" : "ok",
              texto: r.aviso || `Presença confirmada — atendimento ${r.atendimento.id} aberto.` });
     recarregarDia();
@@ -254,6 +299,26 @@ export default function Agenda({ sb, currentUser, canEdit }) {
 
   const espec = cod => (catalogos.especialidade || []).find(e => e.codigo === cod)?.nome || cod;
   const prof = u => profissionais.find(p => p.username === u)?.nome || u;
+
+  // As pendências da chegada, pela MESMA regra que a Recepção e o fechamento
+  // da conta usam. `hoje` é a data do agendamento e não a de agora: a
+  // carteirinha tem que valer no dia do atendimento, e conferir contra hoje
+  // reprovaria carteira que estava válida e foi renovada depois — foi
+  // exatamente esse o defeito corrigido no fechamento (PR #107).
+  const convPresenca = presenca
+    ? (catalogos.convenios || []).find(c => String(c.id) === String(presenca.ficha.convenio_id)) || null
+    : null;
+  const planoPresenca = presenca
+    ? (catalogos.planos || []).find(p => String(p.id) === String(presenca.ficha.plano_id)) || null
+    : null;
+  const confPresenca = presenca ? conferirFicha({
+    paciente: presenca.paciente,
+    convenio: convPresenca,
+    plano: planoPresenca,
+    ficha: presenca.ficha,
+    catalogos,
+    hoje: presenca.agendamento?.data ? new Date(`${String(presenca.agendamento.data).slice(0, 10)}T12:00:00`) : new Date(),
+  }) : null;
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -446,7 +511,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                             {!a.prontuario && (
                               <button onClick={() => vincular(a)} style={{ ...btn("#6366f1"), color: "#fff", padding: "4px 9px", fontSize: 11 }}>Quem veio?</button>
                             )}
-                            <button onClick={() => darPresenca(a)} disabled={busy}
+                            <button onClick={() => abrirPresenca(a)} disabled={busy}
                               style={{ ...btn("#0d9488", !busy), color: "#fff", padding: "4px 9px", fontSize: 11 }}>Presença</button>
                             <button onClick={() => faltar(a)} style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 9px", fontSize: 11 }}>Falta</button>
                             <button onClick={() => cancelar(a)} style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 9px", fontSize: 11 }}>Cancelar</button>
@@ -462,6 +527,70 @@ export default function Agenda({ sb, currentUser, canEdit }) {
               </div>
             );
           })}
+
+          {/* ── CHEGADA: quem paga esta consulta ──
+              A pergunta que faltava. Aparece com o paciente na frente, que é
+              o único momento em que a carteirinha está na mão. */}
+          {presenca && (
+            <div style={{ ...cartao, borderLeft: "4px solid #0d9488" }}>
+              <div style={rotulo}>Chegada — confirmar presença</div>
+              <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+                {comoExibir(presenca.paciente, { completo: true }) || presenca.paciente.iniciais}
+                <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+                  {" · reg. "}{presenca.paciente.prontuario}
+                  {presenca.agendamento.hora ? ` · ${String(presenca.agendamento.hora).slice(0, 5)}` : ""}
+                  {" · "}{espec(presenca.agendamento.especialidade_cod)}
+                </span>
+              </div>
+
+              <FontePagadora
+                catalogos={catalogos}
+                ficha={presenca.ficha}
+                onChange={f => setPresenca(p => ({ ...p, ficha: f }))}
+              />
+
+              {/* As pendências ditas em voz alta, e SEM modal.
+                  A Recepção usa um `confirm()` aqui e ele dispara em todo
+                  atendimento — 80 cliques em OK por dia ensinam a fechar
+                  aviso sem ler, e aí o dia em que o aviso é "a carteira está
+                  vencida" passa junto. Aqui a pendência mora ao lado do
+                  botão, e o próprio rótulo do botão a carrega. */}
+              {confPresenca?.avisos?.length > 0 && (
+                <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 8, fontSize: 12,
+                              background: confPresenca.pendenciasGraves ? "#d9770610" : "var(--surface-2)",
+                              border: `1px solid ${confPresenca.pendenciasGraves ? "#d9770655" : "var(--border)"}` }}>
+                  <strong style={{ color: confPresenca.pendenciasGraves ? "#d97706" : "var(--text-muted)" }}>
+                    {confPresenca.pendenciasGraves
+                      ? `${confPresenca.pendenciasGraves} pendência(s) que impedem o faturamento`
+                      : "Pendências menores"}
+                  </strong>
+                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {confPresenca.avisos.map(a => (
+                      <div key={a.chave} style={{ color: a.gravidade === "alta" ? "var(--text)" : "var(--text-muted)" }}>
+                        • {a.texto}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ color: "var(--text-muted)", marginTop: 7 }}>
+                    Nada disso impede a consulta. O que não fecha é a conta — e depois que o paciente for embora, isto vira telefonema.
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
+                <button onClick={confirmarAPresenca} disabled={busy}
+                  style={{ ...btn("#0d9488", !busy), color: "#fff" }}>
+                  {busy ? "Confirmando…"
+                    : confPresenca?.pendenciasGraves
+                      ? `Confirmar com ${confPresenca.pendenciasGraves} pendência(s)`
+                      : "Confirmar presença"}
+                </button>
+                <button onClick={() => setPresenca(null)} style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* ── formulário de marcação ── */}
           {marcando && (
