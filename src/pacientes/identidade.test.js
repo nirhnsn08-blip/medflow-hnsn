@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  limparDoc, validarCPF, formatarCPF, validarCNS, formatarCNS, tipoCNS,
+  limparDoc, validarCPF, formatarCPF, validarCNS, formatarCNS, tipoCNS, formatarTelefone,
   normalizarNome, partesDoNome, iniciaisDe, comoExibir, normalizarSexo, rotuloSexo,
   idadeDetalhada, idadeMesesParaTriagem,
   conferirCadastro, possiveisDuplicatas, documentoEmUso, mensagemDocumentoEmUso,
@@ -379,5 +379,30 @@ describe("documento que já é de outro prontuário", () => {
 
   it("sem conflito, sem mensagem", () => {
     expect(mensagemDocumentoEmUso(null)).toBe("");
+  });
+});
+
+// 🔴 A busca por telefone normaliza para dígitos; o cadastro gravava o que
+// fosse digitado. "(51) 3664-1234" e "5136641234" viravam duas coisas
+// diferentes, e procurar pelo número que está na tela não achava o paciente
+// que está na tela. Achei percorrendo: a consulta saía certa e voltava vazia.
+// É a mesma lição que o CPF já tinha documentada — o telefone ficou de fora.
+describe("telefone: guardado em dígitos, formatado só na exibição", () => {
+  it("celular com 11 dígitos", () => {
+    expect(formatarTelefone("51999990000")).toBe("(51) 99999-0000");
+  });
+
+  it("fixo com 10 dígitos", () => {
+    expect(formatarTelefone("5136641234")).toBe("(51) 3664-1234");
+  });
+
+  it("aceita entrada já formatada — a exibição não depende de como foi digitado", () => {
+    expect(formatarTelefone("(51) 3664-1234")).toBe("(51) 3664-1234");
+  });
+
+  it("o que não tem 10 nem 11 dígitos volta como veio — não se inventa formato", () => {
+    expect(formatarTelefone("3664")).toBe("3664");
+    expect(formatarTelefone("")).toBe("");
+    expect(formatarTelefone(null)).toBe("");
   });
 });

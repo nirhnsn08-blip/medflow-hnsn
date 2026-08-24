@@ -139,7 +139,18 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     const conflito = documentoEmUso({ ...f, prontuario: alvo }, candidatos);
     if (conflito) { setMsg("⚠️ " + mensagemDocumentoEmUso(conflito)); return; }
 
-    const graves = duplicatas.filter(d => d.confianca >= 90);
+    // 🔴 O AVISO DE DUPLICIDADE SÓ VALE NA CRIAÇÃO.
+    //
+    // Editando um cadastro que JÁ EXISTE, salvar atualiza aquele prontuário
+    // e não cria nada — então o texto "cadastrar assim mesmo cria um SEGUNDO
+    // prontuário" é falso, e um aviso falso é pior que aviso nenhum.
+    //
+    // Na prática isto trancava a tarefa mais rotineira do balcão: mudar um
+    // telefone de alguém que tem homônimo no acervo exigia confirmar um
+    // modal dizendo que se estava duplicando o paciente. O cartão de
+    // possíveis duplicatas continua visível na tela — informação é útil; é a
+    // interrupção que não se justifica aqui.
+    const graves = edicao ? [] : duplicatas.filter(d => d.confianca >= 90);
     if (graves.length && !confirm(
       `Atenção: este paciente parece já estar cadastrado.\n\n` +
       graves.map(d => `• Prontuário ${d.prontuario} — ${d.motivos.join(", ")}`).join("\n") +
@@ -158,6 +169,14 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     // "529.982.247-25" e "52998224725" como o mesmo CPF.
     if (corpo.cpf) corpo.cpf = limparDoc(corpo.cpf);
     if (corpo.cns) corpo.cns = limparDoc(corpo.cns);
+    // 🔴 TELEFONE PELO MESMO MOTIVO, e ele estava de fora.
+    // A busca por telefone normaliza para dígitos; o cadastro gravava o que
+    // fosse digitado. "(51) 3664-1234" e "5136641234" viravam duas coisas
+    // diferentes, e procurar pelo número que está na tela não achava o
+    // paciente que está na tela. Achei percorrendo: a consulta saía certa e
+    // voltava vazia.
+    if (corpo.telefone) corpo.telefone = limparDoc(corpo.telefone);
+    if (corpo.telefone_alt) corpo.telefone_alt = limparDoc(corpo.telefone_alt);
     // As iniciais continuam sendo a forma padrão de exibir — derivadas do
     // nome para não dependerem de alguém digitar duas vezes.
     corpo.iniciais = iniciaisDe(f.nome_completo) || paciente?.iniciais || "?";

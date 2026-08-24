@@ -108,6 +108,11 @@ export function classificarBusca(termo) {
     return { tipo: "cns", valor: doc, valido: validarCNS(doc) };
   if (doc.length === 11 && doc === bruto.replace(/[\s.-]/g, ""))
     return { tipo: "cpf", valor: doc, valido: validarCPF(doc) };
+  // 10 dígitos não é documento nenhum: é telefone fixo com DDD. Celular tem
+  // 11 e colide com CPF — esse caso é resolvido no filtro, procurando pelos
+  // dois, em vez de escolher um e errar metade das vezes.
+  if (doc.length === 10 && doc === bruto.replace(/[\s()-]/g, ""))
+    return { tipo: "telefone", valor: doc };
   if (/^[A-Za-z]?\d[A-Za-z0-9._-]*$/.test(bruto) && bruto.length <= 30)
     return { tipo: "prontuario", valor: bruto };
   return { tipo: "nome", valor: escaparTermoBusca(bruto) };
@@ -123,15 +128,33 @@ export function classificarBusca(termo) {
 export function filtroBuscaPacientes(termo) {
   const c = classificarBusca(termo);
   if (c.tipo === "vazio") return null;
-  if (c.tipo === "cpf") return `or=(cpf.eq.${c.valor})`;
+  // QUALQUER NÚMERO SOLTO É PROCURADO EM TODOS OS CAMPOS NUMÉRICOS.
+  //
+  // CPF de 11 dígitos, CELULAR com DDD e RG têm comprimentos que se
+  // sobrepõem — não dá para saber, olhando, qual dos três foi digitado.
+  // Escolher um erraria parte das vezes, então procura por todos. Trazer
+  // alguém a mais na lista custa uma linha na tela; não achar quem existe
+  // custa um prontuário duplicado com o histórico partido ao meio.
+  //
+  // O CPF continua sendo procurado mesmo com dígito verificador errado —
+  // decisão antiga e continua certa: documento digitado errado ainda se acha.
+  if (c.tipo === "cpf") return `or=(cpf.eq.${c.valor},telefone.eq.${c.valor},telefone_alt.eq.${c.valor},rg.ilike.${c.valor})`;
   if (c.tipo === "cns") return `or=(cns.eq.${c.valor})`;
+  // 10 dígitos: telefone fixo com DDD, ou RG — o formato mais comum no RS.
+  // O telefone é o desempate mais rápido do balcão quando o nome é comum, e
+  // era o único jeito de achar quem ligou avisando que vem.
+  if (c.tipo === "telefone") return `or=(telefone.eq.${c.valor},telefone_alt.eq.${c.valor},rg.ilike.${c.valor})`;
   // Prontuário por `ilike` SEM curinga, que é comparação exata sem
   // diferenciar maiúscula de minúscula. Com `eq` (case-sensitive) digitar
   // "t9035" não achava o "T9035" do acervo — e ninguém digita maiúscula com
   // fila na frente. A tela então dizia "nenhum paciente encontrado" para um
   // paciente que está lá, e a recepcionista concluía que ele não existe e
   // cadastrava de novo: busca que não acha é a máquina de duplicatas.
-  if (c.tipo === "prontuario") return `or=(prontuario.ilike.${c.valor})`;
+  // Prontuário OU RG. Boa parte da população idosa do interior chega com RG
+  // e sem CPF na carteira, e o RG não tinha por onde ser procurado — o
+  // cadastro guardava um dado que nenhuma busca alcançava. Aqui entra o RG
+  // com letra ou pontuação; o RG só de dígitos cai nas linhas de cima.
+  if (c.tipo === "prontuario") return `or=(prontuario.ilike.${c.valor},rg.ilike.${c.valor})`;
   const palavras = palavrasDeBusca(c.valor);
   if (!palavras.length) return null;
   // Nome: TODAS as palavras têm que aparecer em `nome_busca` — a coluna

@@ -26,7 +26,7 @@ import CadastroPaciente from "../pacientes/CadastroPaciente.jsx";
 // regra nova de convênio — e regra de convênio muda por contrato.
 import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
-import { comoExibir, idadeDetalhada, rotuloSexo } from "../pacientes/identidade.js";
+import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone } from "../pacientes/identidade.js";
 import {
   PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe, TIPOS_DISPONIVEIS,
   classificarBusca, filtroBuscaPacientes, validarAbertura,
@@ -528,7 +528,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input value={termo} onChange={e => setTermo(e.target.value)}
               onKeyDown={e => e.key === "Enter" && fazerBusca()}
-              placeholder="Nome, nome da mãe, CPF, Cartão SUS ou nº do prontuário"
+              placeholder="Nome, nome da mãe, CPF, Cartão SUS, RG, telefone ou nº do prontuário"
               style={{ ...inp, flex: 1, minWidth: 260 }} />
             <button onClick={fazerBusca} disabled={buscando} style={btn("#22d3ee", !buscando)}>
               {buscando ? "Procurando…" : "Procurar"}
@@ -632,7 +632,21 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 {comoExibir(paciente, { completo: true }) || paciente.iniciais}
               </div>
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>· prontuário {paciente.prontuario}</span>
-              <button onClick={recomecar} style={{ ...btn("var(--surface-2)", false), marginLeft: "auto", color: "var(--text)" }}>Trocar paciente</button>
+              {/* EDITAR CADASTRO — o caminho que não existia.
+                  "Completar agora" só aparece dentro do aviso de cadastro
+                  INCOMPLETO. Ou seja: paciente com cadastro em ordem não
+                  tinha por onde ser corrigido, e "mudei de telefone",
+                  "mudei de endereço" e "casei e mudei de nome" são a tarefa
+                  mais rotineira do balcão depois de identificar. A única
+                  saída era o cadastro estar errado o bastante para o
+                  sistema reclamar. */}
+              {canEdit && (
+                <button onClick={() => setCadastrando({ prontuario: paciente.prontuario, paciente })}
+                  style={{ ...btn("var(--surface-2)", false), marginLeft: "auto", color: "var(--text)" }}>
+                  Editar cadastro
+                </button>
+              )}
+              <button onClick={recomecar} style={{ ...btn("var(--surface-2)", false), marginLeft: canEdit ? 0 : "auto", color: "var(--text)" }}>Trocar paciente</button>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
               {(() => {
@@ -641,6 +655,14 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               })()}
               {" · "}{rotuloSexo(paciente.sexo)}
               {paciente.nome_mae ? ` · mãe: ${paciente.nome_mae}` : ""}
+              {/* O TELEFONE, que a tela nunca desenhava.
+                  Estava no banco e nenhuma tela mostrava — e é o dado que a
+                  recepcionista confere a cada visita E o número para o qual
+                  a confirmação da véspera liga. Fazer o botão "Confirmar" e
+                  esconder o telefone é entregar meia ferramenta. */}
+              {paciente.telefone
+                ? <> · ☎ {formatarTelefone(paciente.telefone)}{paciente.telefone_alt ? ` / ${formatarTelefone(paciente.telefone_alt)}` : ""}</>
+                : <span style={{ color: "#d97706" }}> · sem telefone no cadastro — não dá para confirmar a consulta da véspera</span>}
             </div>
 
             {pend && !pend.completo && (
