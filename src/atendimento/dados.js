@@ -397,9 +397,41 @@ export async function cancelarAtendimento(sb, id, motivo, user) {
 export async function listarAmbulatoriaisAbertos(sb, { limite = 200 } = {}) {
   const r = await sb(
     `ps_atendimentos?tipo_atendimento=eq.ambulatorial&${FILTRO_ATENDIMENTO_ABERTO}` +
-    `&select=id,prontuario,iniciais,status,chegada_em,especialidade_cod,tipo_atendimento_cod,agendamento_id` +
+    `&select=id,prontuario,iniciais,status,chegada_em,atendimento_em,especialidade_cod,tipo_atendimento_cod,agendamento_id,medico,queixa` +
     `&order=chegada_em&limit=${limite}`);
   return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Chama o paciente para a sala.
+ *
+ * Grava `atendimento_em` — a coluna que marca o INÍCIO real da consulta e
+ * que, no ambulatório, nunca era escrita: só o fluxo do PS a preenchia.
+ * Sem ela não existe tempo de espera, e o atraso do médico não deixa rastro
+ * nenhum. É o que separa "quanto falta?" respondido de cabeça de um número
+ * que a gestão pode cobrar.
+ *
+ * `atendimento_em` é gravado UMA vez, na primeira chamada: `validarChamada`
+ * recusa a segunda. Reescrever a hora a cada clique apagaria a espera que já
+ * tinha sido medida.
+ */
+export async function chamarParaAtendimento(sb, id, user) {
+  if (!id) return { ok: false, motivo: "Atendimento inválido." };
+  const r = await sb(`ps_atendimentos?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: "em_atendimento",
+      atendimento_em: new Date().toISOString(),
+      usuario: user?.name || null,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+  // O PostgREST devolve 2xx mesmo alterando ZERO linhas — confere o retorno.
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi alterado — confirme que seu perfil permite atualizar o atendimento." };
+  }
+  return { ok: true, atendimento: r[0] };
 }
 
 /** Um atendimento, com a ficha inteira — para a tela de correção. */

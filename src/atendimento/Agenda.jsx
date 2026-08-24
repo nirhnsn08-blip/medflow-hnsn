@@ -28,6 +28,7 @@ import {
 } from "./agenda.js";
 import {
   DESFECHOS_AMBULATORIAL, validarEncerramento, STATUS_ATENDIMENTO,
+  filaDoAmbulatorio, validarChamada,
 } from "./ciclo.js";
 import {
   listarAmbulatoriaisAbertos, encerrarAtendimento,
@@ -36,6 +37,7 @@ import {
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
+  chamarParaAtendimento,
 } from "./dados.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
@@ -135,6 +137,10 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     Promise.all([carregarCatalogos(sb), carregarProfissionais(sb)])
       .then(([c, p]) => { setCatalogos(c); setProfissionais(p); });
   }, [sb]);
+
+  // A fila sai dos ambulatoriais em aberto, que a tela já carrega para o
+  // card de pendência de encerramento — o mesmo dado, com um uso a mais.
+  const fila = filaDoAmbulatorio(ambAbertos);
 
   const aplicaveis = gradesDoDia(grades, data);
   const producao = producaoDoDia({ grades, data, agendamentos, bloqueios, tiposDeAtendimento: catalogos.tipo_atendimento });
@@ -309,6 +315,18 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     recarregarDia();
   }
 
+  async function chamar(a) {
+    if (!canEdit || busy) return;
+    const v = validarChamada(a);
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erro }); return; }
+    setBusy(true);
+    const r = await chamarParaAtendimento(sb, a.id, currentUser);
+    setBusy(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({ tom: "ok", texto: `${a.iniciais || a.prontuario} chamado — a hora de início do atendimento foi registrada.` });
+    recarregarDia();
+  }
+
   async function procurarPaciente() {
     const r = await buscarPacientes(sb, buscaPac);
     // Falha de consulta não vira lista vazia: aqui a lista vazia faz a
@@ -333,7 +351,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       </div>
 
       <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-        {[["dia", "Dia"], ["grade", "Grade e bloqueios"],
+        {[["dia", "Dia"],
+          // A contagem no rótulo não é enfeite: é o número que a recepção
+          // precisa saber sem abrir a aba — quantas pessoas estão esperando
+          // agora.
+          ["fila", fila.esperando.length ? `Fila (${fila.esperando.length})` : "Fila"],
+          ["grade", "Grade e bloqueios"],
           ["producao", conciliacao.divergentes ? `Produção (${conciliacao.divergentes})` : "Produção"],
           ["relatorio", "Relatório do mês"]].map(([k, l]) => (
           <button key={k} onClick={() => { setVista(k); setMsg(null); }}
@@ -392,6 +415,80 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       )}
 
       {/* ══════════ DIA ══════════ */}
+      {/* ── FILA VIVA ──
+          Confirmada a presença, nascia um atendimento
+          `aguardando_atendimento` que o painel do PS exclui (lá o filtro é
+          só emergência, e está certo) e que não aparecia em NENHUMA outra
+          tela. O paciente ficava presente no sistema e invisível para todo
+          mundo — e a recepção respondia "quanto falta?" de cabeça. */}
+      {vista === "fila" && (
+        <div style={cartao}>
+          <div style={rotulo}>Quem está esperando agora</div>
+          {fila.esperando.length === 0 && fila.emAtendimento.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+              Ninguém na fila do ambulatório. Quem tem presença confirmada aparece aqui até ser chamado.
+            </div>
+          ) : (
+            <>
+              {fila.esperando.map(a => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                                         padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
+                  <div style={{ minWidth: 72, fontSize: 15, fontWeight: 800,
+                                // O relógio muda de cor por tempo de espera: é o
+                                // sinal que a recepção lê de longe, sem contar.
+                                color: (a.esperaMin ?? 0) >= 60 ? "#f43f5e" : (a.esperaMin ?? 0) >= 30 ? "#d97706" : "var(--text)" }}>
+                    {a.esperaMin == null ? "—" : `${a.esperaMin} min`}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 200, fontSize: 13 }}>
+                    <strong>{a.iniciais || "—"}</strong>
+                    <span style={{ color: "var(--text-muted)" }}>
+                      {" · reg. "}{a.prontuario} · {espec(a.especialidade_cod)}
+                      {a.medico ? ` · ${prof(a.medico)}` : ""}
+                    </span>
+                    {a.queixa && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{a.queixa}</div>}
+                  </div>
+                  {canEdit && (
+                    <button onClick={() => chamar(a)} disabled={busy}
+                      style={{ ...btn("#0d9488", !busy), color: "#fff" }}>Chamar</button>
+                  )}
+                </div>
+              ))}
+
+              {fila.emAtendimento.length > 0 && (
+                <>
+                  <div style={{ ...rotulo, marginTop: 16 }}>Em atendimento</div>
+                  {fila.emAtendimento.map(a => (
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+                                             padding: "9px 0", borderBottom: "1px solid var(--border)" }}>
+                      <div style={{ minWidth: 72, fontSize: 12, color: "var(--text-muted)" }}>
+                        {/* O relógio dele PAROU na chamada: este é o tempo que
+                            ele esperou, não quanto a consulta está durando. */}
+                        esperou {a.esperaMin == null ? "—" : `${a.esperaMin} min`}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 200, fontSize: 13 }}>
+                        <strong>{a.iniciais || "—"}</strong>
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {" · reg. "}{a.prontuario} · {espec(a.especialidade_cod)}
+                        </span>
+                      </div>
+                      {canEdit && (
+                        <button onClick={() => encerrar(a)} style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>
+                          Encerrar
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 12, lineHeight: 1.5 }}>
+            O relógio conta da chegada. Chamar grava a hora de início do atendimento — é dela que
+            sai o tempo de espera que a gestão cobra, e sem ela o atraso não deixa rastro.
+          </div>
+        </div>
+      )}
+
       {vista === "dia" && (
         <>
           <div style={cartao}>

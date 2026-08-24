@@ -21,6 +21,7 @@ import {
   STATUS_ATENDIMENTO, atendimentoAberto, FILTRO_ATENDIMENTO_ABERTO,
   DESFECHOS_AMBULATORIAL, validarEncerramento,
   CAMPOS_CORRIGIVEIS, validarCorrecao, camposDaCorrecao, validarCancelamento,
+  filaDoAmbulatorio, minutosEntre, validarChamada,
 } from "./ciclo.js";
 
 const ABERTO = { id: 7, status: "aguardando_atendimento", prontuario: "100001" };
@@ -178,5 +179,72 @@ describe("cancelamento", () => {
 
   it("sem atendimento não passa", () => {
     expect(validarCancelamento({ motivo }).ok).toBe(false);
+  });
+});
+
+// 🔴 Confirmada a presença, nascia um atendimento `aguardando_atendimento`
+// que é excluído do painel do PS (lá o filtro é só emergência, e está certo)
+// e não aparecia em NENHUMA outra tela. O paciente ficava num limbo: presente
+// no sistema, invisível para todo mundo. A recepção respondia "quanto falta?"
+// de cabeça, e o atraso do médico não deixava rastro.
+describe("a fila viva do ambulatório", () => {
+  const T = h => `2026-08-24T${String(h).padStart(2, "0")}:00:00Z`;
+  const agora = new Date(T(10));
+
+  it("conta a espera da chegada até agora, e põe quem espera mais na frente", () => {
+    const r = filaDoAmbulatorio([
+      { id: 1, status: "aguardando_atendimento", chegada_em: T(9) },
+      { id: 2, status: "aguardando_atendimento", chegada_em: T(8) },
+    ], { agora });
+    expect(r.esperando.map(a => a.id)).toEqual([2, 1]);
+    expect(r.esperando[0].esperaMin).toBe(120);
+    expect(r.esperando[1].esperaMin).toBe(60);
+  });
+
+  it("quem já foi chamado tem o relógio PARADO na chamada", () => {
+    // Contar até agora faria a média de espera crescer junto com a duração
+    // da consulta — que é outra coisa.
+    const r = filaDoAmbulatorio([
+      { id: 3, status: "em_atendimento", chegada_em: T(8), atendimento_em: T(9) },
+    ], { agora });
+    expect(r.emAtendimento[0].esperaMin).toBe(60);
+    expect(r.esperando).toEqual([]);
+  });
+
+  it("encerrado e cancelado saem da fila", () => {
+    const r = filaDoAmbulatorio([
+      { id: 4, status: "finalizado", chegada_em: T(8) },
+      { id: 5, status: "cancelado", chegada_em: T(8) },
+      { id: 6, status: "aguardando_atendimento", chegada_em: T(9) },
+    ], { agora });
+    expect(r.esperando.map(a => a.id)).toEqual([6]);
+    expect(r.emAtendimento).toEqual([]);
+  });
+
+  it("sem hora de chegada a espera é null, não zero", () => {
+    // Zero para quem espera há uma hora é pior que relógio nenhum.
+    const r = filaDoAmbulatorio([{ id: 7, status: "aguardando_atendimento" }], { agora });
+    expect(r.esperando[0].esperaMin).toBeNull();
+  });
+
+  it("lista vazia ou nula não quebra", () => {
+    expect(filaDoAmbulatorio([], { agora })).toEqual({ esperando: [], emAtendimento: [] });
+    expect(filaDoAmbulatorio(null, { agora }).esperando).toEqual([]);
+  });
+
+  it("minutosEntre recusa o impossível em vez de devolver negativo", () => {
+    expect(minutosEntre(T(9), T(10))).toBe(60);
+    expect(minutosEntre(T(10), T(9))).toBeNull();
+    expect(minutosEntre(null, T(9))).toBeNull();
+    expect(minutosEntre("banana", T(9))).toBeNull();
+  });
+
+  it("chamar duas vezes é recusado — e diz por quê", () => {
+    expect(validarChamada({ id: 1, status: "aguardando_atendimento" }).ok).toBe(true);
+    const r = validarChamada({ id: 1, status: "em_atendimento" });
+    expect(r.ok).toBe(false);
+    expect(r.erro).toMatch(/já foi chamado/i);
+    expect(validarChamada({ id: 1, status: "finalizado" }).ok).toBe(false);
+    expect(validarChamada(null).ok).toBe(false);
   });
 });
