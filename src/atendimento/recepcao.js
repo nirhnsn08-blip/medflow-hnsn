@@ -46,8 +46,8 @@ export const psPedeDetalhe = o => o === "GERINT (aceite)" || o === "Outro";
 export const TIPOS_ATENDIMENTO = [
   { chave: "emergencia",   label: "Emergência",   disponivel: true,
     descricao: "Chegada espontânea ou trazida ao Pronto-Socorro. Segue para triagem de Manchester." },
-  { chave: "ambulatorial", label: "Ambulatorial", disponivel: false,
-    descricao: "Consulta agendada por especialidade." },
+  { chave: "ambulatorial", label: "Ambulatorial", disponivel: true,
+    descricao: "Consulta por especialidade. Quem tem hora marcada é recebido pelo cartão da consulta de hoje; aqui entra quem chegou sem marcar." },
   { chave: "eletivo",      label: "Internação eletiva", disponivel: false,
     descricao: "Internação programada, sem passagem pelo PS." },
 ];
@@ -262,7 +262,7 @@ export function pendenciasDeIdentificacao(paciente) {
  * mesma pessoa com dois atendimentos correndo ao mesmo tempo, um com a
  * prescrição e outro com o exame.
  */
-export function validarAbertura({ paciente, tipo, origem, origemDetalhe, atendimentosAbertos = [] } = {}) {
+export function validarAbertura({ paciente, tipo, origem, origemDetalhe, especialidade, atendimentosAbertos = [] } = {}) {
   const erros = [];
   const avisos = [];
 
@@ -275,9 +275,27 @@ export function validarAbertura({ paciente, tipo, origem, origemDetalhe, atendim
   if (!t) erros.push("Informe o tipo de atendimento.");
   else if (!t.disponivel) erros.push(`Atendimento ${t.label.toLowerCase()} ainda não é aberto por esta tela.`);
 
-  if (!origem) erros.push("Informe por onde o paciente chegou.");
-  else if (psPedeDetalhe(origem) && !String(origemDetalhe ?? "").trim())
-    erros.push("Informe a unidade/origem de procedência.");
+  // O QUE SE EXIGE MUDA COM O TIPO — e é isso que faz uma tela só atender
+  // as duas portas sem virar um formulário de sessenta campos.
+  //
+  // Emergência precisa saber COMO o paciente chegou: SAMU, Bombeiros,
+  // aceite da regulação. É dado de pactuação regional e de epidemiologia, e
+  // é a pergunta que a triagem usa.
+  //
+  // Ambulatorial não: quem vem a uma consulta vem por meios próprios, e
+  // oferecer "Polícia Militar" numa consulta de oftalmologia é ruído que
+  // ensina a escolher por eliminação. O que o ambulatorial precisa é a
+  // ESPECIALIDADE — é ela que diz para qual fila o paciente vai, e sem ela
+  // o episódio nasce sem destino.
+  if (tipo === "ambulatorial") {
+    if (!String(especialidade ?? "").trim()) {
+      erros.push("Escolha a especialidade. É ela que diz para qual ambulatório o paciente vai — sem ela o atendimento nasce sem destino.");
+    }
+  } else {
+    if (!origem) erros.push("Informe por onde o paciente chegou.");
+    else if (psPedeDetalhe(origem) && !String(origemDetalhe ?? "").trim())
+      erros.push("Informe a unidade/origem de procedência.");
+  }
 
   // ── avisos ──
   const abertos = (atendimentosAbertos || []).filter(

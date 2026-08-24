@@ -334,7 +334,8 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     if (!canEdit || busy) return;
     const v = validarAbertura({
       paciente, tipo: f.tipo, origem: f.origem,
-      origemDetalhe: f.origemDetalhe, atendimentosAbertos: abertos,
+      origemDetalhe: f.origemDetalhe, especialidade: ficha.especialidade_cod,
+      atendimentosAbertos: abertos,
     });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
 
@@ -388,7 +389,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   }
 
   const pend = paciente ? pendenciasDeIdentificacao(paciente) : null;
-  const aviso = paciente ? validarAbertura({ paciente, tipo: f.tipo, origem: f.origem, origemDetalhe: f.origemDetalhe, atendimentosAbertos: abertos }).avisos : [];
+  const aviso = paciente ? validarAbertura({ paciente, tipo: f.tipo, origem: f.origem, origemDetalhe: f.origemDetalhe, especialidade: ficha.especialidade_cod, atendimentosAbertos: abertos }).avisos : [];
 
   const cat = catalogos || {};
   const convenio = (cat.convenios || []).find(c => String(c.id) === String(ficha.convenio_id)) || null;
@@ -695,32 +696,92 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
                 <div>
                   <label style={lbl}>Tipo</label>
-                  <select value={f.tipo} onChange={e => set("tipo", e.target.value)} style={inp}>
+                  <select value={f.tipo}
+                    onChange={e => {
+                      const tipo = e.target.value;
+                      set("tipo", tipo);
+                      // A porta de entrada acompanha o tipo. Sem isto, o
+                      // ambulatorial aberto aqui nascia com `unidade_origem`
+                      // NULA enquanto o mesmo episódio, recebido pelo cartão
+                      // da consulta, nascia com "ambulatorio" — dois
+                      // formatos para a mesma coisa, e o relatório que
+                      // agrupa por porta de entrada passaria a mentir.
+                      setFi("unidade_origem_cod", tipo === "emergencia" ? "pronto_socorro" : "ambulatorio");
+                    }}
+                    style={inp}>
                     {TIPOS_DISPONIVEIS.map(t => <option key={t.chave} value={t.chave}>{t.label}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={lbl}>Como chegou *</label>
-                  <select value={f.origem} onChange={e => set("origem", e.target.value)} style={inp}>
-                    {PS_ORIGENS.map(o => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </div>
-                {psPedeDetalhe(f.origem) && (
+                {/* A FICHA MUDA DE FORMA CONFORME O TIPO — é o que faz UMA
+                    tela atender as duas portas sem virar um formulário de
+                    sessenta campos.
+
+                    Emergência precisa saber COMO o paciente chegou (SAMU,
+                    Bombeiros, aceite da regulação): é dado de pactuação
+                    regional e é a pergunta que a triagem usa.
+
+                    Ambulatorial não. Quem vem a uma consulta vem por meios
+                    próprios, e oferecer "Polícia Militar" numa consulta de
+                    oftalmologia é ruído que ensina a escolher por
+                    eliminação. O que o ambulatorial precisa é a
+                    ESPECIALIDADE — é ela que diz para qual fila ele vai. */}
+                {f.tipo === "emergencia" ? (
+                  <>
+                    <div>
+                      <label style={lbl}>Como chegou *</label>
+                      <select value={f.origem} onChange={e => set("origem", e.target.value)} style={inp}>
+                        {PS_ORIGENS.map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    {psPedeDetalhe(f.origem) && (
+                      <div>
+                        <label style={lbl}>Unidade de procedência *</label>
+                        <input list="recepcao-unidades" value={f.origemDetalhe}
+                          onChange={e => set("origemDetalhe", e.target.value)} style={inp} placeholder="Ex.: PA Torres" />
+                        <datalist id="recepcao-unidades">
+                          {PS_ORIGEM_UNIDADES.map(u => <option key={u} value={u} />)}
+                        </datalist>
+                      </div>
+                    )}
+                  </>
+                ) : (
                   <div>
-                    <label style={lbl}>Unidade de procedência *</label>
-                    <input list="recepcao-unidades" value={f.origemDetalhe}
-                      onChange={e => set("origemDetalhe", e.target.value)} style={inp} placeholder="Ex.: PA Torres" />
-                    <datalist id="recepcao-unidades">
-                      {PS_ORIGEM_UNIDADES.map(u => <option key={u} value={u} />)}
-                    </datalist>
+                    <label style={lbl}>Especialidade *</label>
+                    <select value={ficha.especialidade_cod || ""} onChange={e => setFi("especialidade_cod", e.target.value)} style={inp}>
+                      <option value="">—</option>
+                      {(cat.especialidade || []).map(e => (
+                        <option key={e.codigo} value={e.codigo}>{e.nome}</option>
+                      ))}
+                    </select>
+                    {!(cat.especialidade || []).length && (
+                      <div style={{ fontSize: 10.5, color: "#d97706", marginTop: 3, lineHeight: 1.35 }}>
+                        Nenhuma especialidade cadastrada — cadastre em Atendimento → Tabelas antes de abrir consulta.
+                      </div>
+                    )}
                   </div>
                 )}
                 <div style={{ gridColumn: "1 / -1" }}>
-                  <label style={lbl}>Queixa relatada na chegada</label>
+                  <label style={lbl}>{f.tipo === "emergencia" ? "Queixa relatada na chegada" : "Motivo da consulta"}</label>
                   <input value={f.queixa} onChange={e => set("queixa", e.target.value)} style={inp}
-                    placeholder="O que a pessoa diz que está sentindo — a classificação é da triagem" />
+                    placeholder={f.tipo === "emergencia"
+                      ? "O que a pessoa diz que está sentindo — a classificação é da triagem"
+                      : "O que traz o paciente hoje"} />
                 </div>
               </div>
+
+              {/* Quem chega sem ter marcado NÃO conta na produção do
+                  ambulatório: o relatório do mês soma agendamentos, e este
+                  episódio não tem um. Dito aqui porque o número sair menor
+                  do que a realidade, em silêncio, é o defeito que este
+                  módulo mais repetiu. A fila de chegada da Agenda é o
+                  caminho que amarra os dois — e é o próximo passo. */}
+              {f.tipo === "ambulatorial" && (
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 10, lineHeight: 1.5 }}>
+                  Este paciente chegou <strong>sem hora marcada</strong>. O atendimento abre normalmente, mas
+                  ele ainda não entra na produção do ambulatório — o relatório do mês conta a agenda, e aqui
+                  não há agendamento. Para contar, receba pela <strong>fila de chegada</strong> na aba Agenda.
+                </div>
+              )}
 
               {/* ── FONTE PAGADORA ── */}
               <FontePagadora catalogos={cat} ficha={ficha} onChange={setFicha} />
