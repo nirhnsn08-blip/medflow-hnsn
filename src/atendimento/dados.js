@@ -543,6 +543,55 @@ export async function carregarAgendamentosDoPeriodo(sb, { de, ate, limite = 3000
  * recepcionistas cliquem no mesmo instante — coisa que validação de tela
  * nenhuma consegue impedir.
  */
+/**
+ * Amarra à agenda um atendimento que já foi aberto no balcão.
+ *
+ * É o caminho INVERSO do `confirmarPresenca`: lá o agendamento existe e vira
+ * atendimento; aqui o paciente chegou sem ter marcado, o atendimento já é
+ * real, e falta a vaga que o faz CONTAR.
+ *
+ * Sem isto, quem chega sem marcar some da produção do ambulatório — o
+ * relatório do mês conta agendamentos, e esse episódio não tinha um. O
+ * número saía menor que a realidade, em silêncio.
+ *
+ * Nasce direto como `presente`, com `presente_em` e `atendimento_id`: não há
+ * um instante em que ele seja uma vaga esperando alguém, porque a pessoa já
+ * está aqui. Marcá-lo como `agendado` criaria uma vaga fantasma que a lista
+ * de faltas cobraria no fim do dia.
+ *
+ * Falhar aqui NÃO desfaz o atendimento — ele é o registro do que aconteceu
+ * com a pessoa, e vale por si. Quem chama reporta o que ficou faltando.
+ */
+export async function amarrarChegadaNaAgenda(sb, { atendimento, grade, tipoAtendimentoCod }, user) {
+  if (!atendimento?.id) return { ok: false, motivo: "Atendimento inválido." };
+  if (!grade?.id) return { ok: false, motivo: "Sem grade para amarrar." };
+
+  const corpo = {
+    data: String(atendimento.chegada_em ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+    hora: null,                       // fila de chegada não tem relógio: tem ordem
+    especialidade_cod: grade.especialidade_cod,
+    profissional_username: grade.profissional_username || null,
+    grade_id: grade.id,
+    prontuario: atendimento.prontuario,
+    origem_marcacao: "chegada",
+    tipo_atendimento_cod: tipoAtendimentoCod || atendimento.tipo_atendimento_cod || null,
+    status: "presente",
+    presente_em: new Date().toISOString(),
+    atendimento_id: atendimento.id,
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+  const r = await sb("ag_agendamentos", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(corpo),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "A vaga de chegada não foi registrada — o atendimento está aberto, mas ele não vai contar na produção do dia." };
+  }
+  return { ok: true, agendamento: r[0] };
+}
+
 export async function marcarAgendamento(sb, dados, user) {
   const corpo = {
     data: dados.data,

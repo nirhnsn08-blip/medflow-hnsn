@@ -281,6 +281,45 @@ export function horariosLivres(grade, data, agendamentos = []) {
   return horariosDaGrade(grade).filter(h => !tomados.has(h));
 }
 
+/**
+ * A grade que recebe quem chegou SEM ter marcado, nesta data e especialidade.
+ *
+ * POR QUE ISTO EXISTE
+ * O paciente que chega ao balcão sem hora marcada abre um atendimento
+ * normalmente — e até aqui não entrava na PRODUÇÃO do ambulatório, porque o
+ * relatório do mês conta agendamentos e esse episódio não tinha um. O número
+ * saía menor que a realidade, em silêncio, que é o defeito que este módulo
+ * mais repetiu.
+ *
+ * Devolve sempre um veredito explicável, nunca só `null`, porque a tela
+ * precisa dizer à recepcionista O QUE aconteceu:
+ *
+ *   { grade, ok: true }                    → dá para amarrar
+ *   { grade: null, motivo: "sem_grade" }   → não há grade publicada hoje
+ *   { grade, ok: false, motivo: "sem_cota" } → a grade existe e a cota de
+ *                                              chegada acabou
+ *
+ * `sem_cota` NÃO impede abrir o atendimento: a pessoa já está na frente e o
+ * episódio já é real. Impede apenas contá-lo numa vaga que não existe — o
+ * que faria a grade prometer capacidade que ela não tem.
+ */
+export function gradeParaChegada({ grades = [], data, especialidade, agendamentos = [], bloqueios = [] } = {}) {
+  const candidatas = gradesDoDia(grades, data)
+    .filter(g => g.especialidade_cod === especialidade)
+    .filter(g => !bloqueioDoDia(bloqueios, data, {
+      especialidade: g.especialidade_cod, profissional: g.profissional_username }));
+
+  if (!candidatas.length) return { grade: null, ok: false, motivo: "sem_grade" };
+
+  // A primeira com cota livre. Com dois profissionais no mesmo turno, quem
+  // ainda tem vaga de chegada recebe — e `vagasDoDia` já conta por dono.
+  for (const g of candidatas) {
+    const v = vagasDoDia(g, data, agendamentos);
+    if (v.chegada.livres > 0) return { grade: g, ok: true };
+  }
+  return { grade: candidatas[0], ok: false, motivo: "sem_cota" };
+}
+
 // ── A REGRA CENTRAL ─────────────────────────────────────────
 
 /**
