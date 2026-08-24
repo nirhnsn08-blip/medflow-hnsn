@@ -25,18 +25,20 @@ import CadastroPaciente from "../pacientes/CadastroPaciente.jsx";
 // Agenda passou a precisar dos dois. Duas cópias divergiriam na primeira
 // regra nova de convênio — e regra de convênio muda por contrato.
 import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
+import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import { comoExibir, idadeDetalhada, rotuloSexo } from "../pacientes/identidade.js";
 import {
   PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe, TIPOS_DISPONIVEIS,
   classificarBusca, filtroBuscaPacientes, validarAbertura,
   pendenciasDeIdentificacao, aguardandoIdentificacao,
 } from "./recepcao.js";
+import { ORIGENS_MARCACAO } from "./agenda.js";
 import {
   buscarPacientes, carregarPaciente, emitirProntuario,
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
   listarAguardandoIdentificacao, concluirIdentificacao,
   carregarCatalogos, carregarProfissionais,
-  carregarAtendimento, corrigirAtendimento, cancelarAtendimento,
+  carregarAtendimento, corrigirAtendimento, cancelarAtendimento, agendamentosFuturos,
   contarRegistrosClinicos,
 } from "./dados.js";
 import {
@@ -89,6 +91,9 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   // A consulta falhou — diferente de "não achou". Enquanto isto for
   // verdade, a tela NÃO oferece cadastrar paciente novo.
   const [buscaFalhou, setBuscaFalhou] = useState(false);
+  // As consultas marcadas do paciente para HOJE, e a que está sendo recebida.
+  const [agendaDeHoje, setAgendaDeHoje] = useState([]);
+  const [chegando, setChegando] = useState(null);   // o agendamento em recepção
 
   const [paciente, setPaciente] = useState(null);
   const [abertos, setAbertos] = useState([]);
@@ -175,6 +180,17 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     const alvo = completo || p;
     setPaciente(alvo);
     setCadastrando(null);
+    setChegando(null);
+    // 🔴 A PERGUNTA QUE A RECEPÇÃO NÃO FAZIA.
+    // A tela não consultava `ag_agendamentos` em lugar nenhum, e o único
+    // tipo que ela abre é Emergência — então o paciente COM HORA MARCADA
+    // que chega ao balcão era aberto como emergência e caía na fila de
+    // triagem do PS. O ambulatorial só entrava pela Agenda, que obriga a
+    // recepcionista a saber o PRONTUÁRIO de quem está na frente dela — e a
+    // pessoa se apresenta pelo nome.
+    const hoje = new Date().toISOString().slice(0, 10);
+    const futuros = await agendamentosFuturos(sb, alvo.prontuario, { de: hoje });
+    setAgendaDeHoje(futuros.filter(a => String(a.data).slice(0, 10) === hoje));
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
     setFicha({}); setMedicoUser(""); setCorrigindo(null);
     setImprimindo(null); setResponsaveis([]);
@@ -188,6 +204,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
     setFicha({}); setMedicoUser(""); setCorrigindo(null);
     setImprimindo(null); setResponsaveis([]);
+    setAgendaDeHoje([]); setChegando(null);
   }
 
   /**
@@ -389,6 +406,9 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   // separadas para a caixa poder colapsá-las: são elas que faziam a lista
   // ter oito marcadores idênticos em todo atendimento.
   const menores = conf.avisos.filter(a => a.gravidade !== "alta");
+  // Rótulos de especialidade e profissional, para o cartão da consulta de hoje.
+  const espec = c => (cat.especialidade || []).find(e => e.codigo === c)?.nome || c;
+  const prof = u => profissionais.find(p => p.username === u)?.nome || u;
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -609,7 +629,67 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
             ))}
           </div>
 
-          {canEdit && (
+          {/* ── ESTE PACIENTE TEM HORA MARCADA HOJE? ──
+              A pergunta que faltava, e que fazia o balcão abrir como
+              EMERGÊNCIA quem tinha consulta marcada — porque Emergência é o
+              único tipo que esta tela sabe abrir, e ela não consultava a
+              agenda em lugar nenhum. O ambulatorial só entrava pela Agenda,
+              que exige saber o PRONTUÁRIO de quem está na frente; a pessoa
+              se apresenta pelo nome.
+
+              Vem ANTES do formulário de emergência de propósito: quando há
+              consulta marcada, receber por ela é o caminho certo, e o que
+              está mais acima é o que se lê primeiro. */}
+          {agendaDeHoje.length > 0 && !chegando && (
+            <div style={{ ...cartao, borderLeft: "4px solid #0d9488", background: "#0d948810" }}>
+              <div style={rotulo}>Tem consulta marcada hoje</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {agendaDeHoje.map(a => (
+                  <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+                      {a.hora ? String(a.hora).slice(0, 5) : "sem hora"}
+                      <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+                        {" · "}{espec(a.especialidade_cod)}
+                        {a.profissional_username ? ` · ${prof(a.profissional_username)}` : ""}
+                        {" · "}{ORIGENS_MARCACAO[a.origem_marcacao]?.label || a.origem_marcacao}
+                      </span>
+                    </div>
+                    {a.status === "presente" ? (
+                      <span style={{ fontSize: 11.5, color: "#0d9488", fontWeight: 700 }}>presença já confirmada</span>
+                    ) : canEdit ? (
+                      <button onClick={() => setChegando(a)} style={{ ...btn("#0d9488"), color: "#fff", padding: "6px 14px", fontSize: 12.5 }}>
+                        Dar presença
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 10 }}>
+                Receber pela consulta marcada abre o atendimento como <strong>ambulatorial</strong>, com a
+                especialidade e o profissional que já estão na agenda. Abrir como emergência aqui embaixo
+                mandaria este paciente para a fila de triagem do Pronto-Socorro.
+              </div>
+            </div>
+          )}
+
+          {chegando && (
+            <ChegadaAmbulatorial
+              sb={sb} currentUser={currentUser} canEdit={canEdit}
+              agendamento={chegando} paciente={paciente}
+              catalogos={cat} profissionais={profissionais} espec={espec}
+              onCancelar={() => setChegando(null)}
+              onConfirmado={({ atendimento, paciente: pac, aviso }) => {
+                setChegando(null);
+                setMsg({ tom: aviso ? "erro" : "ok",
+                         texto: aviso || `Atendimento #${atendimento.id} aberto para a consulta de hoje — imprima a pulseira antes de ele sair do balcão.` });
+                // Cai na MESMA etapa da abertura de emergência: responsável e
+                // impressos. Quem trouxe o paciente ainda está na frente.
+                setImprimindo({ paciente: pac, atendimento, origem: "abertura" });
+              }}
+            />
+          )}
+
+          {canEdit && !chegando && (
             <div style={cartao}>
               <div style={rotulo}>3. Abrir atendimento</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
