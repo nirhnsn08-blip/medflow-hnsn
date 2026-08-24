@@ -15,6 +15,8 @@ import {
   normalizarNome, partesDoNome, iniciaisDe, comoExibir, normalizarSexo, rotuloSexo,
   idadeDetalhada, idadeMesesParaTriagem,
   conferirCadastro, possiveisDuplicatas, documentoEmUso, mensagemDocumentoEmUso,
+  NACIONALIDADES, normalizarNacionalidade, rotuloNacionalidade, nascidoNoBrasil,
+  autodeclaradoIndigena,
 } from "./identidade.js";
 
 const CPF_OK = "529.982.247-25";
@@ -404,5 +406,149 @@ describe("telefone: guardado em dígitos, formatado só na exibição", () => {
     expect(formatarTelefone("3664")).toBe("3664");
     expect(formatarTelefone("")).toBe("");
     expect(formatarTelefone(null)).toBe("");
+  });
+});
+
+// ── NACIONALIDADE E ETNIA ───────────────────────────────────
+//
+// Duas populações que o cadastro atendia mal, cada uma de um jeito:
+//
+//   O ESTRANGEIRO ficava com pendência IMPOSSÍVEL. Município e UF de
+//   nascimento eram essenciais para todo mundo, e quem nasceu no Uruguai
+//   não tem nem um nem outro — o cadastro nunca chegava a "completo".
+//   Pendência que não tem como ser resolvida ensina a ignorar o aviso, e
+//   aí o aviso que importa some junto.
+//
+//   O INDÍGENA ficava com cadastro plausível na tela e ARQUIVO REJEITADO
+//   no fechamento do mês: raça/cor indígena sem etnia não é aceita nos
+//   sistemas de informação do SUS, e o erro aparecia longe de quem digitou.
+
+describe("nacionalidade — três valores, porque cada um muda o que se exige", () => {
+  it("lê o texto livre que a coluna já tem", () => {
+    // O campo nasceu como texto com "Brasileira" de padrão. Comparar com
+    // igualdade exata acharia zero linhas na base inteira.
+    expect(normalizarNacionalidade("Brasileira")).toBe("brasileira");
+    expect(normalizarNacionalidade("BRASILEIRO")).toBe("brasileira");
+    expect(normalizarNacionalidade("Naturalizada")).toBe("naturalizada");
+    expect(normalizarNacionalidade("Estrangeira")).toBe("estrangeira");
+  });
+
+  it("vazio é BRASILEIRA — era o que o formulário gravava sozinho", () => {
+    // Tratar cadastro antigo como estrangeiro faria a tela cobrar país de
+    // nascimento de um acervo inteiro que nasceu aqui.
+    expect(normalizarNacionalidade("")).toBe("brasileira");
+    expect(normalizarNacionalidade(null)).toBe("brasileira");
+    expect(nascidoNoBrasil({})).toBe(true);
+  });
+
+  it("país digitado no lugar da nacionalidade conta como estrangeira", () => {
+    // Alguém digitou "Uruguaia" no campo livre. Não é a brasileira, então
+    // é de fora — e a migração leva esse texto para pais_nascimento.
+    expect(normalizarNacionalidade("Uruguaia")).toBe("estrangeira");
+    expect(nascidoNoBrasil({ nacionalidade: "Haitiana" })).toBe(false);
+  });
+
+  it("naturalizada NÃO é estrangeira — a diferença é o CPF", () => {
+    expect(normalizarNacionalidade("naturalizada")).not.toBe("estrangeira");
+    expect(rotuloNacionalidade("naturalizada")).toBe("Naturalizada");
+    expect(NACIONALIDADES.map(n => n.chave)).toEqual(["brasileira", "naturalizada", "estrangeira"]);
+  });
+
+  it("raça/cor indígena é reconhecida com e sem acento", () => {
+    expect(autodeclaradoIndigena({ raca_cor: "indigena" })).toBe(true);
+    expect(autodeclaradoIndigena({ raca_cor: "Indígena" })).toBe(true);
+    expect(autodeclaradoIndigena({ raca_cor: "parda" })).toBe(false);
+    expect(autodeclaradoIndigena({})).toBe(false);
+  });
+});
+
+describe("conferirCadastro — estrangeiro e indígena", () => {
+  const brasileiro = {
+    nome_completo: "José da Silva Matos", data_nascimento: "1957-06-10", sexo: "M",
+    nome_mae: "Maria da Silva", naturalidade_municipio: "Porto Alegre", naturalidade_uf: "RS",
+    end_logradouro: "Rua das Flores, 100", end_municipio: "Navegantes",
+    cpf: CPF_OK, cns: CNS_DEF, telefone: "(47) 99999-0000",
+  };
+  // A mesma ficha, para quem nasceu fora: sem município/UF brasileiros, sem
+  // CPF, com passaporte e país de nascimento.
+  const estrangeiro = {
+    ...brasileiro,
+    nacionalidade: "estrangeira",
+    naturalidade_municipio: "", naturalidade_uf: "",
+    cpf: "", passaporte: "FL7712345", pais_nascimento: "Uruguai",
+  };
+
+  it("🔴 O BUG: estrangeiro completo chega a 100%, não a 78% para sempre", () => {
+    const r = conferirCadastro(estrangeiro);
+    expect(r.completo).toBe(true);
+    expect(r.percentual).toBe(100);
+    // e nenhuma pendência de naturalidade brasileira sobra na lista
+    const campos = r.pendencias.map(x => x.campo);
+    expect(campos).not.toContain("naturalidade_municipio");
+    expect(campos).not.toContain("naturalidade_uf");
+  });
+
+  it("o país de nascimento ocupa o lugar da naturalidade, e é cobrado", () => {
+    const r = conferirCadastro({ ...estrangeiro, pais_nascimento: "" });
+    const pend = r.pendencias.find(x => x.campo === "pais_nascimento");
+    expect(pend?.nivel).toBe("essencial");
+    expect(r.completo).toBe(false);
+  });
+
+  it("de brasileiro NÃO se pede país de nascimento", () => {
+    const r = conferirCadastro(brasileiro);
+    expect(r.pendencias.map(x => x.campo)).not.toContain("pais_nascimento");
+    expect(r.percentual).toBe(100);
+  });
+
+  it("do estrangeiro não se cobra CPF — cobra-se UM documento", () => {
+    // Turista e recém-chegado podem não ter CPF nenhum. Quem já tirou
+    // resolve com ele: a exigência é ter documento, não ter aquele.
+    expect(conferirCadastro(estrangeiro).pendencias.map(x => x.campo)).not.toContain("cpf");
+
+    const semNada = conferirCadastro({ ...estrangeiro, passaporte: "", cpf: "" });
+    expect(semNada.pendencias.some(x => x.campo === "passaporte")).toBe(true);
+
+    const soComCpf = conferirCadastro({ ...estrangeiro, passaporte: "", cpf: CPF_OK });
+    expect(soComCpf.pendencias.some(x => x.campo === "passaporte")).toBe(false);
+  });
+
+  it("de brasileiro e de naturalizado o CPF continua sendo cobrado", () => {
+    for (const nac of ["brasileira", "naturalizada"]) {
+      const r = conferirCadastro({ ...brasileiro, nacionalidade: nac, cpf: "" });
+      expect(r.pendencias.some(x => x.campo === "cpf"), nac).toBe(true);
+    }
+  });
+
+  it("naturalizado também não tem naturalidade brasileira", () => {
+    // Nasceu fora e é brasileiro hoje: o país de nascimento existe, o
+    // município e a UF não.
+    const r = conferirCadastro({
+      ...brasileiro, nacionalidade: "naturalizada",
+      naturalidade_municipio: "", naturalidade_uf: "", pais_nascimento: "Portugal",
+    });
+    expect(r.completo).toBe(true);
+  });
+
+  it("🔴 raça/cor indígena SEM etnia é pendência — é o que derruba o BPA", () => {
+    const r = conferirCadastro({ ...brasileiro, raca_cor: "indigena" });
+    const etnia = r.pendencias.find(x => x.campo === "etnia_indigena");
+    expect(etnia).toBeDefined();
+    // Nível "sus": é exigência de faturamento, não da CFM 1.638. Não pode
+    // derrubar o `completo` nem o percentual da identificação.
+    expect(etnia.nivel).toBe("sus");
+    expect(r.completo).toBe(true);
+  });
+
+  it("com a etnia preenchida a pendência some", () => {
+    const r = conferirCadastro({ ...brasileiro, raca_cor: "indigena", etnia_indigena: "Kaingang" });
+    expect(r.pendencias.map(x => x.campo)).not.toContain("etnia_indigena");
+  });
+
+  it("de quem NÃO se declarou indígena a etnia nunca é pedida", () => {
+    for (const cor of ["", "branca", "parda", "preta", "amarela"]) {
+      const r = conferirCadastro({ ...brasileiro, raca_cor: cor });
+      expect(r.pendencias.map(x => x.campo), cor).not.toContain("etnia_indigena");
+    }
   });
 });
