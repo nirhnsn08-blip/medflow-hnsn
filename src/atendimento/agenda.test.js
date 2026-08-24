@@ -23,6 +23,7 @@ import {
   totalVagasDaGrade, cotasSomadas, validarGrade, gradeValeEm, gradesDoDia,
   bloqueioDoDia, vagasDoDia, horariosLivres, podeMarcar, podeRegistrarDaRegulacao,
   producaoDoDia, ocupaVaga, donoDaVaga, gradeParaChegada, agendamentosAtingidos,
+  MOTIVOS_DE_FALTA, validarFalta, STATUS_AGENDAMENTO,
 } from "./agenda.js";
 
 // 2026-07-28 é uma TERÇA. dia_semana 2.
@@ -621,5 +622,57 @@ describe("bloqueio: quem já está marcado no período", () => {
   it("período incompleto não afirma nada", () => {
     expect(agendamentosAtingidos({ agendamentos: [ag()], bloqueio: { motivo: "x" } })).toEqual([]);
     expect(agendamentosAtingidos({})).toEqual([]);
+  });
+});
+
+// 🔴 A tela exibia um KPI de ABSENTEÍSMO e o hospital não tinha como agir
+// sobre ele: não existia confirmação da véspera (a alavanca que de fato
+// derruba o número) nem motivo na falta (sem causa não há o que corrigir).
+describe("confirmação da véspera e motivo da falta", () => {
+  it("confirmado OCUPA a vaga — quem confirmou é quem mais vem", () => {
+    // Se não ocupasse, o horário voltaria a aceitar outra pessoa. O índice
+    // único do banco precisa da MESMA regra: sem 'confirmado' no filtro
+    // parcial, o dano é exatamente o que o índice existe para impedir.
+    expect(STATUS_AGENDAMENTO.confirmado.vivo).toBe(true);
+    expect(ocupaVaga({ status: "confirmado" })).toBe(true);
+    const v = vagasDoDia(GRADE, TERCA, [agend({ status: "confirmado" })]);
+    expect(v.interna.ocupadas).toBe(1);
+    expect(horariosLivres(GRADE, TERCA, [agend({ status: "confirmado" })])).not.toContain("08:00");
+  });
+
+  it("confirmado conta como marcado no absenteísmo, não como falta", () => {
+    const p = producaoDoDia({
+      grades: [GRADE], data: TERCA,
+      agendamentos: [agend({ status: "confirmado" }), agend({ status: "falta", hora: "08:20" })],
+    });
+    expect(p.faltas).toBe(1);
+    expect(p.marcados).toBe(2);
+  });
+
+  it("falta sem motivo é recusada — e a mensagem diz por quê", () => {
+    const r = validarFalta("");
+    expect(r.ok).toBe(false);
+    expect(r.erro).toMatch(/motivo/i);
+    expect(validarFalta(null).ok).toBe(false);
+    expect(validarFalta("   ").ok).toBe(false);
+  });
+
+  it("motivo inventado é recusado", () => {
+    expect(validarFalta("xpto").ok).toBe(false);
+  });
+
+  it("os motivos cobrem o que pede resposta DIFERENTE do hospital", () => {
+    const chaves = MOTIVOS_DE_FALTA.map(m => m.chave);
+    expect(chaves).toContain("transporte");     // problema da rede, não do paciente
+    expect(chaves).toContain("nao_era_falta");  // óbito / resolveu em outro serviço
+    // Lista curta de propósito: quinze opções fazem escolher a primeira.
+    expect(MOTIVOS_DE_FALTA.length).toBeLessThanOrEqual(6);
+    for (const m of MOTIVOS_DE_FALTA) expect(m.acao).toBeTruthy();
+  });
+
+  it("cada motivo válido passa e sai normalizado", () => {
+    for (const m of MOTIVOS_DE_FALTA) {
+      expect(validarFalta(` ${m.chave} `)).toEqual({ ok: true, valor: m.chave });
+    }
   });
 });

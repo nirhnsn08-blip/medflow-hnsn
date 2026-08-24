@@ -23,7 +23,7 @@ import { comoExibir } from "../pacientes/identidade.js";
 import {
   ORIGENS_MARCACAO, STATUS_AGENDAMENTO, gradesDoDia, vagasDoDia, horariosLivres,
   validarGrade, podeMarcar, podeRegistrarDaRegulacao, producaoDoDia, bloqueioDoDia,
-  agendamentosAtingidos,
+  agendamentosAtingidos, MOTIVOS_DE_FALTA, validarFalta,
   horariosDaGrade, cotasSomadas, donoDaVaga,
 } from "./agenda.js";
 import {
@@ -37,7 +37,7 @@ import {
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
-  chamarParaAtendimento,
+  chamarParaAtendimento, confirmarAgendamento,
 } from "./dados.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
@@ -240,10 +240,47 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     recarregarDia();
   }
 
+  /**
+   * Registra a falta — e o MOTIVO, que é o que a torna acionável.
+   *
+   * Antes era um clique e um `confirm()`: gravava o status e mais nada. O
+   * indicador de absenteísmo mostrava o tamanho do problema e não dizia o
+   * que fazer com ele. Transporte que não veio é problema da rede; "esqueci"
+   * se resolve com comprovante e lembrete; e "resolveu em outro serviço"
+   * nem é falta — é cadastro a atualizar.
+   */
   async function faltar(a) {
-    if (!canEdit || !confirm("Registrar FALTA?\n\nA vaga volta a ficar livre para quem remarcar, e a falta entra no indicador de absenteísmo.")) return;
-    const r = await registrarFalta(sb, a.id, currentUser);
+    if (!canEdit) return;
+    const opcoes = MOTIVOS_DE_FALTA.map((m, i) => `${i + 1} - ${m.label}`).join("\n");
+    const escolha = prompt(
+      `Registrar FALTA de ${a.prontuario ? `reg. ${a.prontuario}` : "vaga reservada"}.\n\n` +
+      `Por que não veio?\n\n${opcoes}\n\nDigite o número:`);
+    if (escolha === null) return;
+    const m = MOTIVOS_DE_FALTA[Number(escolha) - 1];
+    const v = validarFalta(m?.chave);
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erro }); return; }
+    setBusy(true);
+    const r = await registrarFalta(sb, a.id, v.valor, currentUser);
+    setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({ tom: "ok", texto: `Falta registrada como "${m.label}". ${m.acao}` });
+    recarregarDia();
+  }
+
+  /**
+   * A confirmação da véspera — a alavanca que derruba absenteísmo.
+   *
+   * A vaga CONTINUA ocupada: quem confirmou que vem é quem mais
+   * garantidamente vem. O índice único do banco sabe disso desde a migração
+   * `migracao-agenda-confirmacao.sql`.
+   */
+  async function confirmar(a) {
+    if (!canEdit || busy) return;
+    setBusy(true);
+    const r = await confirmarAgendamento(sb, a.id, currentUser);
+    setBusy(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({ tom: "ok", texto: "Confirmado — o paciente disse que vem." });
     recarregarDia();
   }
 
@@ -606,10 +643,20 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                                        color: a.status === "presente" ? "#0d9488" : a.status === "falta" ? "#f43f5e" : "var(--text-muted)" }}>
                           {STATUS_AGENDAMENTO[a.status]?.label?.toUpperCase()}
                         </span>
-                        {canEdit && a.status === "agendado" && (
+                        {/* `confirmado` é um passo ANTES de presente: quem
+                            confirmou na véspera continua ocupando a vaga e
+                            ainda precisa dar presença quando chegar. Por
+                            isso os dois status oferecem as mesmas ações — só
+                            "Confirmar" some depois de confirmado. */}
+                        {canEdit && ["agendado", "confirmado"].includes(a.status) && (
                           <>
                             {!a.prontuario && (
                               <button onClick={() => vincular(a)} style={{ ...btn("#6366f1"), color: "#fff", padding: "4px 9px", fontSize: 11 }}>Quem veio?</button>
+                            )}
+                            {a.status === "agendado" && a.prontuario && (
+                              <button onClick={() => confirmar(a)} disabled={busy}
+                                title="Contato da véspera — é o que derruba o absenteísmo"
+                                style={{ ...btn("#6366f1", !busy), color: "#fff", padding: "4px 9px", fontSize: 11 }}>Confirmar</button>
                             )}
                             <button onClick={() => abrirPresenca(a)} disabled={busy}
                               style={{ ...btn("#0d9488", !busy), color: "#fff", padding: "4px 9px", fontSize: 11 }}>Presença</button>

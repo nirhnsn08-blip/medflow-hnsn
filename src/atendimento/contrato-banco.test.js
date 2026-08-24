@@ -381,7 +381,7 @@ describe("a pesquisa não vira prontuário", () => {
     const { sb, chamadas } = espiao([]);
     await agendamentosFuturos(sb, "100001", { de: "2026-07-30" });
     expect(chamadas[0].recurso).toContain("data=gte.2026-07-30");
-    expect(chamadas[0].recurso).toContain("status=in.(agendado,presente)");
+    expect(chamadas[0].recurso).toContain("status=in.(agendado,confirmado,presente)");
   });
 
   it("o período usa `lt` na borda final, não `lte`", async () => {

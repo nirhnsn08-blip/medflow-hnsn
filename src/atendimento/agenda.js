@@ -46,6 +46,15 @@ export const ORIGENS_MARCACAO = {
 
 export const STATUS_AGENDAMENTO = {
   agendado:  { label: "Agendado",  vivo: true },
+  // 🔴 Confirmado na véspera — o contato ativo que derruba absenteísmo. A
+  // tela exibia um KPI de ABSENTEÍSMO sem oferecer a alavanca que age sobre
+  // ele; quem ligava anotava no papel.
+  //
+  // OCUPA a vaga (`vivo: true`), e o índice único do banco precisa saber
+  // disso: sem `confirmado` no filtro parcial, quem confirmou sairia do
+  // índice e o horário voltaria a aceitar outra pessoa — sendo que quem
+  // confirmou é justamente quem mais garantidamente vem.
+  confirmado: { label: "Confirmado", vivo: true },
   presente:  { label: "Presente",  vivo: true },
   falta:     { label: "Falta",     vivo: false },
   cancelado: { label: "Cancelado", vivo: false },
@@ -214,6 +223,37 @@ export function bloqueioDoDia(bloqueios, data, { especialidade, profissional } =
     return b;
   }
   return null;
+}
+
+/**
+ * Os motivos de falta que a gestão consegue transformar em ação.
+ *
+ * A lista é CURTA de propósito: quinze opções fazem a recepcionista escolher
+ * a primeira, e aí o dado deixa de significar coisa alguma. Cada um destes
+ * pede uma resposta diferente do hospital, e é por isso que estão separados.
+ *
+ * `nao_era_falta` existe porque nem tudo que aparece como ausência é
+ * absenteísmo: paciente que resolveu em outro serviço ou que faleceu não é
+ * "faltoso", é cadastro desatualizado — e contá-lo como falta faz o
+ * indicador cobrar do lugar errado.
+ */
+export const MOTIVOS_DE_FALTA = [
+  { chave: "nao_avisou",     label: "Não avisou",                 acao: "É o absenteísmo puro. Confirmação da véspera é o que reduz." },
+  { chave: "transporte",     label: "Transporte não veio",        acao: "Padrão por município aponta problema na rede, não no paciente." },
+  { chave: "esqueceu",       label: "Esqueceu / não sabia",       acao: "Comprovante de agendamento e lembrete resolvem." },
+  { chave: "sem_condicoes",  label: "Passou mal / sem condições", acao: "Remarcar é o caminho — a vaga não se perde." },
+  { chave: "nao_era_falta",  label: "Resolveu em outro serviço / óbito", acao: "Não é absenteísmo: é cadastro a atualizar." },
+];
+
+export const MOTIVO_FALTA_POR_CHAVE =
+  Object.fromEntries(MOTIVOS_DE_FALTA.map(m => [m.chave, m]));
+
+/** O motivo serve? Vazio não serve — falta sem causa não vira ação. */
+export function validarFalta(motivo) {
+  const m = String(motivo ?? "").trim();
+  if (!m) return { ok: false, erro: "Escolha o motivo da falta. Sem causa, o indicador de absenteísmo mostra o tamanho do problema e não diz o que fazer com ele." };
+  if (!MOTIVO_FALTA_POR_CHAVE[m]) return { ok: false, erro: "Motivo de falta desconhecido." };
+  return { ok: true, valor: m };
 }
 
 /**
@@ -517,8 +557,15 @@ export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios 
   const realizadas = doDia.filter(a => a.status === "presente").length;
   const faltas = doDia.filter(a => a.status === "falta").length;
   const cancelados = doDia.filter(a => a.status === "cancelado").length;
+  // O denominador do absenteísmo: quem TINHA hora e ou veio, ou não veio, ou
+  // ainda é esperado. Cancelado fica fora — foi desmarcado, não é ausência.
+  //
+  // Derivado de `ocupaVaga` em vez de repetir a lista de status: a lista
+  // cravada aqui ("agendado","presente","falta") já ficou velha quando o
+  // `confirmado` entrou — quem confirmasse sumia do denominador e o
+  // absenteísmo subia sozinho, sem ninguém faltar.
   const marcados = doDia.filter(a => a.origem_marcacao !== "chegada"
-                                  && ["agendado", "presente", "falta"].includes(a.status)).length;
+                                  && (ocupaVaga(a) || a.status === "falta")).length;
 
   const presentes = doDia.filter(a => a.status === "presente");
   // Pelo `conta_como` do CADASTRO, não pelo código cravado aqui. Um tipo
@@ -535,6 +582,10 @@ export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios 
     primeiras,
     retornos,
     porChegada: presentes.filter(a => a.origem_marcacao === "chegada").length,
+    // O DENOMINADOR sai junto com o percentual. "12% de absenteísmo" sobre 8
+    // marcados e sobre 800 são conversas diferentes, e quem lê o número
+    // precisa poder conferir de onde ele veio.
+    marcados,
     livres: Math.max(0, ofertadas - doDia.filter(ocupaVaga).length),
     // Divisão por zero viraria NaN, e NaN em indicador aparece como campo
     // vazio na tela — o gestor lê como "zero falta", que é o oposto.
