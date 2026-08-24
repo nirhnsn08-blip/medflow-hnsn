@@ -21,6 +21,7 @@ import { describe, it, expect } from "vitest";
 import { buscarPacientes } from "./dados.js";
 import {
   validarProntuario, normalizarProntuario, escaparTermoBusca, classificarBusca,
+  TIPOS_DISPONIVEIS,
   filtroBuscaPacientes, filtroBuscaPacientesLegado, palavrasDeBusca,
   dadosNaoIdentificado, aguardandoIdentificacao,
   pendenciasDeIdentificacao, validarAbertura, TIPOS_ATENDIMENTO, psPedeDetalhe,
@@ -396,5 +397,48 @@ describe("abertura do atendimento", () => {
     const chaves = r.avisos.map(a => a.chave);
     expect(chaves).toContain("nao_identificado");
     expect(chaves).not.toContain("cadastro_incompleto");
+  });
+});
+
+// 🔴 A Recepção abria SÓ emergência — `ambulatorial` estava `disponivel:false`.
+// Somado a ela não enxergar a agenda, o paciente de consulta caía na fila de
+// triagem do PS. Agora a tela atende as duas portas, e o que ela EXIGE muda
+// com o tipo: uma tela só, sem virar formulário de sessenta campos.
+describe("a recepção atende as duas portas", () => {
+  const pac = { prontuario: "T1", iniciais: "X" };
+
+  it("ambulatorial passou a ser abrível pela recepção", () => {
+    const t = TIPOS_ATENDIMENTO.find(x => x.chave === "ambulatorial");
+    expect(t.disponivel).toBe(true);
+    expect(TIPOS_DISPONIVEIS.map(x => x.chave)).toContain("ambulatorial");
+  });
+
+  it("internação eletiva CONTINUA fechada — o leito não recebe por aqui", () => {
+    // `disponivel:false` não é enfeite: abrir um episódio que nenhuma tela
+    // adiante pega deixa o paciente num limbo que ninguém procura.
+    expect(TIPOS_ATENDIMENTO.find(x => x.chave === "eletivo").disponivel).toBe(false);
+  });
+
+  it("emergência exige COMO chegou; ambulatorial não pergunta isso", () => {
+    // "Polícia Militar" numa consulta de oftalmologia é ruído que ensina a
+    // escolher por eliminação.
+    const semOrigem = validarAbertura({ paciente: pac, tipo: "emergencia", origem: "" });
+    expect(semOrigem.erros.join(" ")).toMatch(/por onde o paciente chegou/i);
+
+    const amb = validarAbertura({ paciente: pac, tipo: "ambulatorial", origem: "", especialidade: "ortopedia" });
+    expect(amb.ok).toBe(true);
+  });
+
+  it("ambulatorial exige ESPECIALIDADE — é ela que diz para qual fila ele vai", () => {
+    const r = validarAbertura({ paciente: pac, tipo: "ambulatorial", especialidade: "" });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/especialidade/i);
+  });
+
+  it("emergência NÃO passa a exigir especialidade", () => {
+    // No PS a especialidade só se sabe depois da triagem; exigi-la aqui
+    // seguraria paciente no balcão por um dado que ninguém tem ainda.
+    const r = validarAbertura({ paciente: pac, tipo: "emergencia", origem: "Meios próprios", especialidade: "" });
+    expect(r.ok).toBe(true);
   });
 });
