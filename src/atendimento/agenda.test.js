@@ -22,7 +22,7 @@ import {
   ORIGENS_MARCACAO, diaCivil, diaSemanaDe, minutosDe, horariosDaGrade,
   totalVagasDaGrade, cotasSomadas, validarGrade, gradeValeEm, gradesDoDia,
   bloqueioDoDia, vagasDoDia, horariosLivres, podeMarcar, podeRegistrarDaRegulacao,
-  producaoDoDia, ocupaVaga, donoDaVaga,
+  producaoDoDia, ocupaVaga, donoDaVaga, gradeParaChegada,
 } from "./agenda.js";
 
 // 2026-07-28 é uma TERÇA. dia_semana 2.
@@ -501,5 +501,58 @@ describe("produção do dia — o que hoje é digitado à mão", () => {
     const p = producaoDoDia({ grades: [GRADE], data: "2026-07-29", agendamentos: [] });
     expect(p.ofertadas).toBe(0);
     expect(p.realizadas).toBe(0);
+  });
+});
+
+// 🔴 Quem chegava sem ter marcado abria atendimento e NÃO entrava na produção:
+// o relatório do mês conta agendamentos, e esse episódio não tinha um. O
+// número saía menor que a realidade, em silêncio.
+describe("a fila de chegada — quem veio sem marcar", () => {
+  const comChegada = { ...GRADE, vagas_chegada: 2 };
+
+  it("acha a grade do dia da especialidade", () => {
+    const r = gradeParaChegada({ grades: [comChegada], data: TERCA, especialidade: "ortopedia" });
+    expect(r.ok).toBe(true);
+    expect(r.grade.id).toBe(comChegada.id);
+  });
+
+  it("sem grade publicada, diz POR QUE — a tela precisa explicar", () => {
+    const r = gradeParaChegada({ grades: [], data: TERCA, especialidade: "ortopedia" });
+    expect(r.ok).toBe(false);
+    expect(r.motivo).toBe("sem_grade");
+    expect(r.grade).toBeNull();
+  });
+
+  it("outra especialidade não serve", () => {
+    expect(gradeParaChegada({ grades: [comChegada], data: TERCA, especialidade: "oftalmologia" }).motivo).toBe("sem_grade");
+  });
+
+  it("dia bloqueado não recebe chegada", () => {
+    const r = gradeParaChegada({
+      grades: [comChegada], data: TERCA, especialidade: "ortopedia",
+      bloqueios: [{ data_inicio: TERCA, data_fim: TERCA, motivo: "Feriado" }],
+    });
+    expect(r.motivo).toBe("sem_grade");
+  });
+
+  it("cota de chegada esgotada é 'sem_cota', não 'sem_grade' — são coisas diferentes", () => {
+    const cheios = [agend({ origem_marcacao: "chegada", hora: null }), agend({ origem_marcacao: "chegada", hora: null })];
+    const r = gradeParaChegada({ grades: [comChegada], data: TERCA, especialidade: "ortopedia", agendamentos: cheios });
+    expect(r.ok).toBe(false);
+    expect(r.motivo).toBe("sem_cota");
+    // a grade VEM junto: a tela diz "esta grade está cheia", não "não há grade"
+    expect(r.grade).toBeTruthy();
+  });
+
+  it("com dois profissionais, quem ainda tem cota recebe", () => {
+    const a = { ...comChegada, id: 20, profissional_username: "dr.a" };
+    const b = { ...comChegada, id: 21, profissional_username: "dra.b" };
+    const soDoA = [
+      agend({ origem_marcacao: "chegada", hora: null, profissional_username: "dr.a" }),
+      agend({ origem_marcacao: "chegada", hora: null, profissional_username: "dr.a" }),
+    ];
+    const r = gradeParaChegada({ grades: [a, b], data: TERCA, especialidade: "ortopedia", agendamentos: soDoA });
+    expect(r.ok).toBe(true);
+    expect(r.grade.id).toBe(21);
   });
 });

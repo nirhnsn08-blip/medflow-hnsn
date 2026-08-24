@@ -32,13 +32,14 @@ import {
   classificarBusca, filtroBuscaPacientes, validarAbertura,
   pendenciasDeIdentificacao, aguardandoIdentificacao,
 } from "./recepcao.js";
-import { ORIGENS_MARCACAO } from "./agenda.js";
+import { ORIGENS_MARCACAO, gradeParaChegada } from "./agenda.js";
 import {
   buscarPacientes, carregarPaciente, emitirProntuario,
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
   listarAguardandoIdentificacao, concluirIdentificacao,
   carregarCatalogos, carregarProfissionais,
   carregarAtendimento, corrigirAtendimento, cancelarAtendimento, agendamentosFuturos,
+  carregarGrades, carregarBloqueios, carregarAgendaDoDia, amarrarChegadaNaAgenda,
   contarRegistrosClinicos,
 } from "./dados.js";
 import {
@@ -377,7 +378,44 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     // memória de quem o recebeu. Quem fecha a impressão é que libera a tela
     // para o próximo.
     setImprimindo({ paciente, atendimento: r.atendimento, origem: "abertura" });
-    setMsg({ tom: "ok", texto: `Atendimento #${r.atendimento.id} aberto para ${nome} (reg. ${r.atendimento.prontuario}). O paciente está na fila de triagem do Pronto-Socorro — imprima a pulseira antes de ele sair do balcão.` });
+
+    if (f.tipo !== "ambulatorial") {
+      setMsg({ tom: "ok", texto: `Atendimento #${r.atendimento.id} aberto para ${nome} (reg. ${r.atendimento.prontuario}). O paciente está na fila de triagem do Pronto-Socorro — imprima a pulseira antes de ele sair do balcão.` });
+      return;
+    }
+
+    // ── AMARRAR NA AGENDA, para o episódio CONTAR ──
+    // O atendimento já está aberto e vale por si. O que falta é a vaga da
+    // fila de chegada — sem ela, este paciente some da produção do
+    // ambulatório, porque o relatório do mês conta agendamentos.
+    //
+    // Falhar aqui não desfaz nada e não bloqueia ninguém: a tela DIZ o que
+    // ficou faltando e o que fazer. Número que sai menor que a realidade
+    // sem ninguém saber é o defeito que este módulo mais repetiu.
+    const hojeISO = new Date().toISOString().slice(0, 10);
+    const [grades, bloqueios, doDia] = await Promise.all([
+      carregarGrades(sb), carregarBloqueios(sb, { de: hojeISO, ate: hojeISO }), carregarAgendaDoDia(sb, hojeISO),
+    ]);
+    const alvo = gradeParaChegada({
+      grades, data: hojeISO, especialidade: ficha.especialidade_cod,
+      agendamentos: doDia, bloqueios,
+    });
+
+    const base = `Atendimento #${r.atendimento.id} aberto para ${nome} (reg. ${r.atendimento.prontuario}). Imprima a pulseira antes de ele sair do balcão.`;
+    if (!alvo.ok) {
+      setMsg({ tom: "erro", texto: `${base} ⚠️ Mas ele NÃO vai contar na produção do dia: ` + (
+        alvo.motivo === "sem_grade"
+          ? "não há grade desta especialidade publicada hoje. Publique em Agenda → Grade e bloqueios."
+          : "a cota de ordem de chegada desta grade já acabou. Aumente a cota em Agenda → Grade e bloqueios."
+      ) });
+      return;
+    }
+    const amarrado = await amarrarChegadaNaAgenda(sb, {
+      atendimento: r.atendimento, grade: alvo.grade, tipoAtendimentoCod: ficha.tipo_atendimento_cod,
+    }, currentUser);
+    setMsg(amarrado.ok
+      ? { tom: "ok", texto: `${base} Entrou na fila de chegada de ${espec(ficha.especialidade_cod)} e conta na produção do dia.` }
+      : { tom: "erro", texto: `${base} ⚠️ ${amarrado.motivo}` });
   }
 
   async function marcarIdentificado(p) {
