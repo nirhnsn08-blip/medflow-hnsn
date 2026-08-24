@@ -22,7 +22,7 @@ import {
   ORIGENS_MARCACAO, diaCivil, diaSemanaDe, minutosDe, horariosDaGrade,
   totalVagasDaGrade, cotasSomadas, validarGrade, gradeValeEm, gradesDoDia,
   bloqueioDoDia, vagasDoDia, horariosLivres, podeMarcar, podeRegistrarDaRegulacao,
-  producaoDoDia, ocupaVaga, donoDaVaga, gradeParaChegada,
+  producaoDoDia, ocupaVaga, donoDaVaga, gradeParaChegada, agendamentosAtingidos,
 } from "./agenda.js";
 
 // 2026-07-28 é uma TERÇA. dia_semana 2.
@@ -554,5 +554,72 @@ describe("a fila de chegada — quem veio sem marcar", () => {
     const r = gradeParaChegada({ grades: [a, b], data: TERCA, especialidade: "ortopedia", agendamentos: soDoA });
     expect(r.ok).toBe(true);
     expect(r.grade.id).toBe(21);
+  });
+});
+
+// 🔴 O bloqueio impedia MARCAR daqui para a frente e não olhava para trás.
+// "Congresso do ortopedista, quinta" deixava os doze pacientes já marcados
+// naquela quinta com status `agendado`, aparecendo no dia como se nada
+// tivesse acontecido — e eles vêm de outra cidade encontrar a porta fechada.
+describe("bloqueio: quem já está marcado no período", () => {
+  const ag = (over = {}) => agend({ data: TERCA, hora: "08:00", ...over });
+
+  it("acha quem está marcado no período bloqueado", () => {
+    const r = agendamentosAtingidos({
+      agendamentos: [ag(), ag({ hora: "08:20" })],
+      bloqueio: { data_inicio: TERCA, data_fim: TERCA, motivo: "Congresso" },
+    });
+    expect(r).toHaveLength(2);
+  });
+
+  it("fora do período não é atingido", () => {
+    const r = agendamentosAtingidos({
+      agendamentos: [ag({ data: "2026-07-27" }), ag({ data: "2026-07-29" })],
+      bloqueio: { data_inicio: TERCA, data_fim: TERCA, motivo: "x" },
+    });
+    expect(r).toEqual([]);
+  });
+
+  it("falta e cancelado não são atingidos — já não esperam ninguém", () => {
+    const r = agendamentosAtingidos({
+      agendamentos: [ag({ status: "falta" }), ag({ status: "cancelado", hora: "08:20" }), ag({ hora: "08:40" })],
+      bloqueio: { data_inicio: TERCA, data_fim: TERCA, motivo: "x" },
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0].hora).toBe("08:40");
+  });
+
+  it("bloqueio de UMA especialidade não atinge a outra", () => {
+    const r = agendamentosAtingidos({
+      agendamentos: [ag(), ag({ especialidade_cod: "urologia", hora: "08:20" })],
+      bloqueio: { data_inicio: TERCA, data_fim: TERCA, especialidade_cod: "ortopedia", motivo: "Férias" },
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0].especialidade_cod).toBe("ortopedia");
+  });
+
+  it("bloqueio de UM profissional não atinge o colega", () => {
+    // É o caso que o campo novo destrava: "o Dr. X está de férias mas a
+    // Dra. Y atende". Antes só dava para bloquear a especialidade inteira,
+    // o que zerava a produção da colega.
+    const r = agendamentosAtingidos({
+      agendamentos: [ag({ profissional_username: "dr.a" }), ag({ profissional_username: "dra.b", hora: "08:20" })],
+      bloqueio: { data_inicio: TERCA, data_fim: TERCA, profissional_username: "dr.a", motivo: "Férias" },
+    });
+    expect(r).toHaveLength(1);
+    expect(r[0].profissional_username).toBe("dr.a");
+  });
+
+  it("feriado sem especialidade nem profissional atinge todo mundo", () => {
+    const r = agendamentosAtingidos({
+      agendamentos: [ag({ especialidade_cod: "ortopedia" }), ag({ especialidade_cod: "urologia", hora: "08:20" })],
+      bloqueio: { data_inicio: TERCA, data_fim: TERCA, motivo: "Feriado municipal" },
+    });
+    expect(r).toHaveLength(2);
+  });
+
+  it("período incompleto não afirma nada", () => {
+    expect(agendamentosAtingidos({ agendamentos: [ag()], bloqueio: { motivo: "x" } })).toEqual([]);
+    expect(agendamentosAtingidos({})).toEqual([]);
   });
 });

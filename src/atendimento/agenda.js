@@ -216,6 +216,43 @@ export function bloqueioDoDia(bloqueios, data, { especialidade, profissional } =
   return null;
 }
 
+/**
+ * Quem JÁ ESTÁ MARCADO dentro do período que se quer bloquear.
+ *
+ * POR QUE ISTO EXISTE
+ * O bloqueio impede MARCAR daqui para a frente — `podeMarcar` o consulta — e
+ * não olhava para trás. Publicar "congresso do ortopedista, quinta" deixava
+ * os doze pacientes já marcados naquela quinta com status `agendado`,
+ * aparecendo no dia como se nada tivesse acontecido. Ninguém liga para eles,
+ * e eles vêm de outra cidade encontrar a porta fechada.
+ *
+ * É o único item da fila cujo dano cai sobre o PACIENTE, e é o que o próprio
+ * comentário da migração diz que o bloqueio existe para evitar — e evitava
+ * só pela metade.
+ *
+ * Casa pela MESMA lógica de `bloqueioDoDia`, na direção inversa: bloqueio sem
+ * especialidade nem profissional é o feriado e atinge todo mundo; com
+ * especialidade, atinge só ela; com profissional, só ele.
+ *
+ * Só conta agendamento VIVO: falta e cancelado já não esperam ninguém.
+ */
+export function agendamentosAtingidos({ agendamentos = [], bloqueio } = {}) {
+  const ini = String(bloqueio?.data_inicio ?? "").slice(0, 10);
+  const fim = String(bloqueio?.data_fim ?? "").slice(0, 10);
+  if (!ini || !fim) return [];
+  const esp = String(bloqueio?.especialidade_cod ?? "").trim();
+  const prof = String(bloqueio?.profissional_username ?? "").trim();
+
+  return (agendamentos || []).filter(a => {
+    const d = String(a?.data ?? "").slice(0, 10);
+    if (!d || d < ini || d > fim) return false;
+    if (!ocupaVaga(a)) return false;
+    if (esp && a.especialidade_cod !== esp) return false;
+    if (prof && a.profissional_username !== prof) return false;
+    return true;
+  }).sort((a, b) => (`${a.data}${a.hora ?? ""}` < `${b.data}${b.hora ?? ""}` ? -1 : 1));
+}
+
 // ── VAGAS DO DIA ────────────────────────────────────────────
 
 /**
