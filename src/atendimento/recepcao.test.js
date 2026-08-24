@@ -192,7 +192,13 @@ describe("o que a recepção digitou", () => {
   });
 
   it("documento vira igualdade exata, não busca parcial", () => {
-    expect(filtroBuscaPacientes("529.982.247-25")).toBe("or=(cpf.eq.52998224725)");
+    // O que importa é o `eq` e a ausência de curinga — o filtro passou a
+    // procurar o telefone junto (celular tem os mesmos 11 dígitos do CPF),
+    // e cravar a string inteira travaria a busca em vez do comportamento.
+    const f = filtroBuscaPacientes("529.982.247-25");
+    expect(f).toMatch(/cpf\.eq\.52998224725/);
+    expect(f).not.toMatch(/cpf\.ilike/);
+    expect(f).not.toMatch(/\*/);
   });
 
   // 🔴 O acervo é "T9035" e ninguém digita maiúscula com fila na frente. Com
@@ -201,8 +207,8 @@ describe("o que a recepção digitou", () => {
   // não acha é a máquina de duplicatas, e duplicata aqui é permanente:
   // não existe unificação de prontuário no sistema.
   it("prontuário não diferencia maiúscula de minúscula", () => {
-    expect(filtroBuscaPacientes("t9035")).toBe("or=(prontuario.ilike.t9035)");
-    expect(filtroBuscaPacientes("T9035")).toBe("or=(prontuario.ilike.T9035)");
+    expect(filtroBuscaPacientes("t9035")).toMatch(/prontuario\.ilike\.t9035/);
+    expect(filtroBuscaPacientes("T9035")).toMatch(/prontuario\.ilike\.T9035/);
     // e continua sem curinga: é comparação exata, não "começa com"
     expect(filtroBuscaPacientes("T9035")).not.toMatch(/\*/);
   });
@@ -440,5 +446,56 @@ describe("a recepção atende as duas portas", () => {
     // seguraria paciente no balcão por um dado que ninguém tem ainda.
     const r = validarAbertura({ paciente: pac, tipo: "emergencia", origem: "Meios próprios", especialidade: "" });
     expect(r.ok).toBe(true);
+  });
+});
+
+// 🔴 O cadastro guardava `rg`, `telefone` e `telefone_alt` e NENHUM deles
+// tinha por onde ser procurado. Boa parte da população idosa do interior
+// chega com RG e sem CPF na carteira; e o telefone é o desempate mais rápido
+// quando o nome é comum. Dado guardado que a busca não alcança é dado que não
+// existe — e busca que não acha é a máquina de duplicatas.
+describe("busca por telefone e RG", () => {
+  it("10 dígitos é telefone fixo com DDD — não é documento nenhum", () => {
+    const c = classificarBusca("(51) 3664-1234");
+    expect(c.tipo).toBe("telefone");
+    expect(c.valor).toBe("5136641234");
+    expect(filtroBuscaPacientes("51 3664 1234"))
+      .toBe("or=(telefone.eq.5136641234,telefone_alt.eq.5136641234,rg.ilike.5136641234)");
+  });
+
+  it("CELULAR e CPF têm 11 dígitos — procura pelos DOIS em vez de chutar", () => {
+    // Escolher um erraria metade das vezes. E o CPF continua sendo
+    // procurado mesmo com DV errado, que é a decisão antiga.
+    const f = filtroBuscaPacientes("51999990000");
+    expect(f).toMatch(/cpf\.eq\.51999990000/);
+    expect(f).toMatch(/telefone\.eq\.51999990000/);
+    expect(f).toMatch(/telefone_alt\.eq\.51999990000/);
+    expect(classificarBusca("51999990000").tipo).toBe("cpf");
+  });
+
+  // 🔴 O RG DE 10 DÍGITOS CAÍA NO VÃO.
+  //
+  // "T9035" é prontuário e ia junto com o RG. Mas RG no RS é tipicamente
+  // DEZ DÍGITOS sem letra nenhuma — e essa forma era classificada como
+  // telefone, que procurava só nas colunas de telefone. Quem chega com RG
+  // e sem CPF (a população idosa do interior, exatamente a que esta busca
+  // existe para atender) continuava não sendo achado.
+  //
+  // A saída é a mesma do CPF × celular: procurar em todas as colunas em vez
+  // de adivinhar qual documento a pessoa digitou.
+  it("RG só de dígitos é procurado, mesmo classificado como telefone", () => {
+    for (const rg of ["1234567890", "51999990000"]) {
+      expect(filtroBuscaPacientes(rg), rg).toMatch(new RegExp(`rg\.ilike\.${rg}`));
+    }
+  });
+  it("o RG passou a ser procurado junto com o prontuário", () => {
+    const f = filtroBuscaPacientes("T9035");
+    expect(f).toMatch(/prontuario\.ilike\.T9035/);
+    expect(f).toMatch(/rg\.ilike\.T9035/);
+  });
+
+  it("o telefone não engole o Cartão SUS nem o prontuário curto", () => {
+    expect(classificarBusca("123 4567 8901 2345").tipo).toBe("cns");   // 15 dígitos
+    expect(classificarBusca("48213").tipo).toBe("prontuario");          // 5 dígitos
   });
 });

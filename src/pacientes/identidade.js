@@ -100,6 +100,23 @@ export function formatarCNS(valor) {
   return `${c.slice(0, 3)} ${c.slice(3, 7)} ${c.slice(7, 11)} ${c.slice(11)}`;
 }
 
+/**
+ * Telefone como se lê: "(51) 99999-0000" ou "(51) 3664-1234".
+ *
+ * Guardado só com dígitos, pelo mesmo motivo do CPF: a busca normaliza, e
+ * "(51) 3664-1234" gravado com pontuação não é achado por quem digita o
+ * mesmo número. Formatar é trabalho da EXIBIÇÃO.
+ *
+ * O que não tem 10 ou 11 dígitos volta como veio — não se inventa formato
+ * para número que não se reconhece.
+ */
+export function formatarTelefone(valor) {
+  const d = limparDoc(valor);
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return String(valor ?? "");
+}
+
 /** Provisório (7/8/9) ou definitivo (1/2)? `null` quando inválido. */
 export function tipoCNS(valor) {
   if (!validarCNS(valor)) return null;
