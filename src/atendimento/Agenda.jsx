@@ -31,13 +31,12 @@ import {
 import {
   listarAmbulatoriaisAbertos, encerrarAtendimento,
   carregarGrades, salvarGrade, alternarAtivoGrade, carregarBloqueios, salvarBloqueio,
-  carregarAgendaDoDia, marcarAgendamento, confirmarPresenca, registrarFalta,
+  carregarAgendaDoDia, marcarAgendamento, registrarFalta,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao,
 } from "./dados.js";
-import { conferirFicha, DOMINIOS } from "./ficha.js";
-import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
+import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
 import ResponsavelDoEpisodio from "./Responsavel.jsx";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
@@ -222,51 +221,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       return;
     }
     setMsg(null);
-    setPresenca({
-      agendamento: a,
-      paciente,
-      // Quem vai atender, congelado com o CBO no momento da abertura — a
-      // agenda SABE quem é, e mesmo assim a presença abria o episódio sem
-      // médico nenhum. Sem CBO a produção SUS não é glosada: é REJEITADA no
-      // processamento, e some inteira.
-      medico: profissionais.find(p => p.username === a.profissional_username) || null,
-      // O que a marcação já sabe vem preenchido; o que só se descobre com a
-      // pessoa na frente (a carteirinha na mão) fica para a recepcionista.
-      ficha: {
-        convenio_id: "", plano_id: "", carteira: "", carteira_validade: "",
-        guia_numero: "", autorizacao_senha: "",
-        tipo_atendimento_cod: a.tipo_atendimento_cod || "",
-        especialidade_cod: a.especialidade_cod || "",
-        // 🔴 NÃO é chute: `confirmarPresenca` grava exatamente este valor.
-        // Sem ele aqui, a tela cobrava "Origem do atendimento não informado"
-        // — um aviso FALSO, para um campo que o painel nem desenhava. Aviso
-        // que a pessoa não pode resolver é o que ensina a não ler a lista
-        // onde mora "a carteira está vencida".
-        unidade_origem_cod: "ambulatorio",
-        tipo_paciente_cod: "", carater_cod: "",
-        local_procedencia_cod: "", destino_cod: "",
-      },
-    });
-  }
-
-  async function confirmarAPresenca() {
-    if (!canEdit || busy || !presenca) return;
-    const { agendamento, paciente, ficha, medico } = presenca;
-    setBusy(true);
-    const r = await confirmarPresenca(sb, agendamento, { paciente, ficha, medico }, currentUser);
-    setBusy(false);
-    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
-    setPresenca(null);
-    setMsg({ tom: r.aviso ? "erro" : "ok",
-             texto: r.aviso || `Presença confirmada — atendimento ${r.atendimento.id} aberto.` });
-    // A chegada não termina na gravação: quem trouxe o paciente ainda está
-    // na frente, e a pulseira sai agora. Antes o fluxo da Agenda parava
-    // aqui, e quem entrava pelo ambulatório — criança em consulta de
-    // ortopedia, idoso frágil — nunca tinha responsável registrado nem
-    // pulseira impressa. A Recepção já encadeia os dois; a chegada passa a
-    // encadear também.
-    if (r.atendimento) setImprimindo({ paciente, atendimento: r.atendimento });
-    recarregarDia();
+    setPresenca({ agendamento: a, paciente });
   }
 
   async function vincular(a) {
@@ -332,30 +287,6 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const espec = cod => (catalogos.especialidade || []).find(e => e.codigo === cod)?.nome || cod;
   const prof = u => profissionais.find(p => p.username === u)?.nome || u;
 
-  // As pendências da chegada, pela MESMA regra que a Recepção e o fechamento
-  // da conta usam. `hoje` é a data do agendamento e não a de agora: a
-  // carteirinha tem que valer no dia do atendimento, e conferir contra hoje
-  // reprovaria carteira que estava válida e foi renovada depois — foi
-  // exatamente esse o defeito corrigido no fechamento (PR #107).
-  const convPresenca = presenca
-    ? (catalogos.convenios || []).find(c => String(c.id) === String(presenca.ficha.convenio_id)) || null
-    : null;
-  const planoPresenca = presenca
-    ? (catalogos.planos || []).find(p => String(p.id) === String(presenca.ficha.plano_id)) || null
-    : null;
-  const confPresenca = presenca ? conferirFicha({
-    paciente: presenca.paciente,
-    convenio: convPresenca,
-    plano: planoPresenca,
-    ficha: presenca.ficha,
-    catalogos,
-    // Com o médico em mãos, a conferência de CBO deixa de ficar muda: o ramo
-    // `sem_cbo` de `conferirFicha` exige o profissional para poder cobrar o
-    // CBO dele.
-    medico: presenca.medico,
-    procedimento: (catalogos.procedimentos || []).find(p => p.codigo === presenca.ficha.procedimento_cod) || null,
-    hoje: presenca.agendamento?.data ? new Date(`${String(presenca.agendamento.data).slice(0, 10)}T12:00:00`) : new Date(),
-  }) : null;
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -592,98 +523,24 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             </>
           )}
 
-          {/* ── CHEGADA: quem paga esta consulta ──
-              A pergunta que faltava. Aparece com o paciente na frente, que é
-              o único momento em que a carteirinha está na mão. */}
+          {/* ── CHEGADA — o componente compartilhado com a Recepção.
+              Era código inline aqui; virou componente quando a Recepção
+              passou a precisar da MESMA etapa, e uma terceira cópia
+              divergente deste formulário custaria caro. */}
           {presenca && (
-            <div style={{ ...cartao, borderLeft: "4px solid #0d9488" }}>
-              <div style={rotulo}>Chegada — confirmar presença</div>
-              <div style={{ fontSize: 13.5, fontWeight: 700 }}>
-                {comoExibir(presenca.paciente, { completo: true }) || presenca.paciente.iniciais}
-                <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
-                  {" · reg. "}{presenca.paciente.prontuario}
-                  {presenca.agendamento.hora ? ` · ${String(presenca.agendamento.hora).slice(0, 5)}` : ""}
-                  {" · "}{espec(presenca.agendamento.especialidade_cod)}
-                </span>
-              </div>
-
-              <FontePagadora
-                catalogos={catalogos}
-                ficha={presenca.ficha}
-                onChange={f => setPresenca(p => ({ ...p, ficha: f }))}
-              />
-
-              {/* CLASSIFICAÇÃO — o que o painel COBRAVA e não oferecia.
-                  `conferirFicha` avisa por domínio em branco cujo catálogo
-                  tenha linhas; o painel só desenhava a fonte pagadora, então
-                  a lista pedia "Caráter não informado" sem existir onde
-                  informar. Agora todo aviso que aparece tem campo ao lado.
-                  Origem e especialidade ficam de fora porque já são
-                  conhecidas: uma vem cravada na gravação, a outra vem do
-                  agendamento. */}
-              <div style={{ ...rotulo, marginTop: 16, marginBottom: 8 }}>Classificação do atendimento</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
-                {DOMINIOS.filter(d => !["unidade_origem", "especialidade"].includes(d.chave)).map(d => (
-                  <CampoCatalogo key={d.chave} label={d.label} dica={d.dica}
-                    lista={catalogos[d.chave]} valor={presenca.ficha[`${d.chave}_cod`]}
-                    onChange={v => setPresenca(p => ({ ...p, ficha: { ...p.ficha, [`${d.chave}_cod`]: v } }))} />
-                ))}
-              </div>
-
-              {/* Quem atende, e o CBO — porque é o CBO que decide se a
-                  produção é PROCESSADA. Sem grade com profissional, a agenda
-                  não sabe, e a tela diz isso em vez de fingir. */}
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 10 }}>
-                {presenca.medico
-                  ? <>Atende: <strong>{presenca.medico.nome || presenca.medico.username}</strong>
-                      {presenca.medico.cbo
-                        ? <> · CBO {presenca.medico.cbo}</>
-                        : <span style={{ color: "#d97706" }}> · sem CBO no cadastro — a produção SUS não é processada sem ele</span>}
-                    </>
-                  : <span style={{ color: "#d97706" }}>Esta grade não tem profissional definido — o atendimento nasce sem médico e sem CBO.</span>}
-              </div>
-
-              {/* As pendências ditas em voz alta, e SEM modal.
-                  A Recepção usa um `confirm()` aqui e ele dispara em todo
-                  atendimento — 80 cliques em OK por dia ensinam a fechar
-                  aviso sem ler, e aí o dia em que o aviso é "a carteira está
-                  vencida" passa junto. Aqui a pendência mora ao lado do
-                  botão, e o próprio rótulo do botão a carrega. */}
-              {confPresenca?.avisos?.length > 0 && (
-                <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 8, fontSize: 12,
-                              background: confPresenca.pendenciasGraves ? "#d9770610" : "var(--surface-2)",
-                              border: `1px solid ${confPresenca.pendenciasGraves ? "#d9770655" : "var(--border)"}` }}>
-                  <strong style={{ color: confPresenca.pendenciasGraves ? "#d97706" : "var(--text-muted)" }}>
-                    {confPresenca.pendenciasGraves
-                      ? `${confPresenca.pendenciasGraves} pendência(s) que impedem o faturamento`
-                      : "Pendências menores"}
-                  </strong>
-                  <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-                    {confPresenca.avisos.map(a => (
-                      <div key={a.chave} style={{ color: a.gravidade === "alta" ? "var(--text)" : "var(--text-muted)" }}>
-                        • {a.texto}
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ color: "var(--text-muted)", marginTop: 7 }}>
-                    Nada disso impede a consulta. O que não fecha é a conta — e depois que o paciente for embora, isto vira telefonema.
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: "flex", gap: 8, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
-                <button onClick={confirmarAPresenca} disabled={busy}
-                  style={{ ...btn("#0d9488", !busy), color: "#fff" }}>
-                  {busy ? "Confirmando…"
-                    : confPresenca?.pendenciasGraves
-                      ? `Confirmar com ${confPresenca.pendenciasGraves} pendência(s)`
-                      : "Confirmar presença"}
-                </button>
-                <button onClick={() => setPresenca(null)} style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
+            <ChegadaAmbulatorial
+              sb={sb} currentUser={currentUser} canEdit={canEdit}
+              agendamento={presenca.agendamento} paciente={presenca.paciente}
+              catalogos={catalogos} profissionais={profissionais} espec={espec}
+              onCancelar={() => setPresenca(null)}
+              onConfirmado={({ atendimento, paciente, aviso }) => {
+                setPresenca(null);
+                setMsg({ tom: aviso ? "erro" : "ok",
+                         texto: aviso || `Presença confirmada — atendimento ${atendimento.id} aberto.` });
+                setImprimindo({ paciente, atendimento });
+                recarregarDia();
+              }}
+            />
           )}
 
           {/* ── formulário de marcação ── */}

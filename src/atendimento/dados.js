@@ -295,7 +295,10 @@ export async function agendamentosFuturos(sb, prontuario, { de } = {}) {
   const inicio = de || new Date().toISOString().slice(0, 10);
   const r = await sb(`ag_agendamentos?prontuario=eq.${encodeURIComponent(p)}` +
     `&data=gte.${inicio}&status=in.(agendado,presente)` +
-    `&select=id,data,hora,especialidade_cod,origem_marcacao,tipo_atendimento_cod,status,protocolo_regulacao` +
+    // `profissional_username` entra porque a chegada precisa dele para
+    // congelar o médico e o CBO no atendimento — sem CBO a produção SUS é
+    // rejeitada, não glosada.
+    `&select=id,data,hora,especialidade_cod,origem_marcacao,tipo_atendimento_cod,status,protocolo_regulacao,profissional_username,grade_id` +
     `&order=data,hora`);
   return Array.isArray(r) ? r : [];
 }
