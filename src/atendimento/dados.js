@@ -294,7 +294,10 @@ export async function agendamentosFuturos(sb, prontuario, { de } = {}) {
   if (!p) return [];
   const inicio = de || new Date().toISOString().slice(0, 10);
   const r = await sb(`ag_agendamentos?prontuario=eq.${encodeURIComponent(p)}` +
-    `&data=gte.${inicio}&status=in.(agendado,presente)` +
+    // `confirmado` entra na lista: sem ele, o paciente que confirmou na
+    // vespera SUMIRIA do cartao "tem consulta hoje" da Recepcao — e quem
+    // confirmou e justamente quem mais garantidamente vem.
+    `&data=gte.${inicio}&status=in.(agendado,confirmado,presente)` +
     // `profissional_username` entra porque a chegada precisa dele para
     // congelar o médico e o CBO no atendimento — sem CBO a produção SUS é
     // rejeitada, não glosada.
@@ -708,8 +711,29 @@ export async function confirmarPresenca(sb, agendamento, { paciente, ficha, medi
  * volta para quem remarca. O registro fica, porque absenteísmo é indicador
  * que a gestão cobra.
  */
-export async function registrarFalta(sb, id, user) {
-  return patchAgendamento(sb, id, { status: "falta" }, user);
+export async function registrarFalta(sb, id, motivo, user) {
+  // O MOTIVO passou a ser obrigatório (`validarFalta` em agenda.js). Sem
+  // causa, o indicador de absenteísmo mostra o tamanho do problema e não diz
+  // o que fazer com ele — transporte que não veio, paciente já atendido em
+  // outro serviço e "esqueci" pedem respostas diferentes do hospital, e um
+  // deles nem é falta.
+  return patchAgendamento(sb, id, { status: "falta", falta_motivo: motivo || null }, user);
+}
+
+/**
+ * Confirma que o paciente vem — o contato ativo da véspera.
+ *
+ * É a alavanca que de fato derruba absenteísmo no ambulatório, e o sistema
+ * não tinha onde registrá-la: quem ligava anotava no papel. `confirmado_por`
+ * guarda QUEM confirmou, porque sem autor não há como saber se a lista do
+ * dia foi percorrida ou se alguém marcou por marcar.
+ */
+export async function confirmarAgendamento(sb, id, user) {
+  return patchAgendamento(sb, id, {
+    status: "confirmado",
+    confirmado_em: new Date().toISOString(),
+    confirmado_por: user?.name || null,
+  }, user);
 }
 
 export async function cancelarAgendamento(sb, id, motivo, user) {

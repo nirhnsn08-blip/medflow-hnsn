@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 94 tabelas, 1474 colunas.
+-- Cobertura atual: 94 tabelas, 1477 colunas.
 -- ============================================================
 
 with
@@ -116,9 +116,12 @@ tabelas(nome, origem) as (values
 colunas(tabela, coluna, origem) as (values
   ('ag_agendamentos','atendimento_id','atendimento-agenda'),
   ('ag_agendamentos','cancelado_motivo','atendimento-agenda'),
+  ('ag_agendamentos','confirmado_em','agenda-confirmacao'),
+  ('ag_agendamentos','confirmado_por','agenda-confirmacao'),
   ('ag_agendamentos','criado_em','atendimento-agenda'),
   ('ag_agendamentos','data','atendimento-agenda'),
   ('ag_agendamentos','especialidade_cod','atendimento-agenda'),
+  ('ag_agendamentos','falta_motivo','agenda-confirmacao'),
   ('ag_agendamentos','grade_id','atendimento-agenda'),
   ('ag_agendamentos','hora','atendimento-agenda'),
   ('ag_agendamentos','id','atendimento-agenda'),

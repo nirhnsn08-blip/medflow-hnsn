@@ -144,6 +144,11 @@ const ORDEM = [
   // Precisa vir DEPOIS da migração que cria `ag_agendamentos`, e não toca em
   // política — por isso entra antes do rls-leitura, que segue por último.
   "migracao-agenda-vaga-por-profissional.sql",
+  // Confirmacao da vespera (status novo + colunas) e motivo da falta.
+  // Recria o CHECK de status e o indice unico da vaga para conhecerem
+  // `confirmado` — sem isso, quem confirma libera o horario para outro.
+  // Nao toca em politica: entra antes do rls-leitura, que segue por ultimo.
+  "migracao-agenda-confirmacao.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
