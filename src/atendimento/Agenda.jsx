@@ -23,6 +23,7 @@ import { comoExibir } from "../pacientes/identidade.js";
 import {
   ORIGENS_MARCACAO, STATUS_AGENDAMENTO, gradesDoDia, vagasDoDia, horariosLivres,
   validarGrade, podeMarcar, podeRegistrarDaRegulacao, producaoDoDia, bloqueioDoDia,
+  agendamentosAtingidos,
   horariosDaGrade, cotasSomadas, donoDaVaga,
 } from "./agenda.js";
 import {
@@ -34,7 +35,7 @@ import {
   carregarAgendaDoDia, marcarAgendamento, registrarFalta,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
-  carregarProducaoGravada, gravarProducao,
+  carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
 } from "./dados.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
@@ -266,11 +267,45 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     if (!bloq?.data_inicio || !String(bloq?.motivo ?? "").trim()) {
       setMsg({ tom: "erro", texto: "Informe a data e o motivo do bloqueio." }); return;
     }
+    // 🔴 QUEM JÁ ESTÁ MARCADO NO PERÍODO.
+    // O bloqueio impedia MARCAR daqui para a frente e não olhava para trás:
+    // publicar "congresso do ortopedista, quinta" deixava os pacientes já
+    // marcados naquela quinta como `agendado`, aparecendo no dia como se
+    // nada tivesse acontecido. Ninguém liga para eles, e eles vêm de outra
+    // cidade encontrar a porta fechada.
+    //
+    // Aqui o modal é o certo, e a razão é a de sempre: ele é RARO. Publicar
+    // bloqueio é ato de quem monta a grade, não gesto de balcão repetido 80
+    // vezes por dia — e o que ele diz é que alguém precisa telefonar.
+    // Carregado na hora, e não do estado do dia: o bloqueio é um PERÍODO, e
+    // a tela só tem em mãos os agendamentos da data que está aberta.
+    setBusy(true);
+    const doPeriodo = await carregarAgendamentosDoPeriodo(sb, {
+      de: String(bloq.data_inicio).slice(0, 10),
+      ate: String(bloq.data_fim || bloq.data_inicio).slice(0, 10),
+    });
+    setBusy(false);
+    const atingidos = agendamentosAtingidos({ agendamentos: doPeriodo, bloqueio: bloq });
+    if (atingidos.length) {
+      const lista = atingidos.slice(0, 12).map(a =>
+        `• ${String(a.data).slice(0, 10)}${a.hora ? " " + String(a.hora).slice(0, 5) : ""}` +
+        ` — ${espec(a.especialidade_cod)}${a.prontuario ? ` · reg. ${a.prontuario}` : " · vaga reservada"}`).join("\n");
+      const resto = atingidos.length > 12 ? `\n… e mais ${atingidos.length - 12}.` : "";
+      if (!confirm(
+        `${atingidos.length} paciente(s) JÁ ESTÃO MARCADOS neste período:\n\n${lista}${resto}\n\n` +
+        "O bloqueio não desmarca ninguém — eles continuam na agenda e vão aparecer no dia.\n" +
+        "Alguém precisa remarcar ou avisar cada um, ou eles virão e encontrarão a porta fechada.\n\n" +
+        "Registrar o bloqueio assim mesmo?")) return;
+    }
+
     setBusy(true);
     const r = await salvarBloqueio(sb, bloq, currentUser);
     setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
-    setBloq(null); setMsg({ tom: "ok", texto: "Bloqueio registrado." });
+    setBloq(null);
+    setMsg(atingidos.length
+      ? { tom: "erro", texto: `Bloqueio registrado. ⚠️ ${atingidos.length} paciente(s) seguem marcados neste período e NÃO foram avisados — remarque ou telefone antes do dia.` }
+      : { tom: "ok", texto: "Bloqueio registrado." });
     recarregarDia();
   }
 
@@ -797,6 +832,21 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                     {(catalogos.especialidade || []).map(x => <option key={x.codigo} value={x.codigo}>{x.nome}</option>)}
                   </select>
                 </div>
+                {/* PROFISSIONAL — a coluna existe desde a migração da agenda
+                    e `salvarBloqueio` já a gravava; faltava o campo. Sem ele,
+                    "o Dr. X está de férias mas a Dra. Y atende" obrigava a
+                    bloquear a ESPECIALIDADE INTEIRA, o que zerava a produção
+                    da colega no relatório. */}
+                <div>
+                  <label style={lbl}>Profissional</label>
+                  <select value={bloq.profissional_username || ""} onChange={e => setBloq(p => ({ ...p, profissional_username: e.target.value }))} style={inp}>
+                    <option value="">todos da especialidade</option>
+                    {profissionais.map(p => <option key={p.username} value={p.username}>{p.nome || p.username}</option>)}
+                  </select>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+                    Escolha um só quando o afastamento for dele — bloquear a especialidade inteira zera a produção de quem continua atendendo.
+                  </div>
+                </div>
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={lbl}>Motivo *</label>
                   <input value={bloq.motivo} onChange={e => setBloq(p => ({ ...p, motivo: e.target.value }))} style={inp} placeholder="Ex.: Feriado municipal" />
@@ -811,7 +861,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
               <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum bloqueio alcança {data}.</div>
             ) : bloqueios.map(b => (
               <div key={b.id} style={{ fontSize: 12.5, padding: "6px 0", color: "var(--text-muted)" }}>
-                {b.data_inicio} → {b.data_fim} · {b.especialidade_cod ? espec(b.especialidade_cod) : "todas"} · <strong>{b.motivo}</strong>
+                {b.data_inicio} → {b.data_fim} · {b.especialidade_cod ? espec(b.especialidade_cod) : "todas"}
+                {b.profissional_username ? ` · ${prof(b.profissional_username)}` : ""} · <strong>{b.motivo}</strong>
               </div>
             ))}
           </div>
