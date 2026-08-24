@@ -59,6 +59,69 @@ export const atendimentoAberto = a =>
  */
 export const FILTRO_ATENDIMENTO_ABERTO = "status=not.in.(finalizado,cancelado)";
 
+// ── A FILA VIVA DO AMBULATÓRIO ──────────────────────────────
+
+/**
+ * Minutos entre dois instantes. `null` quando não dá para saber.
+ *
+ * `null` e 0 são diferentes: zero é "chegou agora", nulo é "não há registro
+ * de quando chegou" — e um relógio que mostra 0 para quem espera há uma hora
+ * é pior que relógio nenhum.
+ */
+export function minutosEntre(de, ate) {
+  const a = de ? new Date(de).getTime() : NaN;
+  const b = ate ? new Date(ate).getTime() : NaN;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const min = Math.floor((b - a) / 60000);
+  return min < 0 ? null : min;
+}
+
+/**
+ * A fila do ambulatório, agora.
+ *
+ * POR QUE ISTO NÃO EXISTIA
+ * Confirmada a presença, nasce um atendimento `aguardando_atendimento` que é
+ * explicitamente EXCLUÍDO do painel do PS (lá o filtro é só emergência, e
+ * está certo) e não aparecia em nenhuma outra tela. O paciente ficava num
+ * limbo: presente no sistema, invisível para todo mundo.
+ *
+ * A recepção respondia "quanto falta?" de cabeça. Quando o médico atrasava
+ * quarenta minutos, ninguém sabia — e ninguém conseguia provar depois.
+ *
+ * O relógio de quem ESPERA conta da chegada até agora. O de quem JÁ ESTÁ
+ * sendo atendido conta da chegada até a chamada — é o tempo de espera dele,
+ * que parou de correr. Misturar os dois faria a média de espera crescer
+ * junto com a duração da consulta, que é outra coisa.
+ */
+export function filaDoAmbulatorio(atendimentos = [], { agora = new Date() } = {}) {
+  const vivos = (Array.isArray(atendimentos) ? atendimentos : []).filter(atendimentoAberto);
+
+  const comEspera = vivos.map(a => ({
+    ...a,
+    esperaMin: a.atendimento_em
+      ? minutosEntre(a.chegada_em, a.atendimento_em)
+      : minutosEntre(a.chegada_em, agora),
+  }));
+
+  const ordenar = (x, y) => (y.esperaMin ?? -1) - (x.esperaMin ?? -1);   // quem espera há mais tempo primeiro
+  return {
+    esperando: comEspera.filter(a => a.status !== "em_atendimento").sort(ordenar),
+    emAtendimento: comEspera.filter(a => a.status === "em_atendimento").sort(ordenar),
+  };
+}
+
+/** Pode chamar este paciente para a sala? */
+export function validarChamada(atendimento) {
+  if (!atendimento?.id) return { ok: false, erro: "Atendimento inválido." };
+  if (!atendimentoAberto(atendimento)) {
+    return { ok: false, erro: `Este atendimento já está ${STATUS_ATENDIMENTO[atendimento.status]?.label?.toLowerCase() || "encerrado"}.` };
+  }
+  if (atendimento.status === "em_atendimento") {
+    return { ok: false, erro: "Este paciente já foi chamado — já está em atendimento." };
+  }
+  return { ok: true };
+}
+
 // ── ENCERRAMENTO AMBULATORIAL ───────────────────────────────
 
 /**
