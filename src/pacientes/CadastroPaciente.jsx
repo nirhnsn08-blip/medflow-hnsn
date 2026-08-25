@@ -34,6 +34,8 @@ import {
   validarCPF, formatarCPF, validarCNS, formatarCNS, tipoCNS, limparDoc,
   iniciaisDe, idadeDetalhada, conferirCadastro, possiveisDuplicatas,
   normalizarSexo, documentoEmUso, mensagemDocumentoEmUso,
+  NACIONALIDADES, normalizarNacionalidade, nascidoNoBrasil, autodeclaradoIndigena,
+  limparCamposInaplicaveis,
 } from "./identidade.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -48,9 +50,34 @@ const RACA_COR = [
 ];
 const PARENTESCO = ["", "Mãe", "Pai", "Filho(a)", "Cônjuge", "Irmão(ã)", "Responsável legal", "Outro"];
 
+// SUGESTÕES, NÃO LISTAS FECHADAS — e nenhuma das duas está completa de
+// propósito. São os casos que aparecem no balcão de um hospital do Rio
+// Grande do Sul, para poupar digitação; qualquer outro valor continua
+// podendo ser escrito à mão, porque a próxima pessoa a chegar pode ser de
+// qualquer lugar e de qualquer povo.
+//
+// A lista oficial de etnias indígenas do SUS tem centenas de entradas com
+// código de quatro dígitos. Ela NÃO está aqui, e o código NÃO é gravado:
+// código inventado não é recusado no ato — vai para o arquivo de produção
+// e volta como glosa, com o nome de um povo trocado pelo de outro.
+const PAISES_FREQUENTES = [
+  "Uruguai", "Argentina", "Paraguai", "Bolívia", "Venezuela", "Haiti",
+  "Chile", "Colômbia", "Peru", "Cuba", "Portugal", "Itália", "Alemanha",
+  "Senegal", "Angola", "Ucrânia",
+];
+const ETNIAS_FREQUENTES = ["Kaingang", "Guarani Mbyá", "Guarani Nhandeva", "Charrua", "Xokleng"];
+
 // Um campo. `erro` pinta a borda; `dica` explica embaixo.
-function Campo({ label, valor, onChange, erro, dica, tipo = "text", largura, opcoes, placeholder, maxLength }) {
+//
+// `sugestoes` NÃO é `opcoes`, e a diferença importa: `opcoes` fecha a lista
+// (é um select — o que não está lá não pode ser digitado), `sugestoes` só
+// adianta o que se digita mais. País de nascimento e etnia indígena têm
+// listas grandes demais para caber num select e específicas demais para
+// serem inventadas aqui — as sugestões cobrem o que aparece no balcão e o
+// resto continua podendo ser escrito à mão.
+function Campo({ label, valor, onChange, erro, dica, tipo = "text", largura, opcoes, sugestoes, placeholder, maxLength }) {
   const estilo = { ...inp, ...(erro ? { borderColor: "#f43f5e88" } : {}) };
+  const listaId = sugestoes ? `sug-${String(label).toLowerCase().replace(/[^a-z]+/g, "-")}` : undefined;
   return (
     <div style={largura ? { width: largura } : undefined}>
       <label style={lbl}>{label}</label>
@@ -61,7 +88,13 @@ function Campo({ label, valor, onChange, erro, dica, tipo = "text", largura, opc
               : <option key={o} value={o}>{o || "—"}</option>)}
           </select>
         : <input type={tipo} value={valor ?? ""} onChange={e => onChange(e.target.value)}
+            list={listaId}
             placeholder={placeholder} maxLength={maxLength} style={estilo} />}
+      {sugestoes && (
+        <datalist id={listaId}>
+          {sugestoes.map(o => <option key={o} value={o} />)}
+        </datalist>
+      )}
       {dica && <div style={{ fontSize: 10.5, color: erro ? "#f43f5e" : "var(--text-muted)", marginTop: 3 }}>{dica}</div>}
     </div>
   );
@@ -70,7 +103,8 @@ function Campo({ label, valor, onChange, erro, dica, tipo = "text", largura, opc
 const VAZIO = {
   nome_completo: "", nome_social: "", data_nascimento: "", sexo: "", identidade_genero: "",
   nome_mae: "", nome_pai: "", naturalidade_municipio: "", naturalidade_uf: "", nacionalidade: "Brasileira",
-  raca_cor: "", cpf: "", rg: "", rg_orgao_emissor: "", cns: "",
+  pais_nascimento: "", etnia_indigena: "",
+  raca_cor: "", cpf: "", rg: "", rg_orgao_emissor: "", cns: "", passaporte: "",
   end_logradouro: "", end_numero: "", end_complemento: "", end_bairro: "",
   end_municipio: "", end_uf: "", end_cep: "", end_referencia: "",
   telefone: "", telefone_alt: "", email: "",
@@ -84,7 +118,17 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   // legado mostraria o campo vazio e apagaria o valor ao salvar.
   const [f, setF] = useState(() => {
     const base = { ...VAZIO, ...(paciente || {}) };
-    return { ...base, sexo: normalizarSexo(base.sexo) };
+    // A nacionalidade nasceu como texto livre com "Brasileira" de padrão, e
+    // quem preencheu à mão escreveu o PAÍS ("Uruguaia"). Normalizar sem mais
+    // nada jogaria esse texto fora no primeiro salvamento — e ele é a única
+    // informação de origem que existe sobre essa pessoa. A migração faz o
+    // mesmo resgate na base; isto cobre a linha que estiver aberta na tela.
+    const nacionalidade = normalizarNacionalidade(base.nacionalidade);
+    const livre = String(base.nacionalidade ?? "").trim();
+    const reconhecido = /^(brasileir|naturaliz|estrangeir)/i.test(livre);
+    const pais_nascimento = (!base.pais_nascimento && !reconhecido && livre)
+      ? livre : base.pais_nascimento;
+    return { ...base, sexo: normalizarSexo(base.sexo), nacionalidade, pais_nascimento };
   });
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
@@ -96,6 +140,12 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   // ── conferência da norma, ao vivo ──
   const conferencia = useMemo(() => conferirCadastro(f), [f]);
   const idade = useMemo(() => idadeDetalhada(f.data_nascimento), [f.data_nascimento]);
+  // Duas perguntas que mudam QUAIS campos a ficha mostra. Ficam aqui, uma
+  // vez, em vez de repetidas em cada bloco — dois lugares perguntando a
+  // mesma coisa divergem, e aí um campo aparece sem o outro sumir.
+  const pendenciasSus = conferencia.pendencias.filter(x => x.nivel === "sus");
+  const noBrasil = nascidoNoBrasil(f);
+  const indigena = autodeclaradoIndigena(f);
   const cpfPreenchido = limparDoc(f.cpf).length > 0;
   const cpfInvalido = cpfPreenchido && !validarCPF(f.cpf);
   const cnsPreenchido = limparDoc(f.cns).length > 0;
@@ -180,6 +230,10 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     // As iniciais continuam sendo a forma padrão de exibir — derivadas do
     // nome para não dependerem de alguém digitar duas vezes.
     corpo.iniciais = iniciaisDe(f.nome_completo) || paciente?.iniciais || "?";
+    // Campo que deixou de valer sai do corpo — ver limparCamposInaplicaveis.
+    // Sem isto, corrigir "estrangeira" para "brasileira" deixa o país no
+    // banco, invisível na tela e vivo no arquivo de produção.
+    Object.assign(corpo, limparCamposInaplicaveis(corpo));
     // `ano_nascimento` segue preenchido: o resto do sistema ainda lê dele.
     if (f.data_nascimento) corpo.ano_nascimento = Number(String(f.data_nascimento).slice(0, 4)) || null;
     if (conferencia.completo && !paciente?.cadastro_completo_em) corpo.cadastro_completo_em = new Date().toISOString();
@@ -241,6 +295,27 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
             </span>
           </div>
         )}
+        {/* 🔴 A PENDÊNCIA DE FATURAMENTO NÃO APARECIA EM LUGAR NENHUM.
+            A barra listava só o nível "essencial" (CFM 1.638). O nível
+            "sus" — CNS ausente, e agora a etnia de quem se declarou
+            indígena — era calculado, devolvido e descartado pela tela: a
+            regra existia, rodava, e não fazia nada. O preço vinha um mês
+            depois, no arquivo de produção rejeitado, longe de quem digitou.
+
+            Linha SEPARADA da de cima de propósito: a consequência é outra.
+            A CFM 1.638 é a norma da identificação; isto aqui é o que
+            derruba a conta. Misturar as duas faria a recepção tratar o
+            conjunto como uma lista só de burocracia. */}
+        {pendenciasSus.length > 0 && (
+          <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 9, lineHeight: 1.55 }}>
+            Falta para o faturamento SUS:{" "}
+            <strong>{pendenciasSus.map(p => p.label).join(" · ")}</strong>
+            <br />
+            <span style={{ color: "var(--text-muted)" }}>
+              Não impede o atendimento — impede a conta de fechar.
+            </span>
+          </div>
+        )}
       </div>
 
       {/* DUPLICIDADE */}
@@ -277,7 +352,7 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
             dica="Tem precedência na exibição (Decreto 8.727/2016)." />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "170px 120px 1fr 1fr", gap: 10, marginTop: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: indigena ? "160px 110px 1fr 1fr 1fr" : "170px 120px 1fr 1fr", gap: 10, marginTop: 10 }}>
           <Campo label="Data de nascimento" tipo="date" valor={f.data_nascimento} onChange={v => set("data_nascimento", v)}
             erro={!!f.data_nascimento && !idade}
             dica={f.data_nascimento
@@ -287,6 +362,18 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
             opcoes={[["", "—"], ["M", "Masculino"], ["F", "Feminino"]]} />
           <Campo label="Identidade de gênero (opcional)" valor={f.identidade_genero} onChange={v => set("identidade_genero", v)} />
           <Campo label="Raça/cor" valor={f.raca_cor} onChange={v => set("raca_cor", v)} opcoes={RACA_COR} />
+          {/* 🔴 A ETNIA APARECE JUNTO COM A ESCOLHA, não depois dela.
+              "Indígena" era opção de raça/cor e parava aí. Nos sistemas de
+              informação do SUS a etnia é obrigatória junto — a raça/cor
+              indígena sozinha não é aceita e o BPA volta rejeitado. O
+              cadastro ficava plausível na tela e quebrava no fechamento do
+              mês, longe de quem digitou. Aqui o campo nasce no mesmo
+              instante em que a pendência nasce. */}
+          {indigena && (
+            <Campo label="Etnia indígena" valor={f.etnia_indigena} onChange={v => set("etnia_indigena", v)}
+              sugestoes={ETNIAS_FREQUENTES}
+              dica="Raça/cor indígena sem etnia é rejeitada no BPA." />
+          )}
         </div>
       </div>
 
@@ -298,10 +385,26 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
             dica="É o campo que mais desempata homônimo — e o mais esquecido." />
           <Campo label="Nome do pai" valor={f.nome_pai} onChange={v => set("nome_pai", v)} />
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 1fr", gap: 10, marginTop: 10 }}>
-          <Campo label="Naturalidade (município)" valor={f.naturalidade_municipio} onChange={v => set("naturalidade_municipio", v)} />
-          <Campo label="UF" valor={f.naturalidade_uf} onChange={v => set("naturalidade_uf", v)} opcoes={["", ...UFS]} />
-          <Campo label="Nacionalidade" valor={f.nacionalidade} onChange={v => set("nacionalidade", v)} />
+        {/* 🔴 NATURALIDADE SÓ EXISTE PARA QUEM NASCEU AQUI.
+            Município e UF eram pedidos de todo mundo, e quem nasceu no
+            Uruguai não tem nem um nem outro: o cadastro nunca chegava a
+            "completo" e a tela cobrava para sempre dois campos que não
+            existem. Pendência que não tem como ser resolvida ensina a
+            recepção a ignorar o aviso — e o aviso que importa some junto.
+            A nacionalidade vem PRIMEIRO porque é ela que decide o resto. */}
+        <div style={{ display: "grid", gridTemplateColumns: noBrasil ? "170px 1fr 90px" : "170px 1fr", gap: 10, marginTop: 10 }}>
+          <Campo label="Nacionalidade" valor={f.nacionalidade} onChange={v => set("nacionalidade", v)}
+            opcoes={NACIONALIDADES.map(n => [n.chave, n.label])} />
+          {noBrasil ? (
+            <>
+              <Campo label="Naturalidade (município)" valor={f.naturalidade_municipio} onChange={v => set("naturalidade_municipio", v)} />
+              <Campo label="UF" valor={f.naturalidade_uf} onChange={v => set("naturalidade_uf", v)} opcoes={["", ...UFS]} />
+            </>
+          ) : (
+            <Campo label="País de nascimento" valor={f.pais_nascimento} onChange={v => set("pais_nascimento", v)}
+              sugestoes={PAISES_FREQUENTES}
+              dica="Para quem nasceu fora, é o país que ocupa o lugar da naturalidade." />
+          )}
         </div>
       </div>
 
@@ -311,7 +414,11 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
         <div style={{ display: "grid", gridTemplateColumns: "170px 1fr 130px 1fr", gap: 10 }}>
           <Campo label="CPF" valor={f.cpf} onChange={v => set("cpf", v)} placeholder="000.000.000-00" maxLength={14}
             erro={cpfInvalido}
-            dica={cpfInvalido ? "Dígitos verificadores não conferem" : (cpfPreenchido ? formatarCPF(f.cpf) : "Exigido nos documentos emitidos (CFM 2.299/2021)")} />
+            dica={cpfInvalido ? "Dígitos verificadores não conferem"
+              : (cpfPreenchido ? formatarCPF(f.cpf)
+                : (noBrasil || f.nacionalidade === "naturalizada"
+                    ? "Exigido nos documentos emitidos (CFM 2.299/2021)"
+                    : "Pode não existir — o passaporte faz o papel de documento legal."))} />
           <Campo label="Cartão SUS (CNS)" valor={f.cns} onChange={v => set("cns", v)} placeholder="000 0000 0000 0000" maxLength={18}
             erro={cnsInvalido}
             dica={cnsInvalido ? "Dígitos verificadores não conferem"
@@ -319,6 +426,16 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
           <Campo label="RG" valor={f.rg} onChange={v => set("rg", v)} />
           <Campo label="Órgão emissor" valor={f.rg_orgao_emissor} onChange={v => set("rg_orgao_emissor", v)} placeholder="SSP/RS" />
         </div>
+        {/* O documento de quem pode não ter CPF nenhum. Turista e
+            recém-chegado não têm; quem já tirou resolve a exigência com o
+            CPF mesmo — o que se pede é UM documento legal, não aquele. */}
+        {!noBrasil && (
+          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, marginTop: 10 }}>
+            <Campo label="Passaporte" valor={f.passaporte} onChange={v => set("passaporte", v)}
+              placeholder="Como está no documento"
+              dica="Vale como documento legal no lugar do CPF." />
+          </div>
+        )}
       </div>
 
       {/* ENDEREÇO */}

@@ -250,6 +250,105 @@ export function idadeMesesParaTriagem(paciente, hoje = new Date()) {
   return { meses: anos * 12, exata: false, rotulo: `~${anos} anos` };
 }
 
+// ── NACIONALIDADE E ETNIA ───────────────────────────────────
+
+/** Campo sem valor: nulo, ausente ou só espaço. */
+const semValor = v => v == null || String(v).trim() === "";
+
+
+/**
+ * As três nacionalidades que o cadastro distingue — e por que são três.
+ *
+ * Não é purismo de tabela: cada uma muda o que o cadastro pode exigir.
+ *
+ *   brasileira   — nasceu no Brasil. Tem município e UF de nascimento.
+ *   naturalizada — nasceu fora, é brasileira hoje. TEM CPF, não tem
+ *                  município/UF brasileiros de nascimento.
+ *   estrangeira  — nasceu fora e não é brasileira. Pode não ter CPF
+ *                  nenhum; o documento legal dela é o passaporte.
+ *
+ * Um booleano "é estrangeiro" juntaria as duas últimas e voltaria a cobrar
+ * CPF de quem não tem, ou a deixar de cobrar de quem tem.
+ *
+ * Os códigos são os do CADSUS (1 brasileiro, 2 naturalizado, 3 estrangeiro)
+ * e ficam aqui para quando a exportação for escrita — a tela nunca os mostra.
+ */
+export const NACIONALIDADES = [
+  { chave: "brasileira",   label: "Brasileira",   codigoCadsus: "1" },
+  { chave: "naturalizada", label: "Naturalizada", codigoCadsus: "2" },
+  { chave: "estrangeira",  label: "Estrangeira",  codigoCadsus: "3" },
+];
+
+/**
+ * Nacionalidade em uma das três chaves, saindo do que houver na coluna.
+ *
+ * O campo nasceu como TEXTO LIVRE com "Brasileira" de padrão, então a base
+ * tem o valor escrito por extenso, tem vazio, e tem quem digitou o país
+ * ("Uruguaia"). Comparar com `=== "estrangeira"` acharia zero linhas.
+ *
+ * Vazio é BRASILEIRA de propósito: era o valor que o formulário gravava
+ * sozinho, e tratar cadastro antigo como estrangeiro faria a tela cobrar
+ * país de nascimento de um acervo inteiro que nasceu aqui.
+ *
+ * O que não é reconhecido e não está vazio é ESTRANGEIRA — nacionalidade
+ * que não é a brasileira é, por definição, de fora. O texto original não se
+ * perde: a migração copia esse valor para `pais_nascimento`.
+ */
+export function normalizarNacionalidade(valor) {
+  const v = normalizarNome(valor);
+  if (!v) return "brasileira";
+  if (v.startsWith("brasil")) return "brasileira";
+  if (v.startsWith("naturaliz")) return "naturalizada";
+  if (v.startsWith("estrangeir")) return "estrangeira";
+  return "estrangeira";
+}
+
+export function rotuloNacionalidade(valor) {
+  const c = normalizarNacionalidade(valor);
+  return NACIONALIDADES.find(n => n.chave === c)?.label ?? "—";
+}
+
+/** Nasceu em município brasileiro? Só a nacionalidade brasileira nasce. */
+export function nascidoNoBrasil(paciente) {
+  return normalizarNacionalidade(paciente?.nacionalidade) === "brasileira";
+}
+
+/** Raça/cor autodeclarada como indígena — com ou sem acento na coluna. */
+export function autodeclaradoIndigena(paciente) {
+  return normalizarNome(paciente?.raca_cor) === "indigena";
+}
+
+/**
+ * 🔴 CAMPO QUE DEIXOU DE VALER NÃO FICA GRAVADO COM O VALOR ANTIGO.
+ *
+ * A ficha esconde o que não se aplica — país de nascimento some quando a
+ * nacionalidade volta a ser brasileira, etnia some quando a raça/cor deixa
+ * de ser indígena. O ESTADO DO FORMULÁRIO não some junto, e o salvamento
+ * manda tudo: o cadastro ficava com um brasileiro nascido no Uruguai, ou
+ * com uma pessoa parda carregando etnia Charrua.
+ *
+ * Achei percorrendo a tela: marquei estrangeira, corrigi para brasileira, e
+ * o país continuou no banco — invisível, porque o campo que o mostrava não
+ * é mais desenhado. Dado que ninguém vê e ninguém consegue apagar é o pior
+ * tipo: some da tela e continua indo para o arquivo de produção. A etnia é
+ * a que machuca — o BPA leria etnia de quem não se declarou indígena.
+ *
+ * Devolve um objeto NOVO. Não altera o que recebe: o formulário continua
+ * mostrando o que a pessoa digitou até ela salvar.
+ */
+export function limparCamposInaplicaveis(cadastro) {
+  const c = { ...(cadastro || {}) };
+  // Nasceu no Brasil: não há país de nascimento, e o passaporte não tem
+  // campo na tela — guardar um que ninguém consegue enxergar nem corrigir
+  // é guardar lixo com aparência de dado.
+  if (nascidoNoBrasil(c)) {
+    c.pais_nascimento = null;
+    c.passaporte = null;
+  }
+  if (!autodeclaradoIndigena(c)) c.etnia_indigena = null;
+  return c;
+}
+
 // ── CONFERÊNCIA DO CADASTRO ─────────────────────────────────
 
 /**
@@ -278,30 +377,74 @@ const REGRAS_CADASTRO = [
   { campo: "nome_mae",       nivel: "essencial", label: "Nome da mãe",
     norma: "CFM 1.638/2002, art. 5º",
     porque: "É o campo que mais desempata homônimo — e o mais esquecido." },
+  // 🔴 NATURALIDADE SÓ EXISTE PARA QUEM NASCEU AQUI.
+  //
+  // Município e UF de nascimento eram essenciais para todo mundo. Quem
+  // nasceu no Uruguai não tem nem um nem outro, e o cadastro NUNCA chegava
+  // a "completo": ficava para sempre com duas pendências impossíveis de
+  // resolver. Pendência que não tem como ser resolvida é pior que nenhuma
+  // — ensina a recepção a ignorar o aviso, e aí o aviso que importa some
+  // junto.
+  //
+  // A norma pede a naturalidade; para quem nasceu fora, a naturalidade É o
+  // país. Um substitui o outro, e a conta de "quanto falta" acompanha.
   { campo: "naturalidade_municipio", nivel: "essencial", label: "Naturalidade (município)",
-    norma: "CFM 1.638/2002, art. 5º" },
+    norma: "CFM 1.638/2002, art. 5º", soSe: nascidoNoBrasil },
   { campo: "naturalidade_uf", nivel: "essencial", label: "Naturalidade (estado)",
-    norma: "CFM 1.638/2002, art. 5º" },
+    norma: "CFM 1.638/2002, art. 5º", soSe: nascidoNoBrasil },
+  { campo: "pais_nascimento", nivel: "essencial", label: "País de nascimento",
+    norma: "CFM 1.638/2002, art. 5º", soSe: p => !nascidoNoBrasil(p),
+    porque: "Para quem nasceu fora, é o país que ocupa o lugar da naturalidade." },
   { campo: "end_logradouro", nivel: "essencial", label: "Endereço", norma: "CFM 1.638/2002, art. 5º" },
   { campo: "end_municipio",  nivel: "essencial", label: "Município de residência", norma: "CFM 1.638/2002, art. 5º" },
+  // CPF continua sendo cobrado de brasileiro e de naturalizado — os dois
+  // têm. Do estrangeiro, não: turista e recém-chegado podem não ter CPF
+  // nenhum, e é o PASSAPORTE que faz o papel de documento legal. Quem já
+  // tirou CPF no Brasil também resolve a pendência com ele; a exigência é
+  // ter UM documento, não ter aquele documento.
   { campo: "cpf",            nivel: "documento", label: "CPF",
     norma: "CFM 2.299/2021, art. 2º",
+    soSe: p => normalizarNacionalidade(p?.nacionalidade) !== "estrangeira",
     porque: "Documento legal do paciente é exigido nos documentos emitidos (receita, atestado, laudo)." },
+  { campo: "passaporte",     nivel: "documento", label: "Passaporte (ou CPF)",
+    norma: "CFM 2.299/2021, art. 2º",
+    soSe: p => normalizarNacionalidade(p?.nacionalidade) === "estrangeira",
+    faltaSe: p => semValor(p?.passaporte) && semValor(p?.cpf),
+    porque: "O documento legal do paciente estrangeiro. Sem ele, receita e atestado saem sem identificação válida." },
   { campo: "cns",            nivel: "sus",       label: "Cartão SUS (CNS)",
     porque: "Sem CNS o atendimento não fecha no faturamento SUS." },
+  // 🔴 RAÇA/COR INDÍGENA SEM ETNIA DERRUBA O ARQUIVO DE PRODUÇÃO.
+  //
+  // "Indígena" já era uma opção do campo raça/cor, e parava aí. Nos
+  // sistemas de informação do SUS a etnia é obrigatória JUNTO — a raça/cor
+  // indígena sozinha não é aceita, e o BPA volta rejeitado. O cadastro
+  // ficava plausível na tela e quebrava no fechamento do mês, longe de
+  // quem digitou.
+  //
+  // Nível "sus" e não "essencial": é exigência de faturamento, não da CFM
+  // 1.638. Não trava atendimento nenhum — aparece para ser completado.
+  { campo: "etnia_indigena", nivel: "sus",       label: "Etnia indígena",
+    soSe: autodeclaradoIndigena,
+    porque: "Raça/cor indígena sem etnia é rejeitada nos sistemas de informação do SUS — o BPA volta." },
   { campo: "telefone",       nivel: "contato",   label: "Telefone",
     porque: "Sem contato não há como avisar resultado nem confirmar retorno." },
 ];
 
 export function conferirCadastro(paciente) {
   const p = paciente || {};
-  const vazio = c => {
-    const v = p[c];
-    return v == null || String(v).trim() === "";
-  };
+  const vazio = c => semValor(p[c]);
+  // `soSe` é o que torna a regra CONDICIONAL: naturalidade só vale para
+  // quem nasceu no Brasil, etnia só para quem se declarou indígena. Regra
+  // que não se aplica não é pendência — não some da lista por estar
+  // resolvida, some por nunca ter sido cobrada desta pessoa.
+  const vale = r => !r.soSe || r.soSe(p);
   // `valida` cobre o campo que existe mas está com valor que o sistema não
   // reconhece — preenchido com lixo é tão inútil quanto vazio, e engana mais.
-  const falta = r => vazio(r.campo) || (r.valida && !r.valida(p[r.campo]));
+  // `faltaSe` é para a exigência que olha MAIS DE UM campo (passaporte ou
+  // CPF), que a checagem de um campo só não consegue exprimir.
+  const falta = r => vale(r) && (r.faltaSe
+    ? r.faltaSe(p)
+    : (vazio(r.campo) || (r.valida && !r.valida(p[r.campo]))));
   const pendencias = REGRAS_CADASTRO.filter(falta).map(r => ({ ...r }));
 
   // Documento inválido é pior que documento ausente: ausente todo mundo vê,
@@ -313,7 +456,10 @@ export function conferirCadastro(paciente) {
     pendencias.push({ campo: "cns", nivel: "sus", label: "Cartão SUS inválido",
       porque: "Os dígitos verificadores não conferem." });
 
-  const essenciais = REGRAS_CADASTRO.filter(r => r.nivel === "essencial");
+  // O denominador conta só as regras QUE VALEM para esta pessoa. Somar as
+  // que nunca serão cobradas faria o cadastro de um estrangeiro completo
+  // parar em 78% para sempre — número errado que ninguém consegue subir.
+  const essenciais = REGRAS_CADASTRO.filter(r => r.nivel === "essencial" && vale(r));
   const faltamEssenciais = pendencias.filter(x => x.nivel === "essencial").length;
   return {
     pendencias,

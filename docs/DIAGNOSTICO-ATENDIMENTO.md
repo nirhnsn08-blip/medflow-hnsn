@@ -104,9 +104,14 @@ Ordem sugerida, do que sangra primeiro:
    não recebe motivo, e não há remarcação com vínculo. Quem não veio e não foi
    clicado fica `agendado` para sempre e **subnotifica o absenteísmo** que a própria
    tela exibe como KPI.
-6. **Município sem código IBGE e "indígena" sem etnia.** Texto livre onde a AIH, o
-   BPA-I e o CADSUS exigem código. Não gera glosa — gera **rejeição do arquivo
-   inteiro**, descoberta no fim do mês, com correção cadastro por cadastro.
+6. **Município sem código IBGE.** Texto livre onde a AIH, o BPA-I e o CADSUS
+   exigem código. Não gera glosa — gera **rejeição do arquivo inteiro**, descoberta
+   no fim do mês, com correção cadastro por cadastro.
+   *A parte da etnia indígena saiu daqui:* o campo existe, aparece no instante em
+   que a raça/cor indígena é escolhida, e vira pendência visível de faturamento.
+   Guarda o **nome**, não o código de 4 dígitos da tabela oficial — código inventado
+   volta como glosa com o nome de um povo trocado pelo de outro. O código entra
+   junto com a exportação do BPA, com a tabela ao lado.
 7. **Não existe unificação de prontuário.** O #108 atacou a *causa* (a busca que não
    achava), mas duplicata que já exista é permanente. Porte grande: coluna
    `unificado_para`, UPDATE em cascata dos registros clínicos, restrito a
