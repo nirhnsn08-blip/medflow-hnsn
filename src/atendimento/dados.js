@@ -405,7 +405,11 @@ export async function cancelarAtendimento(sb, id, motivo, user) {
 export async function listarAmbulatoriaisAbertos(sb, { limite = 200 } = {}) {
   const r = await sb(
     `ps_atendimentos?tipo_atendimento=eq.ambulatorial&${FILTRO_ATENDIMENTO_ABERTO}` +
-    `&select=id,prontuario,iniciais,status,chegada_em,atendimento_em,especialidade_cod,tipo_atendimento_cod,agendamento_id,medico,queixa` +
+    // `gestante` e o vínculo com o cadastro entram para a PRIORIDADE LEGAL:
+    // a idade sai de `data_nascimento`, e sem ela a fila não tem como saber
+    // quem é idoso. O embed usa a FK `ps_atendimentos_paciente_fk` — uma
+    // consulta só, não uma por paciente.
+    `&select=id,prontuario,iniciais,status,chegada_em,atendimento_em,especialidade_cod,tipo_atendimento_cod,agendamento_id,medico,queixa,gestante,pacientes(data_nascimento)` +
     `&order=chegada_em&limit=${limite}`);
   return Array.isArray(r) ? r : [];
 }
