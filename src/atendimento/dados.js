@@ -463,6 +463,14 @@ const CAMPOS_AGENDAMENTO = [
   "id", "data", "hora", "especialidade_cod", "profissional_username", "grade_id",
   "prontuario", "origem_marcacao", "tipo_atendimento_cod", "protocolo_regulacao",
   "status", "presente_em", "atendimento_id", "cancelado_motivo", "observacao",
+  // 🔴 Estes cinco eram GRAVADOS E NUNCA LIDOS DE VOLTA. A lista é
+  // explícita (sem `*`) de propósito, e ficou para trás duas vezes: o motivo
+  // da falta e o carimbo da confirmação entraram no banco pelo PR da
+  // confirmação da véspera e não entraram aqui — então a tela que existe
+  // para tornar a falta ACIONÁVEL nunca via o motivo que ela mesma gravou.
+  // Coluna que só sabe ir é coluna que não existe.
+  "falta_motivo", "confirmado_em", "confirmado_por",
+  "remarcado_de", "remarcacao_motivo",
 ].join(",");
 
 /** As grades cadastradas, incluindo as desligadas (a tela precisa religar). */
@@ -639,6 +647,12 @@ export async function marcarAgendamento(sb, dados, user) {
     tipo_atendimento_cod: String(dados.tipo_atendimento_cod ?? "").trim() || null,
     protocolo_regulacao: String(dados.protocolo_regulacao ?? "").trim() || null,
     observacao: String(dados.observacao ?? "").trim() || null,
+    // O elo da remarcação. Entra AQUI e não num insert próprio porque o
+    // corpo é montado por lista explícita: campo que não estiver nesta
+    // lista some sem erro nenhum — o PostgREST grava a linha, devolve 201,
+    // e a coluna fica nula.
+    remarcado_de: dados.remarcado_de ?? null,
+    remarcacao_motivo: String(dados.remarcacao_motivo ?? "").trim() || null,
     status: "agendado",
     usuario: user?.name || null,
     updated_at: new Date().toISOString(),
@@ -741,6 +755,53 @@ export async function cancelarAgendamento(sb, id, motivo, user) {
     status: "cancelado",
     cancelado_motivo: String(motivo ?? "").trim() || null,
   }, user);
+}
+
+/**
+ * Remarca: cria a vaga nova LIGADA à antiga e cancela a antiga.
+ *
+ * A ORDEM É A REGRA DESTA FUNÇÃO, e é a mesma de `confirmarPresenca`.
+ *
+ *   Primeiro a VAGA NOVA. Se ela falhar, o paciente continua com o
+ *   agendamento que tinha — perdeu-se um clique, não um lugar na fila.
+ *
+ *   Só depois o cancelamento da antiga. Se ESTE falhar, o paciente fica com
+ *   duas vagas, as duas visíveis na agenda, e alguém desfaz. É ruim e é
+ *   recuperável.
+ *
+ * A ordem inversa é que não se recupera: cancelar primeiro e falhar ao
+ * marcar deixa a pessoa SEM vaga nenhuma e sem ninguém sabendo — ela
+ * descobre no dia em que vier.
+ *
+ * O motivo é gravado nos DOIS lados de propósito: no novo, porque é ele que
+ * nasce da remarcação e é por ele que a corrente é lida; no antigo, no
+ * `cancelado_motivo`, porque quem olhar a vaga cancelada precisa entender
+ * por que ela sumiu sem ter que caçar o sucessor.
+ */
+export async function remarcarAgendamento(sb, original, dados, motivo, user) {
+  if (!original?.id) return { ok: false, motivo: "Agendamento de origem inválido." };
+
+  const novo = await marcarAgendamento(sb, {
+    ...dados,
+    prontuario: dados.prontuario || original.prontuario,
+    remarcado_de: original.id,
+    remarcacao_motivo: motivo || null,
+  }, user);
+  if (!novo.ok) return novo;
+
+  const fechado = await cancelarAgendamento(
+    sb, original.id, `Remarcado para ${dados.data} — ${motivo || "sem motivo"}`, user);
+
+  // O aviso é devolvido, não engolido: a remarcação FUNCIONOU (a vaga nova
+  // existe), mas a antiga continua de pé ocupando um horário. Quem está no
+  // balcão precisa saber disso agora, e não descobrir pelo paciente que
+  // aparece duas vezes na lista do dia.
+  return {
+    ok: true,
+    agendamento: novo.agendamento,
+    aviso: fechado.ok ? null
+      : `A vaga nova foi criada, mas a antiga (#${original.id}) NÃO foi cancelada e continua ocupando o horário. Cancele-a à mão.`,
+  };
 }
 
 /** Liga o paciente a uma vaga da regulação que estava reservada sem nome. */

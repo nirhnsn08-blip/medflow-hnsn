@@ -153,6 +153,11 @@ const ORDEM = [
   // So colunas novas e um UPDATE que recupera o pais escrito no campo livre
   // de nacionalidade. Sem CHECK: a conferencia do cadastro nunca bloqueia.
   "migracao-pacientes-nacionalidade-etnia.sql",
+  // Remarcacao com vinculo: `remarcado_de` + `remarcacao_motivo`, a trava
+  // contra elo circular e o indice unico que faz a corrente ser corrente e
+  // nao arvore. NAO toca no CHECK de status nem no indice da vaga — o
+  // original continua indo para `cancelado`. Antes do rls-leitura.
+  "migracao-agenda-remarcacao.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

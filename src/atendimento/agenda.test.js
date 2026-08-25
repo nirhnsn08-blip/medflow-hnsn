@@ -24,6 +24,8 @@ import {
   bloqueioDoDia, vagasDoDia, horariosLivres, podeMarcar, podeRegistrarDaRegulacao,
   producaoDoDia, ocupaVaga, donoDaVaga, gradeParaChegada, agendamentosAtingidos,
   MOTIVOS_DE_FALTA, validarFalta, STATUS_AGENDAMENTO,
+  MOTIVOS_DE_REMARCACAO, remarcacaoDeQuem, validarRemarcacao,
+  cadeiaDeRemarcacao, esperaDesdeAOrigem,
 } from "./agenda.js";
 
 // 2026-07-28 é uma TERÇA. dia_semana 2.
@@ -674,5 +676,196 @@ describe("confirmação da véspera e motivo da falta", () => {
     for (const m of MOTIVOS_DE_FALTA) {
       expect(validarFalta(` ${m.chave} `)).toEqual({ ok: true, valor: m.chave });
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// REMARCAÇÃO — o elo que não existia
+//
+// Remarcar era cancelar e marcar de novo, à mão, sem vínculo. Três coisas
+// se perdiam no meio, e nenhuma delas dava erro:
+//
+//   DE QUEM FOI. "Cancelar" pedia motivo em texto livre — "médico de
+//   licença" e "o paciente pediu outro dia" viravam a mesma coisa. Quantas
+//   vezes o HOSPITAL empurrou o paciente é o único número deste conjunto
+//   sobre o qual o hospital manda, e não existia.
+//
+//   A ESPERA REAL. Quem foi empurrado de março para junho aparecia como
+//   "marcado há 5 dias". A fila de espera do hospital parecia curta porque
+//   o relógio era zerado a cada remarque.
+//
+//   A PESSOA. Três remarcações de um paciente eram indistinguíveis de três
+//   pacientes diferentes.
+// ═══════════════════════════════════════════════════════════
+
+describe("motivos de remarcação — a distinção que muda o indicador", () => {
+  it("cada motivo diz DE QUEM foi", () => {
+    for (const m of MOTIVOS_DE_REMARCACAO)
+      expect(["hospital", "paciente"], m.chave).toContain(m.deQuem);
+  });
+
+  it("existe pelo menos um de cada lado — senão a distinção não separa nada", () => {
+    const lados = new Set(MOTIVOS_DE_REMARCACAO.map(m => m.deQuem));
+    expect(lados.has("hospital")).toBe(true);
+    expect(lados.has("paciente")).toBe(true);
+  });
+
+  it("motivo desconhecido não vira lado nenhum", () => {
+    expect(remarcacaoDeQuem("hospital_profissional")).toBe("hospital");
+    expect(remarcacaoDeQuem("paciente_pediu")).toBe("paciente");
+    expect(remarcacaoDeQuem("qualquer_coisa")).toBe(null);
+    expect(remarcacaoDeQuem("")).toBe(null);
+    expect(remarcacaoDeQuem(null)).toBe(null);
+  });
+});
+
+describe("validarRemarcacao", () => {
+  const agendado = { id: 10, prontuario: "T9001", status: "agendado", data: "2026-09-14" };
+
+  it("agendado e confirmado podem ser remarcados", () => {
+    for (const status of ["agendado", "confirmado"]) {
+      const r = validarRemarcacao({ original: { ...agendado, status }, motivo: "hospital_agenda" });
+      expect(r.ok, status).toBe(true);
+    }
+  });
+
+  it("🔴 FALTA pode ser remarcada — é o caso mais comum do balcão", () => {
+    // A pessoa não veio, liga no dia seguinte e é reencaixada. A falta
+    // ANTERIOR continua contando; o elo não a apaga.
+    const r = validarRemarcacao({ original: { ...agendado, status: "falta" }, motivo: "paciente_faltou" });
+    expect(r.ok).toBe(true);
+    expect(r.deQuem).toBe("paciente");
+  });
+
+  it("🔴 PRESENTE não se remarca — o paciente já foi atendido", () => {
+    const r = validarRemarcacao({ original: { ...agendado, status: "presente" }, motivo: "hospital_agenda" });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/já foi atendido/i);
+  });
+
+  it("🔴 CANCELADO não se remarca — duas correntes saindo do mesmo ponto", () => {
+    const r = validarRemarcacao({ original: { ...agendado, status: "cancelado" }, motivo: "hospital_agenda" });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/já foi cancelado/i);
+  });
+
+  it("vaga reservada SEM paciente não se remarca — ela volta inteira para a fila", () => {
+    const r = validarRemarcacao({ original: { id: 10, status: "agendado" }, motivo: "hospital_agenda" });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/sem paciente/i);
+  });
+
+  it("motivo é obrigatório, e o erro diz POR QUE", () => {
+    const r = validarRemarcacao({ original: agendado, motivo: "" });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/hospital desmarcou/i);
+  });
+
+  it("motivo inventado é recusado", () => {
+    expect(validarRemarcacao({ original: agendado, motivo: "porque_sim" }).ok).toBe(false);
+  });
+
+  it("não explode sem nada", () => {
+    expect(() => validarRemarcacao()).not.toThrow();
+    expect(validarRemarcacao().ok).toBe(false);
+  });
+});
+
+describe("cadeiaDeRemarcacao", () => {
+  // Um paciente marcado em março, empurrado duas vezes pelo hospital e uma
+  // pela própria vontade, atendido em junho.
+  const corrente = [
+    { id: 1, prontuario: "T9001", data: "2026-03-10" },
+    { id: 2, prontuario: "T9001", data: "2026-04-15", remarcado_de: 1, remarcacao_motivo: "hospital_profissional" },
+    { id: 3, prontuario: "T9001", data: "2026-05-02", remarcado_de: 2, remarcacao_motivo: "paciente_pediu" },
+    { id: 4, prontuario: "T9001", data: "2026-06-20", remarcado_de: 3, remarcacao_motivo: "hospital_estrutura" },
+    // ruído: outro paciente, outra corrente
+    { id: 9, prontuario: "T9002", data: "2026-06-20" },
+  ];
+
+  it("reconstrói a corrente do mais antigo para o mais novo", () => {
+    const c = cadeiaDeRemarcacao(corrente, 4);
+    expect(c.elos.map(a => a.id)).toEqual([1, 2, 3, 4]);
+    expect(c.origem.data).toBe("2026-03-10");
+    expect(c.vezes).toBe(3);
+  });
+
+  it("🔴 separa quem empurrou — é a parte que o hospital pode consertar", () => {
+    const c = cadeiaDeRemarcacao(corrente, 4);
+    expect(c.porHospital).toBe(2);
+    expect(c.porPaciente).toBe(1);
+  });
+
+  it("agendamento sem remarcação é uma corrente de um elo só", () => {
+    const c = cadeiaDeRemarcacao(corrente, 9);
+    expect(c.vezes).toBe(0);
+    expect(c.origem.id).toBe(9);
+    expect(c.porHospital + c.porPaciente).toBe(0);
+  });
+
+  it("id que não está na lista devolve corrente vazia, não erro", () => {
+    const c = cadeiaDeRemarcacao(corrente, 777);
+    expect(c.elos).toEqual([]);
+    expect(c.origem).toBe(null);
+    expect(c.vezes).toBe(0);
+  });
+
+  it("🔴 CICLO não trava a tela", () => {
+    // Um elo apontando para si mesmo, ou uma corrente que volta para trás,
+    // giraria para sempre. Agenda que não carrega é agenda que ninguém usa:
+    // prefere parar e devolver o que já tem.
+    const proprio = [{ id: 1, data: "2026-03-10", remarcado_de: 1 }];
+    expect(() => cadeiaDeRemarcacao(proprio, 1)).not.toThrow();
+    expect(cadeiaDeRemarcacao(proprio, 1).vezes).toBe(0);
+
+    const laco = [
+      { id: 1, data: "2026-03-10", remarcado_de: 2 },
+      { id: 2, data: "2026-04-10", remarcado_de: 1 },
+    ];
+    expect(() => cadeiaDeRemarcacao(laco, 2)).not.toThrow();
+  });
+
+  it("elo fora da lista carregada para a corrente sem inventar", () => {
+    // A agenda carrega um dia por vez; o elo anterior pode estar em outro
+    // mês. Melhor a corrente curta e honesta do que um buraco preenchido.
+    const soOFim = [{ id: 4, data: "2026-06-20", remarcado_de: 3 }];
+    const c = cadeiaDeRemarcacao(soOFim, 4);
+    expect(c.elos.map(a => a.id)).toEqual([4]);
+    expect(c.origem.id).toBe(4);
+  });
+
+  it("não explode com lista vazia nem com lixo", () => {
+    expect(() => cadeiaDeRemarcacao()).not.toThrow();
+    expect(() => cadeiaDeRemarcacao([null, undefined, {}], 1)).not.toThrow();
+  });
+});
+
+describe("esperaDesdeAOrigem — o número que a remarcação apagava", () => {
+  const corrente = [
+    { id: 1, data: "2026-03-10" },
+    { id: 2, data: "2026-06-20", remarcado_de: 1 },
+  ];
+
+  it("🔴 conta da PRIMEIRA marcação, não da última", () => {
+    const c = cadeiaDeRemarcacao(corrente, 2);
+    expect(esperaDesdeAOrigem(c, "2026-06-20")).toBe(102);
+    // e a leitura ingênua, da última marcação, daria zero
+    expect(esperaDesdeAOrigem(cadeiaDeRemarcacao([corrente[1]], 2), "2026-06-20")).toBe(0);
+  });
+
+  it("null quando não dá para saber — e null NÃO é zero", () => {
+    // Zero seria "marcou hoje", a leitura mais otimista possível de um dado
+    // que está faltando.
+    const c = cadeiaDeRemarcacao(corrente, 2);
+    expect(esperaDesdeAOrigem(c, "")).toBe(null);
+    expect(esperaDesdeAOrigem(c, "não é data")).toBe(null);
+    expect(esperaDesdeAOrigem({ origem: null }, "2026-06-20")).toBe(null);
+    expect(esperaDesdeAOrigem(null, "2026-06-20")).toBe(null);
+  });
+
+  it("data civil não passa por fuso — o bug que já trocou o dia da grade", () => {
+    const c = cadeiaDeRemarcacao([{ id: 1, data: "2026-03-01" }], 1);
+    expect(esperaDesdeAOrigem(c, "2026-03-02")).toBe(1);
+    expect(esperaDesdeAOrigem(c, "2026-03-01")).toBe(0);
   });
 });

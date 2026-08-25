@@ -24,6 +24,7 @@ import {
   ORIGENS_MARCACAO, STATUS_AGENDAMENTO, gradesDoDia, vagasDoDia, horariosLivres,
   validarGrade, podeMarcar, podeRegistrarDaRegulacao, producaoDoDia, bloqueioDoDia,
   agendamentosAtingidos, MOTIVOS_DE_FALTA, validarFalta,
+  MOTIVOS_DE_REMARCACAO, validarRemarcacao, cadeiaDeRemarcacao, esperaDesdeAOrigem,
   horariosDaGrade, cotasSomadas, donoDaVaga,
 } from "./agenda.js";
 import {
@@ -33,7 +34,7 @@ import {
 import {
   listarAmbulatoriaisAbertos, encerrarAtendimento,
   carregarGrades, salvarGrade, alternarAtivoGrade, carregarBloqueios, salvarBloqueio,
-  carregarAgendaDoDia, marcarAgendamento, registrarFalta,
+  carregarAgendaDoDia, marcarAgendamento, registrarFalta, remarcarAgendamento,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
@@ -84,6 +85,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const [nova, setNova] = useState(null);        // grade em edição
   const [bloq, setBloq] = useState(null);        // bloqueio em edição
   const [marcando, setMarcando] = useState(null); // { grade, origem }
+  // A REMARCAÇÃO ATRAVESSA A TROCA DE DIA, e é por isso que ela é um estado
+  // separado de `marcando`. Remarcar quase sempre é mandar o paciente para
+  // OUTRA data — se o vínculo morresse ao mudar o dia, a recepcionista
+  // marcaria a vaga nova solta e a corrente se perderia de novo, que é
+  // exatamente o defeito que isto conserta.
+  const [remarcando, setRemarcando] = useState(null); // { original, motivo }
   const [buscaPac, setBuscaPac] = useState("");
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
@@ -188,17 +195,34 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
     if (v.avisos.length && !confirm(v.avisos.join("\n\n") + "\n\nSeguir?")) return;
 
-    setBusy(true);
-    const r = await marcarAgendamento(sb, {
+    const corpo = {
       data, hora, especialidade_cod: grade.especialidade_cod,
       profissional_username: grade.profissional_username, grade_id: grade.id,
       prontuario, origem_marcacao: origem, tipo_atendimento_cod: tipo,
       protocolo_regulacao: protocolo, observacao,
-    }, currentUser);
+    };
+
+    setBusy(true);
+    // Uma remarcação em curso muda o que este botão faz: em vez de criar uma
+    // vaga solta, cria a vaga LIGADA à antiga e cancela a antiga. A regra de
+    // o que pode ser remarcado é pura e mora em `agenda.js`.
+    const r = remarcando
+      ? await remarcarAgendamento(sb, remarcando.original, corpo, remarcando.motivo, currentUser)
+      : await marcarAgendamento(sb, corpo, currentUser);
     setBusy(false);
-    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo || (r.erros || []).join(" ") }); return; }
     setMarcando(null); setBuscaPac(""); setAchados([]);
-    setMsg({ tom: "ok", texto: "Vaga registrada." });
+    if (remarcando) {
+      const c = cadeiaDeRemarcacao([...agendamentos, r.agendamento], r.agendamento?.id);
+      setMsg({
+        tom: r.aviso ? "erro" : "ok",
+        texto: r.aviso || `Remarcado. É a ${c.vezes}ª remarcação deste agendamento` +
+          (c.porHospital ? ` — ${c.porHospital} pelo hospital.` : "."),
+      });
+      setRemarcando(null);
+    } else {
+      setMsg({ tom: "ok", texto: "Vaga registrada." });
+    }
     recarregarDia();
 
     // 🔴 O PACIENTE SAÍA DO BALCÃO SEM NADA NA MÃO.
@@ -288,6 +312,26 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       especialidade: espec(a.especialidade_cod),
       tipoAtendimento: rotuloDominio(catalogos, "tipo_atendimento", a.tipo_atendimento_cod),
     });
+  }
+
+  /**
+   * Começa uma remarcação: guarda a origem e espera a escolha do novo dia.
+   *
+   * NÃO grava nada aqui. Do balcão, remarcar é "para quando?", e a resposta
+   * costuma estar em outra semana — gravar no clique obrigaria a decidir a
+   * data antes de olhar a agenda.
+   *
+   * O motivo é pedido AGORA, e não no fim, porque é ele que separa o que o
+   * hospital desmarcou do que o paciente pediu — e essa é a metade sobre a
+   * qual o hospital pode agir. Perguntado depois de escolher o horário, ele
+   * vira um clique a mais no caminho de quem quer terminar.
+   */
+  function comecarRemarcacao(a, motivo) {
+    const v = validarRemarcacao({ original: a, motivo });
+    if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    setMarcando(null);
+    setRemarcando({ original: a, motivo: v.motivo });
+    setMsg({ tom: "ok", texto: "Escolha o novo dia e horário e clique em Marcar. A vaga antiga é cancelada só quando a nova existir." });
   }
 
   async function vincular(a) {
@@ -698,6 +742,30 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                           {a.protocolo_regulacao ? ` · ${a.protocolo_regulacao}` : ""}
                           {a.tipo_atendimento_cod ? ` · ${a.tipo_atendimento_cod.replace(/_/g, " ")}` : ""}
                         </span>
+                        {/* 🔴 A ESPERA REAL, que a remarcação apagava.
+                            Sem isto, quem foi marcado em março e empurrado
+                            três vezes aparece como "marcado há 5 dias", e a
+                            fila do hospital parece curta porque o relógio foi
+                            zerado a cada remarque.
+
+                            A corrente é reconstruída sobre os agendamentos
+                            do DIA carregado, então elos de outros meses não
+                            estão aqui — e a função para na borda em vez de
+                            inventar o resto. O que aparece é o piso, nunca
+                            um número maior do que o real. */}
+                        {a.remarcado_de != null && (() => {
+                          const c = cadeiaDeRemarcacao(agendamentos, a.id);
+                          const dias = esperaDesdeAOrigem(c, data);
+                          return (
+                            <span title="Remarcado — a espera conta desde a primeira marcação"
+                              style={{ fontSize: 10.5, fontWeight: 700, color: "#6366f1",
+                                       border: "1px solid #6366f155", borderRadius: 5, padding: "1px 5px" }}>
+                              ↻ remarcado
+                              {c.porHospital > 0 ? ` · ${c.porHospital}× pelo hospital` : ""}
+                              {dias != null ? ` · espera ${dias} dia(s)` : ""}
+                            </span>
+                          );
+                        })()}
                         <span style={{ fontSize: 11, fontWeight: 800, marginLeft: "auto",
                                        color: a.status === "presente" ? "#0d9488" : a.status === "falta" ? "#f43f5e" : "var(--text-muted)" }}>
                           {STATUS_AGENDAMENTO[a.status]?.label?.toUpperCase()}
@@ -729,6 +797,22 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                         {a.prontuario && ["agendado", "confirmado"].includes(a.status) && (
                           <button onClick={() => reimprimirComprovante(a)} disabled={busy}
                             style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 9px", fontSize: 11 }}>Comprovante</button>
+                        )}
+                        {/* REMARCAR — inclusive depois da FALTA, que é o caso
+                            mais comum: a pessoa não veio, liga no dia
+                            seguinte e é reencaixada. A falta anterior
+                            continua contando; o elo não a apaga. */}
+                        {canEdit && a.prontuario && ["agendado", "confirmado", "falta"].includes(a.status) && (
+                          <select value="" disabled={busy}
+                            onChange={e => { if (e.target.value) comecarRemarcacao(a, e.target.value); }}
+                            title="Remarcar — escolha de quem partiu"
+                            style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6,
+                                     padding: "3px 6px", color: "var(--text)", fontSize: 11 }}>
+                            <option value="">Remarcar…</option>
+                            {MOTIVOS_DE_REMARCACAO.map(m => (
+                              <option key={m.chave} value={m.chave}>{m.label}</option>
+                            ))}
+                          </select>
                         )}
                         {a.atendimento_id && (
                           <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>atend. #{a.atendimento_id}</span>
@@ -766,6 +850,33 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 onFechar={() => { setImprimindo(null); setResponsaveis([]); }}
               />
             </>
+          )}
+
+          {/* 🔴 A FAIXA QUE ATRAVESSA A TROCA DE DIA.
+              Remarcar quase sempre é mandar o paciente para outra data. Sem
+              uma marca visível fora do dia de origem, a recepcionista muda a
+              data, vê a agenda limpa e marca uma vaga solta — a corrente se
+              perde exatamente como se perdia antes, com a diferença de que
+              agora existiria uma coluna vazia dizendo que não. */}
+          {remarcando && (
+            <div style={{ ...cartao, borderLeft: "4px solid #6366f1", background: "#6366f110",
+                          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
+              <strong style={{ color: "#6366f1" }}>Remarcando</strong>
+              <span>
+                #{remarcando.original.id} · reg. {remarcando.original.prontuario} ·
+                {" "}era {remarcando.original.data}{remarcando.original.hora ? ` ${String(remarcando.original.hora).slice(0, 5)}` : ""}
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>
+                {MOTIVOS_DE_REMARCACAO.find(m => m.chave === remarcando.motivo)?.label}
+              </span>
+              <span style={{ color: "var(--text-muted)" }}>
+                Escolha o novo dia e horário. A vaga antiga só é cancelada depois que a nova existir.
+              </span>
+              <button onClick={() => { setRemarcando(null); setMarcando(null); setMsg(null); }}
+                style={{ ...btn("var(--surface-2)", false), color: "var(--text)", marginLeft: "auto", padding: "4px 10px", fontSize: 11 }}>
+                Desistir da remarcação
+              </button>
+            </div>
           )}
 
           {/* O papel que o paciente leva embora. Fica fora do bloco de
