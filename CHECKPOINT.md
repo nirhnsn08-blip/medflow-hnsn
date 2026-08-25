@@ -1,21 +1,122 @@
-# 📍 Ponto de restauração — checkpoint-v59
+# 📍 Ponto de restauração — checkpoint-v60
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v59` (anteriores: `checkpoint-v58` … `checkpoint-v1`)
-- **Data:** 2026-08-19 · `main` em `fc05ef6`
+- **Tag Git mais recente:** `checkpoint-v60` (anteriores: `checkpoint-v59` … `checkpoint-v1`)
+- **Data:** 2026-08-25 · `main` em `a11c68d`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v58 para cá: a **Visão Executiva do Faturamento** deixou de mostrar
-  números ilustrativos e passou a **ler a produção de verdade** — funil das internações,
-  **faturamento por via** (AIH/BPA/APAC/TISS/direta) e **R$ de referência SIGTAP** (PRs
-  **#93**, **#94**); e a **segurança de acesso** ganhou **exceção por usuário** e o ajuste
-  do **diretor técnico** na trilha de auditoria (PRs **#88**, **#89**, **#91**, **#92**).
-- **1186 testes** · **93 tabelas / 1462 colunas** · build limpo.
-- **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`).
-- ✅ **Banco de teste (demo) DESCONGELADO** (2026-07-23): `npm run dev:demo` aponta
-  para o projeto `ufxqdvxhruaswuzhmxyf`, com **faixa laranja** no topo. Toda migração
-  roda **primeiro no demo, depois no HNSN**. **Sem faixa = produção do hospital.**
+  vai ao ar). Da v59 para cá: **39 PRs (#95–#133)**. O grosso é o **módulo Atendimento**,
+  que deixou de ser a recepção do Pronto-Socorro e virou a **recepção do hospital** —
+  cadastro, agenda, fila, impressos e as regras legais que faltavam. O resto é
+  **integridade do almoxarifado**, **trilha de auditoria atribuível** e **RLS de escrita
+  por módulo**.
+- **1689 testes** · **94 tabelas / 1487 colunas** · build limpo.
+- **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`) — conferido no bundle
+  de produção, não só no CI.
+- ✅ **Banco de teste (demo)**: `npm run dev:demo` aponta para `ufxqdvxhruaswuzhmxyf`,
+  com **faixa laranja** no topo. Toda migração roda **primeiro no demo, depois no HNSN**.
+  **Sem faixa = produção do hospital.**
+- ⚠️ **"Rodei o SQL" precisa de RECIBO, não de palavra.** Toda migração desta rodada foi
+  conferida por **sonda REST nos dois bancos** (`select=<coluna>&limit=0`: `[]` = existe,
+  `42703` = não existe). Já aconteceu de a migração ser dada como rodada e não estar.
+
+## 🆕 Novidades da v60 (desde a v59): o Atendimento vira o balcão do hospital
+
+A v59 fechou o Faturamento lendo dado real. A v60 é sobre a **porta de entrada**: o que
+acontece antes de existir conta.
+
+### 🏥 A recepção unificada (PRs #107–#123)
+A recepção só sabia abrir **emergência**. Agora o balcão cobre o ciclo: **procura** (por
+nome, CPF, CNS, prontuário, **telefone e RG**, sem mentir quando a consulta falha) →
+recebe pelas **três portas** (consulta marcada / chegou sem marcar / emergência) → cobra
+**convênio e carteira** conforme o convênio exige → congela **médico e CBO** → **responsável
+e pulseira** → acompanha a espera na **fila viva** até a chamada. Quem chega sem marcar
+entra na **fila de chegada** e **conta na produção**. A agenda ganhou **vaga por
+profissional** (o índice único trocou), **bloqueio que avisa quem já está marcado**,
+**confirmação da véspera** e **motivo da falta**.
+
+**O padrão que o #107 abriu e se repetiu o resto da rodada:** regra que existe, roda,
+passa no teste — e **não chega em ninguém**. Oito travas mudas só naquele PR; depois
+`falta_motivo` e `confirmado_em` gravados e nunca lidos; `conta_como` semeado e lido por
+nada; CBO lido em três telas sem campo em lugar nenhum.
+
+### 👤 O cadastro passa a caber em quem chega (PRs #124, #125, #133)
+**Editar cadastro** (antes só dava para corrigir o cadastro que o sistema já reclamava),
+**telefone à vista**, e a busca alcançando telefone e RG — três campos que o banco guardava
+e nenhuma busca alcançava.
+
+**Estrangeiro e naturalizado:** a nacionalidade decide a ficha — nasceu fora, o **país de
+nascimento** ocupa o lugar da naturalidade e o **passaporte** o do CPF. Antes, quem nasceu
+no Uruguai tinha duas pendências impossíveis e nunca chegava a "completo".
+
+**Etnia indígena:** raça/cor indígena sem etnia é rejeitada no BPA. Guarda o **nome**, não o
+código de 4 dígitos — código inventado volta como glosa com o nome de um povo trocado pelo
+de outro.
+
+**Recém-nascido:** o hospital faz parto e o bebê **não tinha como entrar**. Ganhou nome
+provisório "RN de \<mãe\>", **DNV**, vínculo com o prontuário da mãe, hora e ordem do parto.
+
+### 🖨️ Os papéis que o paciente leva embora (PRs #126, #127)
+**Declaração de comparecimento** — que **não é atestado**, e o papel diz isso: declara
+presença, não incapacidade, e **não leva diagnóstico** (é o único impresso cujo destinatário
+é o empregador). **Comprovante de agendamento** — que imprime o **telefone do cadastro** e
+pede a correção ali, porque é para ele que a confirmação da véspera liga e ninguém nunca o
+conferia.
+
+E a aba **Consultas** deixou de ser um beco: achar um episódio passa a levar a imprimir.
+
+### ⚖️ As regras legais que faltavam (PRs #130, #132)
+**Prioridade na fila** — Lei 10.048/2000 e Estatuto do Idoso, art. 3º, §2º. A fila ordenava
+por tempo de espera e nada mais; uma senhora de 82 anos era chamada depois de um adulto de
+30 que chegou cinco minutos antes. **Sem proporção inventada** (a lei não fixa nenhuma) e a
+fila **diz o que não sabe ver**: PCD, lactante e obeso continuam por conta do balcão.
+
+**O óbito chega ao cadastro** — `pacientes.obito` era lido em **cinco** lugares e escrito em
+**nenhum**. A consequência saía do hospital: a confirmação da véspera ligava para a família
+de quem morreu no próprio hospital. Agora dois **triggers** carimbam a partir do desfecho do
+PS e da saída de leito, mais o **backfill** do que já estava gravado.
+
+### 📦 Almoxarifado, auditoria e acesso (PRs #100–#106)
+**Integridade do saldo** (CHECK de tipo, saldo não-negativo, `for update` no trigger,
+conciliação kardex × saldo), **ajuste de inventário rastreável** e **estorno com vínculo**,
+**unidade de compra × unidade de consumo** (sem o fator, custo médio e curva ABC misturavam
+caixa com unidade), **alçada de aprovação** (quem pede não aprova — nasce desligada).
+A **trilha de auditoria virou atribuível** (`usuario_id` carimbado pelo banco) e a **escrita
+passou a exigir o módulo** na RLS, com ensaio antes de aplicar.
+
+### 🔬 Duas auditorias versionadas (PRs #110, #129, #131)
+`docs/DIAGNOSTICO-ATENDIMENTO.md` guarda a fila de cada um e **duas varreduras**: uma de
+**defeito** (regra que não chega em ninguém) e uma de **ausência** (o que hospital tem e o
+módulo não tem). **Ler de lá, não reconstruir.**
+
+### 🔴 As regras de segurança que não se mexem sem pensar
+- **Gêmeos não são duplicata.** Dois irmãos do mesmo parto têm a mesma mãe, a mesma data e
+  nomes quase idênticos — a duplicidade os acusava com 70–90% e oferecia "use o prontuário
+  que já existe". Seguir isso **junta dois bebês num prontuário** e a prescrição de um passa
+  a valer para o outro. A **DNV** separa: diferente = duas pessoas; **igual = o mesmo bebê
+  duas vezes**, e o aviso continua.
+- **Pulseira não sai de episódio encerrado** — número de atendimento velho no pulso de
+  alguém hoje é o erro que o PNSP existe para impedir.
+- **Nada sai de episódio cancelado** — declarar presença que não houve.
+- **O óbito só carimba, nunca apaga.** Carimbar por engano a tela explica; apagar por engano
+  faz o hospital voltar a ligar para a família.
+- **A conferência do cadastro nunca bloqueia** (CFM 1.638, art. 5º, I, "e") — mas o botão
+  "Cadastrar" com o formulário **inteiramente vazio** ainda funciona, e isso está na fila.
+
+### ⚠️ Lições de teste que custaram caro nesta rodada
+- **Fronteira legal se testa com o número literal.** Testar os 80 anos comparando com a
+  constante deixou a mutação passar verde: o teste se movia junto com o erro.
+- **Guarda contra ciclo não fica vermelha — fica TRAVADA.** Laço infinito bloqueia o event
+  loop e nem o vitest interrompe. Por isso a mesma regra ganhou CHECK no banco.
+- **O contrato de banco aprendeu embed** (`tabela(coluna)`): confere a tabela embutida **e**
+  as colunas dela.
+
+**Falta no Atendimento** (detalhe em `docs/DIAGNOSTICO-ATENDIMENTO.md`): **internação não
+entra pela recepção** (trava deliberada até o leito amarrar adiante) · **painel de chamada**
+na sala de espera · **contra-referência** para a UBS · **CID-10 como tabela** · **município
+com código IBGE** · **unificação de prontuário** · cadastro vazio que grava · CEP que não
+preenche endereço. Ainda **não há paciente real** no sistema. **1689 testes + build verdes.**
 
 ## 🆕 Novidades da v59 (desde a v58): a Visão Executiva do Faturamento passa a ler dado real
 
