@@ -869,3 +869,40 @@ describe("esperaDesdeAOrigem — o número que a remarcação apagava", () => {
     expect(esperaDesdeAOrigem(c, "2026-03-01")).toBe(0);
   });
 });
+
+// 🔴 A CORRENTE NÃO TROCA DE PESSOA NO MEIO.
+//
+// Achado percorrendo a tela: a busca de paciente fica aberta durante a
+// remarcação, porque é o mesmo formulário de marcar. Dava para procurar
+// OUTRO nome ali e ligar o agendamento de quem foi empurrado ao prontuário
+// de um terceiro. A partir dali, "quantas vezes esta pessoa foi remarcada"
+// responde sobre duas pessoas ao mesmo tempo — e não há como desfazer sem
+// saber qual era qual.
+describe("remarcação não troca de paciente", () => {
+  const original = { id: 10, prontuario: "T9001", status: "agendado", data: "2026-09-14" };
+
+  it("o mesmo prontuário passa", () => {
+    const r = validarRemarcacao({ original, motivo: "paciente_pediu", prontuarioNovo: "T9001" });
+    expect(r.ok).toBe(true);
+  });
+
+  it("prontuário em branco passa — a origem é quem manda", () => {
+    // A tela pode não repetir o prontuário; quem grava usa o da origem.
+    for (const vazio of ["", null, undefined, "   "])
+      expect(validarRemarcacao({ original, motivo: "paciente_pediu", prontuarioNovo: vazio }).ok).toBe(true);
+  });
+
+  it("🔴 prontuário DIFERENTE é recusado, e o erro diz o que fazer", () => {
+    const r = validarRemarcacao({ original, motivo: "paciente_pediu", prontuarioNovo: "T9002" });
+    expect(r.ok).toBe(false);
+    expect(r.erros.join(" ")).toMatch(/T9001/);
+    expect(r.erros.join(" ")).toMatch(/consulta nova/i);
+  });
+
+  it("origem sem prontuário não inventa conflito", () => {
+    // Vaga reservada sem nome já é recusada por outro motivo; este teste
+    // garante que a conferência nova não acrescenta um erro confuso.
+    const r = validarRemarcacao({ original: { id: 10, status: "agendado" }, motivo: "paciente_pediu", prontuarioNovo: "T9002" });
+    expect(r.erros.some(e => /não de T9002|liga o histórico/i.test(e))).toBe(false);
+  });
+});

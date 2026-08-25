@@ -306,8 +306,15 @@ export const remarcacaoDeQuem = motivo =>
  * FALTA PODE — e é o caso mais comum do balcão: a pessoa não veio, liga no
  * dia seguinte e é reencaixada. A falta ANTERIOR continua contando; o elo
  * não a apaga, só diz para onde a pessoa foi.
+ *
+ * 🔴 E A CORRENTE NÃO TROCA DE PESSOA NO MEIO. `prontuarioNovo` existe
+ * porque a tela de marcação tem uma busca de paciente do lado: com ela
+ * aberta durante uma remarcação, dava para procurar OUTRO nome e ligar o
+ * agendamento de quem foi empurrado ao prontuário de um terceiro. A partir
+ * dali "quantas vezes esta pessoa foi remarcada" responde sobre duas
+ * pessoas ao mesmo tempo, e não há como desfazer sem saber qual era qual.
  */
-export function validarRemarcacao({ original, motivo } = {}) {
+export function validarRemarcacao({ original, motivo, prontuarioNovo } = {}) {
   const erros = [];
   if (!original?.id) erros.push("Agendamento de origem inválido.");
   if (!original?.prontuario)
@@ -318,6 +325,10 @@ export function validarRemarcacao({ original, motivo } = {}) {
     erros.push("Este paciente já foi atendido. Remarcar criaria uma vaga ligada a um episódio que já aconteceu — marque uma consulta nova.");
   if (st === "cancelado")
     erros.push("Este agendamento já foi cancelado. Remarcar por cima criaria duas correntes saindo do mesmo ponto — marque uma consulta nova.");
+
+  const pn = String(prontuarioNovo ?? "").trim();
+  if (pn && original?.prontuario && pn !== String(original.prontuario).trim())
+    erros.push(`Esta remarcação é do prontuário ${original.prontuario}. Para marcar ${pn}, saia da remarcação e marque uma consulta nova — remarcar trocando de pessoa liga o histórico de uma ao outro.`);
 
   const v = String(motivo ?? "").trim();
   if (!v) erros.push("Escolha o motivo da remarcação. Sem ele não dá para separar o que o hospital desmarcou do que o paciente pediu — e é justamente a parte que o hospital pode consertar.");

@@ -35,6 +35,7 @@ import {
   listarAmbulatoriaisAbertos, encerrarAtendimento,
   carregarGrades, salvarGrade, alternarAtivoGrade, carregarBloqueios, salvarBloqueio,
   carregarAgendaDoDia, marcarAgendamento, registrarFalta, remarcarAgendamento,
+  carregarAncestraisDeRemarcacao,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
   carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
@@ -91,6 +92,11 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   // marcaria a vaga nova solta e a corrente se perderia de novo, que é
   // exatamente o defeito que isto conserta.
   const [remarcando, setRemarcando] = useState(null); // { original, motivo }
+  // Os elos ANTERIORES das remarcações do dia. Estado separado de propósito:
+  // são agendamentos de OUTRAS datas, e misturá-los em `agendamentos` faria
+  // `vagasDoDia` e a contagem de livres enxergarem vagas que não são deste
+  // dia. Só a reconstrução da corrente os enxerga.
+  const [ancestrais, setAncestrais] = useState([]);
   const [buscaPac, setBuscaPac] = useState("");
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
@@ -117,6 +123,11 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       carregarProducaoGravada(sb, data),
     ]);
     setGrades(g); setBloqueios(b); setAgendamentos(a); setProducaoGravada(p);
+    // Os elos anteriores vêm DEPOIS e só se houver remarcação no dia: é uma
+    // consulta a mais numa tela de balcão, e a esmagadora maioria dos dias
+    // não tem nenhuma remarcação para reconstruir.
+    setAncestrais(a.some(x => x?.remarcado_de != null)
+      ? await carregarAncestraisDeRemarcacao(sb, a) : []);
     setAmbAbertos(await listarAmbulatoriaisAbertos(sb));
     setCarregando(false);
   }, [sb, data]);
@@ -193,6 +204,15 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       ? podeRegistrarDaRegulacao({ grade, data, hora, protocolo, agendamentos, bloqueios, paciente })
       : podeMarcar({ grade, data, hora, origem, agendamentos, bloqueios, paciente });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+
+    // A busca de paciente continua aberta durante a remarcação — é a mesma
+    // tela. Sem esta conferência, procurar outro nome ali ligaria o
+    // agendamento de quem foi empurrado ao prontuário de um terceiro.
+    if (remarcando) {
+      const vr = validarRemarcacao({
+        original: remarcando.original, motivo: remarcando.motivo, prontuarioNovo: prontuario });
+      if (!vr.ok) { setMsg({ tom: "erro", texto: vr.erros.join(" ") }); return; }
+    }
     if (v.avisos.length && !confirm(v.avisos.join("\n\n") + "\n\nSeguir?")) return;
 
     const corpo = {
@@ -213,11 +233,17 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo || (r.erros || []).join(" ") }); return; }
     setMarcando(null); setBuscaPac(""); setAchados([]);
     if (remarcando) {
-      const c = cadeiaDeRemarcacao([...agendamentos, r.agendamento], r.agendamento?.id);
+      // A origem raramente está no dia que está na tela, então a corrente é
+      // montada com o que já se conhece MAIS o agendamento que acabou de
+      // nascer e o que ele substituiu — este a gente tem na mão.
+      const c = cadeiaDeRemarcacao(
+        [...agendamentos, ...ancestrais, remarcando.original, r.agendamento], r.agendamento?.id);
+      const dias = esperaDesdeAOrigem(c, data);
       setMsg({
         tom: r.aviso ? "erro" : "ok",
-        texto: r.aviso || `Remarcado. É a ${c.vezes}ª remarcação deste agendamento` +
-          (c.porHospital ? ` — ${c.porHospital} pelo hospital.` : "."),
+        texto: r.aviso || `Remarcado — ${c.vezes}ª vez` +
+          (c.porHospital ? `, ${c.porHospital} pelo hospital` : "") +
+          (dias != null ? `. Este paciente espera desde ${c.origem.data} (${dias} dias).` : "."),
       });
       setRemarcando(null);
     } else {
@@ -330,6 +356,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     const v = validarRemarcacao({ original: a, motivo });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
     setMarcando(null);
+    setBuscaPac(""); setAchados([]);
     setRemarcando({ original: a, motivo: v.motivo });
     setMsg({ tom: "ok", texto: "Escolha o novo dia e horário e clique em Marcar. A vaga antiga é cancelada só quando a nova existir." });
   }
@@ -709,7 +736,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                         <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11.5 }}> · {vagas[k].livres} livre(s)</span>
                       </div>
                       {canEdit && !bloqueado && vagas[k].livres > 0 && (
-                        <button onClick={() => setMarcando({ grade: g, origem: k, hora: "", prontuario: "", protocolo: "", tipo: "" })}
+                        <button onClick={() => setMarcando({ grade: g, origem: k, hora: "", protocolo: "", tipo: "",
+                          // Numa remarcação o paciente já está decidido — é o
+                          // da origem. Entra preenchido para a recepcionista
+                          // ver de quem é a vaga que está criando, em vez de
+                          // um campo em branco ao lado de uma busca aberta.
+                          prontuario: remarcando?.original?.prontuario || "" })}
                           style={{ ...btn(CORES_ORIGEM[k]), marginTop: 6, padding: "4px 9px", fontSize: 11, color: "#fff" }}>
                           {k === "regulacao" ? "Registrar da regulação" : k === "chegada" ? "+ Fila de chegada" : "+ Marcar"}
                         </button>
@@ -748,13 +780,31 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                             fila do hospital parece curta porque o relógio foi
                             zerado a cada remarque.
 
-                            A corrente é reconstruída sobre os agendamentos
-                            do DIA carregado, então elos de outros meses não
-                            estão aqui — e a função para na borda em vez de
-                            inventar o resto. O que aparece é o piso, nunca
-                            um número maior do que o real. */}
+                            Os elos anteriores quase sempre estão em OUTRA
+                            data — remarcar é justamente mudar de dia — por
+                            isso são carregados à parte. Sem eles, a tela
+                            dizia "0ª remarcação, espera 0 dia(s)" logo
+                            depois de remarcar: o número que a coluna existe
+                            para responder, respondendo zero. */}
+                        {/* 🔴 O LADO DE CÁ DA REMARCAÇÃO.
+                            A vaga antiga fica "CANCELADO" e mais nada. Quem
+                            abre o dia de origem — e é esse dia que a pessoa
+                            tem anotado no papel — não consegue distinguir
+                            "foi remarcado para tal data" de "foi desmarcado
+                            e ninguém remarcou". São as duas situações que
+                            mais geram telefonema, e a diferença já estava
+                            gravada: só não era desenhada.
+
+                            Vale para todo cancelamento, não só o de
+                            remarcação: o motivo digitado à mão também some
+                            hoje. */}
+                        {a.status === "cancelado" && a.cancelado_motivo && (
+                          <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontStyle: "italic" }}>
+                            {a.cancelado_motivo}
+                          </span>
+                        )}
                         {a.remarcado_de != null && (() => {
-                          const c = cadeiaDeRemarcacao(agendamentos, a.id);
+                          const c = cadeiaDeRemarcacao([...agendamentos, ...ancestrais], a.id);
                           const dias = esperaDesdeAOrigem(c, data);
                           return (
                             <span title="Remarcado — a espera conta desde a primeira marcação"
@@ -967,8 +1017,20 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 {marcando.prontuario && (
                   <div style={{ fontSize: 12.5, marginTop: 7 }}>
                     Escolhido: <strong>reg. {marcando.prontuario}</strong>
-                    <button onClick={() => setMarcando(p => ({ ...p, prontuario: "" }))}
-                      style={{ ...btn("var(--surface-2)", false), color: "var(--text)", marginLeft: 8, padding: "3px 8px", fontSize: 11 }}>trocar</button>
+                    {/* NUMA REMARCAÇÃO O PACIENTE NÃO SE TROCA. Oferecer o
+                        botão seria oferecer um caminho que a regra recusa
+                        depois — e a corrente trocando de pessoa no meio é
+                        justamente o dano que não tem desfazer. A busca fica
+                        de pé para quem chegou aqui pelo "+ Marcar" comum. */}
+                    {!remarcando && (
+                      <button onClick={() => setMarcando(p => ({ ...p, prontuario: "" }))}
+                        style={{ ...btn("var(--surface-2)", false), color: "var(--text)", marginLeft: 8, padding: "3px 8px", fontSize: 11 }}>trocar</button>
+                    )}
+                    {remarcando && (
+                      <span style={{ marginLeft: 8, fontSize: 11, color: "var(--text-muted)" }}>
+                        — é a remarcação deste paciente, não se troca por outro
+                      </span>
+                    )}
                   </div>
                 )}
                 {achados.length > 0 && !marcando.prontuario && (
