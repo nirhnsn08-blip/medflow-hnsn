@@ -26,6 +26,11 @@
 // "está no PS agora (cancelado)". Aqui a lista é única e todos leem dela.
 // ═══════════════════════════════════════════════════════════
 
+// A prioridade legal mora em `prioridade.js` — Lei 10.048/2000 e Estatuto
+// do Idoso. Aqui só se APLICA a comparação; `prioridade.js` não conhece
+// este arquivo, então não há ciclo.
+import { prioridadeLegal, compararNaFila, LIMITE_ESPERA_MIN } from "./prioridade.js";
+
 /**
  * Os estados do atendimento e o que cada um significa para as filas.
  *
@@ -92,6 +97,21 @@ export function minutosEntre(de, ate) {
  * sendo atendido conta da chegada até a chamada — é o tempo de espera dele,
  * que parou de correr. Misturar os dois faria a média de espera crescer
  * junto com a duração da consulta, que é outra coisa.
+ *
+ * 🔴 A ORDEM NÃO É MAIS SÓ O RELÓGIO.
+ *
+ * Ordenava por tempo de espera e nada mais — e a Lei 10.048/2000 e o
+ * Estatuto do Idoso dizem outra coisa. O sistema não errava por conta
+ * própria: não sabia que prioridade existe, e quem opera o balcão sabe. A
+ * ordem real passava a ser combinada por fora da tela, e aí o tempo de
+ * espera que o relatório mostra deixa de descrever o que aconteceu.
+ *
+ * As regras estão em `prioridade.js`. Aqui só se aplica a comparação.
+ *
+ * `paciente` chega junto do atendimento (o PostgREST traz pelo vínculo com
+ * o cadastro): é dele que sai a idade, e sem idade não há prioridade a
+ * calcular. Quando não vier, ninguém é promovido nem rebaixado — a fila
+ * volta a ser a de antes, e o motivo aparece na tela.
  */
 export function filaDoAmbulatorio(atendimentos = [], { agora = new Date() } = {}) {
   const vivos = (Array.isArray(atendimentos) ? atendimentos : []).filter(atendimentoAberto);
@@ -101,12 +121,19 @@ export function filaDoAmbulatorio(atendimentos = [], { agora = new Date() } = {}
     esperaMin: a.atendimento_em
       ? minutosEntre(a.chegada_em, a.atendimento_em)
       : minutosEntre(a.chegada_em, agora),
+    prioridade: prioridadeLegal({ paciente: a.paciente || a.pacientes, atendimento: a, agora }),
+  })).map(a => ({
+    // Espera longa é marcada DEPOIS da prioridade e independente dela: é a
+    // trava contra o efeito colateral da própria ordenação. Sem isso, num
+    // dia de fila cheia de idosos, quem não tem prioridade some do topo e
+    // ninguém percebe.
+    ...a,
+    esperaLonga: (a.esperaMin ?? 0) >= LIMITE_ESPERA_MIN,
   }));
 
-  const ordenar = (x, y) => (y.esperaMin ?? -1) - (x.esperaMin ?? -1);   // quem espera há mais tempo primeiro
   return {
-    esperando: comEspera.filter(a => a.status !== "em_atendimento").sort(ordenar),
-    emAtendimento: comEspera.filter(a => a.status === "em_atendimento").sort(ordenar),
+    esperando: comEspera.filter(a => a.status !== "em_atendimento").sort(compararNaFila),
+    emAtendimento: comEspera.filter(a => a.status === "em_atendimento").sort(compararNaFila),
   };
 }
 

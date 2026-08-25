@@ -113,8 +113,41 @@ function conferirLeitura({ recurso }) {
 
   // `select=*` é legítimo (o formulário de cadastro quer a ficha inteira)
   // e não tem coluna a conferir.
-  for (const campo of (params.get("select") || "").split(",").filter(c => c && c.trim() !== "*")) {
-    expect(COLUNAS[tabela].has(campo.trim()), `select ${tabela}.${campo}`).toBe(true);
+  //
+  // 🔴 EMBED NÃO É COLUNA. `select=id,pacientes(data_nascimento)` traz o
+  // cadastro vinculado pela FK numa consulta só. A primeira versão desta
+  // conferência procurava "pacientes(data_nascimento)" entre as colunas de
+  // `ps_atendimentos` e reprovava — que é o teste fazendo o trabalho dele,
+  // avisando de uma forma que ele ainda não sabia ler.
+  //
+  // Um embed é conferido em DUAS coisas, e as duas importam: a tabela
+  // embutida existe, e as colunas pedidas são dela. Aceitar o embed sem
+  // conferir por dentro abriria um buraco justamente no lugar em que o
+  // PostgREST devolve erro silencioso.
+  const selecionado = params.get("select") || "";
+  // Quebra por vírgula SÓ fora de parênteses — senão "pacientes(a,b)" vira
+  // dois pedaços e nenhum deles faz sentido.
+  const pedacos = [];
+  let nivel = 0, atual = "";
+  for (const c of selecionado) {
+    if (c === "(") nivel++;
+    if (c === ")") nivel--;
+    if (c === "," && nivel === 0) { pedacos.push(atual); atual = ""; continue; }
+    atual += c;
+  }
+  if (atual) pedacos.push(atual);
+
+  for (const pedaco of pedacos.map(p => p.trim()).filter(p => p && p !== "*")) {
+    const embed = /^([a-z_0-9]+)\((.*)\)$/.exec(pedaco);
+    if (embed) {
+      const [, outra, colunas] = embed;
+      expect(COLUNAS[outra], `embed: tabela '${outra}' não existe na auditoria`).toBeDefined();
+      for (const c of colunas.split(",").map(x => x.trim()).filter(x => x && x !== "*")) {
+        expect(COLUNAS[outra].has(c), `select ${tabela} → ${outra}.${c}`).toBe(true);
+      }
+      continue;
+    }
+    expect(COLUNAS[tabela].has(pedaco), `select ${tabela}.${pedaco}`).toBe(true);
   }
   for (const campo of (params.get("order") || "").split(",").filter(Boolean)) {
     const col = campo.trim().split(".")[0];

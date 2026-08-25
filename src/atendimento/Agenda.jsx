@@ -44,6 +44,7 @@ import {
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
 import { rotuloDominio } from "./impressos.js";
+import { CATEGORIAS_SEM_CAMPO } from "./prioridade.js";
 import ResponsavelDoEpisodio from "./Responsavel.jsx";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
 import RelatorioAmbulatorio from "./RelatorioAmbulatorio.jsx";
@@ -608,10 +609,43 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                   </div>
                   <div style={{ flex: 1, minWidth: 200, fontSize: 13 }}>
                     <strong>{a.iniciais || "—"}</strong>
+                    {/* 🔴 O SELO DIZ POR QUE ESTA PESSOA ESTÁ NA FRENTE.
+                        Sem ele a fila muda de ordem e ninguém sabe por quê —
+                        e ordem que não se explica é ordem que a recepção
+                        desconfia e refaz de cabeça, que era exatamente o
+                        problema. O motivo vai junto (idade, gestante) porque
+                        é o que se confere olhando a pessoa. */}
+                    {a.prioridade?.tem && (
+                      <span title={a.prioridade.norma}
+                        style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, letterSpacing: ".04em",
+                                 color: a.prioridade.nivel === 2 ? "#f43f5e" : "#d97706",
+                                 border: `1px solid ${a.prioridade.nivel === 2 ? "#f43f5e66" : "#d9770666"}`,
+                                 borderRadius: 5, padding: "1px 5px", whiteSpace: "nowrap" }}>
+                        {a.prioridade.rotulo.toUpperCase()}
+                        {a.prioridade.motivos.filter(m => m.legal).length
+                          ? ` · ${a.prioridade.motivos.filter(m => m.legal).map(m => m.rotulo).join(" · ")}`
+                          : ""}
+                      </span>
+                    )}
                     <span style={{ color: "var(--text-muted)" }}>
                       {" · reg. "}{a.prontuario} · {espec(a.especialidade_cod)}
                       {a.medico ? ` · ${prof(a.medico)}` : ""}
                     </span>
+                    {/* Idade desconhecida NÃO é silêncio: sem data de
+                        nascimento o sistema não sabe se a pessoa é idosa, e
+                        quem está no balcão precisa conferir isso com ela em
+                        vez de confiar numa ordem que foi calculada sem o
+                        dado. */}
+                    {a.prioridade?.motivos.some(m => m.chave === "idade_desconhecida") && (
+                      <div style={{ fontSize: 11, color: "#d97706" }}>
+                        Sem data de nascimento — confirme a idade com a pessoa antes de seguir a ordem.
+                      </div>
+                    )}
+                    {a.esperaLonga && !a.prioridade?.tem && (
+                      <div style={{ fontSize: 11, color: "#f43f5e" }}>
+                        Espera longa e sem prioridade legal — está sendo ultrapassado.
+                      </div>
+                    )}
                     {a.queixa && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{a.queixa}</div>}
                   </div>
                   {canEdit && (
@@ -650,6 +684,17 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             </>
           )}
           <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 12, lineHeight: 1.5 }}>
+            <strong>A ordem segue a prioridade legal</strong> (Lei 10.048/2000; Estatuto do Idoso,
+            art. 3º, §2º, para o maior de 80) e só depois o tempo de espera.{" "}
+            {/* ⚠️ A FILA DIZ O QUE NÃO SABE VER.
+                Ordenar por prioridade e silenciar sobre as categorias que o
+                cadastro não guarda seria pior que não ordenar: a recepção
+                passaria a confiar na ordem e pararia de conferir justamente
+                o que depende dela. */}
+            <span style={{ color: "#d97706" }}>
+              O sistema ainda não reconhece {CATEGORIAS_SEM_CAMPO.map(c => c.rotulo.toLowerCase()).join(", ")} —
+              essas continuam por conta de quem está no balcão.
+            </span>{" "}
             O relógio conta da chegada. Chamar grava a hora de início do atendimento — é dela que
             sai o tempo de espera que a gestão cobra, e sem ela o atraso não deixa rastro.
           </div>
