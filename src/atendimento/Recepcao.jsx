@@ -26,7 +26,7 @@ import CadastroPaciente from "../pacientes/CadastroPaciente.jsx";
 // regra nova de convênio — e regra de convênio muda por contrato.
 import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
-import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone } from "../pacientes/identidade.js";
+import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone, avisoDeObito } from "../pacientes/identidade.js";
 import {
   PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe, TIPOS_DISPONIVEIS,
   classificarBusca, filtroBuscaPacientes, validarAbertura,
@@ -664,6 +664,28 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 ? <> · ☎ {formatarTelefone(paciente.telefone)}{paciente.telefone_alt ? ` / ${formatarTelefone(paciente.telefone_alt)}` : ""}</>
                 : <span style={{ color: "#d97706" }}> · sem telefone no cadastro — não dá para confirmar a consulta da véspera</span>}
             </div>
+
+            {/* 🔴 O ÓBITO, NO LUGAR ONDE SE OLHA.
+                Ele já aparecia na lista de resultados da busca, em letra
+                pequena — e some no instante em que o paciente é escolhido,
+                que é justamente quando a decisão é tomada. A faixa fica
+                acima da pendência de cadastro porque é a única informação
+                desta tela que muda QUEM é a pessoa, não o que falta nela.
+
+                Avisa e deixa seguir, de propósito: emergência entra, e
+                homônimo existe. Quem recusa é a Agenda, onde o dano é o
+                telefonema da véspera para a família. */}
+            {(() => {
+              const o = avisoDeObito(paciente);
+              if (!o) return null;
+              return (
+                <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, fontSize: 12,
+                              background: "#f43f5e12", border: "1px solid #f43f5e66" }}>
+                  <strong style={{ color: "#f43f5e" }}>⚠ {o.curto}</strong>
+                  <div style={{ color: "var(--text-muted)", marginTop: 4 }}>{o.recepcao}</div>
+                </div>
+              );
+            })()}
 
             {pend && !pend.completo && (
               <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8,

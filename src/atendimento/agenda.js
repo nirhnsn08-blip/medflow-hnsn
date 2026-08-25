@@ -21,6 +21,9 @@
 // `contaComo` mora no catálogo porque é atributo do CADASTRO do tipo de
 // atendimento, não da agenda. `catalogo.js` não conhece este arquivo: sem ciclo.
 import { contaComo } from "./catalogo.js";
+// Só o aviso de óbito: o texto é regra clínica e não pode divergir entre
+// as telas. `identidade.js` não conhece este arquivo — sem ciclo.
+import { avisoDeObito } from "../pacientes/identidade.js";
 
 /** Os três donos de vaga, e o que cada um implica. */
 export const ORIGENS_MARCACAO = {
@@ -589,9 +592,11 @@ export function podeMarcar({
   // cadastro em mãos continua conferindo a vaga normalmente, e a checagem
   // não vira um erro falso de "sem paciente" numa chamada que só quer saber
   // se o horário está livre.
-  if (paciente?.obito) {
-    erros.push("Este paciente tem óbito registrado no cadastro. Se for engano, corrija o cadastro antes de marcar.");
-  }
+  // O texto vem de `avisoDeObito`, com a ORIGEM do carimbo. A mensagem
+  // antiga mandava "corrija o cadastro" — e corrigir o cadastro não resolve:
+  // o carimbo é derivado do desfecho e volta no próximo toque no episódio.
+  const obito = avisoDeObito(paciente);
+  if (obito) erros.push(obito.agenda);
 
   if (!cfg.marcavelAqui) {
     erros.push(`Vaga de ${cfg.label.toLowerCase()} não é marcada aqui. ${cfg.quem} O sistema reserva a vaga; quem a ocupa é definido lá.`);

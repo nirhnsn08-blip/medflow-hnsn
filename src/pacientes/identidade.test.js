@@ -17,6 +17,7 @@ import {
   conferirCadastro, possiveisDuplicatas, documentoEmUso, mensagemDocumentoEmUso,
   NACIONALIDADES, normalizarNacionalidade, rotuloNacionalidade, nascidoNoBrasil,
   autodeclaradoIndigena, limparCamposInaplicaveis,
+  avisoDeObito, origemDoObito, desfechoEhObito,
 } from "./identidade.js";
 
 const CPF_OK = "529.982.247-25";
@@ -602,5 +603,89 @@ describe("limparCamposInaplicaveis", () => {
   it("não explode com nada", () => {
     expect(() => limparCamposInaplicaveis(null)).not.toThrow();
     expect(() => limparCamposInaplicaveis(undefined)).not.toThrow();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// ÓBITO — a coluna que era lida em cinco lugares e escrita em nenhum
+//
+// `pacientes.obito` nascia `false` e morria `false`. A Recepção "avisava",
+// a Agenda "recusava", duas telas "mostravam" — e nada disso acontecia
+// nunca. O dano saía do hospital: a confirmação da véspera liga para o
+// telefone do cadastro, então a família de quem morreu no próprio hospital
+// recebia a ligação combinando a consulta.
+//
+// Agora o carimbo é DERIVADO de um fato já gravado (desfecho do PS, saída
+// de leito) — e é isso que muda o que a tela pode dizer: mandar "corrija o
+// cadastro" é mandar fazer o que não resolve, porque o carimbo volta.
+// ═══════════════════════════════════════════════════════════
+
+describe("desfechoEhObito", () => {
+  it("reconhece o que as três fontes escrevem", () => {
+    expect(desfechoEhObito("obito")).toBe(true);
+    expect(desfechoEhObito("Óbito")).toBe(true);
+    expect(desfechoEhObito("OBITO")).toBe(true);
+    expect(desfechoEhObito(" óbito ")).toBe(true);
+  });
+
+  it("🔴 o acentuado não passa por vivo", () => {
+    // `=== "obito"` deixaria "óbito" passar. É o erro que ninguém percebe
+    // até alguém ligar para a família.
+    expect(desfechoEhObito("óbito")).not.toBe(false);
+  });
+
+  it("os outros desfechos não são óbito", () => {
+    for (const d of ["alta", "transferencia", "evasao", "internacao", "atendido", "", null])
+      expect(desfechoEhObito(d), String(d)).toBe(false);
+  });
+});
+
+describe("avisoDeObito — um texto só para as três telas", () => {
+  const morto = { obito: true, obito_em: "2026-07-30", obito_origem: "Atendimento #213" };
+
+  it("sem óbito devolve null — a tela não desenha faixa vazia", () => {
+    expect(avisoDeObito({})).toBe(null);
+    expect(avisoDeObito({ obito: false })).toBe(null);
+    expect(avisoDeObito(null)).toBe(null);
+    expect(origemDoObito({})).toBe(null);
+  });
+
+  it("diz QUANDO, sem passar a data civil por new Date", () => {
+    // O fuso já trocou o dia da semana da grade neste projeto. Numa data de
+    // óbito ele vira a véspera do dia em que a pessoa morreu.
+    expect(avisoDeObito(morto).curto).toBe("Óbito registrado em 30/07/2026");
+  });
+
+  it("🔴 diz DE ONDE VEIO — sem isso o aviso é um beco", () => {
+    // O carimbo é derivado: quem apagar o cadastro sem corrigir a fonte vê
+    // o carimbo voltar no próximo toque no episódio.
+    expect(avisoDeObito(morto).agenda).toMatch(/Atendimento #213/);
+    expect(avisoDeObito(morto).agenda).toMatch(/corrija o DESFECHO na origem/i);
+  });
+
+  it("origem ausente é DITA, não inventada", () => {
+    const semOrigem = { obito: true, obito_em: "2026-07-30" };
+    expect(origemDoObito(semOrigem).rastreavel).toBe(false);
+    expect(avisoDeObito(semOrigem).agenda).toMatch(/não ficou gravada/i);
+    expect(avisoDeObito(semOrigem).agenda).not.toMatch(/Atendimento #/);
+  });
+
+  it("data ausente não vira data inventada", () => {
+    const semData = { obito: true, obito_origem: "Saída de leito — UTI" };
+    expect(avisoDeObito(semData).curto).toBe("Óbito registrado");
+    expect(avisoDeObito(semData).curto).not.toMatch(/\d/);
+  });
+
+  it("🔴 a Agenda diz por que recusa, e a Recepção diz por que deixa seguir", () => {
+    // A diferença é deliberada: consulta agendada para quem morreu gera
+    // telefonema para a família; emergência com homônimo, não.
+    const a = avisoDeObito(morto);
+    expect(a.agenda).toMatch(/ligaria para a família/i);
+    expect(a.recepcao).toMatch(/pessoa certa antes de seguir/i);
+    expect(a.recepcao).not.toMatch(/Não se marca/i);
+  });
+
+  it("não explode com lixo", () => {
+    expect(() => avisoDeObito({ obito: true, obito_em: "não é data", obito_origem: 42 })).not.toThrow();
   });
 });

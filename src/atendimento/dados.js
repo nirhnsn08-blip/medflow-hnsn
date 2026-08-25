@@ -38,7 +38,9 @@ import { camposDaConta, camposDoItem } from "./faturamento.js";
 const CAMPOS_BUSCA = [
   "prontuario", "iniciais", "nome_completo", "nome_social", "nome_mae",
   "data_nascimento", "ano_nascimento", "sexo", "cpf", "cns",
-  "nao_identificado", "identificado_em", "obito",
+  // `obito_origem` e `obito_em` vêm junto porque o aviso diz DE ONDE veio o
+  // óbito — e sem a origem a mensagem manda corrigir sem dizer onde.
+  "nao_identificado", "identificado_em", "obito", "obito_em", "obito_origem",
 ].join(",");
 
 /**

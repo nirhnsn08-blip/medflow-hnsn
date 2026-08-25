@@ -158,6 +158,10 @@ const ORDEM = [
   // nao arvore. NAO toca no CHECK de status nem no indice da vaga — o
   // original continua indo para `cancelado`. Antes do rls-leitura.
   "migracao-agenda-remarcacao.sql",
+  // O obito chega ao cadastro: dois triggers (desfecho do PS e saida de
+  // leito) que carimbam `pacientes.obito`, mais o backfill do que ja estava
+  // gravado. Depende das tres tabelas criadas acima. Nao toca em politica.
+  "migracao-pacientes-obito.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
