@@ -595,3 +595,78 @@ export function mensagemDocumentoEmUso(conflito) {
     "Não apague o documento para conseguir salvar: isso cria um segundo prontuário " +
     "sem documento, que ninguém mais consegue casar com o primeiro.";
 }
+
+// ── ÓBITO ───────────────────────────────────────────────────
+
+/**
+ * 🔴 O CARIMBO DE ÓBITO É DERIVADO, E ISSO MUDA O QUE A TELA PODE DIZER.
+ *
+ * `pacientes.obito` não é digitado por ninguém: dois triggers o carimbam a
+ * partir de um fato já gravado — o desfecho do Pronto-Socorro e a saída de
+ * leito. Antes disso a coluna era lida em cinco lugares e escrita em
+ * nenhum, então a Agenda "recusava" marcar consulta para falecido sem nunca
+ * recusar nada, e a confirmação da véspera ligava para a família.
+ *
+ * A CONSEQUÊNCIA PARA A TELA: mandar "corrija o cadastro" é mandar fazer
+ * uma coisa que não resolve — quem apagar o carimbo sem corrigir a FONTE vê
+ * o carimbo voltar no próximo toque no episódio. Por isso a mensagem carrega
+ * `obito_origem`: sem dizer de onde veio, o aviso vira um beco.
+ */
+export function origemDoObito(paciente) {
+  if (!paciente?.obito) return null;
+  const origem = String(paciente.obito_origem ?? "").trim();
+  const quando = dataBRCurta(paciente.obito_em);
+  return {
+    origem: origem || "origem não registrada",
+    quando: quando || "",
+    // Cadastro carimbado antes desta migração, ou por caminho que não
+    // gravou origem. Dizer "não registrada" é melhor que inventar de onde
+    // veio — e é o que faz alguém ir conferir.
+    rastreavel: !!origem,
+  };
+}
+
+/** '2026-08-25' → '25/08/2026'. Sem `new Date` na string crua (fuso). */
+function dataBRCurta(iso) {
+  const s = String(iso ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  const [a, m, d] = s.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+/**
+ * O texto do óbito, um só para as três telas.
+ *
+ * Havia dois textos diferentes escritos à mão — a Recepção dizia uma coisa,
+ * a Agenda outra — e nenhum dos dois dizia de onde o óbito veio. Texto de
+ * regra clínica repetido em tela diverge no primeiro ajuste.
+ *
+ * `null` quando não há óbito, para a tela não desenhar faixa vazia.
+ */
+export function avisoDeObito(paciente) {
+  const o = origemDoObito(paciente);
+  if (!o) return null;
+  const onde = o.rastreavel ? ` Registrado em: ${o.origem}.` : " A origem do registro não ficou gravada — confira antes de agir.";
+  const quando = o.quando ? ` em ${o.quando}` : "";
+  return {
+    curto: `Óbito registrado${quando}`,
+    // O que a Recepção mostra: avisa e deixa seguir. Emergência entra, e
+    // homônimo existe.
+    recepcao: `Este cadastro tem ÓBITO registrado${quando}.${onde} Confirme que é a pessoa certa antes de seguir.`,
+    // O que a Agenda mostra ao RECUSAR. Diz onde corrigir, porque o carimbo
+    // é derivado: mexer só no cadastro não resolve.
+    agenda: `Este paciente tem ÓBITO registrado${quando}.${onde} Não se marca consulta para quem faleceu — e a confirmação da véspera ligaria para a família. Se for engano, corrija o DESFECHO na origem; o cadastro segue a origem, não o contrário.`,
+  };
+}
+
+/**
+ * Este desfecho é óbito?
+ *
+ * Aceita as variações que as três fontes escrevem — o PS grava `obito`, a
+ * saída de leito grava `obito`, e há registro antigo com acento. Comparar
+ * com `=== "obito"` deixaria o acentuado passar por vivo, que é o erro que
+ * não se percebe até alguém ligar para a família.
+ */
+export function desfechoEhObito(desfecho) {
+  return normalizarNome(desfecho) === "obito";
+}

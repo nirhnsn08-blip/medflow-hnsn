@@ -16,6 +16,9 @@
 // ═══════════════════════════════════════════════════════════
 
 import { conferirCadastro, limparDoc, validarCPF, validarCNS, normalizarSexo, normalizarNome } from "../pacientes/identidade.js";
+// Só o aviso de óbito: o texto é regra clínica e não pode divergir entre
+// as telas. `identidade.js` não conhece este arquivo — sem ciclo.
+import { avisoDeObito } from "../pacientes/identidade.js";
 
 // ── COMO O PACIENTE CHEGOU ──────────────────────────────────
 // Estas listas moraram no App.jsx enquanto a chegada só existia no PS.
@@ -330,12 +333,17 @@ export function validarAbertura({ paciente, tipo, origem, origemDetalhe, especia
     });
   }
 
-  if (paciente?.obito) {
-    avisos.push({
-      chave: "obito",
-      texto: "O cadastro deste paciente está marcado como óbito. Confirme que é a pessoa certa antes de seguir.",
-    });
-  }
+  // 🔴 AVISA, NÃO BLOQUEIA — e a diferença para a Agenda é deliberada.
+  // Emergência entra: homônimo existe, e recusar atendimento a quem está no
+  // balcão por causa de um carimbo é o erro caro na outra direção. Marcar
+  // CONSULTA para quem morreu é outra coisa: gera o telefonema da véspera
+  // para a família, e por isso lá a Agenda recusa.
+  //
+  // O texto vem de `avisoDeObito` para as duas telas dizerem a mesma coisa
+  // e citarem a origem. Eram dois textos escritos à mão, e nenhum dos dois
+  // dizia de onde o óbito tinha vindo.
+  const obito = avisoDeObito(paciente);
+  if (obito) avisos.push({ chave: "obito", texto: obito.recepcao });
 
   if (prontuario) {
     const pend = pendenciasDeIdentificacao(paciente);
