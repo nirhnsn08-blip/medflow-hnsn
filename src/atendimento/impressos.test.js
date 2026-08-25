@@ -23,6 +23,7 @@ import {
   identificadoresDoPaciente, conferirPulseira, dadosDaPulseira,
   rotuloDominio, dadosDaFicha, horaBR,
   declaracaoDeComparecimento, comprovanteDeAgendamento, ANTECEDENCIA_MINUTOS, O_QUE_TRAZER,
+  documentosDoEpisodio,
 } from "./impressos.js";
 import { TIPO_NENHUMA } from "../clinico/alergias.js";
 
@@ -496,5 +497,61 @@ describe("comprovante de agendamento", () => {
 
   it("não explode sem nada", () => {
     expect(() => comprovanteDeAgendamento()).not.toThrow();
+  });
+});
+
+// 🔴 NEM TODO EPISÓDIO PODE GERAR TODO PAPEL.
+//
+// Enquanto a reimpressão só existia na Recepção — que lista apenas
+// atendimentos EM ABERTO — a pergunta não aparecia. A pesquisa por
+// histórico mostra episódios de meses atrás, e cada botão de imprimir ali é
+// uma folha nova no mundo afirmando alguma coisa.
+describe("documentosDoEpisodio", () => {
+  const doc = (a, chave) => documentosDoEpisodio(a).find(d => d.chave === chave);
+
+  it("episódio ABERTO imprime tudo", () => {
+    const a = { id: 1, status: "em_atendimento" };
+    for (const chave of ["pulseira", "ficha", "declaracao"])
+      expect(doc(a, chave).disponivel, chave).toBe(true);
+  });
+
+  it("🔴 episódio ENCERRADO não reimprime pulseira", () => {
+    // A tira carrega o número do atendimento e é feita para ser fechada num
+    // pulso. Uma pulseira com número velho pronta para ser posta em alguém
+    // hoje é o erro de identificação que o PNSP existe para impedir.
+    const a = { id: 1, status: "finalizado", desfecho_em: "2026-07-30T10:41:00" };
+    expect(doc(a, "pulseira").disponivel).toBe(false);
+    expect(doc(a, "pulseira").porque).toMatch(/encerrado/i);
+    // mas a declaração é justamente o que se pede depois de encerrado
+    expect(doc(a, "declaracao").disponivel).toBe(true);
+    expect(doc(a, "ficha").disponivel).toBe(true);
+  });
+
+  it("🔴 episódio CANCELADO não imprime NADA", () => {
+    // Cancelado é o registro de que aquilo não aconteceu. Declarar
+    // comparecimento a partir dele é afirmar uma presença que não houve, no
+    // papel que vai para o empregador.
+    const a = { id: 1, status: "cancelado" };
+    for (const chave of ["pulseira", "ficha", "declaracao"])
+      expect(doc(a, chave).disponivel, chave).toBe(false);
+    expect(doc(a, "declaracao").porque).toMatch(/não houve/i);
+  });
+
+  it("o que não pode SEMPRE diz por quê — botão que some vira chamado", () => {
+    for (const a of [{ status: "cancelado" }, { status: "finalizado" }, null]) {
+      for (const d of documentosDoEpisodio(a)) {
+        if (!d.disponivel) expect(d.porque, `${a?.status} / ${d.chave}`).toBeTruthy();
+      }
+    }
+  });
+
+  it("sem episódio nenhum, nada é oferecido — e não explode", () => {
+    expect(() => documentosDoEpisodio()).not.toThrow();
+    expect(documentosDoEpisodio(null).every(d => !d.disponivel)).toBe(true);
+  });
+
+  it("status desconhecido conta como ABERTO — mesma escolha do ciclo", () => {
+    // Errar mostrando é recuperável; errar escondendo não.
+    expect(doc({ id: 1, status: "estado_que_ninguem_conhece" }, "pulseira").disponivel).toBe(true);
   });
 });
