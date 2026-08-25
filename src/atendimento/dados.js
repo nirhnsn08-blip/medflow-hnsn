@@ -20,6 +20,9 @@ import {
   filtroBuscaPacientes, filtroBuscaPacientesLegado, normalizarProntuario, dadosNaoIdentificado,
 } from "./recepcao.js";
 import { camposDaFicha, DOMINIOS } from "./ficha.js";
+// Só o catálogo de motivos, para o cancelamento da vaga antiga dizer POR
+// EXTENSO por que ela sumiu. Quem lê a agenda não decora chave de código.
+import { MOTIVO_REMARCACAO_POR_CHAVE } from "./agenda.js";
 import { iniciaisDe } from "../pacientes/identidade.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
@@ -463,6 +466,14 @@ const CAMPOS_AGENDAMENTO = [
   "id", "data", "hora", "especialidade_cod", "profissional_username", "grade_id",
   "prontuario", "origem_marcacao", "tipo_atendimento_cod", "protocolo_regulacao",
   "status", "presente_em", "atendimento_id", "cancelado_motivo", "observacao",
+  // 🔴 Estes cinco eram GRAVADOS E NUNCA LIDOS DE VOLTA. A lista é
+  // explícita (sem `*`) de propósito, e ficou para trás duas vezes: o motivo
+  // da falta e o carimbo da confirmação entraram no banco pelo PR da
+  // confirmação da véspera e não entraram aqui — então a tela que existe
+  // para tornar a falta ACIONÁVEL nunca via o motivo que ela mesma gravou.
+  // Coluna que só sabe ir é coluna que não existe.
+  "falta_motivo", "confirmado_em", "confirmado_por",
+  "remarcado_de", "remarcacao_motivo",
 ].join(",");
 
 /** As grades cadastradas, incluindo as desligadas (a tela precisa religar). */
@@ -639,6 +650,12 @@ export async function marcarAgendamento(sb, dados, user) {
     tipo_atendimento_cod: String(dados.tipo_atendimento_cod ?? "").trim() || null,
     protocolo_regulacao: String(dados.protocolo_regulacao ?? "").trim() || null,
     observacao: String(dados.observacao ?? "").trim() || null,
+    // O elo da remarcação. Entra AQUI e não num insert próprio porque o
+    // corpo é montado por lista explícita: campo que não estiver nesta
+    // lista some sem erro nenhum — o PostgREST grava a linha, devolve 201,
+    // e a coluna fica nula.
+    remarcado_de: dados.remarcado_de ?? null,
+    remarcacao_motivo: String(dados.remarcacao_motivo ?? "").trim() || null,
     status: "agendado",
     usuario: user?.name || null,
     updated_at: new Date().toISOString(),
@@ -741,6 +758,93 @@ export async function cancelarAgendamento(sb, id, motivo, user) {
     status: "cancelado",
     cancelado_motivo: String(motivo ?? "").trim() || null,
   }, user);
+}
+
+/**
+ * Remarca: cria a vaga nova LIGADA à antiga e cancela a antiga.
+ *
+ * A ORDEM É A REGRA DESTA FUNÇÃO, e é a mesma de `confirmarPresenca`.
+ *
+ *   Primeiro a VAGA NOVA. Se ela falhar, o paciente continua com o
+ *   agendamento que tinha — perdeu-se um clique, não um lugar na fila.
+ *
+ *   Só depois o cancelamento da antiga. Se ESTE falhar, o paciente fica com
+ *   duas vagas, as duas visíveis na agenda, e alguém desfaz. É ruim e é
+ *   recuperável.
+ *
+ * A ordem inversa é que não se recupera: cancelar primeiro e falhar ao
+ * marcar deixa a pessoa SEM vaga nenhuma e sem ninguém sabendo — ela
+ * descobre no dia em que vier.
+ *
+ * O motivo é gravado nos DOIS lados de propósito: no novo, porque é ele que
+ * nasce da remarcação e é por ele que a corrente é lida; no antigo, no
+ * `cancelado_motivo`, porque quem olhar a vaga cancelada precisa entender
+ * por que ela sumiu sem ter que caçar o sucessor.
+ */
+export async function remarcarAgendamento(sb, original, dados, motivo, user) {
+  if (!original?.id) return { ok: false, motivo: "Agendamento de origem inválido." };
+  // Última barreira contra a corrente trocar de pessoa no meio. A regra pura
+  // já recusa isso antes, mas esta função é chamável de qualquer lugar — e o
+  // dano (o histórico de uma pessoa ligado ao de outra) não tem desfazer.
+  const alvo = String(dados?.prontuario ?? "").trim();
+  if (alvo && String(original.prontuario ?? "").trim() && alvo !== String(original.prontuario).trim())
+    return { ok: false, motivo: `Remarcação é do prontuário ${original.prontuario}, não de ${alvo}.` };
+
+  const novo = await marcarAgendamento(sb, {
+    ...dados,
+    prontuario: dados.prontuario || original.prontuario,
+    remarcado_de: original.id,
+    remarcacao_motivo: motivo || null,
+  }, user);
+  if (!novo.ok) return novo;
+
+  const rotulo = MOTIVO_REMARCACAO_POR_CHAVE[motivo]?.label || motivo || "sem motivo";
+  const fechado = await cancelarAgendamento(
+    sb, original.id, `Remarcado para ${dados.data} — ${rotulo}`, user);
+
+  // O aviso é devolvido, não engolido: a remarcação FUNCIONOU (a vaga nova
+  // existe), mas a antiga continua de pé ocupando um horário. Quem está no
+  // balcão precisa saber disso agora, e não descobrir pelo paciente que
+  // aparece duas vezes na lista do dia.
+  return {
+    ok: true,
+    agendamento: novo.agendamento,
+    aviso: fechado.ok ? null
+      : `A vaga nova foi criada, mas a antiga (#${original.id}) NÃO foi cancelada e continua ocupando o horário. Cancele-a à mão.`,
+  };
+}
+
+/**
+ * 🔴 OS ELOS ANTERIORES, QUE QUASE SEMPRE ESTÃO EM OUTRO DIA.
+ *
+ * A agenda carrega UM dia por vez, e remarcar é justamente mandar o
+ * paciente para outra data — então o antecessor quase nunca está na lista
+ * carregada. Sem esta busca, `cadeiaDeRemarcacao` para no primeiro elo e a
+ * tela mostra "0ª remarcação, espera 0 dia(s)" logo depois de remarcar.
+ *
+ * Não é um detalhe de exibição: é o número que a coluna existe para
+ * responder, dizendo zero. Número que a gente SABE estar errado é pior que
+ * número nenhum — o primeiro é lido como verdade.
+ *
+ * Sobe em degraus, não com recursão no banco: cada volta pega todos os
+ * antecessores que faltam de uma vez. Corrente longa é rara, e `limite`
+ * existe para o caso em que os dados estejam circulares apesar da trava do
+ * banco — girar para sempre é o único erro que a tela não sobrevive.
+ */
+export async function carregarAncestraisDeRemarcacao(sb, agendamentos = [], { limite = 10 } = {}) {
+  const conhecidos = new Map((agendamentos || []).filter(a => a?.id != null).map(a => [String(a.id), a]));
+  const extras = [];
+  const pendentes = a => (a || []).map(x => x?.remarcado_de)
+    .filter(id => id != null && !conhecidos.has(String(id)));
+
+  let faltando = [...new Set(pendentes(agendamentos))];
+  for (let volta = 0; faltando.length && volta < limite; volta++) {
+    const r = await sb(`ag_agendamentos?id=in.(${faltando.join(",")})&select=${CAMPOS_AGENDAMENTO}`);
+    if (!Array.isArray(r) || !r.length) break;
+    for (const a of r) { conhecidos.set(String(a.id), a); extras.push(a); }
+    faltando = [...new Set(pendentes(r))];
+  }
+  return extras;
 }
 
 /** Liga o paciente a uma vaga da regulação que estava reservada sem nome. */

@@ -27,6 +27,7 @@ import {
   carregarGrades, salvarGrade, alternarAtivoGrade,
   carregarBloqueios, salvarBloqueio, carregarAgendaDoDia,
   marcarAgendamento, confirmarPresenca, registrarFalta, cancelarAgendamento,
+  remarcarAgendamento,
   vincularPacienteAoAgendamento,
   encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
@@ -535,6 +536,22 @@ describe("a agenda grava e lê em coluna real", () => {
     }, USER);
     expect(r.ok).toBe(true);
     conferirEscrita(chamadas[0]);
+  });
+
+  // 🔴 Remarcar escreve DUAS vezes: cria a vaga nova e cancela a antiga.
+  // As duas passam por aqui — o elo `remarcado_de` é justamente o campo que
+  // some sem erro se não estiver na lista que monta o corpo, e a corrente
+  // ficaria toda nula com 201 em todas as linhas.
+  it("remarcar agendamento — as duas escritas", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await remarcarAgendamento(sb, { id: 7, prontuario: "100001", status: "agendado" }, {
+      data: "2026-08-11", hora: "09:00", especialidade_cod: "ortopedia",
+      profissional_username: "dr.joao", grade_id: 1,
+      origem_marcacao: "interna", tipo_atendimento_cod: "retorno",
+    }, "hospital_profissional", USER);
+    expect(r.ok).toBe(true);
+    expect(chamadas.length).toBe(2);
+    for (const c of chamadas) conferirEscrita(c);
   });
 
   it("falta, cancelamento e vínculo do paciente", async () => {

@@ -245,6 +245,164 @@ export const MOTIVOS_DE_FALTA = [
   { chave: "nao_era_falta",  label: "Resolveu em outro serviço / óbito", acao: "Não é absenteísmo: é cadastro a atualizar." },
 ];
 
+// ── REMARCAÇÃO ──────────────────────────────────────────────
+
+/**
+ * 🔴 REMARCAR NÃO EXISTIA — só cancelar e marcar de novo, sem vínculo.
+ *
+ * O próprio catálogo de faltas já apontava para uma ação que a tela não
+ * oferecia: "Passou mal / sem condições → Remarcar é o caminho". A
+ * recepcionista fazia as duas coisas à mão, e a corrente se perdia no meio.
+ *
+ * O QUE SE PERDIA JUNTO
+ *
+ *   1. DE QUEM FOI. "Cancelar" pedia o motivo em TEXTO LIVRE, então
+ *      "médico de licença" e "o paciente pediu outro dia" viravam a mesma
+ *      coisa. Quantas vezes o HOSPITAL empurrou o paciente é o único número
+ *      deste conjunto sobre o qual o hospital manda — e não existia.
+ *
+ *   2. A ESPERA REAL. Sem elo, quem foi empurrado três vezes aparece como
+ *      marcado há poucos dias. A espera que conta para a regulação é da
+ *      PRIMEIRA marcação até ser atendido, e ela se apagava a cada remarque.
+ *
+ *   3. A PESSOA. Três remarcações de um paciente são indistinguíveis de
+ *      três pacientes diferentes. Quem liga para reduzir absenteísmo não
+ *      tem como saber a quem ligar primeiro.
+ *
+ * `deQuem` é o campo que carrega a distinção do item 1, e é por isso que
+ * este catálogo existe em vez de um campo de texto.
+ */
+export const MOTIVOS_DE_REMARCACAO = [
+  { chave: "hospital_profissional", deQuem: "hospital", label: "Profissional indisponível",
+    acao: "Licença, congresso, plantão trocado. O paciente é empurrado sem ter culpa — e o hospital manda nisso." },
+  { chave: "hospital_estrutura",    deQuem: "hospital", label: "Sala ou equipamento indisponível",
+    acao: "Reforma, aparelho quebrado. Padrão repetido aponta manutenção, não agenda." },
+  { chave: "hospital_agenda",       deQuem: "hospital", label: "Reorganização da agenda",
+    acao: "Encaixe de urgência, grade refeita. Conta como remarcação do hospital." },
+  { chave: "paciente_pediu",        deQuem: "paciente", label: "Paciente pediu outra data",
+    acao: "Combinado no balcão ou por telefone. Não é falta: a vaga volta para a fila a tempo." },
+  { chave: "paciente_faltou",       deQuem: "paciente", label: "Faltou e foi reencaixado",
+    acao: "A falta ANTERIOR continua contando — remarcar não a apaga. Isto só liga o novo ao antigo." },
+];
+
+export const MOTIVO_REMARCACAO_POR_CHAVE =
+  Object.fromEntries(MOTIVOS_DE_REMARCACAO.map(m => [m.chave, m]));
+
+/** De quem foi a remarcação: "hospital", "paciente", ou `null` se não se sabe. */
+export const remarcacaoDeQuem = motivo =>
+  MOTIVO_REMARCACAO_POR_CHAVE[String(motivo ?? "").trim()]?.deQuem ?? null;
+
+/**
+ * Este agendamento pode ser remarcado?
+ *
+ * PRESENTE NÃO SE REMARCA. O paciente já foi atendido — remarcar dali
+ * criaria uma vaga nova ligada a um episódio que aconteceu, e o relatório
+ * passaria a contar duas passagens onde houve uma.
+ *
+ * CANCELADO TAMBÉM NÃO. Já foi desmarcado; remarcar por cima criaria uma
+ * segunda corrente saindo do mesmo elo, e aí "quantas vezes este paciente
+ * foi empurrado" deixa de ter resposta única.
+ *
+ * FALTA PODE — e é o caso mais comum do balcão: a pessoa não veio, liga no
+ * dia seguinte e é reencaixada. A falta ANTERIOR continua contando; o elo
+ * não a apaga, só diz para onde a pessoa foi.
+ *
+ * 🔴 E A CORRENTE NÃO TROCA DE PESSOA NO MEIO. `prontuarioNovo` existe
+ * porque a tela de marcação tem uma busca de paciente do lado: com ela
+ * aberta durante uma remarcação, dava para procurar OUTRO nome e ligar o
+ * agendamento de quem foi empurrado ao prontuário de um terceiro. A partir
+ * dali "quantas vezes esta pessoa foi remarcada" responde sobre duas
+ * pessoas ao mesmo tempo, e não há como desfazer sem saber qual era qual.
+ */
+export function validarRemarcacao({ original, motivo, prontuarioNovo } = {}) {
+  const erros = [];
+  if (!original?.id) erros.push("Agendamento de origem inválido.");
+  if (!original?.prontuario)
+    erros.push("Vaga sem paciente não se remarca — ela volta inteira para a fila. Diga quem veio, ou cancele.");
+
+  const st = original?.status;
+  if (st === "presente")
+    erros.push("Este paciente já foi atendido. Remarcar criaria uma vaga ligada a um episódio que já aconteceu — marque uma consulta nova.");
+  if (st === "cancelado")
+    erros.push("Este agendamento já foi cancelado. Remarcar por cima criaria duas correntes saindo do mesmo ponto — marque uma consulta nova.");
+
+  const pn = String(prontuarioNovo ?? "").trim();
+  if (pn && original?.prontuario && pn !== String(original.prontuario).trim())
+    erros.push(`Esta remarcação é do prontuário ${original.prontuario}. Para marcar ${pn}, saia da remarcação e marque uma consulta nova — remarcar trocando de pessoa liga o histórico de uma ao outro.`);
+
+  const v = String(motivo ?? "").trim();
+  if (!v) erros.push("Escolha o motivo da remarcação. Sem ele não dá para separar o que o hospital desmarcou do que o paciente pediu — e é justamente a parte que o hospital pode consertar.");
+  else if (!MOTIVO_REMARCACAO_POR_CHAVE[v]) erros.push("Motivo de remarcação desconhecido.");
+
+  return erros.length ? { ok: false, erros } : { ok: true, motivo: v, deQuem: remarcacaoDeQuem(v) };
+}
+
+/**
+ * A corrente inteira de remarcações que chega até este agendamento.
+ *
+ * Devolve do MAIS ANTIGO para o mais novo. `origem` é a primeira marcação —
+ * a data que conta para a espera real, e a que se apagava a cada remarque.
+ *
+ * Guarda contra ciclo: um elo que aponte para si mesmo, ou uma corrente que
+ * volte para trás, travaria a tela num laço infinito — e agenda que não
+ * carrega é agenda que ninguém usa. Prefere parar e devolver o que já tem.
+ */
+export function cadeiaDeRemarcacao(agendamentos = [], id) {
+  const porId = new Map((agendamentos || []).filter(a => a?.id != null).map(a => [String(a.id), a]));
+  const atual = porId.get(String(id));
+  if (!atual) return { elos: [], origem: null, vezes: 0, porHospital: 0, porPaciente: 0 };
+
+  const elos = [atual];
+  const vistos = new Set([String(atual.id)]);
+  let cursor = atual;
+  while (cursor?.remarcado_de != null) {
+    const chave = String(cursor.remarcado_de);
+    if (vistos.has(chave)) break;              // ciclo: para em vez de girar
+    const anterior = porId.get(chave);
+    if (!anterior) break;                      // elo fora da lista carregada
+    vistos.add(chave);
+    elos.unshift(anterior);
+    cursor = anterior;
+  }
+
+  // O motivo vive no elo NOVO — é ele que nasce da remarcação. O primeiro da
+  // corrente nunca tem um, por isso a contagem começa no segundo.
+  const motivos = elos.slice(1).map(a => remarcacaoDeQuem(a.remarcacao_motivo));
+  return {
+    elos,
+    origem: elos[0],
+    vezes: elos.length - 1,
+    porHospital: motivos.filter(d => d === "hospital").length,
+    porPaciente: motivos.filter(d => d === "paciente").length,
+  };
+}
+
+/**
+ * Há quantos dias esta pessoa espera, contando da PRIMEIRA marcação.
+ *
+ * É o número que a remarcação apagava. Sem ele, alguém empurrado de março
+ * para junho aparece como "marcado há 5 dias", e a fila de espera do
+ * hospital parece curta porque o relógio foi zerado três vezes.
+ *
+ * Data civil, sem passar por `new Date` na string crua: é o mesmo fuso que
+ * já trocou o dia da semana da grade neste arquivo.
+ *
+ * `null` quando não dá para saber — e null não é zero. Zero seria "marcou
+ * hoje", a leitura mais otimista possível de um dado ausente.
+ */
+export function esperaDesdeAOrigem(cadeia, ate) {
+  const inicio = diaCivil(cadeia?.origem?.data);
+  const fim = diaCivil(ate);
+  if (!inicio || !fim) return null;
+  // `diaCivil` já devolve a meia-noite LOCAL dos dois lados, então a
+  // subtração é limpa. Recriar Date a partir delas foi o primeiro erro aqui:
+  // `diaCivil` devolve Date, não string, e a conta virava NaN — que a
+  // guarda de null transformava em "não dá para saber" silenciosamente.
+  const ms = fim - inicio;
+  if (Number.isNaN(ms)) return null;
+  return Math.round(ms / 86400000);
+}
+
 export const MOTIVO_FALTA_POR_CHAVE =
   Object.fromEntries(MOTIVOS_DE_FALTA.map(m => [m.chave, m]));
 
