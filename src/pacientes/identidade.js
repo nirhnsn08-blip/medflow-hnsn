@@ -318,6 +318,37 @@ export function autodeclaradoIndigena(paciente) {
   return normalizarNome(paciente?.raca_cor) === "indigena";
 }
 
+/**
+ * 🔴 CAMPO QUE DEIXOU DE VALER NÃO FICA GRAVADO COM O VALOR ANTIGO.
+ *
+ * A ficha esconde o que não se aplica — país de nascimento some quando a
+ * nacionalidade volta a ser brasileira, etnia some quando a raça/cor deixa
+ * de ser indígena. O ESTADO DO FORMULÁRIO não some junto, e o salvamento
+ * manda tudo: o cadastro ficava com um brasileiro nascido no Uruguai, ou
+ * com uma pessoa parda carregando etnia Charrua.
+ *
+ * Achei percorrendo a tela: marquei estrangeira, corrigi para brasileira, e
+ * o país continuou no banco — invisível, porque o campo que o mostrava não
+ * é mais desenhado. Dado que ninguém vê e ninguém consegue apagar é o pior
+ * tipo: some da tela e continua indo para o arquivo de produção. A etnia é
+ * a que machuca — o BPA leria etnia de quem não se declarou indígena.
+ *
+ * Devolve um objeto NOVO. Não altera o que recebe: o formulário continua
+ * mostrando o que a pessoa digitou até ela salvar.
+ */
+export function limparCamposInaplicaveis(cadastro) {
+  const c = { ...(cadastro || {}) };
+  // Nasceu no Brasil: não há país de nascimento, e o passaporte não tem
+  // campo na tela — guardar um que ninguém consegue enxergar nem corrigir
+  // é guardar lixo com aparência de dado.
+  if (nascidoNoBrasil(c)) {
+    c.pais_nascimento = null;
+    c.passaporte = null;
+  }
+  if (!autodeclaradoIndigena(c)) c.etnia_indigena = null;
+  return c;
+}
+
 // ── CONFERÊNCIA DO CADASTRO ─────────────────────────────────
 
 /**

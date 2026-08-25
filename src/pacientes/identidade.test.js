@@ -16,7 +16,7 @@ import {
   idadeDetalhada, idadeMesesParaTriagem,
   conferirCadastro, possiveisDuplicatas, documentoEmUso, mensagemDocumentoEmUso,
   NACIONALIDADES, normalizarNacionalidade, rotuloNacionalidade, nascidoNoBrasil,
-  autodeclaradoIndigena,
+  autodeclaradoIndigena, limparCamposInaplicaveis,
 } from "./identidade.js";
 
 const CPF_OK = "529.982.247-25";
@@ -550,5 +550,57 @@ describe("conferirCadastro — estrangeiro e indígena", () => {
       const r = conferirCadastro({ ...brasileiro, raca_cor: cor });
       expect(r.pendencias.map(x => x.campo), cor).not.toContain("etnia_indigena");
     }
+  });
+});
+
+// 🔴 CAMPO QUE DEIXOU DE VALER CONTINUAVA GRAVADO.
+//
+// Achei percorrendo a tela: marquei "Estrangeira", preenchi o país,
+// corrigi para "Brasileira" — e o país continuou no banco. Invisível,
+// porque o campo que o mostrava não é mais desenhado. Dado que ninguém vê
+// e ninguém consegue apagar é o pior tipo: some da tela e continua indo
+// para o arquivo de produção.
+//
+// A etnia é a que machuca: o BPA leria etnia de quem não se declarou
+// indígena — informação sobre origem de uma pessoa, errada, num arquivo
+// que sai do hospital.
+describe("limparCamposInaplicaveis", () => {
+  it("brasileiro não guarda país de nascimento nem passaporte escondidos", () => {
+    const r = limparCamposInaplicaveis({
+      nacionalidade: "brasileira", pais_nascimento: "Uruguai", passaporte: "FL7712345",
+    });
+    expect(r.pais_nascimento).toBe(null);
+    expect(r.passaporte).toBe(null);
+  });
+
+  it("estrangeiro e naturalizado MANTÊM país e passaporte — os campos existem na tela", () => {
+    for (const nac of ["estrangeira", "naturalizada"]) {
+      const r = limparCamposInaplicaveis({
+        nacionalidade: nac, pais_nascimento: "Uruguai", passaporte: "FL7712345",
+      });
+      expect(r.pais_nascimento, nac).toBe("Uruguai");
+      expect(r.passaporte, nac).toBe("FL7712345");
+    }
+  });
+
+  it("quem não se declarou indígena não carrega etnia", () => {
+    expect(limparCamposInaplicaveis({ raca_cor: "parda", etnia_indigena: "Charrua" }).etnia_indigena).toBe(null);
+    expect(limparCamposInaplicaveis({ raca_cor: "", etnia_indigena: "Charrua" }).etnia_indigena).toBe(null);
+  });
+
+  it("quem se declarou indígena mantém a etnia", () => {
+    expect(limparCamposInaplicaveis({ raca_cor: "indigena", etnia_indigena: "Charrua" }).etnia_indigena).toBe("Charrua");
+  });
+
+  it("devolve objeto NOVO — o formulário segue mostrando o que a pessoa digitou", () => {
+    const original = { nacionalidade: "brasileira", pais_nascimento: "Uruguai" };
+    const r = limparCamposInaplicaveis(original);
+    expect(original.pais_nascimento).toBe("Uruguai");
+    expect(r).not.toBe(original);
+  });
+
+  it("não explode com nada", () => {
+    expect(() => limparCamposInaplicaveis(null)).not.toThrow();
+    expect(() => limparCamposInaplicaveis(undefined)).not.toThrow();
   });
 });

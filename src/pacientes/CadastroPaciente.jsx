@@ -35,6 +35,7 @@ import {
   iniciaisDe, idadeDetalhada, conferirCadastro, possiveisDuplicatas,
   normalizarSexo, documentoEmUso, mensagemDocumentoEmUso,
   NACIONALIDADES, normalizarNacionalidade, nascidoNoBrasil, autodeclaradoIndigena,
+  limparCamposInaplicaveis,
 } from "./identidade.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -229,6 +230,10 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     // As iniciais continuam sendo a forma padrão de exibir — derivadas do
     // nome para não dependerem de alguém digitar duas vezes.
     corpo.iniciais = iniciaisDe(f.nome_completo) || paciente?.iniciais || "?";
+    // Campo que deixou de valer sai do corpo — ver limparCamposInaplicaveis.
+    // Sem isto, corrigir "estrangeira" para "brasileira" deixa o país no
+    // banco, invisível na tela e vivo no arquivo de produção.
+    Object.assign(corpo, limparCamposInaplicaveis(corpo));
     // `ano_nascimento` segue preenchido: o resto do sistema ainda lê dele.
     if (f.data_nascimento) corpo.ano_nascimento = Number(String(f.data_nascimento).slice(0, 4)) || null;
     if (conferencia.completo && !paciente?.cadastro_completo_em) corpo.cadastro_completo_em = new Date().toISOString();
