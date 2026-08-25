@@ -27,7 +27,7 @@
 // precisa saber que aquela identificação não fecha o protocolo.
 // ═══════════════════════════════════════════════════════════
 
-import { comoExibir, idadeDetalhada, rotuloSexo, formatarCPF, formatarCNS } from "../pacientes/identidade.js";
+import { comoExibir, idadeDetalhada, rotuloSexo, formatarCPF, formatarCNS, formatarTelefone } from "../pacientes/identidade.js";
 import { situacaoAlergica } from "../clinico/alergias.js";
 import { aguardandoIdentificacao } from "./recepcao.js";
 import { DOMINIOS } from "./ficha.js";
@@ -74,6 +74,24 @@ export function dataHoraBR(valor) {
   const d = new Date(valor);
   if (isNaN(d)) return "";
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * Só a HORA, "14:35".
+ *
+ * Aceita as duas formas que a base tem: o timestamp completo do
+ * `chegada_em` e o "14:35:00" da coluna `hora` da agenda. A segunda NÃO
+ * passa por `new Date` — "14:35:00" sozinho não é data e vira `Invalid
+ * Date`, o que apagaria o horário da consulta do comprovante.
+ */
+export function horaBR(valor) {
+  const s = String(valor ?? "").trim();
+  if (!s) return "";
+  const soHora = /^([0-9]{2}):([0-9]{2})/.exec(s);
+  if (soHora && !s.includes("T") && !s.includes("-")) return `${soHora[1]}:${soHora[2]}`;
+  const d = new Date(s);
+  if (isNaN(d)) return "";
+  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 // ── IDENTIFICADORES ─────────────────────────────────────────
@@ -308,6 +326,160 @@ export function dadosDaFicha({
       })),
     identificadores: conf.identificadores,
     pulseira: { estado: conf.estado, selo: conf.selo, aviso: conf.aviso },
+    rodape: {
+      impressoPor: usuario?.name || usuario?.nome || usuario?.username || "—",
+      impressoEm: dataHoraBR(agora),
+    },
+  };
+}
+
+// ── DECLARAÇÃO DE COMPARECIMENTO ────────────────────────────
+
+/**
+ * O papel que o paciente leva para o patrão.
+ *
+ * DECLARAÇÃO NÃO É ATESTADO, e a diferença é a razão de este documento
+ * existir separado:
+ *
+ *   Declaração de comparecimento atesta um FATO ADMINISTRATIVO — esta
+ *   pessoa esteve aqui, destas horas àquelas. Quem constata isso é a
+ *   recepção, que viu a pessoa chegar.
+ *
+ *   Atestado atesta INCAPACIDADE — esta pessoa precisa se afastar por N
+ *   dias. É ato médico (CFM 1.658/2002) e não sai deste balcão.
+ *
+ * O papel diz isso em cima, por escrito. Sem essa linha, a declaração é
+ * devolvida pelo RH ("está sem CID") ou usada como se afastasse o
+ * trabalhador — e nos dois casos quem paga é o paciente, que volta ao
+ * hospital para resolver o que a folha deveria ter resolvido.
+ *
+ * 🔴 NUNCA CARREGA NADA CLÍNICO. Nem CID, nem queixa, nem diagnóstico, nem
+ * o setor que atendeu. Este é o único impresso do sistema cujo destinatário
+ * é o EMPREGADOR do paciente: um CID aqui entrega o diagnóstico do
+ * trabalhador ao patrão. Há teste travando isso.
+ *
+ * O PERÍODO NÃO É INVENTADO. Episódio encerrado: entrada e saída reais.
+ * Episódio ainda aberto: a folha diz que a hora final é a da EMISSÃO, e
+ * não finge que o paciente já saiu. Errar para menos custa uma hora ao
+ * paciente; errar para mais é declarar um fato que não aconteceu.
+ *
+ * `acompanhante` troca o TITULAR do documento: sem ele, a declaração é do
+ * próprio paciente; com ele, é de quem trouxe — que também precisa
+ * justificar as horas no trabalho dele (CLT art. 473, XI, entre outras).
+ */
+export function declaracaoDeComparecimento({
+  paciente, atendimento, acompanhante = null, hospital, usuario, agora = new Date(),
+} = {}) {
+  const entrada = atendimento?.chegada_em || null;
+  const encerrado = !!atendimento?.desfecho_em;
+  const saida = encerrado ? atendimento.desfecho_em : agora;
+
+  const nomePaciente = comoExibir(paciente, { completo: true }) || String(paciente?.iniciais ?? "");
+  const acomp = String(acompanhante?.nome ?? "").trim();
+
+  return {
+    hospital: { nome: hospital?.nome || "", sigla: hospital?.sigla || "" },
+    // Quem a declaração beneficia. É o dado que decide a frase inteira do
+    // corpo do documento — por isso sai resolvido daqui, e não montado na
+    // tela com um ternário que a próxima pessoa lê errado.
+    titular: acomp
+      ? { tipo: "acompanhante", nome: acomp, vinculo: VINCULO_POR_CHAVE[acompanhante?.vinculo]?.label || acompanhante?.vinculo || "",
+          documento: acompanhante?.cpf ? formatarCPF(acompanhante.cpf) : "" }
+      : { tipo: "paciente", nome: nomePaciente, vinculo: "",
+          documento: paciente?.cpf ? formatarCPF(paciente.cpf) : "" },
+    paciente: {
+      nome: nomePaciente,
+      prontuario: String(paciente?.prontuario ?? ""),
+      nascimento: dataBR(paciente?.data_nascimento),
+    },
+    periodo: {
+      data: dataBR(String(entrada ?? "").slice(0, 10)),
+      entrada: horaBR(entrada),
+      saida: horaBR(saida),
+      // A tela imprime esta ressalva junto da hora final. Sem ela, a folha
+      // afirmaria uma saída que ainda não houve.
+      saidaEstimada: !encerrado,
+    },
+    // Serve de protocolo: é por ele que o RH confere com o hospital, e é o
+    // único número desta folha. Não há nada de clínico para conferir.
+    atendimento: atendimento?.id ? `#${atendimento.id}` : "",
+    rodape: {
+      impressoPor: usuario?.name || usuario?.nome || usuario?.username || "—",
+      impressoEm: dataHoraBR(agora),
+    },
+  };
+}
+
+// ── COMPROVANTE DE AGENDAMENTO ──────────────────────────────
+
+/**
+ * Quantos minutos antes o paciente deve chegar.
+ *
+ * Constante nomeada e não número solto no texto porque é o tipo de coisa
+ * que o hospital vai querer mudar, e mudar em um lugar é diferente de
+ * caçar "30 minutos" no meio de uma frase impressa.
+ */
+export const ANTECEDENCIA_MINUTOS = 30;
+
+/** O que o paciente precisa trazer. Genérico de propósito: o convênio só é */
+/** definido na chegada, então a folha pede a carteira "se tiver" em vez de */
+/** afirmar que ele tem um.                                                 */
+export const O_QUE_TRAZER = [
+  "Documento com foto",
+  "Cartão SUS",
+  "Carteira do convênio, se tiver",
+  "Exames e receitas anteriores",
+  "Lista dos remédios que usa",
+];
+
+/**
+ * O papel que o paciente leva do balcão sabendo quando voltar.
+ *
+ * POR QUE ELE VALE MAIS QUE UM BILHETE
+ * O sistema exibe absenteísmo como indicador e ganhou a confirmação da
+ * véspera para derrubá-lo. Mas a confirmação liga para o TELEFONE DO
+ * CADASTRO — e ninguém nunca confere esse número com o paciente. Este
+ * comprovante imprime o número que o hospital tem e pede a correção ali
+ * mesmo, com a pessoa ainda na frente. É o único momento em que corrigir é
+ * de graça; depois vira telefonema para um número errado.
+ *
+ * Sem telefone no cadastro a folha DIZ ISSO, em vez de a linha sumir: a
+ * ausência é justamente o que precisa ser resolvido no balcão.
+ */
+export function comprovanteDeAgendamento({
+  paciente, agendamento, profissional, especialidade, tipoAtendimento,
+  hospital, usuario, agora = new Date(),
+} = {}) {
+  const semTelefone = !String(paciente?.telefone ?? "").trim();
+
+  return {
+    hospital: { nome: hospital?.nome || "", sigla: hospital?.sigla || "" },
+    paciente: {
+      nome: comoExibir(paciente, { completo: true }) || String(paciente?.iniciais ?? ""),
+      prontuario: String(paciente?.prontuario ?? ""),
+      nascimento: dataBR(paciente?.data_nascimento),
+    },
+    consulta: [
+      { label: "Data", valor: dataBR(agendamento?.data) },
+      // Chegada sem hora marcada é caso real (quem entra pela fila do dia).
+      // "—" seria lido como erro de sistema; a frase diz o que é.
+      { label: "Horário", valor: horaBR(agendamento?.hora) || "por ordem de chegada" },
+      { label: "Especialidade", valor: String(especialidade ?? "") },
+      { label: "Profissional", valor: String(profissional?.nome || profissional || "") },
+      { label: "Tipo", valor: String(tipoAtendimento ?? "") },
+      { label: "Local", valor: hospital?.nome || "" },
+    ].filter(l => String(l.valor ?? "").trim()),
+    antecedenciaMinutos: ANTECEDENCIA_MINUTOS,
+    trazer: O_QUE_TRAZER,
+    // O telefone é do CADASTRO, e é para ele que a confirmação da véspera
+    // vai ligar. Impresso para ser conferido, não como enfeite.
+    contato: {
+      telefone: semTelefone ? "" : formatarTelefone(paciente.telefone),
+      aviso: semTelefone
+        ? "NÃO TEMOS TELEFONE SEU. Sem ele não conseguimos confirmar nem avisar mudança de horário — informe agora na recepção."
+        : "Vamos ligar neste número na véspera para confirmar. Se estiver errado, corrija agora na recepção.",
+    },
+    protocolo: agendamento?.id ? `#${agendamento.id}` : "",
     rodape: {
       impressoPor: usuario?.name || usuario?.nome || usuario?.username || "—",
       impressoEm: dataHoraBR(agora),

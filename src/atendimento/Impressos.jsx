@@ -20,7 +20,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
-import { dadosDaPulseira, dadosDaFicha } from "./impressos.js";
+import { dadosDaPulseira, dadosDaFicha, declaracaoDeComparecimento, comprovanteDeAgendamento } from "./impressos.js";
 
 const AREA = "impresso-print";
 
@@ -76,11 +76,18 @@ function BlocoPulseira({ d }) {
 
 export default function Impressos({
   paciente, atendimento, catalogos = {}, convenio, plano, procedimento,
+  // O comprovante só existe quando há AGENDAMENTO — é a Agenda que o
+  // entrega, logo depois de marcar, com o paciente ainda no balcão. Sem
+  // agendamento a aba nem aparece: papel em branco não serve para nada.
+  agendamento = null, profissional = null, especialidade = "", tipoAtendimento = "",
   // `null` (padrão) significa "quem imprimiu não consultou o prontuário" —
   // é o caso da recepção, e a ficha diz isso em vez de imprimir negativa.
   alergias = null, responsaveis = [], hospital = HOSPITAL_PADRAO, currentUser, onFechar,
 }) {
-  const [modo, setModo] = useState("pulseira");
+  const [modo, setModo] = useState(agendamento ? "comprovante" : "pulseira");
+  // Quem leva a declaração: o paciente, ou quem o trouxe. São dois papéis
+  // diferentes porque são dois empregadores diferentes.
+  const [titularDecl, setTitularDecl] = useState("");
 
   const pulseira = dadosDaPulseira({ paciente, atendimento, hospital });
   const ficha = dadosDaFicha({
@@ -92,6 +99,15 @@ export default function Impressos({
     hospital, usuario: currentUser,
   });
 
+  const acompanhante = (responsaveis || []).find(r => String(r?.nome ?? "").trim() === titularDecl) || null;
+  const declaracao = declaracaoDeComparecimento({
+    paciente, atendimento, acompanhante, hospital, usuario: currentUser,
+  });
+  const comprovante = comprovanteDeAgendamento({
+    paciente, agendamento, profissional, especialidade, tipoAtendimento,
+    hospital, usuario: currentUser,
+  });
+
   // Só o `#impresso-print` fica visível na impressão. `@page` muda com o
   // modo: a ficha é uma folha de papel; a pulseira é uma folha de tiras.
   const printStyles =
@@ -100,7 +116,11 @@ export default function Impressos({
     `#${AREA} { position: fixed; inset: 0; background: #fff !important; color: #000 !important; padding: 0; } ` +
     `@page { size: A4 portrait; margin: ${modo === "pulseira" ? "10mm" : "12mm"}; } }`;
 
-  const aviso = modo === "pulseira" ? pulseira.aviso : ficha.pulseira.aviso;
+  // O aviso de identificação incompleta vale para a pulseira e para a
+  // ficha, que são documentos de identificação. A declaração e o
+  // comprovante não identificam ninguém à beira do leito — repetir o alerta
+  // neles seria mais um aviso para a recepção aprender a ignorar.
+  const aviso = modo === "pulseira" ? pulseira.aviso : modo === "ficha" ? ficha.pulseira.aviso : "";
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 }}>
@@ -108,8 +128,22 @@ export default function Impressos({
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <strong style={{ fontSize: 13 }}>Imprimir</strong>
-        <button onClick={() => setModo("pulseira")} style={btn("#22d3ee", modo === "pulseira")}>Pulseira</button>
-        <button onClick={() => setModo("ficha")} style={btn("#22d3ee", modo === "ficha")}>Ficha do atendimento</button>
+        {/* PULSEIRA, FICHA E DECLARAÇÃO SÓ EXISTEM COM EPISÓDIO. A pulseira
+            identifica quem está sendo atendido; a ficha acompanha o
+            atendimento; a declaração afirma que a pessoa ESTEVE aqui. Quem
+            acabou de marcar consulta não tem nenhuma das três coisas —
+            oferecer as abas produziria papel em branco com timbre, que é
+            pior que aba faltando. */}
+        {atendimento && (
+          <>
+            <button onClick={() => setModo("pulseira")} style={btn("#22d3ee", modo === "pulseira")}>Pulseira</button>
+            <button onClick={() => setModo("ficha")} style={btn("#22d3ee", modo === "ficha")}>Ficha do atendimento</button>
+            <button onClick={() => setModo("declaracao")} style={btn("#22d3ee", modo === "declaracao")}>Declaração de comparecimento</button>
+          </>
+        )}
+        {agendamento && (
+          <button onClick={() => setModo("comprovante")} style={btn("#22d3ee", modo === "comprovante")}>Comprovante de agendamento</button>
+        )}
         <button onClick={() => window.print()} style={{ ...btn("#34d399"), marginLeft: "auto" }}>Imprimir / PDF</button>
         {onFechar && (
           <button onClick={onFechar} style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>Fechar</button>
@@ -120,6 +154,24 @@ export default function Impressos({
         <div style={{ padding: "9px 12px", borderRadius: 8, fontSize: 12, marginBottom: 12,
                       background: "#d9770610", border: "1px solid #d9770655" }}>
           <strong style={{ color: "#d97706" }}>{pulseira.selo || ficha.pulseira.selo}</strong> — {aviso}
+        </div>
+      )}
+
+      {/* QUEM LEVA A DECLARAÇÃO. Só aparece quando há acompanhante
+          cadastrado — sem ninguém para escolher, um select de uma opção só
+          é ruído. O patrão do acompanhante cobra as horas dele, não as do
+          paciente: são duas folhas diferentes. */}
+      {modo === "declaracao" && (responsaveis || []).some(r => String(r?.nome ?? "").trim()) && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, fontSize: 12 }}>
+          <span style={{ color: "var(--text-muted)" }}>Declaração para:</span>
+          <select value={titularDecl} onChange={e => setTitularDecl(e.target.value)}
+            style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6,
+                     padding: "6px 9px", color: "var(--text)", fontSize: 12.5 }}>
+            <option value="">o próprio paciente</option>
+            {(responsaveis || []).filter(r => String(r?.nome ?? "").trim()).map(r => (
+              <option key={r.nome} value={r.nome}>{r.nome} (acompanhante)</option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -139,6 +191,10 @@ export default function Impressos({
               Emitida em {pulseira.emitidoEm}.
             </div>
           </>
+        ) : modo === "declaracao" ? (
+          <Declaracao d={declaracao} />
+        ) : modo === "comprovante" ? (
+          <Comprovante c={comprovante} />
         ) : (
           <div style={{ fontSize: 11 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start",
@@ -233,6 +289,139 @@ function Secao({ titulo, linhas, colunas = 2 }) {
             <strong style={{ minWidth: 0, wordBreak: "break-word" }}>{l.valor}</strong>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Cabeçalho comum dos papéis que o paciente leva embora. */
+function Timbre({ titulo, hospital }) {
+  return (
+    <div style={{ textAlign: "center", borderBottom: "2px solid #e5e7eb", paddingBottom: "3mm", marginBottom: "5mm" }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{hospital.nome || hospital.sigla}</div>
+      <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: ".04em", marginTop: "2mm" }}>{titulo}</div>
+    </div>
+  );
+}
+
+/**
+ * A declaração de comparecimento.
+ *
+ * A linha que separa declaração de atestado vem ANTES do corpo, em caixa,
+ * porque é o que o RH procura primeiro. Sem ela a folha volta ao hospital
+ * ("está sem CID") ou é usada como afastamento — e nos dois casos quem
+ * gasta o dia resolvendo é o paciente.
+ */
+function Declaracao({ d }) {
+  const dele = d.titular.tipo === "acompanhante";
+  return (
+    <div style={{ fontSize: 11.5, lineHeight: 1.7 }}>
+      <Timbre titulo="DECLARAÇÃO DE COMPARECIMENTO" hospital={d.hospital} />
+
+      <div style={{ border: "1px solid #94a3b8", padding: "2mm 3mm", marginBottom: "5mm", fontSize: 9.5, color: "#334155" }}>
+        Este documento declara <strong>presença</strong> nesta unidade e nada mais. Não é atestado médico:
+        não afirma incapacidade, não concede afastamento e <strong>não informa diagnóstico</strong> — o sigilo
+        sobre o motivo do atendimento é do paciente.
+      </div>
+
+      <p style={{ margin: "0 0 4mm" }}>
+        Declaramos, para os devidos fins, que <strong>{d.titular.nome || "—"}</strong>
+        {d.titular.documento ? <> (CPF {d.titular.documento})</> : null}
+        {dele ? <> esteve nesta unidade <strong>acompanhando</strong> {d.paciente.nome}</> : <> esteve nesta unidade para atendimento de saúde</>}
+        {d.periodo.data ? <> no dia <strong>{d.periodo.data}</strong></> : null}
+        {d.periodo.entrada ? <>, das <strong>{d.periodo.entrada}</strong> às <strong>{d.periodo.saida}</strong></> : null}.
+      </p>
+
+      {d.periodo.saidaEstimada && (
+        <p style={{ margin: "0 0 4mm", fontSize: 9.5, color: "#334155" }}>
+          O horário final é o da <strong>emissão desta declaração</strong> — o atendimento ainda estava em
+          curso quando ela foi impressa.
+        </p>
+      )}
+
+      <div style={{ fontSize: 9.5, color: "#475569", marginBottom: "8mm" }}>
+        Paciente: {d.paciente.nome}
+        {d.paciente.nascimento ? ` · nascido(a) em ${d.paciente.nascimento}` : ""}
+        {d.paciente.prontuario ? ` · prontuário ${d.paciente.prontuario}` : ""}
+        {d.atendimento ? ` · atendimento ${d.atendimento}` : ""}
+      </div>
+
+      <div style={{ marginTop: "14mm", width: "70mm", borderTop: "1px solid #94a3b8", paddingTop: 3,
+                    fontSize: 8.5, color: "#475569", marginLeft: "auto", marginRight: "auto", textAlign: "center" }}>
+        {d.hospital.sigla || d.hospital.nome} — Recepção
+      </div>
+
+      <div style={{ fontSize: 8, color: "#64748b", marginTop: "8mm", borderTop: "1px solid #e5e7eb", paddingTop: "2mm" }}>
+        Emitida por {d.rodape.impressoPor} em {d.rodape.impressoEm}.
+        {d.atendimento ? ` Confira a autenticidade citando o atendimento ${d.atendimento}.` : ""}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O comprovante de agendamento.
+ *
+ * O telefone do cadastro é impresso EM DESTAQUE e com o pedido de correção
+ * — é para ele que a confirmação da véspera vai ligar, e este é o único
+ * momento em que corrigir custa dez segundos em vez de um telefonema
+ * perdido. Sem telefone, a folha diz que não tem.
+ */
+function Comprovante({ c }) {
+  const semTelefone = !c.contato.telefone;
+  return (
+    <div style={{ fontSize: 11.5 }}>
+      <Timbre titulo="COMPROVANTE DE AGENDAMENTO" hospital={c.hospital} />
+
+      <div style={{ fontSize: 10.5, color: "#475569", marginBottom: "4mm" }}>
+        <strong style={{ fontSize: 12, color: "#0f172a" }}>{c.paciente.nome}</strong>
+        {c.paciente.prontuario ? ` · prontuário ${c.paciente.prontuario}` : ""}
+        {c.paciente.nascimento ? ` · ${c.paciente.nascimento}` : ""}
+      </div>
+
+      <div style={{ border: "1.5px solid #0f172a", padding: "3mm 4mm", marginBottom: "5mm" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "2mm 6mm" }}>
+          {c.consulta.map(l => (
+            <div key={l.label} style={{ fontSize: 11.5, display: "flex", gap: 5 }}>
+              <span style={{ color: "#64748b", whiteSpace: "nowrap" }}>{l.label}:</span>
+              <strong style={{ minWidth: 0, wordBreak: "break-word" }}>{l.valor}</strong>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize: 10, marginTop: "3mm", borderTop: "1px dotted #cbd5e1", paddingTop: "2mm" }}>
+          Chegue com <strong>{c.antecedenciaMinutos} minutos de antecedência</strong>.
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "6mm", marginBottom: "5mm" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".06em", color: "#334155", marginBottom: 2 }}>
+            O QUE TRAZER
+          </div>
+          <ul style={{ margin: 0, paddingLeft: "5mm", fontSize: 10.5, lineHeight: 1.6 }}>
+            {c.trazer.map(t => <li key={t}>{t}</li>)}
+          </ul>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".06em", color: "#334155", marginBottom: 2 }}>
+            SE NÃO PUDER VIR
+          </div>
+          <div style={{ fontSize: 10.5, lineHeight: 1.6 }}>
+            Avise a recepção com antecedência. A vaga é reaproveitada para outra pessoa que está
+            esperando — desmarcar ajuda quem vem depois de você.
+          </div>
+        </div>
+      </div>
+
+      <div style={{ border: `1.5px solid ${semTelefone ? "#000" : "#cbd5e1"}`, padding: "2mm 3mm", marginBottom: "4mm" }}>
+        <span style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".06em", color: "#334155" }}>TELEFONE NO CADASTRO </span>
+        {c.contato.telefone && <strong style={{ fontSize: 12 }}>{c.contato.telefone}</strong>}
+        <div style={{ fontSize: 10, fontWeight: semTelefone ? 800 : 400, marginTop: 1 }}>{c.contato.aviso}</div>
+      </div>
+
+      <div style={{ fontSize: 8, color: "#64748b", marginTop: "6mm", borderTop: "1px solid #e5e7eb", paddingTop: "2mm" }}>
+        {c.protocolo ? `Agendamento ${c.protocolo}. ` : ""}
+        Emitido por {c.rodape.impressoPor} em {c.rodape.impressoEm}.
       </div>
     </div>
   );
