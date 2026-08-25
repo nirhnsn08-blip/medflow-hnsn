@@ -47,7 +47,11 @@ export default function Atendimento({ sb, currentUser, canEdit }) {
       <div style={{ flex: 1, overflow: "hidden" }}>
         {aba === "recepcao" && <Recepcao sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {aba === "agenda"   && <Agenda   sb={sb} currentUser={currentUser} canEdit={canEdit} />}
-        {aba === "consultas" && <Consultas sb={sb} />}
+        {/* `currentUser` entra para o rodapé dos impressos: papel com dado
+            de paciente sem autor é o vazamento que ninguém investiga porque
+            ninguém sabe que aconteceu. Não vem `canEdit`: esta aba é de
+            leitura, e imprimir não altera nada. */}
+        {aba === "consultas" && <Consultas sb={sb} currentUser={currentUser} />}
         {aba === "faturamento" && <Faturamento sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {aba === "tabelas"  && <Tabelas  sb={sb} currentUser={currentUser} canEdit={canEdit} />}
       </div>

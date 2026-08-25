@@ -20,7 +20,10 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
-import { dadosDaPulseira, dadosDaFicha, declaracaoDeComparecimento, comprovanteDeAgendamento } from "./impressos.js";
+import {
+  dadosDaPulseira, dadosDaFicha, declaracaoDeComparecimento, comprovanteDeAgendamento,
+  documentosDoEpisodio,
+} from "./impressos.js";
 
 const AREA = "impresso-print";
 
@@ -84,7 +87,16 @@ export default function Impressos({
   // é o caso da recepção, e a ficha diz isso em vez de imprimir negativa.
   alergias = null, responsaveis = [], hospital = HOSPITAL_PADRAO, currentUser, onFechar,
 }) {
-  const [modo, setModo] = useState(agendamento ? "comprovante" : "pulseira");
+  // QUAL PAPEL ESTE EPISÓDIO PODE GERAR — a regra mora em `impressos.js`,
+  // pura e testada, e não em cada tela que monta este componente. A
+  // Recepção só lista episódios em aberto e nunca esbarrou nisso; a
+  // pesquisa por histórico mostra episódios de meses atrás, e ali a
+  // diferença entre "pode" e "não pode" é uma pulseira com número velho
+  // indo para o pulso de alguém hoje.
+  const documentos = documentosDoEpisodio(atendimento);
+  const podeImprimir = c => documentos.find(d => d.chave === c)?.disponivel;
+  const primeiroDisponivel = documentos.find(d => d.disponivel)?.chave || "";
+  const [modo, setModo] = useState(agendamento ? "comprovante" : primeiroDisponivel);
   // Quem leva a declaração: o paciente, ou quem o trouxe. São dois papéis
   // diferentes porque são dois empregadores diferentes.
   const [titularDecl, setTitularDecl] = useState("");
@@ -134,13 +146,18 @@ export default function Impressos({
             acabou de marcar consulta não tem nenhuma das três coisas —
             oferecer as abas produziria papel em branco com timbre, que é
             pior que aba faltando. */}
-        {atendimento && (
-          <>
-            <button onClick={() => setModo("pulseira")} style={btn("#22d3ee", modo === "pulseira")}>Pulseira</button>
-            <button onClick={() => setModo("ficha")} style={btn("#22d3ee", modo === "ficha")}>Ficha do atendimento</button>
-            <button onClick={() => setModo("declaracao")} style={btn("#22d3ee", modo === "declaracao")}>Declaração de comparecimento</button>
-          </>
-        )}
+        {atendimento && documentos.map(d => (
+          // O indisponível aparece DESLIGADO, com o motivo no title. Botão
+          // que some sem explicação vira chamado para a TI; botão que diz
+          // por que está desligado ensina a regra a quem está no balcão.
+          <button key={d.chave} onClick={() => d.disponivel && setModo(d.chave)}
+            disabled={!d.disponivel} title={d.porque || undefined}
+            style={{ ...btn("#22d3ee", modo === d.chave),
+                     opacity: d.disponivel ? 1 : 0.45,
+                     cursor: d.disponivel ? "pointer" : "not-allowed" }}>
+            {d.label}
+          </button>
+        ))}
         {agendamento && (
           <button onClick={() => setModo("comprovante")} style={btn("#22d3ee", modo === "comprovante")}>Comprovante de agendamento</button>
         )}
@@ -177,7 +194,7 @@ export default function Impressos({
 
       <div id={AREA} style={{ background: "#fff", color: "#000", borderRadius: 8, padding: "6mm",
                               fontFamily: "Inter, sans-serif", border: "1px solid #e5e7eb" }}>
-        {modo === "pulseira" ? (
+        {modo === "pulseira" && podeImprimir("pulseira") ? (
           <>
             {[0, 1].map(via => (
               <div key={via} style={estiloTira}>
@@ -191,11 +208,11 @@ export default function Impressos({
               Emitida em {pulseira.emitidoEm}.
             </div>
           </>
-        ) : modo === "declaracao" ? (
+        ) : modo === "declaracao" && podeImprimir("declaracao") ? (
           <Declaracao d={declaracao} />
-        ) : modo === "comprovante" ? (
+        ) : modo === "comprovante" && agendamento ? (
           <Comprovante c={comprovante} />
-        ) : (
+        ) : podeImprimir("ficha") ? (
           <div style={{ fontSize: 11 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start",
                           borderBottom: "2px solid #e5e7eb", paddingBottom: "3mm", marginBottom: "4mm" }}>
@@ -268,6 +285,13 @@ export default function Impressos({
               Documento de uso interno com dado pessoal de paciente — não descartar em lixo comum (LGPD art. 46).
               Impresso por {ficha.rodape.impressoPor} em {ficha.rodape.impressoEm}.
             </div>
+          </div>
+        ) : (
+          // Nenhum papel disponível: o episódio cancelado cai aqui. A área
+          // diz o que houve em vez de ficar branca — folha em branco com
+          // timbre parece defeito.
+          <div style={{ fontSize: 11.5, color: "#475569", padding: "6mm 0", textAlign: "center" }}>
+            {documentos.find(d => !d.disponivel)?.porque || "Nada a imprimir para este episódio."}
           </div>
         )}
       </div>

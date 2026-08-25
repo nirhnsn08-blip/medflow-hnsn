@@ -26,7 +26,10 @@ import { atendimentoAberto } from "./ciclo.js";
 import {
   buscarPacientes, historicoDoPaciente, agendamentosFuturos,
   atendimentosDoPeriodo, atendimentoPorNumero, carregarCatalogos,
+  carregarAtendimento, carregarPaciente, carregarResponsaveis,
 } from "./dados.js";
+import Impressos from "./Impressos.jsx";
+import { documentosDoEpisodio } from "./impressos.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -49,7 +52,11 @@ const menos30 = () => {
 const dataBR = s => (s ? new Date(String(s).slice(0, 10) + "T00:00:00").toLocaleDateString("pt-BR") : "—");
 
 /** Uma linha do histórico. Sem dado clínico, por desenho. */
-function LinhaEpisodio({ a, nomeEspec, nomeConvenio }) {
+function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir }) {
+  // Se NENHUM papel sai deste episódio (cancelado), o botão nem aparece —
+  // e o motivo vai no title, para quem for procurar por ele.
+  const docs = documentosDoEpisodio(a);
+  const temPapel = docs.some(d => d.disponivel);
   return (
     <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
                   background: "var(--surface-2)", border: "1px solid var(--border)",
@@ -72,11 +79,31 @@ function LinhaEpisodio({ a, nomeEspec, nomeConvenio }) {
                      color: a.status === "cancelado" ? "#f43f5e" : atendimentoAberto(a) ? "#22d3ee" : "var(--text-muted)" }}>
         {rotuloDoEpisodio(a)}
       </span>
+      {/* 🔴 ACHAR O EPISÓDIO NÃO LEVAVA A LUGAR NENHUM.
+          A pesquisa respondia "esse paciente já veio?" e parava ali: quem
+          precisava do papel tinha que sair da tela, ir para a Recepção e
+          procurar de novo — e, se o episódio já estava encerrado, não
+          achava, porque lá só aparecem os em aberto. A declaração de
+          comparecimento é justamente o que se pede DEPOIS do atendimento.
+
+          Imprimir não altera nada, então não depende de `canEdit`. */}
+      {onImprimir && temPapel && (
+        <button onClick={() => onImprimir(a)}
+          style={{ background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--border)",
+                   borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+          Imprimir
+        </button>
+      )}
+      {onImprimir && !temPapel && (
+        <span title={docs.find(d => d.porque)?.porque} style={{ fontSize: 10.5, color: "var(--text-muted)" }}>
+          sem papel a emitir
+        </span>
+      )}
     </div>
   );
 }
 
-export default function Consultas({ sb }) {
+export default function Consultas({ sb, currentUser }) {
   // Carrega o próprio catálogo, como as outras abas. É só para traduzir
   // código em nome ("ORTOPEDIA" → "Ortopedia") — se falhar, a tela mostra o
   // código cru em vez de quebrar.
@@ -109,14 +136,45 @@ export default function Consultas({ sb }) {
   const [numero, setNumero] = useState("");
   const [achadoNum, setAchadoNum] = useState(null);
 
+  // impressão de um episódio achado
+  const [imprimindo, setImprimindo] = useState(null);
+
   const nomeEspec = useCallback(cod =>
     (catalogos.especialidade || []).find(e => e.codigo === cod)?.nome || cod, [catalogos]);
   const nomeConvenio = useCallback(id =>
     (catalogos.convenios || []).find(c => String(c.id) === String(id))?.nome || `convênio ${id}`, [catalogos]);
 
+  /**
+   * Abre os impressos de um episódio da pesquisa.
+   *
+   * Recarrega TUDO do banco em vez de usar a linha da lista, e não é
+   * excesso de zelo: `CAMPOS_DO_EPISODIO` é uma lista curta de propósito
+   * (esta tela não é prontuário), então a linha não tem carteira, guia,
+   * autorização nem procedimento. Uma ficha impressa a partir dela sairia
+   * pela metade, com a aparência de estar completa.
+   *
+   * O cadastro do paciente vem junto porque no modo "por período" e "por
+   * número" não há paciente selecionado — só o prontuário dentro do
+   * episódio.
+   */
+  async function abrirImpressos(a) {
+    setMsg(null); setBuscando(true);
+    const [completo, pac, resp] = await Promise.all([
+      carregarAtendimento(sb, a.id),
+      paciente?.prontuario === a.prontuario ? Promise.resolve(paciente) : carregarPaciente(sb, a.prontuario),
+      carregarResponsaveis(sb, a.id),
+    ]);
+    setBuscando(false);
+    if (!pac) {
+      setMsg({ tom: "erro", texto: `Não achei o cadastro do prontuário ${a.prontuario}. Sem ele não dá para emitir papel com identificação.` });
+      return;
+    }
+    setImprimindo({ paciente: pac, atendimento: completo || a, responsaveis: resp });
+  }
+
   function trocarModo(m) {
     setModo(m); setMsg(null);
-    setAchados([]); setDoPeriodo(null); setAchadoNum(null);
+    setAchados([]); setDoPeriodo(null); setAchadoNum(null); setImprimindo(null);
   }
 
   async function procurarPaciente() {
@@ -191,6 +249,23 @@ export default function Consultas({ sb }) {
                       background: msg.tom === "erro" ? "#f43f5e10" : "#34d39910", fontSize: 13 }}>
           {msg.texto}
         </div>
+      )}
+
+      {/* Os impressos do episódio achado. Fica ACIMA das listas, porque é
+          para onde a atenção acabou de ir — e o botão "Fechar" devolve a
+          pesquisa intacta, sem refazer a busca. */}
+      {imprimindo && (
+        <Impressos
+          paciente={imprimindo.paciente}
+          atendimento={imprimindo.atendimento}
+          responsaveis={imprimindo.responsaveis}
+          catalogos={catalogos}
+          convenio={(catalogos.convenios || []).find(c => String(c.id) === String(imprimindo.atendimento?.convenio_id)) || null}
+          plano={(catalogos.planos || []).find(pl => String(pl.id) === String(imprimindo.atendimento?.plano_id)) || null}
+          procedimento={(catalogos.procedimentos || []).find(pr => pr.codigo === imprimindo.atendimento?.procedimento_cod) || null}
+          currentUser={currentUser}
+          onFechar={() => setImprimindo(null)}
+        />
       )}
 
       {/* ══════════ POR PACIENTE ══════════ */}
@@ -324,7 +399,7 @@ export default function Consultas({ sb }) {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       {g.itens.map(a => (
-                        <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} />
+                        <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos} />
                       ))}
                     </div>
                   </div>
@@ -380,7 +455,7 @@ export default function Consultas({ sb }) {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   {doPeriodo.map(a => (
-                    <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} />
+                    <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos} />
                   ))}
                 </div>
               )}
@@ -405,7 +480,7 @@ export default function Consultas({ sb }) {
           {achadoNum && (
             <div style={cartao}>
               <div style={rotulo}>Atendimento #{achadoNum.id}</div>
-              <LinhaEpisodio a={achadoNum} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} />
+              <LinhaEpisodio a={achadoNum} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos} />
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 10 }}>
                 Paciente: <strong>reg. {achadoNum.prontuario}</strong>
                 {achadoNum.agendamento_id ? ` · nasceu do agendamento #${achadoNum.agendamento_id}` : ""}

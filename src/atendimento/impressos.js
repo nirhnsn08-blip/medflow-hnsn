@@ -31,7 +31,7 @@ import { comoExibir, idadeDetalhada, rotuloSexo, formatarCPF, formatarCNS, forma
 import { situacaoAlergica } from "../clinico/alergias.js";
 import { aguardandoIdentificacao } from "./recepcao.js";
 import { DOMINIOS } from "./ficha.js";
-import { STATUS_ATENDIMENTO } from "./ciclo.js";
+import { STATUS_ATENDIMENTO, atendimentoAberto } from "./ciclo.js";
 import { PAPEIS, VINCULO_POR_CHAVE } from "./responsavel.js";
 
 /** O piso do PNSP. Menos que isso não é identificação, é palpite. */
@@ -485,4 +485,58 @@ export function comprovanteDeAgendamento({
       impressoEm: dataHoraBR(agora),
     },
   };
+}
+
+// ── O QUE ESTE EPISÓDIO PODE IMPRIMIR ───────────────────────
+
+/**
+ * 🔴 NEM TODO EPISÓDIO PODE GERAR TODO PAPEL.
+ *
+ * Enquanto a reimpressão só existia na Recepção — que lista apenas
+ * atendimentos EM ABERTO — a pergunta não aparecia. A pesquisa por
+ * histórico mudou isso: ela mostra episódios de meses atrás, e cada botão
+ * de imprimir ali é uma folha nova no mundo afirmando alguma coisa.
+ *
+ * PULSEIRA: só com o episódio ABERTO. A tira carrega o número do
+ * atendimento e é feita para ser fechada num pulso. Reimprimir a de um
+ * episódio encerrado produz uma pulseira com número velho pronta para ser
+ * posta em alguém HOJE — que é exatamente o erro de identificação que o
+ * PNSP existe para impedir. Quem precisa de pulseira nova precisa dela para
+ * o episódio de agora, e esse tem o próprio botão.
+ *
+ * DECLARAÇÃO E FICHA: qualquer episódio, MENOS o cancelado. Cancelado é o
+ * registro de que aquilo NÃO aconteceu — atendimento aberto por engano,
+ * duplicado, desfeito. Declarar comparecimento a partir dele é afirmar uma
+ * presença que não houve, no papel que vai para o empregador.
+ *
+ * Devolve os três SEMPRE, com `disponivel` e o motivo, em vez de omitir o
+ * que não pode. Botão que some sem explicação vira chamado para a TI; botão
+ * que diz por que está desligado ensina a regra a quem está no balcão.
+ */
+export function documentosDoEpisodio(atendimento) {
+  const existe = !!atendimento;
+  const aberto = existe && atendimentoAberto(atendimento);
+  const cancelado = existe && atendimento.status === "cancelado";
+
+  return [
+    {
+      chave: "pulseira", label: "Pulseira",
+      disponivel: existe && aberto && !cancelado,
+      porque: !existe ? "Não há episódio."
+        : cancelado ? "Episódio cancelado — não houve atendimento."
+          : aberto ? "" : "O episódio já foi encerrado. Pulseira com número de atendimento antigo não pode ir para o pulso de ninguém.",
+    },
+    {
+      chave: "ficha", label: "Ficha do atendimento",
+      disponivel: existe && !cancelado,
+      porque: !existe ? "Não há episódio."
+        : cancelado ? "Episódio cancelado — não houve atendimento." : "",
+    },
+    {
+      chave: "declaracao", label: "Declaração de comparecimento",
+      disponivel: existe && !cancelado,
+      porque: !existe ? "Não há episódio."
+        : cancelado ? "Episódio cancelado — declarar comparecimento seria afirmar uma presença que não houve." : "",
+    },
+  ];
 }
