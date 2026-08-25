@@ -41,6 +41,7 @@ import {
 } from "./dados.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
+import { rotuloDominio } from "./impressos.js";
 import ResponsavelDoEpisodio from "./Responsavel.jsx";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
 import RelatorioAmbulatorio from "./RelatorioAmbulatorio.jsx";
@@ -92,6 +93,11 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   // Depois de confirmada: { paciente, atendimento } — a etapa de responsável
   // e impressos, a mesma que a Recepção faz.
   const [imprimindo, setImprimindo] = useState(null);
+  // O comprovante que o paciente leva do balcão. Estado próprio e não
+  // `imprimindo`: lá existe atendimento, aqui só existe agendamento, e um
+  // objeto que às vezes tem uma coisa e às vezes outra vira `?.` em toda
+  // linha que o lê.
+  const [comprovante, setComprovante] = useState(null);
   const [responsaveis, setResponsaveis] = useState([]);
   const [producaoGravada, setProducaoGravada] = useState([]);
 
@@ -194,6 +200,29 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     setMarcando(null); setBuscaPac(""); setAchados([]);
     setMsg({ tom: "ok", texto: "Vaga registrada." });
     recarregarDia();
+
+    // 🔴 O PACIENTE SAÍA DO BALCÃO SEM NADA NA MÃO.
+    //
+    // "Vaga registrada" aparece para quem MARCOU, não para quem vai voltar
+    // daqui a três semanas. O comprovante é o que sustenta a data — e é o
+    // único momento em que dá para conferir o telefone do cadastro com a
+    // pessoa na frente, que é o número para onde a confirmação da véspera
+    // liga.
+    //
+    // O cadastro é recarregado inteiro de propósito: `marcando.paciente`
+    // vem da busca, que NÃO traz telefone (decisão de `CAMPOS_BUSCA` — não
+    // se despeja telefone de várias pessoas numa lista de balcão). Usar o
+    // resultado da busca faria o comprovante afirmar "não temos telefone
+    // seu" para quem tem — e a recepção corrigiria um número que já estava
+    // certo.
+    const completo = prontuario ? await carregarPaciente(sb, prontuario) : null;
+    setComprovante({
+      paciente: completo || paciente,
+      agendamento: r.agendamento,
+      profissional: profissionais.find(pr => pr.username === grade.profissional_username) || null,
+      especialidade: espec(grade.especialidade_cod),
+      tipoAtendimento: rotuloDominio(catalogos, "tipo_atendimento", tipo),
+    });
   }
 
   /**
@@ -229,6 +258,36 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     }
     setMsg(null);
     setPresenca({ agendamento: a, paciente });
+  }
+
+  /**
+   * Reimprime o comprovante de um agendamento que já existe.
+   *
+   * Sem isto o papel só existiria no INSTANTE da marcação — quem perdeu a
+   * folha, quem marcou por telefone e vem buscar, e quem pediu segunda via
+   * ficariam sem. Documento que só é alcançável no momento em que nasce é
+   * documento que não existe no dia em que alguém precisa dele.
+   *
+   * Recarrega o cadastro pelo mesmo motivo da marcação: a linha da agenda
+   * não traz telefone, e o comprovante existe em boa parte para conferir
+   * justamente esse número.
+   */
+  async function reimprimirComprovante(a) {
+    setMsg(null);
+    setBusy(true);
+    const paciente = await carregarPaciente(sb, a.prontuario);
+    setBusy(false);
+    if (!paciente) {
+      setMsg({ tom: "erro", texto: `Não achei o cadastro do prontuário ${a.prontuario}. O comprovante não foi emitido.` });
+      return;
+    }
+    setComprovante({
+      paciente,
+      agendamento: a,
+      profissional: profissionais.find(pr => pr.username === a.profissional_username) || null,
+      especialidade: espec(a.especialidade_cod),
+      tipoAtendimento: rotuloDominio(catalogos, "tipo_atendimento", a.tipo_atendimento_cod),
+    });
   }
 
   async function vincular(a) {
@@ -664,6 +723,13 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                             <button onClick={() => cancelar(a)} style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 9px", fontSize: 11 }}>Cancelar</button>
                           </>
                         )}
+                        {/* Fora do bloco de `canEdit`: reimprimir não altera
+                            nada, e quem só consulta precisa poder dar a
+                            segunda via para quem perdeu a primeira. */}
+                        {a.prontuario && ["agendado", "confirmado"].includes(a.status) && (
+                          <button onClick={() => reimprimirComprovante(a)} disabled={busy}
+                            style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "4px 9px", fontSize: 11 }}>Comprovante</button>
+                        )}
                         {a.atendimento_id && (
                           <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>atend. #{a.atendimento_id}</span>
                         )}
@@ -700,6 +766,22 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 onFechar={() => { setImprimindo(null); setResponsaveis([]); }}
               />
             </>
+          )}
+
+          {/* O papel que o paciente leva embora. Fica fora do bloco de
+              `imprimindo` porque acontece em outro momento: ali o paciente
+              está entrando, aqui está indo para casa com uma data. */}
+          {comprovante && (
+            <Impressos
+              paciente={comprovante.paciente}
+              agendamento={comprovante.agendamento}
+              profissional={comprovante.profissional}
+              especialidade={comprovante.especialidade}
+              tipoAtendimento={comprovante.tipoAtendimento}
+              catalogos={catalogos}
+              currentUser={currentUser}
+              onFechar={() => setComprovante(null)}
+            />
           )}
 
           {/* ── CHEGADA — o componente compartilhado com a Recepção.

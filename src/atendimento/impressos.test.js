@@ -21,7 +21,8 @@ import { describe, it, expect } from "vitest";
 import {
   MINIMO_IDENTIFICADORES, NAO_IDENTIFICAM, dataBR, dataHoraBR,
   identificadoresDoPaciente, conferirPulseira, dadosDaPulseira,
-  rotuloDominio, dadosDaFicha,
+  rotuloDominio, dadosDaFicha, horaBR,
+  declaracaoDeComparecimento, comprovanteDeAgendamento, ANTECEDENCIA_MINUTOS, O_QUE_TRAZER,
 } from "./impressos.js";
 import { TIPO_NENHUMA } from "../clinico/alergias.js";
 
@@ -336,5 +337,164 @@ describe("ficha do atendimento", () => {
     const f = dadosDaFicha({ paciente: pac(), agora: HOJE });
     expect(f.episodio).toEqual([]);
     expect(f.identificacao.length).toBeGreaterThan(3);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// OS DOIS PAPÉIS QUE O PACIENTE LEVA EMBORA
+//
+// A pulseira e a ficha ficam no hospital. Estes dois saem pela porta, e
+// por isso erram de outro jeito:
+//
+//   A DECLARAÇÃO DE COMPARECIMENTO vai para o EMPREGADOR. É o único
+//   impresso do sistema cujo destinatário não é clínico — e o único em que
+//   um CID seria entregar o diagnóstico do trabalhador ao patrão.
+//
+//   O COMPROVANTE DE AGENDAMENTO é a última chance de conferir o telefone
+//   do cadastro com a pessoa na frente. Depois disso, a confirmação da
+//   véspera liga para um número errado e ninguém fica sabendo.
+// ═══════════════════════════════════════════════════════════
+
+describe("horaBR — as duas formas de hora que a base tem", () => {
+  it("hora pura da agenda não passa por new Date", () => {
+    // "14:35:00" sozinho não é data: `new Date` devolveria Invalid Date e o
+    // horário da consulta sumiria do comprovante.
+    expect(horaBR("14:35:00")).toBe("14:35");
+    expect(horaBR("14:35")).toBe("14:35");
+  });
+
+  it("timestamp completo vira hora local", () => {
+    expect(horaBR("2026-08-25T09:07:00")).toBe("09:07");
+  });
+
+  it("vazio e lixo não viram hora inventada", () => {
+    for (const v of ["", null, undefined, "x"]) expect(horaBR(v)).toBe("");
+  });
+});
+
+describe("declaração de comparecimento", () => {
+  const pacDec = pac({ prontuario: "T9001", cpf: "52998224725" });
+  const atFechado = {
+    id: 412, chegada_em: "2026-07-30T08:12:00", desfecho_em: "2026-07-30T10:41:00",
+    queixa: "dor de cabeça há 3 dias", cid: "I10",
+  };
+
+  it("🔴 NÃO carrega NADA clínico — o destinatário é o patrão", () => {
+    // CID, queixa e diagnóstico numa declaração de comparecimento entregam
+    // o diagnóstico do trabalhador ao empregador. Este teste existe para
+    // quebrar quando alguém "só acrescentar o motivo" na folha.
+    //
+    // A conferência é por CHAVE, e não por substring no documento inteiro.
+    // A primeira versão procurava "cid" no JSON e acusava a paciente de
+    // teste: Maria Apare*cid*a. Guarda que dá alarme falso é guarda que
+    // alguém desliga — e esta protege sigilo de diagnóstico.
+    const d = declaracaoDeComparecimento({
+      paciente: pacDec, atendimento: atFechado, hospital: { sigla: "HNSN" }, agora: HOJE,
+    });
+
+    const chaves = [];
+    (function varrer(o) {
+      if (!o || typeof o !== "object") return;
+      for (const [k, v] of Object.entries(o)) { chaves.push(k.toLowerCase()); varrer(v); }
+    })(d);
+    for (const proibida of ["cid", "queixa", "diagnostico", "alergias", "setor", "classificacao"])
+      expect(chaves, proibida).not.toContain(proibida);
+
+    // e os VALORES clínicos do episódio também não vazam por outro campo
+    const texto = JSON.stringify(d).toLowerCase();
+    for (const valor of ["i10", "dor de cabeça"])
+      expect(texto, valor).not.toContain(valor);
+  });
+
+  it("episódio encerrado imprime a saída REAL", () => {
+    const d = declaracaoDeComparecimento({ paciente: pacDec, atendimento: atFechado, agora: HOJE });
+    expect(d.periodo.entrada).toBe("08:12");
+    expect(d.periodo.saida).toBe("10:41");
+    expect(d.periodo.saidaEstimada).toBe(false);
+  });
+
+  it("🔴 episódio ABERTO não finge que o paciente já saiu", () => {
+    // A hora final passa a ser a da emissão, e a folha marca isso. Errar
+    // para menos custa uma hora ao paciente; errar para mais é declarar um
+    // fato que não aconteceu.
+    const d = declaracaoDeComparecimento({
+      paciente: pacDec, atendimento: { id: 412, chegada_em: "2026-07-30T08:12:00" }, agora: HOJE,
+    });
+    expect(d.periodo.saida).toBe("10:00");        // HOJE é 10:00
+    expect(d.periodo.saidaEstimada).toBe(true);
+  });
+
+  it("sem acompanhante, o titular é o próprio paciente", () => {
+    const d = declaracaoDeComparecimento({ paciente: pacDec, atendimento: atFechado, agora: HOJE });
+    expect(d.titular.tipo).toBe("paciente");
+    expect(d.titular.nome).toBe(d.paciente.nome);
+    expect(d.titular.documento).toBe("529.982.247-25");
+  });
+
+  it("com acompanhante, o titular é QUEM TROUXE — é o patrão dele que cobra", () => {
+    const d = declaracaoDeComparecimento({
+      paciente: pacDec, atendimento: atFechado, agora: HOJE,
+      acompanhante: { nome: "Rosa Barbosa", vinculo: "mae", cpf: "11144477735" },
+    });
+    expect(d.titular.tipo).toBe("acompanhante");
+    expect(d.titular.nome).toBe("Rosa Barbosa");
+    expect(d.titular.documento).toBe("111.444.777-35");
+    // e o paciente continua nomeado: é o motivo do comparecimento
+    expect(d.paciente.nome).toBeTruthy();
+  });
+
+  it("o número do atendimento é o protocolo — e é o único número da folha", () => {
+    const d = declaracaoDeComparecimento({ paciente: pacDec, atendimento: atFechado, agora: HOJE });
+    expect(d.atendimento).toBe("#412");
+  });
+
+  it("não explode sem atendimento nem paciente", () => {
+    expect(() => declaracaoDeComparecimento()).not.toThrow();
+    expect(() => declaracaoDeComparecimento({ paciente: pacDec })).not.toThrow();
+  });
+});
+
+describe("comprovante de agendamento", () => {
+  const ag = { id: 77, data: "2026-09-14", hora: "14:35" };
+
+  it("traz o que o paciente precisa saber para voltar", () => {
+    const c = comprovanteDeAgendamento({
+      paciente: pac({ telefone: "5136641234" }), agendamento: ag,
+      profissional: { nome: "Dra. Ana Souza" }, especialidade: "Ortopedia",
+      tipoAtendimento: "Primeira consulta", hospital: { nome: "HNSN", sigla: "HNSN" }, agora: HOJE,
+    });
+    const rotulos = c.consulta.map(l => l.label);
+    expect(rotulos).toContain("Data");
+    expect(rotulos).toContain("Horário");
+    expect(rotulos).toContain("Profissional");
+    expect(c.consulta.find(l => l.label === "Data").valor).toBe("14/09/2026");
+    expect(c.consulta.find(l => l.label === "Horário").valor).toBe("14:35");
+    expect(c.antecedenciaMinutos).toBe(ANTECEDENCIA_MINUTOS);
+    expect(c.trazer).toEqual(O_QUE_TRAZER);
+  });
+
+  it("chegada sem hora marcada DIZ o que é, em vez de virar traço", () => {
+    // Quem entra pela fila do dia não tem hora. "—" seria lido como erro
+    // de sistema por quem recebe o papel.
+    const c = comprovanteDeAgendamento({ paciente: pac(), agendamento: { id: 9, data: "2026-09-14", hora: null }, agora: HOJE });
+    expect(c.consulta.find(l => l.label === "Horário").valor).toBe("por ordem de chegada");
+  });
+
+  it("🔴 imprime o telefone DO CADASTRO para ser conferido no balcão", () => {
+    // É para este número que a confirmação da véspera liga. Conferir com a
+    // pessoa na frente é de graça; depois vira telefonema para o vazio.
+    const c = comprovanteDeAgendamento({ paciente: pac({ telefone: "5136641234" }), agendamento: ag, agora: HOJE });
+    expect(c.contato.telefone).toBe("(51) 3664-1234");
+    expect(c.contato.aviso).toMatch(/corrija agora/i);
+  });
+
+  it("🔴 sem telefone a folha DIZ isso — a falta é o que precisa ser resolvido", () => {
+    const c = comprovanteDeAgendamento({ paciente: pac({ telefone: "" }), agendamento: ag, agora: HOJE });
+    expect(c.contato.telefone).toBe("");
+    expect(c.contato.aviso).toMatch(/não temos telefone/i);
+  });
+
+  it("não explode sem nada", () => {
+    expect(() => comprovanteDeAgendamento()).not.toThrow();
   });
 });
