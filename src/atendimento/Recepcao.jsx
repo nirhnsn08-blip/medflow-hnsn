@@ -444,7 +444,12 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   // As de gravidade baixa são campos de classificação em branco. Ficam
   // separadas para a caixa poder colapsá-las: são elas que faziam a lista
   // ter oito marcadores idênticos em todo atendimento.
-  const menores = conf.avisos.filter(a => a.gravidade !== "alta");
+  // O óbito sai das DUAS listas: tem faixa própria no cabeçalho, logo acima
+  // do nome, e o texto é longo. Dito duas vezes na mesma tela ele deixa de
+  // ser lido nas duas — repetição é a forma mais silenciosa de apagar um
+  // aviso. A REGRA continua produzindo (`conferirAbertura` tem outros
+  // consumidores e testes); quem escolhe não desenhar duas vezes é a tela.
+  const menores = conf.avisos.filter(a => a.gravidade !== "alta" && a.chave !== "obito");
   // Rótulos de especialidade e profissional, para o cartão da consulta de hoje.
   const espec = c => (cat.especialidade || []).find(e => e.codigo === c)?.nome || c;
   const prof = u => profissionais.find(p => p.username === u)?.nome || u;
@@ -704,7 +709,13 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               </div>
             )}
 
-            {aviso.filter(a => a.chave !== "cadastro_incompleto" && a.chave !== "nao_identificado").map(a => (
+            {/* O TERCEIRO lugar desta MESMA tela que desenha a lista de
+                avisos, cada um com o seu filtro escrito à mão. Foi assim que
+                o óbito apareceu DUAS vezes no mesmo cartão: tirei da lista
+                grave e da lista menor, e ele continuou saindo por aqui.
+                Filtro repetido em três lugares diverge — é o que acabou de
+                acontecer. Fica anotado como coisa a unificar. */}
+            {aviso.filter(a => a.chave !== "cadastro_incompleto" && a.chave !== "nao_identificado" && a.chave !== "obito").map(a => (
               <div key={a.chave} style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8,
                                           background: "#f43f5e10", border: "1px solid #f43f5e55", fontSize: 12 }}>
                 {a.texto}
@@ -929,7 +940,16 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                       classificação em branco: importam para o relatório, não
                       para a conta, e cabem num resumo que se expande. */}
                   <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-                    {conf.avisos.filter(a => a.gravidade === "alta").map(a => (
+                    {/* O óbito sai DESTA lista porque já tem faixa própria no
+                        cabeçalho, logo acima do nome — e o texto é longo. Dito
+                        duas vezes na mesma tela, ele deixa de ser lido nas
+                        duas: repetição é a forma mais silenciosa de apagar um
+                        aviso.
+
+                        A REGRA continua produzindo o aviso (`conferirAbertura`
+                        é usada por outras chamadas e pelos testes); quem
+                        escolhe não desenhar duas vezes é a tela. */}
+                    {conf.avisos.filter(a => a.gravidade === "alta" && a.chave !== "obito").map(a => (
                       <div key={a.chave} style={{ color: "var(--text)" }}>• {a.texto}</div>
                     ))}
                   </div>
