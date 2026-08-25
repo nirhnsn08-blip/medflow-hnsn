@@ -162,6 +162,10 @@ const ORDEM = [
   // leito) que carimbam `pacientes.obito`, mais o backfill do que ja estava
   // gravado. Depende das tres tabelas criadas acima. Nao toca em politica.
   "migracao-pacientes-obito.sql",
+  // O recem-nascido entra no sistema: vinculo com a mae, DNV, hora e ordem
+  // do parto. O indice unico da DNV e o que sustenta a regra que separa
+  // gemeos de duplicata — sem ele, dois bebes poderiam virar um prontuario.
+  "migracao-pacientes-recem-nascido.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

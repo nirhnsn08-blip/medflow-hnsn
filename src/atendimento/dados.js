@@ -95,6 +95,86 @@ export async function buscarPacientes(sb, termo, { limite = 25 } = {}) {
   return { ok: false, motivo: "Não consegui consultar o cadastro agora." };
 }
 
+/**
+ * Os bebês que ESTA MÃE já tem cadastrados no mesmo dia.
+ *
+ * É como se descobre que o parto foi múltiplo ANTES de criar o segundo
+ * cadastro — e é o que permite oferecer a ordem certa (2º do parto) em vez
+ * de deixar a recepção criar dois "RN de Maria" idênticos, que é
+ * exatamente a situação que a enfermagem do berçário não consegue desfazer.
+ */
+export async function irmaosDoMesmoParto(sb, prontuarioMae, data) {
+  const mae = String(prontuarioMae ?? "").trim();
+  const dia = String(data ?? "").slice(0, 10);
+  if (!mae || !dia) return [];
+  const r = await sb(
+    `pacientes?prontuario_mae=eq.${encodeURIComponent(mae)}&data_nascimento=eq.${dia}` +
+    `&select=prontuario,nome_completo,dnv,ordem_nascimento,hora_nascimento&order=ordem_nascimento`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Cadastra o recém-nascido: prontuário próprio, vínculo com a mãe.
+ *
+ * O BEBÊ É OUTRA PESSOA. Ele ganha prontuário próprio porque o histórico
+ * dele é dele — juntar ao da mãe pareceria conveniente no dia do parto e
+ * seria irreversível depois. O que liga os dois é `prontuario_mae`.
+ *
+ * HERDA DA MÃE o endereço e o telefone, e só isso: eles moram no mesmo
+ * lugar e o telefone de contato é o mesmo. Não herda documento nem
+ * convênio — documento do bebê é a DNV, e a elegibilidade do convênio para
+ * recém-nascido tem regra própria de carência que a recepção confere na
+ * hora.
+ */
+export async function cadastrarRecemNascido(sb, { mae, dados }, user) {
+  if (!mae?.prontuario) return { ok: false, motivo: "Sem a mãe não dá para cadastrar o bebê." };
+
+  const pront = await emitirProntuario(sb);
+  if (!pront?.ok) return { ok: false, motivo: pront?.motivo || "Não consegui emitir o prontuário do bebê." };
+
+  const corpo = {
+    prontuario: pront.prontuario,
+    nome_completo: dados.nome_completo,
+    iniciais: iniciaisDe(dados.nome_completo) || "RN",
+    nome_mae: mae.nome_completo || null,
+    prontuario_mae: mae.prontuario,
+    data_nascimento: dados.data_nascimento || null,
+    hora_nascimento: dados.hora_nascimento || null,
+    dnv: String(dados.dnv ?? "").trim() || null,
+    ordem_nascimento: dados.ordem_nascimento || null,
+    sexo: dados.sexo || null,
+    // Herança do endereço: moram no mesmo lugar.
+    end_logradouro: mae.end_logradouro || null,
+    end_numero: mae.end_numero || null,
+    end_complemento: mae.end_complemento || null,
+    end_bairro: mae.end_bairro || null,
+    end_municipio: mae.end_municipio || null,
+    end_uf: mae.end_uf || null,
+    end_cep: mae.end_cep || null,
+    telefone: mae.telefone || null,
+    // Naturalidade do bebê é onde ele nasceu, não onde a mãe nasceu — e
+    // isso é o município do hospital, que esta função não conhece. Fica em
+    // branco e a conferência do cadastro cobra, em vez de herdar errado.
+    nacionalidade: "brasileira",
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const r = await sb("pacientes", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(corpo),
+  }).catch(() => null);
+
+  // O PostgREST devolve 2xx mesmo quando nada muda — confere o RETORNO.
+  // Aqui o motivo mais provável de recusa é o índice único da DNV: alguém
+  // já cadastrou este mesmo nascimento.
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: `Nada foi gravado. Se a DNV ${dados.dnv || "informada"} já está em outro cadastro, este nascimento já foi registrado — procure por ela antes de criar outro.` };
+  }
+  return { ok: true, paciente: r[0] };
+}
+
 /** O cadastro completo de um paciente, ou `null`. */
 export async function carregarPaciente(sb, prontuario) {
   const p = normalizarProntuario(prontuario);

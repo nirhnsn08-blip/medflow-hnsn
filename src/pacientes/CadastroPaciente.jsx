@@ -163,7 +163,12 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     if (cpf.length === 11) filtros.push(`cpf.eq.${cpf}`);
     if (cns.length === 15) filtros.push(`cns.eq.${cns}`);
     if (!filtros.length) { setCandidatos([]); return; }
-    const r = await sb(`pacientes?or=(${filtros.join(",")})&select=prontuario,nome_completo,nome_social,data_nascimento,nome_mae,cpf,cns,iniciais&limit=25`).catch(() => null);
+    // 🔴 `dnv`, `ordem_nascimento` e `prontuario_mae` entram porque é por
+    // eles que `possiveisDuplicatas` separa GÊMEOS de duplicata. Sem os três
+    // aqui, a regra existiria e nunca dispararia — os candidatos chegariam
+    // sem a prova, e dois irmãos do mesmo parto voltariam a ser acusados de
+    // ser a mesma pessoa.
+    const r = await sb(`pacientes?or=(${filtros.join(",")})&select=prontuario,nome_completo,nome_social,data_nascimento,nome_mae,cpf,cns,iniciais,dnv,ordem_nascimento,prontuario_mae&limit=25`).catch(() => null);
     setCandidatos(Array.isArray(r) ? r : []);
   }, [sb, f.nome_completo, f.cpf, f.cns]);
 

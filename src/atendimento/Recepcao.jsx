@@ -21,6 +21,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import CadastroPaciente from "../pacientes/CadastroPaciente.jsx";
+import RecemNascido from "../pacientes/RecemNascido.jsx";
+import { pendenciaDeNomeDefinitivo } from "../pacientes/recem-nascido.js";
 // O bloco de fonte pagadora e o campo de catálogo moram fora desde que a
 // Agenda passou a precisar dos dois. Duas cópias divergiriam na primeira
 // regra nova de convênio — e regra de convênio muda por contrato.
@@ -114,6 +116,8 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [corrigindo, setCorrigindo] = useState(null);   // { atendimento, campos }
   // { paciente, atendimento } — a etapa de impressão, depois de abrir.
   const [imprimindo, setImprimindo] = useState(null);
+  // O cadastro do bebê sai DA MÃE — ela é o ponto de partida, não um campo.
+  const [nascendo, setNascendo] = useState(null);
   // Os responsáveis do episódio que está na tela — sobem do componente
   // para a ficha impressa sair com quem recebe a alta.
   const [responsaveis, setResponsaveis] = useState([]);
@@ -472,6 +476,21 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
       {/* ── RESPONSÁVEL + IMPRESSÃO — o último passo do balcão ──
           Nesta ordem de propósito: quem trouxe o paciente ainda está na
           frente. Depois que ele sai, descobrir quem era vira telefonema. */}
+      {nascendo && (
+        <RecemNascido
+          sb={sb} mae={nascendo} currentUser={currentUser}
+          onCancelar={() => setNascendo(null)}
+          onCadastrado={bebe => {
+            setNascendo(null);
+            // Cai direto no cadastro do BEBÊ, não no da mãe: quem acabou de
+            // registrar o nascimento vai imprimir a pulseira dele em
+            // seguida, e voltar para a mãe faria procurar o recém-criado.
+            escolher(bebe);
+            setMsg({ tom: "ok", texto: `Recém-nascido cadastrado — prontuário ${bebe.prontuario}, ${bebe.nome_completo}.` });
+          }}
+        />
+      )}
+
       {imprimindo && (
         <ResponsavelDoEpisodio
           sb={sb} currentUser={currentUser} canEdit={canEdit}
@@ -651,6 +670,23 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                   Editar cadastro
                 </button>
               )}
+              {/* 🔴 O CAMINHO DO RECÉM-NASCIDO COMEÇA NA MÃE.
+                  O hospital faz parto e o bebê não tinha como entrar no
+                  sistema: o cadastro pede nome, CPF e CNS, e ele não tem
+                  nenhum dos três no dia em que nasce.
+
+                  O botão fica aqui, no cartão dela, porque é dela que sai o
+                  nome provisório ("RN de"), o vínculo do parto e o
+                  identificador que a pulseira do berçário exige. Um
+                  formulário de bebê alcançável sem passar pela mãe
+                  produziria cadastro solto — que é o que já acontece
+                  quando alguém improvisa. */}
+              {canEdit && (
+                <button onClick={() => setNascendo(paciente)}
+                  style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>
+                  + Recém-nascido
+                </button>
+              )}
               <button onClick={recomecar} style={{ ...btn("var(--surface-2)", false), marginLeft: canEdit ? 0 : "auto", color: "var(--text)" }}>Trocar paciente</button>
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
@@ -688,6 +724,24 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                               background: "#f43f5e12", border: "1px solid #f43f5e66" }}>
                   <strong style={{ color: "#f43f5e" }}>⚠ {o.curto}</strong>
                   <div style={{ color: "var(--text-muted)", marginTop: 4 }}>{o.recepcao}</div>
+                </div>
+              );
+            })()}
+
+            {/* 🔴 O NOME PROVISÓRIO TEM PRAZO.
+                "RN de Maria" está certo nos primeiros quinze dias e errado
+                depois deles (Lei 6.015/1973, art. 50). Um cadastro assim
+                com seis meses é o começo do prontuário duplicado: na
+                próxima visita ninguém acha a criança pelo nome dela, e
+                nasce um segundo registro. */}
+            {(() => {
+              const p = pendenciaDeNomeDefinitivo(paciente);
+              if (!p) return null;
+              return (
+                <div style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, fontSize: 12,
+                              background: "#d9770610", border: "1px solid #d9770655" }}>
+                  <strong style={{ color: "#d97706" }}>Nome provisório de nascimento</strong>
+                  <div style={{ color: "var(--text-muted)", marginTop: 4 }}>{p.texto}</div>
                 </div>
               );
             })()}

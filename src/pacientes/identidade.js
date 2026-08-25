@@ -1,3 +1,7 @@
+// Só a regra dos gêmeos, e ela é sobre IDENTIDADE — é aqui que a
+// duplicidade decide. Não há ciclo: recem-nascido.js importa daqui apenas
+// normalizarNome e idadeDetalhada, que não dependem da duplicidade.
+import { saoIrmaosDoMesmoParto } from "./recem-nascido.js";
 // ═══════════════════════════════════════════════════════════
 // IDENTIFICAÇÃO DO PACIENTE — regras puras
 //
@@ -497,6 +501,23 @@ export function possiveisDuplicatas(novo, existentes = [], { limite = 5 } = {}) 
   for (const e of lista) {
     // O próprio registro não é duplicata de si mesmo.
     if (e?.prontuario && novo.prontuario && String(e.prontuario) === String(novo.prontuario)) continue;
+
+    // 🔴 GÊMEOS NÃO SÃO DUPLICATA.
+    //
+    // Dois irmãos do mesmo parto têm a MESMA mãe, a MESMA data de
+    // nascimento e nomes provisórios quase idênticos — e para a conta
+    // abaixo isso dá 70% ou 90% de confiança. A tela então mostra "esta
+    // pessoa já pode estar cadastrada" e oferece usar o prontuário que já
+    // existe.
+    //
+    // Seguir esse conselho JUNTA DOIS BEBÊS NUM PRONTUÁRIO SÓ, e a partir
+    // dali a prescrição de um vale para o outro. Seria o erro de
+    // identificação mais grave que este sistema poderia produzir — e
+    // nasceria justamente do recurso que existe para impedir duplicata.
+    //
+    // A regra que separa os dois mora em recem-nascido.js e só afirma com
+    // prova: DNV distinta (única por nascimento) ou ordem do parto distinta.
+    if (saoIrmaosDoMesmoParto(novo, e)) continue;
 
     const motivos = [];
     let confianca = 0;
