@@ -27,7 +27,7 @@ import {
   carregarGrades, salvarGrade, alternarAtivoGrade,
   carregarBloqueios, salvarBloqueio, carregarAgendaDoDia,
   marcarAgendamento, confirmarPresenca, registrarFalta, cancelarAgendamento,
-  remarcarAgendamento,
+  remarcarAgendamento, cadastrarRecemNascido, irmaosDoMesmoParto,
   vincularPacienteAoAgendamento,
   encerrarAtendimento, corrigirAtendimento, cancelarAtendimento,
   listarAmbulatoriaisAbertos, carregarAtendimento, contarRegistrosClinicos,
@@ -585,6 +585,54 @@ describe("a agenda grava e lê em coluna real", () => {
     expect(r.ok).toBe(true);
     expect(chamadas.length).toBe(2);
     for (const c of chamadas) conferirEscrita(c);
+  });
+
+  // 🔴 O cadastro do recém-nascido é um POST com VINTE chaves, e quase
+  // metade é coluna nova. Uma só que não exista faz o PostgREST recusar o
+  // INSERT inteiro — e a tela mostraria "nada foi gravado" para um bebê que
+  // acabou de nascer, com a recepção sem saber o que fazer.
+  it("cadastrar recém-nascido grava em colunas reais", async () => {
+    // Duas chamadas com respostas DIFERENTES: o RPC devolve o número do
+    // prontuário (objeto), o INSERT devolve a linha criada (array). O
+    // espião padrão responde a mesma coisa para tudo e a função pararia na
+    // primeira, sem nunca chegar a gravar — que é justamente o que este
+    // teste precisa ver.
+    const chamadas = [];
+    const sb = async (recurso, opcoes = {}) => {
+      chamadas.push({ recurso, opcoes });
+      if (String(recurso).startsWith("rpc/")) return { proximo_prontuario: "T7001" };
+      return [{ prontuario: "T7001" }];
+    };
+    const r = await cadastrarRecemNascido(sb, {
+      mae: {
+        prontuario: "100001", nome_completo: "Maria da Silva",
+        end_logradouro: "Rua A", end_numero: "10", end_bairro: "Centro",
+        end_municipio: "Navegantes", end_uf: "SC", end_cep: "88370000",
+        telefone: "47999990000",
+      },
+      dados: {
+        nome_completo: "RN DE MARIA DA SILVA", data_nascimento: "2026-08-25",
+        hora_nascimento: "14:35", dnv: "12345678", ordem_nascimento: 1, sexo: "F",
+      },
+    }, USER);
+    expect(r.ok).toBe(true);
+    // A primeira chamada é a emissão do prontuário; a que grava o bebê é a
+    // última.
+    conferirEscrita(chamadas[chamadas.length - 1]);
+    const corpo = JSON.parse(chamadas[chamadas.length - 1].opcoes.body);
+    expect(corpo.prontuario_mae).toBe("100001");
+    expect(corpo.dnv).toBe("12345678");
+    // 🔴 O bebê NÃO herda documento da mãe — o documento dele é a DNV.
+    expect(corpo.cpf).toBeUndefined();
+    expect(corpo.cns).toBeUndefined();
+    // mas herda onde eles moram, porque moram no mesmo lugar
+    expect(corpo.end_logradouro).toBe("Rua A");
+  });
+
+  it("procurar irmãos do mesmo parto consulta colunas reais", async () => {
+    const { sb, chamadas } = espiao();
+    await irmaosDoMesmoParto(sb, "100001", "2026-08-25");
+    conferirLeitura(chamadas[0]);
   });
 
   it("falta, cancelamento e vínculo do paciente", async () => {

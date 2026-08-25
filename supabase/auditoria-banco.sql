@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 94 tabelas, 1483 colunas.
+-- Cobertura atual: 94 tabelas, 1487 colunas.
 -- ============================================================
 
 with
@@ -755,6 +755,7 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','cpf','pacientes-identificacao'),
   ('pacientes','criado_em','pacientes-identificacao'),
   ('pacientes','data_nascimento','pacientes-identificacao'),
+  ('pacientes','dnv','pacientes-recem-nascido'),
   ('pacientes','email','pacientes-identificacao'),
   ('pacientes','end_bairro','pacientes-identificacao'),
   ('pacientes','end_cep','pacientes-identificacao'),
@@ -765,6 +766,7 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','end_referencia','pacientes-identificacao'),
   ('pacientes','end_uf','pacientes-identificacao'),
   ('pacientes','etnia_indigena','pacientes-nacionalidade-etnia'),
+  ('pacientes','hora_nascimento','pacientes-recem-nascido'),
   ('pacientes','identidade_genero','pacientes-identificacao'),
   ('pacientes','identificado_em','atendimento-recepcao'),
   ('pacientes','iniciais','schema'),
@@ -781,10 +783,12 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','obito_em','pacientes-identificacao'),
   ('pacientes','obito_origem','pacientes-obito'),
   ('pacientes','observacao','pacientes-identificacao'),
+  ('pacientes','ordem_nascimento','pacientes-recem-nascido'),
   ('pacientes','origem_cadastro','atendimento-recepcao'),
   ('pacientes','pais_nascimento','pacientes-nacionalidade-etnia'),
   ('pacientes','passaporte','pacientes-nacionalidade-etnia'),
   ('pacientes','prontuario','schema'),
+  ('pacientes','prontuario_mae','pacientes-recem-nascido'),
   ('pacientes','raca_cor','pacientes-identificacao'),
   ('pacientes','responsavel_documento','pacientes-identificacao'),
   ('pacientes','responsavel_nome','pacientes-identificacao'),
