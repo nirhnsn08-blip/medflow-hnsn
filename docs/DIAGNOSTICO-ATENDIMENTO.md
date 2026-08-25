@@ -253,3 +253,101 @@ Anotado de propósito: em revisão a tentação é reescrever.
 
 Relacionado: [MODELO-DE-TRABALHO.md](MODELO-DE-TRABALHO.md) ·
 [HANDOFF.md](HANDOFF.md) · [CONTEXTO.md](CONTEXTO.md)
+
+---
+
+## 🔬 AUDITORIA DE 25/08/2026 — o módulo inteiro percorrido
+
+Feita depois dos PRs #124–#128, varrendo as cinco abas no banco demo **e**
+cruzando o código: para cada coluna das tabelas do módulo, ela é escrita em
+algum lugar? é lida em algum lugar? O que só vai ou só volta é o defeito.
+
+**O padrão que domina a lista é sempre o mesmo:** a regra existe, roda, passa
+no teste — e não chega em ninguém. Nenhum dos itens abaixo dá erro em tela.
+
+### 🔴 1. `pacientes.obito` é lido em 5 lugares e escrito em NENHUM
+
+A coluna nasce `false` e morre `false`. Quem a lê:
+
+| onde | o que deixa de acontecer |
+|---|---|
+| `recepcao.js:333` | recusar abrir atendimento para falecido — nunca recusa |
+| `agenda.js:592` | recusar marcar consulta para falecido — nunca recusa |
+| `Recepcao.jsx:81` e `Agenda.jsx:1046` | o aviso "óbito registrado" — nunca aparece |
+
+E o motivo de falta *"Resolveu em outro serviço / óbito"* existe no catálogo
+sem ter para onde levar.
+
+**A consequência que sai do hospital:** a confirmação da véspera (#123) liga
+para o telefone do cadastro. Um paciente que **faleceu no próprio hospital**
+continua na agenda, continua sendo confirmado, e quem atende o telefone é a
+família. É o único defeito desta lista cujo dano não fica dentro do prédio.
+
+**E o dado já existe:** `ps_atendimentos.desfecho = 'obito'` e
+`leitos_saidas.desfecho = 'obito'` são gravados hoje. Falta o elo que carimba
+o cadastro — e ele é barato.
+
+### 🔴 2. "Cadastrar paciente" funciona com o formulário 100% vazio
+
+Conferido na tela: 0% da identificação, a barra lista os oito campos que
+faltam, e o botão segue habilitado. Um clique cria prontuário com iniciais
+`"?"` que depois entra na lista de identificação pendente e na checagem de
+duplicidade de todo mundo.
+
+**Isto não é o princípio "nunca bloqueia".** Esse princípio existe para o
+politraumatizado — e para ele já há um caminho próprio e nomeado,
+*"Emergência — paciente sem identificação"*, que grava a origem. Cadastro
+inteiramente vazio não é emergência: é clique errado. O piso razoável é
+**um identificador qualquer** (nome, ou CPF, ou CNS).
+
+### 3. A remarcação não chega a indicador nenhum
+
+O #128 passou a gravar `remarcacao_motivo` com o lado (hospital × paciente) e
+`remarcado_de` com a corrente. O relatório do mês **não usa nenhum dos dois**:
+conferido no demo, a remarcação que fiz aparece como `CANCELADOS: 1`.
+
+Some, portanto: **quantas vezes o hospital empurrou o paciente** (o único
+número deste módulo sobre o qual o hospital manda) e a **espera real desde a
+primeira marcação**. A linha da agenda mostra os dois; o relatório, que é o
+que vai para a gestão, não.
+
+### 4. O CEP não faz nada
+
+Sem validação e sem preencher endereço. A recepção digita logradouro, bairro,
+município, UF — cinco campos que o CEP responde, cada um uma chance de erro
+que depois vira indicador territorial errado. É o campo de maior retrabalho da
+tela de cadastro.
+
+### 5. Colunas que só sabem ir, ou só voltar
+
+| coluna | tabela | situação |
+|---|---|---|
+| `cancelado_em`, `cancelado_por` | `ps_atendimentos` | escritas, **lidas por ninguém** — quem cancelou um atendimento e quando não aparece em tela alguma |
+| `obito_em` | `pacientes` | nem escrita nem lida |
+| `origem_cadastro` | `pacientes` | nem escrita nem lida |
+
+É a mesma família do `falta_motivo`, `confirmado_em` e `confirmado_por`, que o
+#128 consertou ao acrescentá-los a `CAMPOS_AGENDAMENTO`.
+
+### 6. `marcarContaFaturada` existe e ninguém chama · *Laura*
+
+Nenhuma conta sai de **fechada** para **faturada**. O ciclo da conta não
+fecha, e `reabrirConta` protege um estado que nunca é atingido.
+
+### 7. Campos de cadastro que o CADSUS/e-SUS pede e não existem
+
+**Estado civil**, **escolaridade** e **ocupação**. Somam-se aos já
+conhecidos: município com código IBGE, e o caminho de recém-nascido (DNV,
+certidão, `prontuario_mae`).
+
+### Sem dano, mas anotado
+
+`quemRecebeAlta` é exportada e testada e nenhuma tela a chama. **Não é bug**:
+`camposDoResponsavel` deriva `recebe_alta` do papel, então banco e regra não
+divergem hoje. É lógica duplicada esperando a chance de divergir.
+
+### Ordem sugerida
+
+**Óbito primeiro** — é o único cujo dano chega na família, e o dado para
+preenchê-lo já está gravado em dois lugares. Depois o **cadastro vazio**, que
+é uma linha. Depois a **remarcação no relatório**, que fecha o #128.
