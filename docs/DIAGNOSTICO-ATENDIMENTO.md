@@ -351,3 +351,98 @@ divergem hoje. É lógica duplicada esperando a chance de divergir.
 **Óbito primeiro** — é o único cujo dano chega na família, e o dado para
 preenchê-lo já está gravado em dois lugares. Depois o **cadastro vazio**, que
 é uma linha. Depois a **remarcação no relatório**, que fecha o #128.
+
+---
+
+## 🏥 O QUE FALTA PARA SER UM ATENDIMENTO DE HOSPITAL — 25/08/2026
+
+A auditoria acima procurou **defeito**: regra que existe e não chega em
+ninguém. Esta lista é outra pergunta — o que um hospital tem e este módulo
+**não tem de jeito nenhum**. Nada aqui está quebrado; está ausente.
+
+### 🔴 1. A FILA NÃO RESPEITA A PRIORIDADE LEGAL
+
+`filaDoAmbulatorio` ordena por **tempo de espera e nada mais**
+(`ciclo.js:106`). Quem chegou antes é chamado antes, ponto.
+
+A lei diz outra coisa, e não é recomendação:
+
+| norma | quem tem prioridade |
+|---|---|
+| Lei 10.048/2000, art. 1º | idoso, gestante, lactante, pessoa com deficiência, pessoa com criança de colo |
+| Estatuto do Idoso, art. 3º §2º (Lei 13.466/2017) | **maior de 80 tem prioridade sobre os demais idosos** |
+
+Hoje uma senhora de 82 anos que chega às 9h05 é chamada **depois** de um
+adulto de 30 que chegou às 9h00. O sistema não erra por conta própria — ele
+simplesmente não sabe que existe prioridade, e quem opera o balcão sabe. O
+resultado é que a ordem real passa a ser combinada por fora da tela, e aí o
+tempo de espera que o relatório mostra não descreve o que aconteceu.
+
+**Boa parte do dado já existe:** `data_nascimento` resolve idoso (≥60),
+maior de 80 e criança de colo (<2) por cálculo, sem campo novo. Gestante já
+é registrada na triagem obstétrica do PS. Falta campo só para **pessoa com
+deficiência** e **lactante**.
+
+É o item de melhor relação dano × custo da lista inteira: obrigação legal,
+dado quase todo disponível, e regra pura — exatamente o que este código faz
+bem.
+
+### 🔴 2. NÃO EXISTE CAMINHO DE RECÉM-NASCIDO — e o hospital faz parto
+
+Zero ocorrências de `prontuario_mae`, `dnv` ou `recem_nascido` no código
+inteiro. Um bebê que nasce aqui **não tem como entrar no sistema**:
+
+- não tem nome no momento do nascimento (o cadastro exige nome);
+- não tem CPF nem CNS (ganha depois);
+- é identificado por **"RN de \<nome da mãe\>"**, que é convenção nacional;
+- tem **DNV** (Declaração de Nascido Vivo), que é o documento dele;
+- e precisa do **vínculo com o prontuário da mãe** — é por ele que se
+  reconstrói o parto e é ele que a pulseira do berçário carrega.
+
+Sem isso, o recém-nascido ou não existe, ou vira um cadastro solto sem
+ligação com o parto que o produziu. Para um hospital com maternidade, é
+buraco de primeira grandeza.
+
+### 3. A INTERNAÇÃO NÃO ENTRA PELA RECEPÇÃO
+
+`TIPOS_ATENDIMENTO.eletivo.disponivel = false`, travado por teste. A recepção
+abre **Emergência** e **Ambulatorial** e mais nada — então cirurgia
+programada e internação clínica não têm porta de entrada administrativa.
+
+A trava é **deliberada e certa** enquanto o caminho do leito não estiver
+amarrado adiante: abrir internação sem leito cria paciente num limbo que
+nenhuma tela pega. Mas é bom não confundir "protegido" com "pronto": um
+hospital sem admissão de internação pela recepção não fecha o ciclo.
+
+Destravar depende do Giro de Leitos receber por ali — e aí vem junto o resto
+do pacote de internação: AIH, acompanhante, censo, aviso de internação.
+
+### 4. NÃO EXISTE PAINEL DE CHAMADA
+
+A fila viva existe **para quem está atrás do balcão**. Quem está na sala de
+espera não vê nada: a chamada é o nome gritado no corredor.
+
+Num ambulatório com quarenta pessoas esperando isso custa três coisas de uma
+vez — o paciente que não ouve e perde a vez (e vira falta no indicador), a
+exposição do nome de quem está sendo atendido, e a fila que se levanta a
+cada chamada para perguntar se era ela.
+
+### Também ausentes, de porte menor
+
+- **Contra-referência** — o documento que volta para a UBS depois da consulta
+  especializada. Obrigação da rede, e o ambulatório existe para isso.
+- **Crachá de acompanhante** — o papel "acompanhante" existe em
+  `at_responsaveis` (ECA art. 12, Estatuto do Idoso art. 16) e não vira
+  documento nenhum; quem controla a entrada não tem o que conferir.
+- **Estado civil, escolaridade e ocupação** no cadastro (CADSUS).
+- **CID-10 como tabela** — hoje é texto livre.
+- **Município com código IBGE** — hoje texto livre, e a AIH/BPA pedem código.
+- **Unificação de prontuário** — o #108 atacou a causa; duplicata que já
+  existe continua permanente.
+
+### Ordem sugerida
+
+**Prioridade legal na fila primeiro.** É obrigação legal, o dado quase todo
+já existe, e é regra pura com consequência real — o formato que este código
+acerta. Depois **recém-nascido**, que é o buraco de maior porte num hospital
+que faz parto.
