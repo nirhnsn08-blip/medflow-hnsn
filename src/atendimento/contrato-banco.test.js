@@ -275,6 +275,27 @@ describe("escritas da recepção", () => {
     expect(chamadas[0].recurso).toMatch(/id=in\.\(9,10,11\)/);
   });
 
+  it("🔴 requisição que FALHOU não é confundida com nenhuma conta elegível", async () => {
+    // `null` = a requisição falhou (coluna que a migração ainda não criou,
+    // RLS negando, rede caída). `sbFetch` já mandou o motivo exato para o
+    // alerta do topo — a mensagem daqui não pode AFIRMAR outra causa.
+    // Dizer "confirme que seu perfil permite editar faturamento" manda a
+    // pessoa pedir permissão à TI por causa de um SQL que ninguém rodou.
+    const { sb } = espiao(null);
+    const r = await registrarTransmissao(sb, [9], { transmitidaEm: "2026-08-26" }, USER);
+    expect(r.ok).toBe(false);
+    expect(r.motivo).toMatch(/não chegou ao banco/);
+    expect(r.motivo).not.toMatch(/ainda estava fechada/);
+  });
+
+  it("requisição que funcionou e não achou conta fechada diz ISSO, e só isso", async () => {
+    const { sb } = espiao([]);
+    const r = await registrarTransmissao(sb, [9], { transmitidaEm: "2026-08-26" }, USER);
+    expect(r.ok).toBe(false);
+    expect(r.motivo).toMatch(/nenhuma delas ainda estava fechada/);
+    expect(r.motivo).not.toMatch(/não chegou ao banco/);
+  });
+
   it("transmissão sem conta nenhuma não toca no banco", async () => {
     const { sb, chamadas } = espiao();
     const r = await registrarTransmissao(sb, [], { protocolo: "X", transmitidaEm: "2026-08-26" }, USER);

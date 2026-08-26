@@ -1168,8 +1168,22 @@ export async function registrarTransmissao(sb, ids, { protocolo, transmitidaEm }
   // O PostgREST devolve 2xx mesmo alterando ZERO linha — o RETORNO é a
   // única prova. E o `status=eq.fechada` no filtro é o que impede
   // reprocessar conta já faturada se a tela for clicada duas vezes.
+  //
+  // 🔴 DUAS CAUSAS DIFERENTES, E ELAS ESTAVAM NO MESMO BALDE.
+  // `null` é a REQUISIÇÃO que falhou (coluna que a migração ainda não
+  // criou, RLS negando, rede caída) — `sbFetch` já mandou o motivo exato
+  // para o alerta vermelho do topo. `[]` é a requisição que FUNCIONOU e
+  // não achou nenhuma conta ainda fechada.
+  //
+  // Juntar as duas fazia a mensagem afirmar uma causa que ela não sabe:
+  // "confirme que seu perfil permite editar faturamento" manda a pessoa
+  // pedir permissão à TI por causa de um SQL que ninguém rodou. Mesmo
+  // `null ≠ 0` de sempre, num lugar novo.
+  if (r === null) {
+    return { ok: false, motivo: "A gravação não chegou ao banco. O aviso vermelho no topo da tela diz o motivo exato — costuma ser migração ainda não aplicada ou permissão de escrita no faturamento." };
+  }
   if (!Array.isArray(r) || !r.length) {
-    return { ok: false, motivo: "Nenhuma conta foi transmitida — confirme que seu perfil permite editar faturamento e que as contas ainda estavam fechadas." };
+    return { ok: false, motivo: "Nenhuma conta foi transmitida: nenhuma delas ainda estava fechada. Alguém pode ter mexido nelas enquanto esta tela estava aberta — recarregue e confira." };
   }
   if (r.length !== lista.length) {
     return { ok: true, contas: r, parcial: true,
