@@ -72,12 +72,15 @@ describe("🔴 o que NÃO vai para a parede", () => {
   });
 
   it("a hora de chegada desempata iniciais repetidas", () => {
-    expect(linhaDoPainel(pessoa()).chegada).toBe("09:20");
+    // `agora` é obrigatório aqui: a hora sozinha só vale se a chegada for
+    // do mesmo dia, e sem passar o instante o teste compararia com o relógio
+    // da máquina — verde hoje, vermelho amanhã.
+    expect(linhaDoPainel(pessoa(), HOJE).chegada).toBe("09:20");
   });
 
   it("sem hora de chegada não inventa hora", () => {
-    expect(linhaDoPainel(pessoa({ chegada_em: null })).chegada).toBe("");
-    expect(linhaDoPainel(pessoa({ chegada_em: "não é data" })).chegada).toBe("");
+    expect(linhaDoPainel(pessoa({ chegada_em: null }), HOJE).chegada).toBe("");
+    expect(linhaDoPainel(pessoa({ chegada_em: "não é data" }), HOJE).chegada).toBe("");
   });
 
   it("não explode com nada", () => {
@@ -181,5 +184,40 @@ describe("o painel em cima da fila de verdade", () => {
     // e o "82 anos" que a fila interna mostra não chega à parede
     expect(JSON.stringify(p)).not.toContain("82 anos");
     expect(JSON.stringify(p)).not.toContain("Fulana de Tal");
+  });
+});
+
+// 🔴 A HORA SOZINHA MENTE QUANDO A CHEGADA NÃO É DE HOJE.
+//
+// Achado percorrendo o painel no demo: um atendimento aberto ONTEM e nunca
+// encerrado continua na fila, e a tela mostrava "chegou 15:45". A sala lê
+// 15:45 de hoje e conclui que a pessoa está ali — quando o que existe é um
+// episódio que ninguém fechou. A própria Agenda já avisa desses; o painel
+// os exibia como se fossem gente sentada.
+describe("a chegada de outro dia se identifica", () => {
+  const comChegada = quando => ({ id: 1, iniciais: "A.B.C.", chegada_em: quando });
+
+  it("chegada de HOJE mostra só a hora", () => {
+    expect(linhaDoPainel(comChegada("2026-08-25T09:20:00"), HOJE).chegada).toBe("09:20");
+  });
+
+  it("🔴 chegada de ONTEM diz que é de ontem", () => {
+    expect(linhaDoPainel(comChegada("2026-08-24T15:45:00"), HOJE).chegada).toBe("ontem 15:45");
+  });
+
+  it("mais velha que ontem mostra o dia e o mês", () => {
+    expect(linhaDoPainel(comChegada("2026-08-19T08:05:00"), HOJE).chegada).toBe("19/08 08:05");
+  });
+
+  it("🔴 NÃO some da tela — esconder resolveria a mentira criando outra", () => {
+    // Quem chegou às 23h50 e é chamado às 00h10 desapareceria do painel.
+    const p = painelDeChamada({ esperando: [comChegada("2026-08-24T23:50:00")], emAtendimento: [] }, { agora: HOJE });
+    expect(p.proximos).toHaveLength(1);
+    expect(p.proximos[0].chegada).toMatch(/ontem/);
+  });
+
+  it("a virada do ano não vira 'hoje'", () => {
+    // Comparar só dia e mês faria 25/08/2025 passar por hoje.
+    expect(linhaDoPainel(comChegada("2025-08-25T09:20:00"), HOJE).chegada).toBe("25/08 09:20");
   });
 });

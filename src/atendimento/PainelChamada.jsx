@@ -100,7 +100,9 @@ export default function PainelChamada({ fila, especialidades = {}, profissionais
                 {[nomeEspec(c.especialidade), nomeProf(c.profissional)].filter(Boolean).join(" · ")}
               </div>
               <div style={{ fontSize: "2.2vh", color: "#475569", marginTop: ".6vh" }}>
-                chegou às {c.chegada}
+                {/* Sem o "às": a chegada pode vir como "ontem 15:47", e
+                    "chegou às ontem" não é frase. */}
+                chegou {c.chegada}
                 {c.haMinutos > 0 ? ` · chamado há ${c.haMinutos} min` : " · chamado agora"}
               </div>
             </div>

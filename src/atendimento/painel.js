@@ -66,12 +66,12 @@ export const PROXIMOS_NO_PAINEL = 6;
  * conta nada sobre ela. Prontuário desempataria melhor e é identificador
  * permanente — numa parede, é o que não se põe.
  */
-export function linhaDoPainel(atendimento) {
+export function linhaDoPainel(atendimento, agora = new Date()) {
   const a = atendimento || {};
   return {
     id: a.id ?? null,
     iniciais: comoExibir(a.paciente || a.pacientes || a) || a.iniciais || "—",
-    chegada: horaCurta(a.chegada_em),
+    chegada: chegadaLegivel(a.chegada_em, agora),
     especialidade: String(a.especialidade_cod ?? "").trim(),
     profissional: String(a.medico ?? "").trim(),
     // Só o selo. O motivo fica na fila interna, que é do balcão.
@@ -85,6 +85,34 @@ function horaCurta(valor) {
   const d = new Date(valor);
   if (isNaN(d)) return "";
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/**
+ * 🔴 A HORA SOZINHA MENTE QUANDO A CHEGADA NÃO É DE HOJE.
+ *
+ * Achado percorrendo o painel: um atendimento aberto ONTEM e nunca encerrado
+ * continua na fila, e a tela mostrava "chegou 15:45". A sala lê 15:45 de
+ * hoje e conclui que a pessoa está ali — quando o que existe é um episódio
+ * que ninguém fechou. A própria Agenda já avisa desses ("N ambulatoriais
+ * aguardando encerramento"); o painel os exibia como se fossem gente
+ * sentada.
+ *
+ * NÃO SE ESCONDE o que é de outro dia: sumir com a linha resolveria a
+ * mentira criando outra, e quem chegou às 23h50 e é chamado às 00h10
+ * desapareceria do painel. Aparece com o DIA, que denuncia o episódio
+ * esquecido para quem opera e impede a sala de se enganar.
+ */
+function chegadaLegivel(valor, agora) {
+  const hora = horaCurta(valor);
+  if (!hora) return "";
+  const d = new Date(valor);
+  const dia = x => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  if (dia(d) === dia(agora)) return hora;
+
+  const ontem = new Date(agora.getTime() - 86400000);
+  if (dia(d) === dia(ontem)) return `ontem ${hora}`;
+
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${hora}`;
 }
 
 /**
@@ -120,11 +148,11 @@ export function painelDeChamada(fila, { agora = new Date(), destaqueMin = MINUTO
     // indeterminado é pior que nome nenhum.
     .filter(x => x.ha != null && x.ha >= 0 && x.ha <= destaqueMin)
     .sort((x, y) => x.ha - y.ha)
-    .map(x => ({ ...linhaDoPainel(x.a), haMinutos: x.ha }));
+    .map(x => ({ ...linhaDoPainel(x.a, agora), haMinutos: x.ha }));
 
   return {
     chamando: chamados,
-    proximos: esperando.slice(0, limite).map(linhaDoPainel),
+    proximos: esperando.slice(0, limite).map(a => linhaDoPainel(a, agora)),
     // O total é da fila INTEIRA, não da fatia mostrada: "e mais 12
     // esperando" é o que diz à sala que a lista não acabou ali.
     aguardando: esperando.length,
