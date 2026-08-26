@@ -30,6 +30,7 @@ import {
 import { comoExibir, idadeDetalhada } from "../pacientes/identidade.js";
 import { glosaDaContaSalva, escolherInternacao, janelaInternacao } from "./montar-conta.js";
 import { GRAVIDADES, permanenciaEmDias } from "./sigtap.js";
+import { dataBR } from "./impressos.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -348,6 +349,20 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
                     <button onClick={reabrir} style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>Reabrir</button>
                   )}
                 </div>
+
+                {/* 🔴 O CARIMBO DA TRANSMISSÃO. Gravar quem/quando/protocolo e
+                    não desenhar em lugar nenhum seria a coluna de mão única
+                    que este módulo já teve oito vezes — e é justamente aqui
+                    que alguém vem parar quando a glosa chega perguntando em
+                    qual remessa a conta foi. */}
+                {ctx.conta.status === "faturada" && (ctx.conta.faturada_em || ctx.conta.remessa_protocolo) && (
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 10, lineHeight: 1.5 }}>
+                    Transmitida{ctx.conta.faturada_em ? ` em ${dataBR(ctx.conta.faturada_em)}` : ""}
+                    {ctx.conta.faturada_por ? ` por ${ctx.conta.faturada_por}` : ""}
+                    {ctx.conta.remessa_protocolo ? <> · protocolo <b style={{ color: "var(--text-2)" }}>{ctx.conta.remessa_protocolo}</b></> : ""}
+                    {". "}Faturada não reabre — a correção depois da transmissão é glosa.
+                  </div>
+                )}
 
                 {/* O impedimento aparece ANTES de a pessoa tentar fechar.
                     Deixar descobrir no clique é fazer refazer trabalho — e

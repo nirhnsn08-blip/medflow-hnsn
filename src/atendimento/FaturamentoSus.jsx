@@ -332,20 +332,20 @@ function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "130px 150px 150px 1fr", gap: 10, marginBottom: 12 }}>
         <label><span style={rotulo}>Competência</span>
-          <input style={entrada} value={competencia} onChange={e => setCompetencia(e.target.value)} placeholder="2026-08" />
+          <input style={entrada} value={competencia} onChange={e => { setCompetencia(e.target.value); setMsg(null); }} placeholder="2026-08" />
         </label>
         <label><span style={rotulo}>Via</span>
-          <select style={entrada} value={via} onChange={e => setVia(e.target.value)}>
+          <select style={entrada} value={via} onChange={e => { setVia(e.target.value); setMsg(null); }}>
             <option value="">Todas as vias</option>
             {Object.entries(VIAS).map(([k, cfg]) => <option key={k} value={k}>{cfg.label}</option>)}
           </select>
         </label>
         <label><span style={rotulo}>Transmitida em</span>
-          <input style={entrada} type="date" value={quando} max={hojeLocal()} onChange={e => setQuando(e.target.value)} />
+          <input style={entrada} type="date" value={quando} max={hojeLocal()} onChange={e => { setQuando(e.target.value); setMsg(null); }} />
         </label>
         <label><span style={rotulo}>Protocolo do órgão</span>
           <input style={entrada} value={protocolo} maxLength={PROTOCOLO_MAX}
-            onChange={e => setProtocolo(e.target.value)} placeholder="opcional — mas é por ele que se acha a conta na glosa" />
+            onChange={e => { setProtocolo(e.target.value); setMsg(null); }} placeholder="opcional — mas é por ele que se acha a conta na glosa" />
         </label>
       </div>
 
@@ -353,20 +353,26 @@ function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
         <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>Procurando as contas fechadas…</p>
       ) : contas === null ? null : (
         <>
-          <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 10 }}>
-            {resumo.quantas > 0 ? (
-              <>
-                <b>{resumo.quantas}</b> {resumo.quantas === 1 ? "conta fechada entra" : "contas fechadas entram"} nesta remessa
-                {resumo.vias.length > 1 ? ` — ${resumo.vias.map(x => `${x}: ${resumo.porVia[x]}`).join(" · ")}` : ""}.
-              </>
-            ) : "Nenhuma conta fechada nesta seleção."}
-          </div>
+          {/* Só quando HÁ o que transmitir. Sem conta fechada, quem explica é
+              o erro logo abaixo — repetir a mesma frase em dois lugares é a
+              forma mais silenciosa de ensinar alguém a não ler nenhum dos dois. */}
+          {resumo.quantas > 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 10 }}>
+              <b>{resumo.quantas}</b> {resumo.quantas === 1 ? "conta fechada entra" : "contas fechadas entram"} nesta remessa
+              {resumo.vias.length > 1 ? ` — ${resumo.vias.map(x => `${x}: ${resumo.porVia[x]}`).join(" · ")}` : ""}.
+            </div>
+          )}
 
-          {v.erros.map((e, i) => (
+          {/* ⚠️ Enquanto o recibo da remessa que ACABOU de sair está na tela,
+              nada de erro da próxima. Sem isto, quem transmite vê um
+              "Nenhuma conta fechada nesta seleção" em vermelho logo ACIMA do
+              próprio recibo — e lê como se tivesse falhado. Qualquer mexida
+              num campo limpa o recibo e os avisos voltam. */}
+          {msg?.tom !== "ok" && v.erros.map((e, i) => (
             <div key={`e${i}`} style={{ fontSize: 12.5, color: "#f43f5e", marginBottom: 6 }}>{e}</div>
           ))}
           {/* Avisos só acendem com sinal real — ver `validarTransmissao`. */}
-          {v.avisos.map((a, i) => (
+          {msg?.tom !== "ok" && v.avisos.map((a, i) => (
             <div key={`a${i}`} style={{ fontSize: 12.5, color: "#f59e0b", marginBottom: 6 }}>{a}</div>
           ))}
 
