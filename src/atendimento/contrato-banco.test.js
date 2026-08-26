@@ -35,7 +35,7 @@ import {
   carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
   carregarResponsaveis, responsaveisAnteriores, salvarResponsavel, desativarResponsavel,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, cancelarItem,
-  fecharConta, reabrirConta, contasDaCompetencia,
+  fecharConta, reabrirConta, contasDaCompetencia, registrarTransmissao,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -252,6 +252,34 @@ describe("escritas da recepção", () => {
     await reabrirConta(sb, 9, USER);
     expect(chamadas).toHaveLength(3);
     for (const c of chamadas) conferirEscrita(c);
+  });
+
+  it("registrar a transmissão grava só em coluna que existe — e carimba quem e quando", async () => {
+    const { sb, chamadas } = espiao();
+    await registrarTransmissao(sb, [9, 10, 11],
+      { protocolo: "BPA-2026-08-0042", transmitidaEm: "2026-08-26" }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.status).toBe("faturada");
+    // 🔴 O que a versão anterior perdia: gravava só o status, e a
+    // transmissão é o passo SEM VOLTA. Quem procura na glosa quer as três.
+    expect(corpo.faturada_em).toBe("2026-08-26");
+    expect(corpo.faturada_por).toBe(USER.name);
+    expect(corpo.remessa_protocolo).toBe("BPA-2026-08-0042");
+
+    // O filtro `status=eq.fechada` é o que impede reprocessar conta já
+    // faturada quando a tela é clicada duas vezes.
+    expect(chamadas[0].recurso).toMatch(/status=eq\.fechada/);
+    expect(chamadas[0].recurso).toMatch(/id=in\.\(9,10,11\)/);
+  });
+
+  it("transmissão sem conta nenhuma não toca no banco", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await registrarTransmissao(sb, [], { protocolo: "X", transmitidaEm: "2026-08-26" }, USER);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
   });
 
   it("gravar responsável do episódio grava só em coluna que existe", async () => {
