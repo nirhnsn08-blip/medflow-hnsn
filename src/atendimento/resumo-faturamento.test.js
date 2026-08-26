@@ -7,7 +7,7 @@
 // silêncio (semValorRef), não R$ 0,00.
 
 import { describe, it, expect } from "vitest";
-import { resumoFaturamento, resumoPorVia, SITUACOES, DIAS_ALERTA_BACKLOG } from "./resumo-faturamento.js";
+import { resumoFaturamento, resumoPorVia, resumoDeContas, SITUACOES, DIAS_ALERTA_BACKLOG } from "./resumo-faturamento.js";
 
 // ── fábricas ────────────────────────────────────────────────
 const wl = (over = {}) => ({
@@ -284,5 +284,74 @@ describe("resumoPorVia", () => {
     expect(r.porVia[0].n).toBe(3);
     expect(r.porVia[0].valorRef).toBe(240000); // 3 × 80000
     expect(r.valorRefTotal).toBe(240000);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// AS CONTAS DA COMPETÊNCIA
+//
+// 🔴 O DEFEITO: todo número da Visão Executiva sai da worklist, que é
+// `desfecho=eq.internacao`. O KPI "Faturadas — já transmitidas ao SUS"
+// lia-se como afirmação sobre o HOSPITAL e era sobre internações: uma
+// remessa de BPA inteira saía e o número não se mexia.
+// ═══════════════════════════════════════════════════════════
+
+describe("as contas da competência", () => {
+  const c = (status, via) => ({ status, via });
+
+  it("conta por situação, incluindo as que não são de internação", () => {
+    const r = resumoDeContas([
+      c("aberta", "bpa"), c("fechada", "bpa"), c("faturada", "bpa"),
+      c("fechada", "aih"), c("glosada", "aih"),
+    ]);
+    expect(r.total).toBe(5);
+    expect(r.porSituacao.aberta).toBe(1);
+    expect(r.porSituacao.fechada).toBe(2);
+    expect(r.porSituacao.faturada).toBe(1);
+    expect(r.porSituacao.glosada).toBe(1);
+  });
+
+  it("🔴 enxerga o BPA, que é o que o funil de internações nunca mostrou", () => {
+    const r = resumoDeContas([c("faturada", "bpa"), c("faturada", "bpa")]);
+    expect(r.porVia.bpa.faturada).toBe(2);
+    expect(r.vias).toEqual(["bpa"]);
+  });
+
+  it("separa as vias, porque a remessa sai por via", () => {
+    const r = resumoDeContas([
+      c("fechada", "bpa"), c("fechada", "bpa"), c("fechada", "aih"), c("aberta", "apac"),
+    ]);
+    expect(r.porVia.bpa.total).toBe(2);
+    expect(r.porVia.aih.total).toBe(1);
+    expect(r.porVia.apac.aberta).toBe(1);
+    expect(r.vias).toEqual(["aih", "apac", "bpa"]);   // ordenadas
+  });
+
+  it("conta sem via não some — vai para um balde nomeado", () => {
+    const r = resumoDeContas([c("aberta", ""), c("aberta", null)]);
+    expect(r.porVia["sem via"].total).toBe(2);
+  });
+
+  it("⚠️ cancelada não entra na leitura por via, mas aparece no total", () => {
+    // Sumir com ela faria os números não fecharem com o total, e alguém
+    // procuraria o buraco. Contá-la como trabalho seria pior: conta
+    // cancelada não espera nada de ninguém.
+    const r = resumoDeContas([c("aberta", "bpa"), c("cancelada", "bpa")]);
+    expect(r.total).toBe(2);
+    expect(r.vivas).toBe(1);
+    expect(r.porSituacao.cancelada).toBe(1);
+    expect(r.porVia.bpa.total).toBe(1);
+  });
+
+  it("esperandoRemessa é o número acionável: conta fechada é conta pronta parada", () => {
+    const r = resumoDeContas([c("fechada", "bpa"), c("fechada", "aih"), c("faturada", "bpa")]);
+    expect(r.esperandoRemessa).toBe(2);
+  });
+
+  it("vazio quando não há conta viva — e lista nula não quebra a tela", () => {
+    expect(resumoDeContas([]).vazio).toBe(true);
+    expect(resumoDeContas(null).vazio).toBe(true);
+    expect(resumoDeContas([c("cancelada", "bpa")]).vazio).toBe(true);
+    expect(resumoDeContas([c("aberta", "bpa")]).vazio).toBe(false);
   });
 });
