@@ -16,6 +16,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  conferirIdadeDaMae, IDADE_MATERNA_MIN, IDADE_MATERNA_MAX,
   nomeProvisorioDoRN, ehRecemNascido, temNomeProvisorio,
   validarRecemNascido, pendenciaDeNomeDefinitivo, saoIrmaosDoMesmoParto,
   DIAS_PARA_REGISTRO,
@@ -221,5 +222,75 @@ it("🔴 DNV IGUAL é o MESMO nascimento — nunca são irmãos", () => {
   it("não explode com nada", () => {
     expect(() => saoIrmaosDoMesmoParto()).not.toThrow();
     expect(saoIrmaosDoMesmoParto(null, {})).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// IDADE DA MÃE
+//
+// 🔴 O aviso é sobre VÍNCULO TROCADO, não sobre biologia. Quem traz o bebê
+// muitas vezes é a avó, e escolher a linha errada numa lista de homônimas
+// é fácil — a idade implausível é o sintoma barato disso.
+//
+// ⚠️ E ELE NÃO PODE ACENDER EM DADO CORRETO. Mãe adolescente existe; um
+// aviso que dispara nela ensina a equipe a fechar aviso sem ler, e aí o
+// próximo, que é de verdade, passa junto.
+// ═══════════════════════════════════════════════════════════
+
+describe("a idade da mãe", () => {
+  const c = (nascMae, nascBebe = "2026-08-26") =>
+    conferirIdadeDaMae({ mae: { data_nascimento: nascMae }, data_nascimento: nascBebe });
+
+  it("🔴 CALA a boca na faixa larga — mãe adolescente não é alarme", () => {
+    expect(c("1998-03-02")).toBeNull();          // 28
+    expect(c("2012-03-02")).toBeNull();          // 14
+    expect(c("2009-01-01")).toBeNull();          // 17
+    expect(c("1975-06-10")).toBeNull();          // 51
+  });
+
+  it("acende para quem tem cara de avó — o erro mais comum do balcão", () => {
+    const r = c("1964-03-02");                   // 62
+    expect(r.tipo).toBe("implausivel");
+    expect(r.anos).toBe(62);
+    expect(r.texto).toMatch(/avó/);
+    expect(r.texto).toMatch(/não fica travado/);  // avisa, não bloqueia
+  });
+
+  it("acende embaixo, onde o vínculo trocado é mais provável que o fato", () => {
+    expect(c("2018-03-02").anos).toBe(8);
+  });
+
+  it("as bordas da faixa são os números literais, não a constante", () => {
+    // Escrever 10 e 55 à mão: comparar com a própria constante faria o
+    // teste se mover junto com o erro, e a mutação passaria verde.
+    expect(IDADE_MATERNA_MIN).toBe(10);
+    expect(IDADE_MATERNA_MAX).toBe(55);
+    expect(c("2016-08-26")).toBeNull();          // 10 em ponto — cala
+    expect(c("2016-08-27")).not.toBeNull();      // 9 — acende
+    expect(c("1971-08-27")).toBeNull();          // 54 — cala
+    expect(c("1971-08-26")).not.toBeNull();      // 55 — acende
+  });
+
+  it("mãe nascida na mesma data do bebê ou depois é IMPOSSÍVEL, não improvável", () => {
+    expect(c("2027-01-01").tipo).toBe("impossivel");
+    expect(c("2026-08-26").tipo).toBe("impossivel");   // mesmo dia
+    expect(c("2027-01-01").texto).toMatch(/impossível/);
+    expect(c("2027-01-01").anos).toBeNull();
+  });
+
+  it("sem data não há idade — e \"não sei\" não é motivo de alarme", () => {
+    expect(c("", "2026-08-26")).toBeNull();
+    expect(c("1998-03-02", "")).toBeNull();
+    expect(c(null, null)).toBeNull();
+    expect(conferirIdadeDaMae()).toBeNull();
+    expect(conferirIdadeDaMae({ mae: null })).toBeNull();
+  });
+
+  it("a idade é a do dia do PARTO, não a de hoje", () => {
+    // Uma mesma mãe, dois partos. Se a conta usasse a idade de HOJE (36),
+    // os dois calariam — e o parto de 1999, em que ela tinha 9 anos, é
+    // exatamente o que este aviso existe para pegar.
+    expect(c("1990-01-01", "1999-06-01").anos).toBe(9);     // acende
+    expect(c("1990-01-01", "2005-06-01")).toBeNull();       // 15 na época: cala
   });
 });

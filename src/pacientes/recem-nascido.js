@@ -175,3 +175,75 @@ export function saoIrmaosDoMesmoParto(a, b) {
 
   return mesmaMae && mesmoDia && ordensValidas && ordA !== ordB;
 }
+
+// ═══════════════════════════════════════════════════════════
+// A IDADE DA MÃE — um aviso sobre VÍNCULO, não sobre biologia
+// ═══════════════════════════════════════════════════════════
+//
+// 🔴 O ERRO QUE ISTO PROCURA não é gravidez improvável: é o bebê ligado ao
+// PRONTUÁRIO ERRADO. Quem traz o recém-nascido ao balcão muitas vezes é a
+// avó, e escolher a linha errada numa lista de homônimas é fácil. A partir
+// daí o parto fica pendurado na pessoa errada, e é por esse vínculo que se
+// confere a quem o bebê pertence na alta.
+//
+// A idade materna implausível é o sintoma barato de um vínculo trocado —
+// não a doença. Por isso a frase do aviso manda CONFERIR A MÃE, que é a
+// coisa que a recepção pode fazer, e não comenta a gestação.
+//
+// ⚠️ NUNCA BLOQUEIA, e a faixa é larga de propósito.
+// Mãe adolescente existe, e um sistema que se recusa a cadastrar o filho
+// dela inverte a prioridade: o bebê é quem fica sem prontuário. Além disso,
+// aviso que acende em dado CORRETO é o que ensina a equipe a fechar aviso
+// sem ler — e aí o próximo, que é de verdade, passa junto. Só acende onde
+// o vínculo trocado é MAIS PROVÁVEL que o fato.
+//
+// Abaixo de 10 e a partir de 55 a gravidez espontânea é rara a ponto de o
+// erro de digitação e o prontuário trocado serem a explicação mais provável
+// — em 55+, tipicamente a avó. Entre os dois, silêncio.
+
+/** Piso e teto da faixa em que NÃO se diz nada. Ver o comentário acima. */
+export const IDADE_MATERNA_MIN = 10;
+export const IDADE_MATERNA_MAX = 55;
+
+/**
+ * A idade da mãe no dia do parto merece uma conferida?
+ *
+ * `null` = nada a dizer. Também `null` quando falta data — de um dos dois:
+ * sem as duas datas não há idade, e "não sei" não é motivo de alarme (a
+ * pendência de cadastro incompleto já cobra a data por outro caminho).
+ *
+ * Devolve `{ tipo, anos, texto }` para a tela desenhar. `tipo` distingue o
+ * IMPOSSÍVEL (mãe nascida depois do bebê — erro certo) do IMPLAUSÍVEL
+ * (idade fora da faixa — quase sempre vínculo trocado), porque a primeira
+ * não comporta "confira" e sim "está errado".
+ */
+export function conferirIdadeDaMae({ mae, data_nascimento } = {}) {
+  const nascMae = String(mae?.data_nascimento ?? "").trim();
+  const nascBebe = String(data_nascimento ?? "").trim();
+  if (!nascMae || !nascBebe) return null;
+
+  // Datas civis comparadas como TEXTO 'YYYY-MM-DD'. Passar pelo `new Date()`
+  // empurraria o dia para trás no fuso do Brasil — já causou bug real aqui.
+  if (nascMae >= nascBebe) {
+    return {
+      tipo: "impossivel",
+      anos: null,
+      texto: "A mãe escolhida nasceu na mesma data do bebê ou depois dela. " +
+             "Não é uma idade improvável, é um vínculo impossível — confira se a mãe " +
+             "selecionada é a certa, ou se a data de nascimento de alguém está trocada.",
+    };
+  }
+
+  const anos = idadeDetalhada(nascMae, new Date(`${nascBebe}T12:00:00`))?.anos;
+  if (!Number.isInteger(anos)) return null;
+  if (anos >= IDADE_MATERNA_MIN && anos < IDADE_MATERNA_MAX) return null;
+
+  return {
+    tipo: "implausivel",
+    anos,
+    texto: `A mãe selecionada tinha ${anos} anos na data do parto. ` +
+           "Confira se é a mãe certa — quem traz o bebê ao balcão às vezes é a avó, " +
+           "e é por este vínculo que se confere a quem o bebê pertence na alta. " +
+           "Se estiver certo, siga: o cadastro não fica travado por isto.",
+  };
+}
