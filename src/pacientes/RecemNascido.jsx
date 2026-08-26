@@ -19,7 +19,7 @@
 
 import { useState, useEffect } from "react";
 import { comoExibir } from "./identidade.js";
-import { nomeProvisorioDoRN, validarRecemNascido } from "./recem-nascido.js";
+import { nomeProvisorioDoRN, validarRecemNascido, conferirIdadeDaMae } from "./recem-nascido.js";
 import { cadastrarRecemNascido, irmaosDoMesmoParto } from "../atendimento/dados.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -70,6 +70,11 @@ export default function RecemNascido({ sb, mae, currentUser, onCadastrado, onCan
   const ordem = f.ordem_nascimento || (irmaos.length ? String(irmaos.length + 1) : "");
   const nomeProvisorio = nomeProvisorioDoRN(mae?.nome_completo, { ordem });
   const v = validarRecemNascido({ mae, dnv: f.dnv, data_nascimento: f.data_nascimento, ordem: f.ordem_nascimento });
+  // Fica FORA de `v`: não é pendência de cadastro (nada falta preencher) —
+  // é suspeita de que a MÃE escolhida não é a certa, que se resolve trocando
+  // a mãe e não completando campo. Misturar as duas coisas na mesma caixa
+  // faria a contagem "N pendência(s)" prometer um campo que não existe.
+  const idadeMae = conferirIdadeDaMae({ mae, data_nascimento: f.data_nascimento });
 
   async function salvar() {
     if (salvando) return;
@@ -170,6 +175,23 @@ export default function RecemNascido({ sb, mae, currentUser, onCadastrado, onCan
             placeholder={ordem || "1"} style={inp} />
         </div>
       </div>
+
+      {/* 🔴 AVISO SOBRE VÍNCULO, NÃO SOBRE BIOLOGIA. Quem traz o bebê muitas
+          vezes é a avó, e escolher a linha errada numa lista de homônimas é
+          fácil — a partir daí o parto fica pendurado na pessoa errada, e é
+          por este vínculo que se confere a quem o bebê pertence na alta.
+          NÃO BLOQUEIA: mãe adolescente existe, e recusar o cadastro do filho
+          dela deixaria o BEBÊ sem prontuário. */}
+      {idadeMae && (
+        <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 8, fontSize: 12,
+                      background: idadeMae.tipo === "impossivel" ? "#f43f5e10" : "#d9770610",
+                      border: `1px solid ${idadeMae.tipo === "impossivel" ? "#f43f5e55" : "#d9770655"}` }}>
+          <strong style={{ color: idadeMae.tipo === "impossivel" ? "#f43f5e" : "#d97706" }}>
+            {idadeMae.tipo === "impossivel" ? "Confira a mãe selecionada" : "Confira se é a mãe certa"}
+          </strong>
+          <div style={{ marginTop: 5, color: "var(--text-muted)" }}>{idadeMae.texto}</div>
+        </div>
+      )}
 
       {v.pendencias.length > 0 && (
         <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 8, fontSize: 12,
