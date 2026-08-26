@@ -22,6 +22,9 @@ import {
   ultimoAtendimento, resumoDoHistorico, rotuloDoEpisodio, agruparPorAno,
 } from "./consultas.js";
 import { ORIGENS_MARCACAO, STATUS_AGENDAMENTO } from "./agenda.js";
+// Só o carimbo de data e hora — o mesmo formato dos impressos, para a
+// pesquisa e o papel não mostrarem o mesmo instante de dois jeitos.
+import { dataHoraBR } from "./impressos.js";
 import { atendimentoAberto } from "./ciclo.js";
 import {
   buscarPacientes, historicoDoPaciente, agendamentosFuturos,
@@ -79,6 +82,14 @@ function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir }) {
                      color: a.status === "cancelado" ? "#f43f5e" : atendimentoAberto(a) ? "#22d3ee" : "var(--text-muted)" }}>
         {rotuloDoEpisodio(a)}
       </span>
+      {/* Quem cancelou, quando e por quê. Estava gravado desde sempre e não
+          era desenhado — "Cancelado" sozinho manda perguntar no corredor. */}
+      {a.status === "cancelado" && (a.cancelado_motivo || a.cancelado_por) && (
+        <div style={{ flexBasis: "100%", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+          {[a.cancelado_motivo, a.cancelado_por ? `por ${a.cancelado_por}` : "", dataHoraBR(a.cancelado_em)]
+            .filter(Boolean).join(" · ")}
+        </div>
+      )}
       {/* 🔴 ACHAR O EPISÓDIO NÃO LEVAVA A LUGAR NENHUM.
           A pesquisa respondia "esse paciente já veio?" e parava ali: quem
           precisava do papel tinha que sair da tela, ir para a Recepção e

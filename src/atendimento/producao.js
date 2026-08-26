@@ -204,7 +204,8 @@ export function producaoDoMes({
 
   const porEspecialidade = codigos.map(cod => {
     const meus = noMes.filter(a => a.especialidade_cod === cod);
-    const soma = { ofertadas: 0, realizadas: 0, primeiras: 0, retornos: 0, faltas: 0, cancelados: 0, livres: 0, porChegada: 0 };
+    const soma = { ofertadas: 0, realizadas: 0, primeiras: 0, retornos: 0, faltas: 0, cancelados: 0, livres: 0, porChegada: 0,
+                   remarcados: 0, remarcadosPeloHospital: 0 };
     const diasComGrade = [];
 
     for (const d of dias) {
@@ -250,7 +251,12 @@ export function producaoDoMes({
   });
 
   const total = porEspecialidade.reduce((acc, e) => {
-    for (const k of ["ofertadas", "realizadas", "primeiras", "retornos", "faltas", "cancelados", "livres", "marcados"]) {
+    for (const k of ["ofertadas", "realizadas", "primeiras", "retornos", "faltas", "cancelados", "livres", "marcados",
+                     // Sem estas duas, o elo que o #128 grava não chega a
+                     // relatório nenhum — a coluna existiria só na linha da
+                     // agenda, e "quantas vezes o hospital empurrou" ficaria
+                     // sem resposta no lugar em que a gestão pergunta.
+                     "remarcados", "remarcadosPeloHospital"]) {
       acc[k] = (acc[k] || 0) + num(e[k]);
     }
     return acc;
