@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 94 tabelas, 1487 colunas.
+-- Cobertura atual: 94 tabelas, 1495 colunas.
 -- ============================================================
 
 with
@@ -802,11 +802,11 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','rg_orgao_emissor','pacientes-identificacao'),
   ('pacientes','sexo','schema'),
   ('pacientes','telefone','pacientes-identificacao'),
+  ('pacientes','telefone_alt','pacientes-identificacao'),
   ('pacientes','unificacao_motivo','pacientes-unificacao'),
   ('pacientes','unificado_em','pacientes-unificacao'),
   ('pacientes','unificado_para','pacientes-unificacao'),
   ('pacientes','unificado_por','pacientes-unificacao'),
-  ('pacientes','telefone_alt','pacientes-identificacao'),
   ('pacientes','updated_at','schema'),
   ('pacientes','usuario','schema'),
   ('pep_acessos','contexto','pep-acessos'),
