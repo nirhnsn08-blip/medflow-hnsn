@@ -34,6 +34,9 @@ import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
 import { podeMarcarPronto } from "./farmacia/preparo.js";
+// Lote vencido não vai para paciente — mas SAI por descarte, senão fica
+// preso na prateleira. Ver o cabeçalho de validade.js.
+import { podeSair, lotesParaEscolha, situacaoDoLote } from "./farmacia/validade.js";
 import { podeAprovarPedido, descreverAlcada, validarLimite } from "./suprimentos/aprovacao.js";
 import { carregarAlcada, salvarAlcada } from "./suprimentos/parametros.js";
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
@@ -7875,14 +7878,20 @@ function FarmMedModal({ med, onClose, onSave }) {
 // Entrada / saída de estoque
 function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
   const [tipo, setTipo] = useState(tipoInicial || "entrada");
-  const lotesComSaldo = [...lotes].filter(l => Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")); // FEFO
   const [f, setF] = useState({
     lote: "", validade: "", quantidade: "", documento: "",
-    lote_id: lotesComSaldo[0]?.id || "", motivo: "Dispensação",
+    lote_id: "", motivo: "Dispensação",
   });
   const [busy, setBusy] = useState(false);
+  // 🔴 A ordem e a SUGESTÃO dependem do motivo. Para dispensar, o vencido
+  // nunca é sugerido; para descartar, ele É o alvo — sugerir o válido faria
+  // dar baixa no lote errado. Ver farmacia/validade.js.
+  const escolha = lotesParaEscolha(lotes, { motivo: f.motivo });
+  const lotesComSaldo = escolha.lotes;
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const loteSel = lotesComSaldo.find(l => String(l.id) === String(f.lote_id));
+  // Sem escolha explícita, vale o sugerido do motivo atual.
+  const loteEfetivo = f.lote_id || (escolha.sugerido?.id ? String(escolha.sugerido.id) : "");
+  const loteSel = lotesComSaldo.find(l => String(l.id) === String(loteEfetivo));
 
   async function salvar() {
     const q = Number(f.quantidade);
@@ -7893,6 +7902,9 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
     } else {
       if (!loteSel) { alert("Selecione o lote de onde sairá o medicamento."); return; }
       if (q > Number(loteSel.quantidade)) { alert(`Saída maior que o saldo do lote (disponível: ${farmFmtQtd(loteSel.quantidade)}).`); return; }
+      const v = podeSair({ lote: loteSel, motivo: f.motivo });
+      if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
+      if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nRegistrar a saída assim mesmo?`)) return;
       mov = { medicamento_id: med.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null };
     }
     setBusy(true);
@@ -7928,12 +7940,19 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
             <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
           ) : (<>
             <div style={{ marginBottom: 10 }}>
-              <label style={farmLbl}>Lote (FEFO — vence primeiro no topo)</label>
-              <select value={f.lote_id} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+              <label style={farmLbl}>Lote{escolha.temVencido ? " — vencido não é sugerido" : " (FEFO — vence primeiro no topo)"}</label>
+              <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
                 {lotesComSaldo.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
               </select>
             </div>
-            {loteSel && farmValidadeInfo(loteSel.validade).status === "vencido" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10, fontWeight: 600 }}>⚠ Lote vencido — a baixa deve ser por perda/descarte, não dispensação.</div>}
+            {loteSel && situacaoDoLote(loteSel.validade).vencido && (
+              <div style={{ fontSize: 11.5, marginBottom: 10, fontWeight: 600,
+                            color: f.motivo === "Dispensação" ? "#f43f5e" : "#d97706" }}>
+                {f.motivo === "Dispensação"
+                  ? "⚠ Lote VENCIDO — não pode ser dispensado. Troque o motivo para “Perda / vencimento” para tirá-lo do estoque."
+                  : "Lote vencido saindo por baixa — é assim que ele deixa a prateleira. Guarde o comprovante do descarte."}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
               <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
               <div><label style={farmLbl}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={farmInp}>{FARM_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
@@ -8151,7 +8170,9 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
   const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
 
   function abrir(item) {
-    const ls = lotes.filter(l => String(l.medicamento_id) === String(item.medicamento_id) && Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999"));
+    // 🔴 O vencido NÃO é mais a sugestão. FEFO segue entre os válidos.
+    const esc = lotesParaEscolha(lotes.filter(l => String(l.medicamento_id) === String(item.medicamento_id)), { motivo: "Dispensação" });
+    const ls = esc.lotes;
     const q = Number(item.quantidade || 0);
     const sugestao = q > 0 ? Math.max(0, q - dispDoItem(item.id)) : (Number(item.dose_valor) || "");
     setSelItem({ ...item, _lotes: ls });
@@ -8163,6 +8184,9 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
     const lote = selItem._lotes.find(l => String(l.id) === String(f.lote_id));
     if (!lote) { alert("Sem lote em estoque para este medicamento. Registre uma entrada no Estoque."); return; }
     if (q > Number(lote.quantidade)) { alert(`Maior que o saldo do lote (disponível: ${farmFmtQtd(lote.quantidade)}).`); return; }
+    const v = podeSair({ lote, motivo: "Dispensação" });
+    if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
+    if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nDispensar assim mesmo?`)) return;
     setBusy(true);
     const ok = await onDispensar({ medicamento_id: selItem.medicamento_id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", atendimento_id: atendimento.id, prescricao_item_id: selItem.id, paciente_iniciais: atendimento.iniciais || null, paciente_prontuario: atendimento.prontuario || null });
     setBusy(false);
@@ -8205,7 +8229,7 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                         <div style={{ flex: "2 1 220px" }}>
                           <label style={farmLbl}>Lote (FEFO)</label>
-                          <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
+                          <select value={loteEfetivo} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
                             {selItem._lotes.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
                           </select>
                         </div>
@@ -8235,8 +8259,9 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
   const [f, setF] = useState({ iniciais: "", prontuario: "", setor: "", medId: "", lote_id: "", quantidade: "" });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  const lotesMed = f.medId ? lotes.filter(l => String(l.medicamento_id) === String(f.medId) && Number(l.quantidade) > 0).sort((a, b) => (a.validade || "9999").localeCompare(b.validade || "9999")) : [];
-  const loteEfetivo = f.lote_id || (lotesMed[0]?.id ? String(lotesMed[0].id) : "");
+  const escAvulsa = lotesParaEscolha(f.medId ? lotes.filter(l => String(l.medicamento_id) === String(f.medId)) : [], { motivo: "Dispensação" });
+  const lotesMed = escAvulsa.lotes;
+  const loteEfetivo = f.lote_id || (escAvulsa.sugerido?.id ? String(escAvulsa.sugerido.id) : "");
 
   async function confirmar() {
     if (!f.iniciais.trim()) { alert("Informe as iniciais do paciente."); return; }
@@ -8247,6 +8272,9 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
     const q = Number(f.quantidade);
     if (!q || q <= 0) { alert("Informe a quantidade."); return; }
     if (q > Number(lote.quantidade)) { alert(`Maior que o saldo do lote (disponível: ${farmFmtQtd(lote.quantidade)}).`); return; }
+    const v = podeSair({ lote, motivo: "Dispensação" });
+    if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
+    if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nDispensar assim mesmo?`)) return;
     setBusy(true);
     const ok = await onDispensar({ medicamento_id: med.id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", paciente_iniciais: f.iniciais.trim(), paciente_prontuario: f.prontuario.trim() || null, setor: f.setor.trim() || null });
     setBusy(false);
