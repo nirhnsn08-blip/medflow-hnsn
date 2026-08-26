@@ -9,9 +9,13 @@ dá pra voltar exatamente para este estado.
   vai ao ar). Da v60 para cá: **9 PRs (#134–#142)**, todos no **Atendimento** e no
   **Faturamento**. O tema da rodada não foi construir função nova: foi **fazer chegar
   em alguém** o que já existia no código e não alcançava ninguém.
-- **1794 testes** · **nenhuma tabela nova · 8 colunas novas** · build limpo.
-  (O total de tabelas/colunas sai do próprio banco, por `supabase/auditoria-banco.sql`
-  — não confie em contagem feita no arquivo.)
+- **1794 testes** · **94 tabelas / 1495 colunas** (nenhuma tabela nova, 8 colunas novas)
+  · build limpo.
+- ⚠️ **`supabase/auditoria-banco.sql` é ARQUIVO GERADO.** Ao criar migração, rode
+  `node supabase/gerar-auditoria.mjs` — nunca edite à mão. Nesta rodada ele foi editado
+  a `sed` e o conteúdo até saiu certo, mas a **linha "Cobertura atual" ficou parada em
+  1487** e a ordem alfabética quebrou. Número em cabeçalho que ninguém recalcula é
+  número que envelhece caladinho.
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`) — conferido no bundle
   de produção, não só no CI.
 - ✅ **Banco de teste (demo)**: `npm run dev:demo` aponta para `ufxqdvxhruaswuzhmxyf`,
@@ -152,6 +156,25 @@ homônimas** — que o sistema **recusou** unificar, com prova (CPFs diferentes)
 73 pacientes. Saíram os rastros dos passeios. **Ficou de propósito** o endereço do T9020:
 apagar endereço de cadastro para consertar sujeira de teste é remédio pior que a doença, e
 quem for testar CEP de novo precisa de um cadastro com endereço.
+
+### 🔢 A contagem de tabelas/colunas — como ela quase virou lenda
+
+A v61 quase saiu dizendo que o número da v60 não conferia. Conferia: o erro era da
+conferência.
+
+Contando `supabase/auditoria-banco.sql` com um `grep` cujo padrão de origem era
+`[a-z0-9-]+`, o resultado dava 84/1378 — porque origens como `farmacia-faseA` têm
+**letra maiúscula**, e a expressão as descartava **em silêncio**. Uma verificação que
+falha para menos, sem avisar, é do mesmo tipo do teste que passa dos dois jeitos: ela
+não te dá um erro, te dá um número errado com cara de certo.
+
+O número certo é **94 tabelas / 1495 colunas** — e fecha exatamente: 1487 da v60 mais as
+8 colunas desta rodada (1 do IBGE, 3 da remessa, 4 da unificação).
+
+**Onde ele mora:** no cabeçalho de `auditoria-banco.sql`, escrito pelo gerador. Para
+saber, rode `node supabase/gerar-auditoria.mjs` e leia o que ele imprime. Não conte no
+arquivo com grep, e não conte no banco: o arquivo é o que o banco **deveria** ter, e é
+contra ele que a auditoria compara.
 
 ### ❓ Em aberto, esperando decisão de produto
 
