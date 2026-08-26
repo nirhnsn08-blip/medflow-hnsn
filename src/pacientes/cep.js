@@ -67,6 +67,15 @@ export function camposDoCep(resposta, atual = {}) {
   por("end_municipio", resposta.localidade);
   por("end_uf", resposta.uf);
 
+  // O código IBGE do município, que a AIH e o BPA exigem e ninguém digita.
+  // Só entra se o município que VAI FICAR no formulário for o que o CEP
+  // respondeu: quem já tinha digitado outra cidade manda, e carimbar o
+  // código do CEP ao lado dela criaria um endereço que se contradiz.
+  const municipioFinal = out.end_municipio ?? atual?.end_municipio;
+  if (ibgeValido(resposta.ibge) && mesmoMunicipio(municipioFinal, resposta.localidade)) {
+    out.end_municipio_ibge = String(resposta.ibge).trim();
+  }
+
   return out;
 }
 
@@ -88,3 +97,58 @@ export function mensagemDoCep({ estado, preenchidos = 0 } = {}) {
     return `CEP encontrado: ${preenchidos} campo(s) preenchido(s). Confira com a pessoa e complete o número.`;
   return "";
 }
+
+// ═══════════════════════════════════════════════════════════
+// CÓDIGO IBGE DO MUNICÍPIO
+//
+// A AIH e o BPA não aceitam o município por extenso: exigem o código de 7
+// dígitos do IBGE. Quem digita "Navegantes" na recepção não sabe que o
+// faturamento precisa de "4211900", e o faturista descobre isso na glosa.
+//
+// A resposta do CEP já traz o código — vinha e era jogada fora.
+//
+// ⚠️ O CÓDIGO SÓ VALE SE FOR DAQUELE MUNICÍPIO. É por isso que este
+// pedaço é maior do que "copiar mais um campo": um código guardado ao
+// lado do nome de OUTRA cidade é pior que código nenhum — nome errado
+// alguém lê e corrige, código errado passa direto e volta como glosa.
+// Daí as duas metades:
+//   1. só se grava quando o município que ficou no formulário é o mesmo
+//      que o CEP respondeu (o que a recepção já tinha digitado manda);
+//   2. mexeu no município ou na UF à mão depois, o código é apagado —
+//      quem edita a cidade está dizendo que a de antes estava errada.
+// ═══════════════════════════════════════════════════════════
+
+/** Municípios brasileiros têm código de 7 dígitos (UF + 5). */
+export const DIGITOS_DO_IBGE = 7;
+
+const semAcento = v =>
+  String(v ?? "").trim().normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+
+/** Mesma cidade escrita de dois jeitos ainda é a mesma cidade. */
+export const mesmoMunicipio = (a, b) => {
+  const x = semAcento(a);
+  return !!x && x === semAcento(b);
+};
+
+/** Só aceita o que tem cara de código de município. */
+export const ibgeValido = v => /^[0-9]{7}$/.test(String(v ?? "").trim());
+
+/**
+ * Campos que, editados à mão, tornam o código guardado uma mentira.
+ *
+ * Não é zelo excessivo: é a diferença entre um dado que só sabe chegar e
+ * um que também sabe ir embora quando deixa de ser verdade.
+ */
+export const CAMPOS_QUE_INVALIDAM_O_IBGE = ["end_municipio", "end_uf"];
+export const invalidaOIbge = campo => CAMPOS_QUE_INVALIDAM_O_IBGE.includes(campo);
+
+/**
+ * Quantos campos a pessoa VÊ preenchidos.
+ *
+ * O código IBGE entra no formulário sem aparecer nele. Contá-lo faria a
+ * mensagem prometer um campo a mais do que a recepcionista consegue achar
+ * na tela — e ela ia procurar.
+ */
+export const CAMPOS_INVISIVEIS = ["end_municipio_ibge"];
+export const contarPreenchidosVisiveis = novos =>
+  Object.keys(novos || {}).filter(c => !CAMPOS_INVISIVEIS.includes(c)).length;

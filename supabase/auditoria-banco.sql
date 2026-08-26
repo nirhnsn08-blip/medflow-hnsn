@@ -762,6 +762,7 @@ colunas(tabela, coluna, origem) as (values
   ('pacientes','end_complemento','pacientes-identificacao'),
   ('pacientes','end_logradouro','pacientes-identificacao'),
   ('pacientes','end_municipio','pacientes-identificacao'),
+  ('pacientes','end_municipio_ibge','pacientes-municipio-ibge'),
   ('pacientes','end_numero','pacientes-identificacao'),
   ('pacientes','end_referencia','pacientes-identificacao'),
   ('pacientes','end_uf','pacientes-identificacao'),

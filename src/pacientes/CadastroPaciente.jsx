@@ -44,7 +44,7 @@ import {
   NACIONALIDADES, normalizarNacionalidade, nascidoNoBrasil, autodeclaradoIndigena,
   limparCamposInaplicaveis, temIdentificadorMinimo,
 } from "./identidade.js";
-import { cepCompleto, cepLimpo, camposDoCep, mensagemDoCep } from "./cep.js";
+import { cepCompleto, cepLimpo, camposDoCep, mensagemDoCep, invalidaOIbge, contarPreenchidosVisiveis } from "./cep.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 12 };
@@ -115,6 +115,7 @@ const VAZIO = {
   raca_cor: "", cpf: "", rg: "", rg_orgao_emissor: "", cns: "", passaporte: "",
   end_logradouro: "", end_numero: "", end_complemento: "", end_bairro: "",
   end_municipio: "", end_uf: "", end_cep: "", end_referencia: "",
+  end_municipio_ibge: "",   // vem do CEP, ninguém digita — e some se a cidade mudar
   telefone: "", telefone_alt: "", email: "",
   responsavel_nome: "", responsavel_documento: "", responsavel_parentesco: "", responsavel_telefone: "",
   observacao: "",
@@ -142,7 +143,16 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   const [msg, setMsg] = useState("");
   const [candidatos, setCandidatos] = useState([]);
   const [avisoCep, setAvisoCep] = useState("");
-  const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setMsg(""); };
+  /**
+   * ⚠️ Mexeu no município ou na UF à mão? O código IBGE guardado era da
+   * cidade de ANTES — quem edita a cidade está dizendo que a anterior
+   * estava errada. Nome errado alguém lê e corrige; código errado passa
+   * direto e volta como glosa. Então o código vai embora junto.
+   */
+  const set = (k, v) => {
+    setF(p => ({ ...p, [k]: v, ...(invalidaOIbge(k) ? { end_municipio_ibge: "" } : {}) }));
+    setMsg("");
+  };
 
   const edicao = !!paciente?.prontuario;
 
@@ -194,7 +204,7 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
       if (!dados || dados.erro) { setAvisoCep(mensagemDoCep({ estado: "invalido" })); return; }
       setF(atual => {
         const novos = camposDoCep(dados, atual);
-        setAvisoCep(mensagemDoCep({ estado: "achou", preenchidos: Object.keys(novos).length }));
+        setAvisoCep(mensagemDoCep({ estado: "achou", preenchidos: contarPreenchidosVisiveis(novos) }));
         return { ...atual, ...novos };
       });
     } catch {
@@ -504,7 +514,10 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 90px 130px", gap: 10, marginTop: 10 }}>
           <Campo label="Bairro" valor={f.end_bairro} onChange={v => set("end_bairro", v)} />
-          <Campo label="Município" valor={f.end_municipio} onChange={v => set("end_municipio", v)} />
+          <Campo label="Município" valor={f.end_municipio} onChange={v => set("end_municipio", v)}
+            dica={f.end_municipio_ibge
+              ? `IBGE ${f.end_municipio_ibge} — é este código que vai na AIH e no BPA.`
+              : undefined} />
           <Campo label="UF" valor={f.end_uf} onChange={v => set("end_uf", v)} opcoes={["", ...UFS]} />
           <Campo label="CEP" valor={f.end_cep} maxLength={9} placeholder="00000-000"
             onChange={v => { set("end_cep", v); setAvisoCep(""); buscarCep(v); }}

@@ -14,6 +14,7 @@
 import { describe, it, expect } from "vitest";
 import {
   cepLimpo, formatarCep, cepCompleto, camposDoCep, mensagemDoCep, DIGITOS_DO_CEP,
+  DIGITOS_DO_IBGE, ibgeValido, invalidaOIbge, contarPreenchidosVisiveis,
 } from "./cep.js";
 
 const RESPOSTA = {
@@ -121,5 +122,73 @@ describe("mensagemDoCep — o que se diz a quem está no balcão", () => {
     const m = mensagemDoCep({ estado: "achou", preenchidos: 3 });
     expect(m).toMatch(/3 campo/);
     expect(m).toMatch(/complete o número/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// CÓDIGO IBGE DO MUNICÍPIO
+//
+// A AIH e o BPA exigem o código de 7 dígitos, não o nome da cidade. A
+// resposta do CEP já trazia o código e ele era jogado fora.
+//
+// 🔴 O CASO QUE MOTIVA O ARQUIVO INTEIRO: código certo ao lado da cidade
+// errada. Nome errado alguém lê e corrige; código errado passa direto e
+// volta como glosa meses depois.
+// ═══════════════════════════════════════════════════════════
+
+const COM_IBGE = { ...RESPOSTA, ibge: "4211900" };
+
+describe("o código IBGE do município", () => {
+  it("vem junto quando o CEP preencheu o município", () => {
+    expect(camposDoCep(COM_IBGE, {}).end_municipio_ibge).toBe("4211900");
+  });
+
+  it("vem junto quando a pessoa já tinha digitado A MESMA cidade", () => {
+    // acento e caixa não fazem duas cidades de uma
+    expect(camposDoCep(COM_IBGE, { end_municipio: "navegantes" }).end_municipio_ibge).toBe("4211900");
+    expect(camposDoCep({ ...COM_IBGE, localidade: "São Paulo", ibge: "3550308" },
+      { end_municipio: "SAO PAULO" }).end_municipio_ibge).toBe("3550308");
+  });
+
+  it("🔴 NÃO carimba o código do CEP ao lado de outra cidade", () => {
+    // O CEP é de Navegantes; a recepção digitou Itajaí e o que ela digitou
+    // manda. Gravar 4211900 aqui criaria um endereço que se contradiz — e
+    // é o código, não o nome, que vai para a AIH.
+    const r = camposDoCep(COM_IBGE, { end_municipio: "Itajaí" });
+    expect(r.end_municipio).toBeUndefined();
+    expect(r.end_municipio_ibge).toBeUndefined();
+  });
+
+  it("não inventa código quando a resposta não traz, ou traz lixo", () => {
+    expect(camposDoCep(RESPOSTA, {}).end_municipio_ibge).toBeUndefined();
+    expect(camposDoCep({ ...COM_IBGE, ibge: "" }, {}).end_municipio_ibge).toBeUndefined();
+    expect(camposDoCep({ ...COM_IBGE, ibge: "42119" }, {}).end_municipio_ibge).toBeUndefined();
+    expect(camposDoCep({ ...COM_IBGE, ibge: "42119000" }, {}).end_municipio_ibge).toBeUndefined();
+    expect(camposDoCep({ ...COM_IBGE, ibge: "421190X" }, {}).end_municipio_ibge).toBeUndefined();
+  });
+
+  it("são 7 dígitos — o formato do IBGE, não um número qualquer", () => {
+    expect(DIGITOS_DO_IBGE).toBe(7);
+    expect(ibgeValido("4211900")).toBe(true);
+    expect(ibgeValido("3550308")).toBe(true);
+    expect(ibgeValido(null)).toBe(false);
+  });
+
+  it("mexer no município ou na UF à mão apaga o código", () => {
+    // Quem edita a cidade está dizendo que a de antes estava errada — e o
+    // código guardado era da de antes.
+    expect(invalidaOIbge("end_municipio")).toBe(true);
+    expect(invalidaOIbge("end_uf")).toBe(true);
+    expect(invalidaOIbge("end_bairro")).toBe(false);
+    expect(invalidaOIbge("end_logradouro")).toBe(false);
+    expect(invalidaOIbge("end_cep")).toBe(false);
+  });
+
+  it("o código não conta como campo preenchido — ela não o vê na tela", () => {
+    const novos = camposDoCep(COM_IBGE, {});
+    expect(Object.keys(novos)).toContain("end_municipio_ibge");
+    expect(contarPreenchidosVisiveis(novos)).toBe(4);   // logradouro, bairro, município, UF
+    expect(mensagemDoCep({ estado: "achou", preenchidos: contarPreenchidosVisiveis(novos) }))
+      .toContain("4 campo(s)");
   });
 });
