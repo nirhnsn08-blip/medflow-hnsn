@@ -45,6 +45,10 @@ import {
   limparCamposInaplicaveis, temIdentificadorMinimo,
 } from "./identidade.js";
 import { cepCompleto, cepLimpo, camposDoCep, mensagemDoCep, invalidaOIbge, contarPreenchidosVisiveis } from "./cep.js";
+import {
+  podeUnificar, foiUnificado, avisoDaFichaUnificada, avisoDaFichaDestino, MOTIVO_MIN,
+} from "./unificacao.js";
+import { unificarProntuario, fichasUnificadasEm } from "../atendimento/dados.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 12 };
@@ -143,6 +147,12 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   const [msg, setMsg] = useState("");
   const [candidatos, setCandidatos] = useState([]);
   const [avisoCep, setAvisoCep] = useState("");
+  // Unificação: as fichas que caíram NESTE prontuário, e o formulário do ato.
+  const [unificadas, setUnificadas] = useState([]);
+  const [alvoUnif, setAlvoUnif] = useState(null);      // o candidato escolhido
+  const [motivoUnif, setMotivoUnif] = useState("");
+  const [unificando, setUnificando] = useState(false);
+  const [msgUnif, setMsgUnif] = useState(null);        // { tom, texto }
   /**
    * ⚠️ Mexeu no município ou na UF à mão? O código IBGE guardado era da
    * cidade de ANTES — quem edita a cidade está dizendo que a anterior
@@ -155,6 +165,50 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   };
 
   const edicao = !!paciente?.prontuario;
+
+  // 🔴 A OUTRA PONTA DO PONTEIRO. Sem esta busca, quem abre o prontuário que
+  // SOBREVIVEU não fica sabendo que existe histórico embaixo de outro número
+  // — que é exatamente o problema que a unificação existe para resolver.
+  useEffect(() => {
+    let vivo = true;
+    if (!paciente?.prontuario) { setUnificadas([]); return; }
+    fichasUnificadasEm(sb, paciente.prontuario)
+      .then(r => { if (vivo) setUnificadas(r); })
+      .catch(() => { if (vivo) setUnificadas([]); });
+    return () => { vivo = false; };
+  }, [sb, paciente?.prontuario]);
+
+  const avisoUnificado = avisoDaFichaUnificada(paciente);
+  const avisoDestino = avisoDaFichaDestino(unificadas);
+
+  /**
+   * Liga esta ficha na do candidato escolhido.
+   *
+   * ⚠️ NÃO MOVE DADO CLÍNICO — ver o cabeçalho de `unificacao.js`. A
+   * confirmação diz isso com todas as letras, porque a expectativa natural
+   * de quem clica é que o histórico venha junto, e ele NÃO vem.
+   */
+  async function unificar() {
+    if (!alvoUnif || unificando) return;
+    const v = podeUnificar({ origem: paciente, destino: alvoUnif, motivo: motivoUnif });
+    if (!v.ok) { setMsgUnif({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    const avisos = v.avisos.length ? v.avisos.join("\n\n") + "\n\n" : "";
+    if (!confirm(
+      `${avisos}Unificar o prontuário ${paciente.prontuario} em ${alvoUnif.prontuario}.\n\n` +
+      `O ${paciente.prontuario} passa a apontar para o ${alvoUnif.prontuario} e continua existindo — ` +
+      `o número está em pulseira e em papel, e não some.\n\n` +
+      `O histórico clínico NÃO é movido: o que foi registrado no ${paciente.prontuario} continua lá, ` +
+      `e as duas fichas passam a se enxergar.\n\nConfirmar?`)) return;
+
+    setUnificando(true);
+    const r = await unificarProntuario(sb, {
+      origem: paciente.prontuario, destino: alvoUnif.prontuario, motivo: motivoUnif,
+    }, currentUser);
+    setUnificando(false);
+    if (!r.ok) { setMsgUnif({ tom: "erro", texto: r.motivo }); return; }
+    setMsgUnif({ tom: "ok", texto: `Prontuário ${paciente.prontuario} unificado em ${alvoUnif.prontuario}.` });
+    setAlvoUnif(null); setMotivoUnif("");
+  }
 
   // ── conferência da norma, ao vivo ──
   const conferencia = useMemo(() => conferirCadastro(f), [f]);
@@ -384,6 +438,41 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
         )}
       </div>
 
+      {/* 🔴 AS DUAS PONTAS DO PONTEIRO. Uma diz "esta ficha virou outra";
+          a outra diz "estas fichas viraram esta". Sem a segunda, o ponteiro
+          seria de mão única e o histórico embaixo do número antigo
+          continuaria invisível — o problema que a unificação resolve. */}
+      {avisoUnificado && (
+        <div style={{ ...cartao, borderLeft: "4px solid #6366f1", background: "#6366f110" }}>
+          <div style={{ ...rotulo, color: "#6366f1", marginBottom: 6 }}>Prontuário unificado</div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.55 }}>{avisoUnificado.texto}</div>
+          {paciente?.unificacao_motivo && (
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 6, fontStyle: "italic" }}>
+              {paciente.unificacao_motivo}
+              {paciente.unificado_por ? ` — ${paciente.unificado_por}` : ""}
+            </div>
+          )}
+        </div>
+      )}
+
+      {avisoDestino && (
+        <div style={{ ...cartao, borderLeft: "4px solid #6366f1", background: "#6366f110" }}>
+          <div style={{ ...rotulo, color: "#6366f1", marginBottom: 6 }}>
+            Recebeu {avisoDestino.prontuarios.length === 1 ? "outra ficha" : "outras fichas"}
+          </div>
+          <div style={{ fontSize: 12.5, lineHeight: 1.55 }}>{avisoDestino.texto}</div>
+          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+            {unificadas.map(u => (
+              <div key={u.prontuario} style={{ fontSize: 11.5, color: "var(--text-3)" }}>
+                • <strong>{u.prontuario}</strong>
+                {u.unificacao_motivo ? ` — ${u.unificacao_motivo}` : ""}
+                {u.unificado_por ? ` (${u.unificado_por})` : ""}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* DUPLICIDADE */}
       {duplicatas.length > 0 && (
         <div style={{ ...cartao, borderLeft: "4px solid #f43f5e", background: "#f43f5e10" }}>
@@ -403,6 +492,71 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
             Se for a mesma pessoa, <strong>use o prontuário que já existe</strong> em vez de criar outro —
             dois registros dividem o histórico, e quem atende passa a decidir vendo metade.
           </div>
+
+          {/* ⚠️ A UNIFICAÇÃO SÓ APARECE AO EDITAR FICHA QUE JÁ EXISTE, e
+              nunca ao criar: no cadastro novo o certo é ABRIR o prontuário
+              existente, não criar um e emendar depois. E some quando esta
+              ficha já foi unificada — o destino tem que ser o fim da linha. */}
+          {edicao && canEdit && !foiUnificado(paciente) && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11.5, color: "var(--text-2)", marginBottom: 8, lineHeight: 1.5 }}>
+                Se o cadastro já foi feito duas vezes, <strong>unifique</strong>: esta ficha passa a apontar
+                para a outra e as duas se enxergam. <strong>O histórico clínico não é movido</strong> — o que
+                está registrado aqui continua aqui.
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+                {duplicatas.map(d => (
+                  <button key={d.prontuario} type="button"
+                    onClick={() => { setAlvoUnif(alvoUnif?.prontuario === d.prontuario ? null : d.paciente); setMsgUnif(null); }}
+                    style={{ fontSize: 12, padding: "5px 10px", borderRadius: 7, cursor: "pointer",
+                             border: `1px solid ${alvoUnif?.prontuario === d.prontuario ? "#6366f1" : "var(--border)"}`,
+                             background: alvoUnif?.prontuario === d.prontuario ? "#6366f120" : "var(--surface-2)",
+                             color: "var(--text)" }}>
+                    Unificar em {d.prontuario}
+                  </button>
+                ))}
+              </div>
+              {alvoUnif && (
+                <>
+                  <textarea value={motivoUnif} rows={2}
+                    onChange={e => { setMotivoUnif(e.target.value); setMsgUnif(null); }}
+                    placeholder="Por que são a mesma pessoa? É o que alguém vai ler daqui a um ano."
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, fontSize: 12.5,
+                             border: "1px solid var(--border)", background: "var(--surface-2)",
+                             color: "var(--text)", resize: "vertical" }} />
+                  {(() => {
+                    const v = podeUnificar({ origem: paciente, destino: alvoUnif, motivo: motivoUnif });
+                    return (
+                      <>
+                        {v.erros.map((e, i) => (
+                          <div key={`e${i}`} style={{ fontSize: 12, color: "#f43f5e", marginTop: 6 }}>{e}</div>
+                        ))}
+                        {/* Sinais de que podem ser PESSOAS DIFERENTES. Não
+                            bloqueiam — cada um tem explicação inocente
+                            frequente — mas é o que se precisa ler antes. */}
+                        {v.avisos.map((a, i) => (
+                          <div key={`a${i}`} style={{ fontSize: 12, color: "#d97706", marginTop: 6 }}>{a}</div>
+                        ))}
+                        <button type="button" onClick={unificar} disabled={!v.ok || unificando}
+                          style={{ marginTop: 10, fontSize: 12.5, fontWeight: 700, padding: "8px 14px",
+                                   borderRadius: 8, border: "none", background: "#6366f1", color: "#fff",
+                                   opacity: !v.ok || unificando ? .45 : 1,
+                                   cursor: !v.ok || unificando ? "not-allowed" : "pointer" }}>
+                          {unificando ? "Unificando…" : `Unificar ${paciente.prontuario} em ${alvoUnif.prontuario}`}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </>
+              )}
+              {msgUnif && (
+                <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 500,
+                              color: msgUnif.tom === "erro" ? "#f43f5e" : "#16a34a" }}>
+                  {msgUnif.texto}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

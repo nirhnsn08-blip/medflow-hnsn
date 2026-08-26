@@ -36,6 +36,7 @@ import {
   carregarResponsaveis, responsaveisAnteriores, salvarResponsavel, desativarResponsavel,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, cancelarItem,
   fecharConta, reabrirConta, contasDaCompetencia, registrarTransmissao,
+  unificarProntuario, fichasUnificadasEm,
 } from "./dados.js";
 import { DOMINIOS } from "./ficha.js";
 import { CATALOGOS } from "./catalogo.js";
@@ -252,6 +253,50 @@ describe("escritas da recepção", () => {
     await reabrirConta(sb, 9, USER);
     expect(chamadas).toHaveLength(3);
     for (const c of chamadas) conferirEscrita(c);
+  });
+
+  it("unificar prontuário grava só em coluna que existe — e carimba quem, quando e por quê", async () => {
+    const { sb, chamadas } = espiao();
+    await unificarProntuario(sb, {
+      origem: "T9013", destino: "T9020",
+      motivo: "mesma pessoa — veio sem documento e voltou com CPF",
+    }, USER);
+    expect(chamadas).toHaveLength(1);
+    conferirEscrita(chamadas[0]);
+
+    const corpo = JSON.parse(chamadas[0].opcoes.body);
+    expect(corpo.unificado_para).toBe("T9020");
+    expect(corpo.unificado_por).toBe(USER.name);
+    expect(corpo.unificacao_motivo).toMatch(/sem documento/);
+    // O motivo é o que alguém lê numa auditoria: não pode virar string vazia.
+    expect(corpo.unificacao_motivo).not.toBe("");
+
+    // 🔴 O filtro é o que impede reescrever o ponteiro num clique repetido.
+    expect(chamadas[0].recurso).toMatch(/unificado_para=is.null/);
+    expect(chamadas[0].recurso).toMatch(/prontuario=eq.T9013/);
+  });
+
+  it("unificação não move dado clínico — UMA tabela é tocada, e é pacientes", async () => {
+    // A garantia central desta fase. Se um dia alguém acrescentar aqui os
+    // PATCHes das outras 33 tabelas sem uma transação, este teste avisa.
+    const { sb, chamadas } = espiao();
+    await unificarProntuario(sb, { origem: "T9013", destino: "T9020", motivo: "x".repeat(20) }, USER);
+    expect(chamadas).toHaveLength(1);
+    expect(chamadas.map(c => String(c.recurso).split("?")[0])).toEqual(["pacientes"]);
+  });
+
+  it("unificar consigo mesmo não toca no banco", async () => {
+    const { sb, chamadas } = espiao();
+    const r = await unificarProntuario(sb, { origem: "T9013", destino: "T9013", motivo: "x".repeat(20) }, USER);
+    expect(r.ok).toBe(false);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it("a volta do ponteiro lê só coluna que existe", async () => {
+    const { sb, chamadas } = espiao();
+    await fichasUnificadasEm(sb, "T9020");
+    expect(chamadas).toHaveLength(1);
+    conferirLeitura(chamadas[0]);
   });
 
   it("registrar a transmissão grava só em coluna que existe — e carimba quem e quando", async () => {

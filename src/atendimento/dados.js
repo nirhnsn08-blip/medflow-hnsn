@@ -1433,3 +1433,63 @@ export async function concluirIdentificacao(sb, prontuario, user) {
   }
   return { ok: true, paciente: r[0] };
 }
+
+// ── UNIFICAÇÃO DE PRONTUÁRIO ────────────────────────────────
+
+/**
+ * As fichas que foram unificadas NESTE prontuário.
+ *
+ * 🔴 É a metade que faz o ponteiro ter duas mãos. Sem ela, quem abre o
+ * prontuário que sobreviveu não fica sabendo que existe histórico embaixo
+ * de outro número — que é o problema inteiro que a unificação resolve.
+ */
+export async function fichasUnificadasEm(sb, prontuario) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const r = await sb(`pacientes?unificado_para=eq.${encodeURIComponent(p)}` +
+    `&select=prontuario,nome_completo,iniciais,data_nascimento,unificado_em,unificado_por,unificacao_motivo` +
+    `&order=unificado_em.desc&limit=20`);
+  return Array.isArray(r) ? r : [];
+}
+
+/**
+ * Liga a ficha `origem` na ficha `destino`.
+ *
+ * A validação é de `podeUnificar` — aqui só se grava. O dado clínico NÃO
+ * se move: ver o cabeçalho de `unificacao.js` para o porquê.
+ *
+ * O filtro `unificado_para=is.null` é o que impede unificar duas vezes
+ * quando a tela é clicada em duplicidade — e, com ele, um clique repetido
+ * devolve zero linha em vez de reescrever o ponteiro por cima.
+ */
+export async function unificarProntuario(sb, { origem, destino, motivo }, user) {
+  const a = normalizarProntuario(origem);
+  const b = normalizarProntuario(destino);
+  if (!a || !b) return { ok: false, motivo: "Sem prontuário de origem ou de destino." };
+  if (a === b) return { ok: false, motivo: "São o mesmo prontuário." };
+
+  const r = await sb(`pacientes?prontuario=eq.${encodeURIComponent(a)}&unificado_para=is.null`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      unificado_para: b,
+      unificado_em: new Date().toISOString(),
+      unificado_por: user?.name || null,
+      unificacao_motivo: String(motivo ?? "").trim() || null,
+      usuario: user?.name || null,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  // `null` = a requisição FALHOU (o trigger de cadeia recusou, coluna que a
+  // migração ainda não criou, RLS). `sbFetch` já mandou o motivo exato para
+  // o alerta do topo. `[]` = funcionou e não achou ficha por unificar.
+  // Juntar as duas faria a mensagem afirmar uma causa que ela não sabe.
+  if (r === null) {
+    return { ok: false, motivo: "A gravação não chegou ao banco. O aviso vermelho no topo da tela diz o motivo exato — o banco recusa cadeia de unificação, e é a recusa mais provável aqui." };
+  }
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: `O prontuário ${a} já havia sido unificado. Recarregue para ver para onde ele aponta.` };
+  }
+  return { ok: true, paciente: r[0] };
+}
