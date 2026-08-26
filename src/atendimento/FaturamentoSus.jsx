@@ -29,12 +29,13 @@ import {
 } from "./sigtap.js";
 import { montarContaDoProntuario, escolherInternacao, montarWorklist } from "./montar-conta.js";
 import { resumoFaturamento, resumoPorVia } from "./resumo-faturamento.js";
-import { reais, centavos, STATUS_CONTA } from "./faturamento.js";
+import { reais, centavos, STATUS_CONTA, VIAS } from "./faturamento.js";
 import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, carregarWorklistFaturamento,
-  carregarProducaoFaturavel,
+  carregarProducaoFaturavel, contasDaCompetencia, registrarTransmissao,
 } from "./dados.js";
+import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -250,8 +251,159 @@ const FAROL_IC = {
   "em-dia": <path d="M5 12l5 5L20 7" />,
 };
 
-function VisaoExecutiva({ sb, sigtapRows }) {
+
+/**
+ * REGISTRAR A TRANSMISSÃO DA REMESSA.
+ *
+ * 🔴 Sem esta tela, `faturada` era um estado inalcançável: a função que o
+ * escreve existia em `dados.js` e nenhuma tela a chamava. O KPI "Faturadas
+ * — já transmitidas ao SUS", logo acima, era zero por construção.
+ *
+ * ⚠️ O sistema NÃO gera o arquivo de remessa — é recusa deliberada e
+ * documentada em `faturamento.js`. O que se registra aqui é o FATO de
+ * alguém ter transmitido, com data e protocolo. É o que falta quando a
+ * glosa chega e ninguém sabe em qual remessa a conta foi.
+ *
+ * ⚠️ E É SEM VOLTA — daí a confirmação nomear o que vai acontecer em vez
+ * de perguntar "tem certeza?", que ninguém lê.
+ */
+function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
+  const [competencia, setCompetencia] = useState(competenciaAtual || "");
+  const [via, setVia] = useState("");
+  const [protocolo, setProtocolo] = useState("");
+  const [quando, setQuando] = useState(hojeLocal());
+  const [contas, setContas] = useState(null);   // null = ainda não buscou
+  const [buscando, setBuscando] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [msg, setMsg] = useState(null);         // { tom, texto }
+
+  useEffect(() => {
+    let vivo = true;
+    if (!competencia) { setContas(null); return; }
+    setBuscando(true);
+    (async () => {
+      const r = await contasDaCompetencia(sb, competencia, { limite: 1000 }).catch(() => []);
+      if (vivo) { setContas(r); setBuscando(false); setMsg(null); }
+    })();
+    return () => { vivo = false; };
+  }, [sb, competencia]);
+
+  const v = useMemo(
+    () => validarTransmissao({ contas: contas || [], competencia, via, protocolo, quando }),
+    [contas, competencia, via, protocolo, quando]
+  );
+  const resumo = useMemo(() => resumoDaTransmissao(v.contas), [v.contas]);
+
+  async function registrar() {
+    if (!v.ok || gravando) return;
+    const linhas = resumo.vias.map(x => `  • ${x}: ${resumo.porVia[x]}`).join("\n");
+    // Nomeia o que vai acontecer. "Tem certeza?" ninguém lê.
+    if (!confirm(
+      `Registrar a transmissão de ${resumo.quantas} ${resumo.quantas === 1 ? "conta" : "contas"} da competência ${competencia}:\n\n${linhas}\n\n` +
+      `Elas passam a FATURADA, e faturada não reabre — a correção depois da transmissão é glosa.\n\nConfirmar?`)) return;
+
+    setGravando(true);
+    const r = await registrarTransmissao(sb, v.contas.map(c => c.id),
+      { protocolo, transmitidaEm: quando }, currentUser);
+    setGravando(false);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMsg({
+      tom: r.parcial ? "aviso" : "ok",
+      texto: r.parcial ? r.motivo
+        : `${r.contas.length} ${r.contas.length === 1 ? "conta transmitida" : "contas transmitidas"} em ${quando}${protocolo ? ` · protocolo ${protocolo}` : ""}.`,
+    });
+    setProtocolo("");
+    const recarregado = await contasDaCompetencia(sb, competencia, { limite: 1000 }).catch(() => []);
+    setContas(recarregado);
+    aoRegistrar?.();
+  }
+
+  const rotulo = { fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--text-muted)", fontWeight: 700, display: "block", marginBottom: 5 };
+  const entrada = { width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: "var(--text)", fontSize: 13 };
+
+  return (
+    <div style={{ ...cx.card, marginBottom: 16 }}>
+      <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>Registrar transmissão da remessa</h3>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+        O sistema não gera o arquivo da remessa — quem transmite é você, pelo canal do órgão.
+        Aqui se registra que a remessa <b>saiu</b>: é por este registro que se sabe, quando a glosa
+        chegar, em qual remessa a conta foi e quem a enviou.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "130px 150px 150px 1fr", gap: 10, marginBottom: 12 }}>
+        <label><span style={rotulo}>Competência</span>
+          <input style={entrada} value={competencia} onChange={e => { setCompetencia(e.target.value); setMsg(null); }} placeholder="2026-08" />
+        </label>
+        <label><span style={rotulo}>Via</span>
+          <select style={entrada} value={via} onChange={e => { setVia(e.target.value); setMsg(null); }}>
+            <option value="">Todas as vias</option>
+            {Object.entries(VIAS).map(([k, cfg]) => <option key={k} value={k}>{cfg.label}</option>)}
+          </select>
+        </label>
+        <label><span style={rotulo}>Transmitida em</span>
+          <input style={entrada} type="date" value={quando} max={hojeLocal()} onChange={e => { setQuando(e.target.value); setMsg(null); }} />
+        </label>
+        <label><span style={rotulo}>Protocolo do órgão</span>
+          <input style={entrada} value={protocolo} maxLength={PROTOCOLO_MAX}
+            onChange={e => { setProtocolo(e.target.value); setMsg(null); }} placeholder="opcional — mas é por ele que se acha a conta na glosa" />
+        </label>
+      </div>
+
+      {buscando ? (
+        <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>Procurando as contas fechadas…</p>
+      ) : contas === null ? null : (
+        <>
+          {/* Só quando HÁ o que transmitir. Sem conta fechada, quem explica é
+              o erro logo abaixo — repetir a mesma frase em dois lugares é a
+              forma mais silenciosa de ensinar alguém a não ler nenhum dos dois. */}
+          {resumo.quantas > 0 && (
+            <div style={{ fontSize: 13, color: "var(--text-2)", marginBottom: 10 }}>
+              <b>{resumo.quantas}</b> {resumo.quantas === 1 ? "conta fechada entra" : "contas fechadas entram"} nesta remessa
+              {resumo.vias.length > 1 ? ` — ${resumo.vias.map(x => `${x}: ${resumo.porVia[x]}`).join(" · ")}` : ""}.
+            </div>
+          )}
+
+          {/* ⚠️ Enquanto o recibo da remessa que ACABOU de sair está na tela,
+              nada de erro da próxima. Sem isto, quem transmite vê um
+              "Nenhuma conta fechada nesta seleção" em vermelho logo ACIMA do
+              próprio recibo — e lê como se tivesse falhado. Qualquer mexida
+              num campo limpa o recibo e os avisos voltam. */}
+          {msg?.tom !== "ok" && v.erros.map((e, i) => (
+            <div key={`e${i}`} style={{ fontSize: 12.5, color: "#f43f5e", marginBottom: 6 }}>{e}</div>
+          ))}
+          {/* Avisos só acendem com sinal real — ver `validarTransmissao`. */}
+          {msg?.tom !== "ok" && v.avisos.map((a, i) => (
+            <div key={`a${i}`} style={{ fontSize: 12.5, color: "#f59e0b", marginBottom: 6 }}>{a}</div>
+          ))}
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
+            <button onClick={registrar} disabled={!v.ok || gravando}
+              style={{ background: TEAL, color: "#03201c", border: "none", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 700, opacity: !v.ok || gravando ? .45 : 1, cursor: !v.ok || gravando ? "not-allowed" : "pointer" }}>
+              {gravando ? "Registrando…" : "Registrar transmissão"}
+            </button>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Faturada não reabre — a correção depois da transmissão é glosa.
+            </span>
+          </div>
+        </>
+      )}
+
+      {msg && (
+        <div style={{ marginTop: 12, fontSize: 13, fontWeight: 500,
+                      color: msg.tom === "erro" ? "#f43f5e" : msg.tom === "aviso" ? "#f59e0b" : TEAL }}>
+          {msg.texto}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisaoExecutiva({ sb, sigtapRows, currentUser, canEdit }) {
   const [dados, setDados] = useState(null); // null = ainda carregando
+  // Sobe quando uma remessa é registrada: sem isto o KPI "Faturadas" fica
+  // no número velho até alguém trocar de aba, e quem acabou de transmitir
+  // não vê o próprio ato aparecer.
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     let vivo = true;
@@ -274,7 +426,7 @@ function VisaoExecutiva({ sb, sigtapRows }) {
       } catch { if (vivo) setDados({ worklist: [], producao: [], convenios: [], procedimentos: [] }); }
     })();
     return () => { vivo = false; };
-  }, [sb]);
+  }, [sb, recarga]);
 
   const carregando = dados === null;
   const R = useMemo(
@@ -364,6 +516,19 @@ function VisaoExecutiva({ sb, sigtapRows }) {
               <Kpi lbl="Faturadas" val={R.porSituacao.faturada} trend="já transmitidas" />
             </div>
           )}
+
+          {/* O que faz o KPI "Faturadas" acima poder deixar de ser zero.
+              Fica FORA do `!R.vazio`: hospital sem internação no mês ainda
+              tem BPA para transmitir, e a tela sumiria justo para quem só
+              fatura ambulatório. Só quem pode editar faturamento registra
+              transmissão — é ato sem volta, e o crachá de quem transmitiu
+              vai gravado. */}
+          {canEdit && (
+            <RegistrarRemessa sb={sb} currentUser={currentUser} competenciaAtual={R.competenciaAtual}
+              aoRegistrar={() => setRecarga(n => n + 1)} />
+          )}
+
+
 
           {/* faturamento por via (produção faturável · referência SIGTAP) */}
           {!V.vazio && (
@@ -1014,7 +1179,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "22px 26px 40px" }}>
-        {sub === "visao" && <VisaoExecutiva sb={sb} sigtapRows={rows} />}
+        {sub === "visao" && <VisaoExecutiva sb={sb} sigtapRows={rows} currentUser={currentUser} canEdit={canEdit} />}
         {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} canEdit={canEdit} currentUser={currentUser} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}

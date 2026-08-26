@@ -957,6 +957,11 @@ async function patchAgendamento(sb, id, campos, user) {
 const CAMPOS_CONTA = [
   "id", "atendimento_id", "prontuario", "convenio_id", "plano_id", "via",
   "competencia", "status", "fechada_em", "fechada_por", "observacao", "criado_em",
+  // A transmissão também VOLTA. Gravar quem/quando/protocolo e não trazer
+  // de volta na leitura seria a mesma coluna de mão única que este módulo
+  // já teve oito vezes — e é justamente o que se procura quando a glosa
+  // chega meses depois.
+  "faturada_em", "faturada_por", "remessa_protocolo",
 ].join(",");
 
 const CAMPOS_ITEM = [
@@ -1128,8 +1133,49 @@ export async function reabrirConta(sb, id, user) {
   return patchConta(sb, id, { status: "aberta", fechada_em: null, fechada_por: null }, user);
 }
 
-export async function marcarContaFaturada(sb, id, user) {
-  return patchConta(sb, id, { status: "faturada" }, user);
+/**
+ * Registra a transmissão de uma remessa: as contas viram `faturada`, e
+ * junto com o estado vai QUEM transmitiu, QUANDO e sob qual protocolo.
+ *
+ * 🔴 A versão anterior (`marcarContaFaturada`) gravava só o status — e
+ * nunca era chamada por ninguém. Se um dia fosse, teria perdido as três
+ * coisas que alguém procura quando a glosa chega. `fecharConta` carimba
+ * `fechada_em`/`fechada_por` desde sempre; a transmissão, que é o passo
+ * SEM VOLTA, não carimbava nada.
+ *
+ * Em lote e numa ida só: a remessa é do mês inteiro, e trezentos PATCHes
+ * em sequência é uma tela que trava no meio e deixa metade transmitida.
+ *
+ * A validação é de `validarTransmissao` — aqui só se grava.
+ */
+export async function registrarTransmissao(sb, ids, { protocolo, transmitidaEm }, user) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(v => v != null);
+  if (!lista.length) return { ok: false, motivo: "Nenhuma conta para transmitir." };
+
+  const r = await sb(`at_contas?id=in.(${lista.map(encodeURIComponent).join(",")})&status=eq.fechada`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      status: "faturada",
+      faturada_em: transmitidaEm || null,
+      faturada_por: user?.name || null,
+      remessa_protocolo: (protocolo || "").trim() || null,
+      usuario: user?.name || null,
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  // O PostgREST devolve 2xx mesmo alterando ZERO linha — o RETORNO é a
+  // única prova. E o `status=eq.fechada` no filtro é o que impede
+  // reprocessar conta já faturada se a tela for clicada duas vezes.
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nenhuma conta foi transmitida — confirme que seu perfil permite editar faturamento e que as contas ainda estavam fechadas." };
+  }
+  if (r.length !== lista.length) {
+    return { ok: true, contas: r, parcial: true,
+             motivo: `${r.length} de ${lista.length} contas foram marcadas. As demais já não estavam fechadas — alguém pode ter mexido nelas enquanto esta tela estava aberta.` };
+  }
+  return { ok: true, contas: r };
 }
 
 async function patchConta(sb, id, campos, user) {
