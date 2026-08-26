@@ -45,6 +45,7 @@ import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import Impressos from "./Impressos.jsx";
 import { rotuloDominio } from "./impressos.js";
 import { CATEGORIAS_SEM_CAMPO } from "./prioridade.js";
+import PainelChamada from "./PainelChamada.jsx";
 import ResponsavelDoEpisodio from "./Responsavel.jsx";
 import { conciliarProducao, validarGravacao, CAMPOS_APURAVEIS } from "./producao.js";
 import RelatorioAmbulatorio from "./RelatorioAmbulatorio.jsx";
@@ -98,6 +99,10 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   // `vagasDoDia` e a contagem de livres enxergarem vagas que não são deste
   // dia. Só a reconstrução da corrente os enxerga.
   const [ancestrais, setAncestrais] = useState([]);
+  // O painel da sala de espera é TELA CHEIA, não uma aba: ele cobre a
+  // interface inteira porque a máquina fica ligada nele o dia todo, virada
+  // para a sala. Sair é ato deliberado de quem opera.
+  const [painel, setPainel] = useState(false);
   const [buscaPac, setBuscaPac] = useState("");
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
@@ -531,7 +536,23 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             style={{ ...btn(vista === k ? "#22d3ee" : "var(--surface-2)", vista === k),
                      color: vista === k ? "#000" : "var(--text)" }}>{l}</button>
         ))}
+        {/* NÃO é uma vista como as outras — abre em tela cheia, virada para
+            a sala de espera. Fica separado das abas por isso. */}
+        <button onClick={() => setPainel(true)} title="Tela cheia para a TV da sala de espera"
+          style={{ ...btn("var(--surface-2)", false), marginLeft: "auto", color: "var(--text)" }}>
+          📺 Painel da sala
+        </button>
       </div>
+
+      {painel && (
+        <PainelChamada
+          fila={fila}
+          especialidades={Object.fromEntries((catalogos.especialidade || []).map(e => [e.codigo, e.nome]))}
+          profissionais={Object.fromEntries(profissionais.map(p => [p.username, p.nome || p.username]))}
+          onAtualizar={recarregarDia}
+          onSair={() => setPainel(false)}
+        />
+      )}
 
       {msg && (
         <div style={{ ...cartao, borderLeft: `4px solid ${msg.tom === "erro" ? "#f43f5e" : "#34d399"}`,
