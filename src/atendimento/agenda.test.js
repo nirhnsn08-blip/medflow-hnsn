@@ -906,3 +906,64 @@ describe("remarcação não troca de paciente", () => {
     expect(r.erros.some(e => /não de T9002|liga o histórico/i.test(e))).toBe(false);
   });
 });
+
+// 🔴 A REMARCAÇÃO NÃO CHEGAVA A INDICADOR NENHUM.
+//
+// O #128 passou a gravar o elo e o lado (hospital × paciente), e o relatório
+// do mês continuava mostrando só "cancelados" — uma remarcação aparecia ali,
+// ao lado de quem simplesmente desistiu. Sumia justamente "quantas vezes o
+// HOSPITAL empurrou o paciente", que é o único número deste conjunto sobre o
+// qual o hospital manda.
+describe("producaoDoDia conta as remarcações", () => {
+  const grade = {
+    especialidade_cod: "ORT", dia_semana: 3, hora_inicio: "08:00", hora_fim: "12:00",
+    duracao_min: 20, vagas_internas: 6, ativa: true,
+  };
+  const vaga = (over = {}) => ({
+    data: "2026-09-02", status: "agendado", origem_marcacao: "interna", ...over,
+  });
+  const producao = agendamentos =>
+    producaoDoDia({ grades: [grade], data: "2026-09-02", agendamentos });
+
+  it("🔴 conta pelo lado NOVO, separando quem empurrou", () => {
+    const p = producao([
+      vaga(),
+      vaga({ remarcado_de: 9, remarcacao_motivo: "hospital_profissional" }),
+      vaga({ remarcado_de: 8, remarcacao_motivo: "hospital_estrutura" }),
+      vaga({ remarcado_de: 7, remarcacao_motivo: "paciente_pediu" }),
+    ]);
+    expect(p.remarcados).toBe(3);
+    expect(p.remarcadosPeloHospital).toBe(2);
+  });
+
+  it("dia sem remarcação nenhuma dá zero, não indefinido", () => {
+    // Campo ausente no relatório vira célula vazia, que o gestor lê como
+    // "não tem dado" em vez de "não aconteceu".
+    const p = producao([vaga(), vaga()]);
+    expect(p.remarcados).toBe(0);
+    expect(p.remarcadosPeloHospital).toBe(0);
+  });
+
+  it("remarcação com motivo desconhecido conta, mas não como do hospital", () => {
+    // Registro antigo ou motivo que saiu do catálogo: o elo existe e vale,
+    // mas atribuir ao hospital sem prova inflaria o número que ele usa para
+    // se cobrar.
+    const p = producao([vaga({ remarcado_de: 9, remarcacao_motivo: null })]);
+    expect(p.remarcados).toBe(1);
+    expect(p.remarcadosPeloHospital).toBe(0);
+  });
+
+  it("cancelado e remarcado são coisas diferentes", () => {
+    const p = producao([
+      vaga({ status: "cancelado" }),
+      vaga({ remarcado_de: 9, remarcacao_motivo: "hospital_agenda" }),
+    ]);
+    expect(p.cancelados).toBe(1);
+    expect(p.remarcados).toBe(1);
+  });
+
+  it("remarcação de OUTRO dia não entra na conta deste", () => {
+    const p = producao([vaga({ data: "2026-09-09", remarcado_de: 9, remarcacao_motivo: "hospital_agenda" })]);
+    expect(p.remarcados).toBe(0);
+  });
+});

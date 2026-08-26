@@ -474,6 +474,38 @@ export function conferirCadastro(paciente) {
   };
 }
 
+/**
+ * 🔴 CRIAR CADASTRO EXIGE UM IDENTIFICADOR. QUALQUER UM.
+ *
+ * O botão "Cadastrar paciente" funcionava com o formulário INTEIRAMENTE
+ * vazio: 0% da identificação, a barra listando os oito campos que faltam, e
+ * nada impedindo. Um clique errado criava prontuário com iniciais "?", que
+ * depois entrava na lista de identificação pendente e na checagem de
+ * duplicidade de todo mundo.
+ *
+ * ISTO NÃO CONTRARIA O "NUNCA BLOQUEIA". Esse princípio existe para o
+ * politraumatizado (CFM 1.638, art. 5º, I, "e") — e para ele já há um
+ * caminho próprio e NOMEADO, "Emergência — paciente sem identificação", que
+ * grava a origem e entra na fila de pendências. Cadastro inteiramente vazio
+ * não é emergência: é clique errado.
+ *
+ * O piso é UM identificador, não a ficha completa: nome, ou CPF, ou CNS.
+ * Quem chega com o cartão do SUS na mão e sem saber soletrar o nome
+ * continua sendo cadastrado.
+ *
+ * Vale só para CRIAR. Editar um cadastro que já existe nunca cria fantasma
+ * — e travar a edição impediria alguém de consertar o endereço de um
+ * registro legado que veio sem nome.
+ */
+export function temIdentificadorMinimo(paciente) {
+  const p = paciente || {};
+  if (String(p.nome_completo ?? "").trim()) return true;
+  if (String(p.nome_social ?? "").trim()) return true;
+  if (limparDoc(p.cpf).length === 11) return true;
+  if (limparDoc(p.cns).length === 15) return true;
+  return false;
+}
+
 // ── DUPLICIDADE ─────────────────────────────────────────────
 
 /**

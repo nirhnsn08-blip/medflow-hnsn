@@ -126,18 +126,26 @@ export default function RelatorioAmbulatorio({ sb, grades = [], catalogoEspecial
         </div>
 
         {/* ── totais do mês ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginBottom: 16 }}>
           {[
             ["Ofertadas", r.total.ofertadas ?? 0, "#eff6ff", "#93c5fd", "#1d4ed8"],
             ["Realizadas", r.total.realizadas ?? 0, "#f0fdf4", "#86efac", "#16a34a"],
             ["Faltas", r.total.faltas ?? 0, "#fef2f2", "#fca5a5", "#dc2626"],
             ["Cancelados", r.total.cancelados ?? 0, "#f8fafc", "#e2e8f0", "#475569"],
+            // 🔴 O NÚMERO QUE FALTAVA. A remarcação aparecia só como
+            // "cancelado", ao lado de quem simplesmente desistiu — e o
+            // hospital não tinha onde ler quantas vezes foi ELE que empurrou
+            // o paciente, que é o único destes números sobre o qual ele
+            // manda. O de dentro dos parênteses é a parte acionável.
+            ["Remarcadas", `${r.total.remarcados ?? 0}${r.total.remarcadosPeloHospital ? ` (${r.total.remarcadosPeloHospital} pelo hospital)` : ""}`,
+              "#eef2ff", "#c7d2fe", "#4338ca"],
             ["Absenteísmo", pct(r.total.absenteismo), "#fef9c3", "#fde047", "#a16207"],
             ["Ocupação", pct(r.total.ocupacao), "#f0fdfa", "#5eead4", "#0f766e"],
           ].map(([l, v, bg, bd, cor]) => (
             <div key={l} style={{ background: bg, border: `1px solid ${bd}`, borderRadius: 8, padding: "9px 11px" }}>
               <div style={{ fontSize: 8.5, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: ".05em" }}>{l}</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace" }}>{v}</div>
+              <div style={{ fontSize: String(v).length > 6 ? 13 : 20, fontWeight: 800, color: cor,
+                            fontFamily: "JetBrains Mono, monospace", lineHeight: 1.25 }}>{v}</div>
             </div>
           ))}
         </div>
@@ -203,6 +211,10 @@ export default function RelatorioAmbulatorio({ sb, grades = [], catalogoEspecial
           (a média dos percentuais diários seria puxada por um sábado com três pacientes).
           Especialidade “fora do painel” não tem meta pactuada e não entra na tabela de produção do
           Ambulatório. Este relatório não inclui emergências — elas não passam pela agenda.
+          <br /><strong>“Remarcadas”</strong> conta as consultas <em>deste</em> mês que vieram de uma remarcação —
+          a vaga desmarcada fica no mês de <em>origem</em>, contada ali como cancelada. Uma consulta empurrada
+          de agosto para setembro aparece como cancelada em agosto e como remarcada em setembro: são as duas
+          pontas do mesmo movimento, e nenhum mês as tem juntas.
           <br />Gerado em {geradoEm} · fonte: agenda do ambulatório (somente leitura).
         </div>
       </div>

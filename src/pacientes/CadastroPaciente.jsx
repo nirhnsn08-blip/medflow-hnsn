@@ -7,12 +7,19 @@
 //
 // TRÊS DECISÕES QUE VALEM EXPLICAÇÃO
 //
-// 1. NÃO BLOQUEIA. Nenhum campo é obrigatório para salvar. A CFM 1.638,
-//    art. 5º, I, "e", prevê o atendimento em que a anamnese não é possível;
-//    travar o cadastro de um politraumatizado para exigir o nome da mãe
-//    inverte a prioridade. O que a tela faz é deixar a pendência VISÍVEL —
-//    a barra de conformidade mostra o que falta, para alguém completar
-//    depois, em vez de o buraco sumir.
+// 1. NÃO BLOQUEIA — com UM piso. A CFM 1.638, art. 5º, I, "e", prevê o
+//    atendimento em que a anamnese não é possível; travar o cadastro de um
+//    politraumatizado para exigir o nome da mãe inverte a prioridade. O que
+//    a tela faz é deixar a pendência VISÍVEL — a barra de conformidade
+//    mostra o que falta, para alguém completar depois, em vez de o buraco
+//    sumir.
+//
+//    O piso, para CRIAR, é um identificador qualquer: nome, CPF ou CNS.
+//    Antes o botão gravava com o formulário INTEIRAMENTE vazio, e um
+//    clique errado criava prontuário com iniciais "?". Quem chega sem
+//    identificação nenhuma tem caminho próprio e nomeado — "Emergência —
+//    paciente sem identificação" —, que grava a origem. Editar um cadastro
+//    que já existe não tem piso nenhum: editar nunca cria fantasma.
 //
 // 2. AVISA DE DUPLICATA ANTES DE GRAVAR. Prontuário duplicado é o defeito
 //    mais caro deste tipo de sistema: metade do histórico num registro,
@@ -35,8 +42,9 @@ import {
   iniciaisDe, idadeDetalhada, conferirCadastro, possiveisDuplicatas,
   normalizarSexo, documentoEmUso, mensagemDocumentoEmUso,
   NACIONALIDADES, normalizarNacionalidade, nascidoNoBrasil, autodeclaradoIndigena,
-  limparCamposInaplicaveis,
+  limparCamposInaplicaveis, temIdentificadorMinimo,
 } from "./identidade.js";
+import { cepCompleto, cepLimpo, camposDoCep, mensagemDoCep } from "./cep.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 12 };
@@ -133,6 +141,7 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
   const [candidatos, setCandidatos] = useState([]);
+  const [avisoCep, setAvisoCep] = useState("");
   const set = (k, v) => { setF(p => ({ ...p, [k]: v })); setMsg(""); };
 
   const edicao = !!paciente?.prontuario;
@@ -143,6 +152,16 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   // Duas perguntas que mudam QUAIS campos a ficha mostra. Ficam aqui, uma
   // vez, em vez de repetidas em cada bloco — dois lugares perguntando a
   // mesma coisa divergem, e aí um campo aparece sem o outro sumir.
+  // 🔴 CRIAR EXIGE UM IDENTIFICADOR — nome, CPF ou CNS.
+  //
+  // O botão funcionava com o formulário INTEIRAMENTE vazio e criava
+  // prontuário com iniciais "?". Não contraria o "nunca bloqueia": esse
+  // princípio é para o politraumatizado, e para ele já existe caminho
+  // próprio e nomeado ("Emergência — paciente sem identificação").
+  //
+  // Vale só para CRIAR. Editar nunca cria fantasma, e travar a edição
+  // impediria consertar o endereço de um registro legado sem nome.
+  const podeGravar = edicao || temIdentificadorMinimo(f);
   const pendenciasSus = conferencia.pendencias.filter(x => x.nivel === "sus");
   const noBrasil = nascidoNoBrasil(f);
   const indigena = autodeclaradoIndigena(f);
@@ -150,6 +169,38 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   const cpfInvalido = cpfPreenchido && !validarCPF(f.cpf);
   const cnsPreenchido = limparDoc(f.cns).length > 0;
   const cnsInvalido = cnsPreenchido && !validarCNS(f.cns);
+
+  /**
+   * 🔴 O CEP PREENCHE O ENDEREÇO — o que ele não fazia.
+   *
+   * A recepção digitava logradouro, bairro, município e UF à mão: quatro
+   * campos que o CEP responde, cada um uma chance de erro que depois vira
+   * indicador territorial errado (é por município e bairro que o hospital
+   * enxerga de onde vem a demanda).
+   *
+   * ⚠️ NÃO SOBRESCREVE o que já foi digitado — a decisão está em
+   * `camposDoCep`, pura e testada. Aqui só se busca.
+   *
+   * ⚠️ E NÃO BLOQUEIA NADA. A consulta depende de internet, e a recepção
+   * do hospital não pode parar por causa disso: se falhar, os campos
+   * continuam editáveis e a tela diz que nada do que foi digitado se
+   * perdeu. Por isso o `catch` devolve estado, e não erro.
+   */
+  const buscarCep = useCallback(async valor => {
+    if (!cepCompleto(valor)) { setAvisoCep(""); return; }
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${cepLimpo(valor)}/json/`);
+      const dados = await r.json();
+      if (!dados || dados.erro) { setAvisoCep(mensagemDoCep({ estado: "invalido" })); return; }
+      setF(atual => {
+        const novos = camposDoCep(dados, atual);
+        setAvisoCep(mensagemDoCep({ estado: "achou", preenchidos: Object.keys(novos).length }));
+        return { ...atual, ...novos };
+      });
+    } catch {
+      setAvisoCep(mensagemDoCep({ estado: "falhou" }));
+    }
+  }, []);
 
   // ── duplicidade: busca candidatos por nome/CPF/CNS enquanto digita ──
   // Só puxa o que pode casar, não a tabela inteira: a busca é por prefixo do
@@ -455,7 +506,9 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
           <Campo label="Bairro" valor={f.end_bairro} onChange={v => set("end_bairro", v)} />
           <Campo label="Município" valor={f.end_municipio} onChange={v => set("end_municipio", v)} />
           <Campo label="UF" valor={f.end_uf} onChange={v => set("end_uf", v)} opcoes={["", ...UFS]} />
-          <Campo label="CEP" valor={f.end_cep} onChange={v => set("end_cep", v)} placeholder="00000-000" maxLength={9} />
+          <Campo label="CEP" valor={f.end_cep} maxLength={9} placeholder="00000-000"
+            onChange={v => { set("end_cep", v); setAvisoCep(""); buscarCep(v); }}
+            dica={avisoCep || "Preenche o endereço sozinho — e não apaga o que você já digitou."} />
         </div>
         <div style={{ marginTop: 10 }}>
           <Campo label="Ponto de referência (opcional)" valor={f.end_referencia} onChange={v => set("end_referencia", v)}
@@ -485,12 +538,23 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
 
       {/* AÇÕES */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 20 }}>
-        <button onClick={salvar} disabled={!canEdit || salvando}
-          style={{ background: canEdit ? "linear-gradient(90deg, #2dd4bf, #38bdf8)" : "var(--bg-2)",
-                   color: canEdit ? "#062a35" : "var(--text-muted)", border: "none", borderRadius: 7,
-                   padding: "11px 26px", fontWeight: 800, fontSize: 13.5, cursor: canEdit ? "pointer" : "not-allowed" }}>
+        <button onClick={salvar} disabled={!canEdit || salvando || !podeGravar}
+          title={podeGravar ? undefined : "Informe o nome, o CPF ou o Cartão SUS"}
+          style={{ background: canEdit && podeGravar ? "linear-gradient(90deg, #2dd4bf, #38bdf8)" : "var(--bg-2)",
+                   color: canEdit && podeGravar ? "#062a35" : "var(--text-muted)", border: "none", borderRadius: 7,
+                   padding: "11px 26px", fontWeight: 800, fontSize: 13.5,
+                   cursor: canEdit && podeGravar ? "pointer" : "not-allowed" }}>
           {salvando ? "Salvando…" : edicao ? "Salvar alterações" : "Cadastrar paciente"}
         </button>
+        {/* Botão desabilitado sem explicação visível é o mesmo defeito que
+            o resto do módulo evita — e `title` em botão desabilitado não
+            aparece em todo navegador. */}
+        {!podeGravar && (
+          <span style={{ fontSize: 12, color: "#d97706", alignSelf: "center" }}>
+            Informe ao menos <strong>o nome, o CPF ou o Cartão SUS</strong> para criar o cadastro.
+            Sem nenhum dos três, quem chegou não tem como ser reencontrado depois.
+          </span>
+        )}
         {onCancelar && (
           <button onClick={onCancelar} style={{ background: "transparent", color: "var(--text-muted)", border: "1px solid var(--border)", borderRadius: 7, padding: "10px 18px", fontSize: 13, cursor: "pointer" }}>
             Cancelar

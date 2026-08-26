@@ -37,6 +37,13 @@ export const CAMPOS_DO_EPISODIO = [
   "status", "desfecho", "desfecho_em", "setor_destino",
   "especialidade_cod", "tipo_atendimento_cod", "unidade_origem_cod",
   "convenio_id", "medico", "agendamento_id",
+  // 🔴 GRAVADOS E LIDOS POR NINGUÉM. `cancelarAtendimento` congela motivo,
+  // momento e autor desde sempre — e nenhuma tela mostrava. A pesquisa
+  // dizia "Cancelado" e parava aí, então "quem cancelou este atendimento, e
+  // por quê" não tinha resposta em lugar nenhum do sistema. Não é dado
+  // clínico: é a prova administrativa de quem desfez o quê, que é
+  // exatamente o que se procura quando alguém pergunta.
+  "cancelado_motivo", "cancelado_em", "cancelado_por",
 ];
 
 /** O que a tela sabe pesquisar. */

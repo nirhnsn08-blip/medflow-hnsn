@@ -18,6 +18,7 @@ import {
   NACIONALIDADES, normalizarNacionalidade, rotuloNacionalidade, nascidoNoBrasil,
   autodeclaradoIndigena, limparCamposInaplicaveis,
   avisoDeObito, origemDoObito, desfechoEhObito,
+  temIdentificadorMinimo,
 } from "./identidade.js";
 
 const CPF_OK = "529.982.247-25";
@@ -687,5 +688,47 @@ describe("avisoDeObito — um texto só para as três telas", () => {
 
   it("não explode com lixo", () => {
     expect(() => avisoDeObito({ obito: true, obito_em: "não é data", obito_origem: 42 })).not.toThrow();
+  });
+});
+
+// 🔴 CRIAR CADASTRO EXIGE UM IDENTIFICADOR. QUALQUER UM.
+//
+// O botão "Cadastrar paciente" funcionava com o formulário INTEIRAMENTE
+// vazio — 0% da identificação, e nada impedindo. Um clique errado criava
+// prontuário com iniciais "?", que depois entrava na lista de identificação
+// pendente e na checagem de duplicidade de todo mundo.
+//
+// Não contraria o "nunca bloqueia": esse princípio é para o
+// politraumatizado, e para ele já existe caminho próprio e nomeado.
+// Cadastro inteiramente vazio não é emergência — é clique errado.
+describe("temIdentificadorMinimo", () => {
+  it("🔴 formulário inteiramente vazio NÃO tem identificador", () => {
+    expect(temIdentificadorMinimo({})).toBe(false);
+    expect(temIdentificadorMinimo(null)).toBe(false);
+  });
+
+  it("o piso é UM identificador, não a ficha completa", () => {
+    expect(temIdentificadorMinimo({ nome_completo: "Ana" })).toBe(true);
+    expect(temIdentificadorMinimo({ nome_social: "Ana" })).toBe(true);
+    expect(temIdentificadorMinimo({ cpf: CPF_OK })).toBe(true);
+    expect(temIdentificadorMinimo({ cns: CNS_DEF })).toBe(true);
+  });
+
+  it("quem chega com o cartão do SUS e sem saber soletrar o nome é cadastrado", () => {
+    expect(temIdentificadorMinimo({ cns: CNS_DEF, nome_completo: "" })).toBe(true);
+  });
+
+  it("documento pela metade não conta como identificador", () => {
+    // "529" não identifica ninguém — é digitação interrompida.
+    expect(temIdentificadorMinimo({ cpf: "529" })).toBe(false);
+    expect(temIdentificadorMinimo({ cns: "2000" })).toBe(false);
+  });
+
+  it("endereço e telefone não identificam a PESSOA", () => {
+    expect(temIdentificadorMinimo({ end_logradouro: "Rua A", telefone: "47999990000" })).toBe(false);
+  });
+
+  it("espaço em branco não vira nome", () => {
+    expect(temIdentificadorMinimo({ nome_completo: "   " })).toBe(false);
   });
 });

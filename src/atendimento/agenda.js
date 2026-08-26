@@ -730,6 +730,23 @@ export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios 
   const marcados = doDia.filter(a => a.origem_marcacao !== "chegada"
                                   && (ocupaVaga(a) || a.status === "falta")).length;
 
+  // 🔴 A REMARCAÇÃO NÃO CHEGAVA A INDICADOR NENHUM.
+  //
+  // O #128 passou a gravar o elo e o lado (hospital × paciente), e o
+  // relatório do mês continuava mostrando só "cancelados" — uma remarcação
+  // aparecia ali, ao lado de quem simplesmente desistiu. Sumia justamente
+  // "quantas vezes o HOSPITAL empurrou o paciente", que é o único número
+  // deste conjunto sobre o qual o hospital manda.
+  //
+  // Conta pelo lado NOVO (`remarcado_de` preenchido), não pelo cancelado:
+  // o cancelado fica no dia de origem e o sucessor quase sempre está em
+  // outra data — contar pelo cancelado daria zero na maioria dos dias.
+  // Aqui o número responde "quantas das consultas de hoje existem porque
+  // alguma outra foi desmarcada".
+  const remarcados = doDia.filter(a => a.remarcado_de != null).length;
+  const remarcadosPeloHospital = doDia
+    .filter(a => a.remarcado_de != null && remarcacaoDeQuem(a.remarcacao_motivo) === "hospital").length;
+
   const presentes = doDia.filter(a => a.status === "presente");
   // Pelo `conta_como` do CADASTRO, não pelo código cravado aqui. Um tipo
   // novo criado em Tabelas ("retorno pós-operatório") passa a somar na
@@ -742,6 +759,8 @@ export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios 
     realizadas,
     faltas,
     cancelados,
+    remarcados,
+    remarcadosPeloHospital,
     primeiras,
     retornos,
     porChegada: presentes.filter(a => a.origem_marcacao === "chegada").length,
