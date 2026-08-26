@@ -28,7 +28,7 @@ import {
   avaliarPermanencia, avaliarGlosa, GRAVIDADES,
 } from "./sigtap.js";
 import { montarContaDoProntuario, escolherInternacao, montarWorklist } from "./montar-conta.js";
-import { resumoFaturamento, resumoPorVia } from "./resumo-faturamento.js";
+import { resumoFaturamento, resumoPorVia, resumoDeContas } from "./resumo-faturamento.js";
 import { reais, centavos, STATUS_CONTA, VIAS } from "./faturamento.js";
 import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
@@ -251,6 +251,101 @@ const FAROL_IC = {
   "em-dia": <path d="M5 12l5 5L20 7" />,
 };
 
+
+/**
+ * AS CONTAS DA COMPETÊNCIA — onde o ambulatório aparece.
+ *
+ * 🔴 Todo número acima sai da worklist, que é `desfecho=eq.internacao`.
+ * O funil diz isso no subtítulo; os KPIs não diziam. Uma remessa de BPA
+ * inteira podia sair e nenhum número da tela se mexia.
+ *
+ * ⚠️ Fica FORA do `canEdit`: ver quanto o mês tem não é privilégio de quem
+ * pode transmitir. Quem só consulta precisa do número tanto quanto.
+ *
+ * ⚠️ E não se mistura com o funil, de propósito. Ambulatório tem muito mais
+ * episódio que internação; somar os dois afogaria o sinal da internação,
+ * que é onde corre o prazo da AIH.
+ */
+function ContasDaCompetencia({ sb, competencia, recarga }) {
+  const [contas, setContas] = useState(null);   // null = carregando
+
+  useEffect(() => {
+    let vivo = true;
+    if (!competencia) { setContas([]); return; }
+    contasDaCompetencia(sb, competencia, { limite: 1000 })
+      .then(r => { if (vivo) setContas(r); })
+      .catch(() => { if (vivo) setContas([]); });
+    return () => { vivo = false; };
+  }, [sb, competencia, recarga]);
+
+  const R = useMemo(() => resumoDeContas(contas || []), [contas]);
+  if (contas === null) return null;
+
+  const caixa = (rotulo, valor, cor, nota) => (
+    <div key={rotulo} style={{ background: "var(--surface-2)", border: "1px solid var(--border)",
+                               borderRadius: 10, padding: "10px 12px" }}>
+      <div style={{ fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase",
+                    color: "var(--text-muted)", fontWeight: 700 }}>{rotulo}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: cor, fontVariantNumeric: "tabular-nums" }}>{valor}</div>
+      {nota && <div style={{ fontSize: 11, color: "var(--text-3)" }}>{nota}</div>}
+    </div>
+  );
+
+  return (
+    <div style={{ ...cx.card, marginBottom: 16 }}>
+      <h3 style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600 }}>
+        Contas da competência {competencia}
+      </h3>
+      <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
+        Estas são <b>todas</b> as contas do mês, de qualquer origem — inclusive as do ambulatório,
+        que não aparecem nos números de internação acima.
+      </p>
+
+      {R.vazio ? (
+        <div style={{ fontSize: 13, color: "var(--text-3)" }}>
+          Nenhuma conta nesta competência ainda.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10, marginBottom: 12 }}>
+            {caixa("Abertas", R.porSituacao.aberta, "#f59e0b", "a revisar e fechar")}
+            {caixa("Esperando remessa", R.esperandoRemessa, R.esperandoRemessa > 0 ? "#f59e0b" : TEAL, "fechadas, prontas e paradas")}
+            {caixa("Faturadas", R.porSituacao.faturada, TEAL, "transmissão registrada")}
+            {caixa("Glosadas", R.porSituacao.glosada, R.porSituacao.glosada > 0 ? "#f43f5e" : "var(--text-2)", "recusadas pelo órgão")}
+          </div>
+
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
+                <th style={{ padding: "5px 0", fontWeight: 600 }}>VIA</th>
+                <th style={{ padding: "5px 0", fontWeight: 600 }}>TOTAL</th>
+                <th style={{ padding: "5px 0", fontWeight: 600 }}>ABERTAS</th>
+                <th style={{ padding: "5px 0", fontWeight: 600 }}>ESPERANDO REMESSA</th>
+                <th style={{ padding: "5px 0", fontWeight: 600 }}>FATURADAS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {R.vias.map(v => (
+                <tr key={v} style={{ borderTop: "1px solid var(--border)" }}>
+                  <td style={{ padding: "6px 0", fontWeight: 600 }}>{VIAS[v]?.label || v}</td>
+                  <td style={{ padding: "6px 0", fontVariantNumeric: "tabular-nums" }}>{R.porVia[v].total}</td>
+                  <td style={{ padding: "6px 0", fontVariantNumeric: "tabular-nums" }}>{R.porVia[v].aberta}</td>
+                  <td style={{ padding: "6px 0", fontVariantNumeric: "tabular-nums" }}>{R.porVia[v].fechada}</td>
+                  <td style={{ padding: "6px 0", fontVariantNumeric: "tabular-nums" }}>{R.porVia[v].faturada}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {R.porSituacao.cancelada > 0 && (
+            <div style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 8 }}>
+              {R.porSituacao.cancelada} cancelada(s) fora da tabela — conta cancelada não espera nada de ninguém.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 /**
  * REGISTRAR A TRANSMISSÃO DA REMESSA.
@@ -483,8 +578,12 @@ function VisaoExecutiva({ sb, sigtapRows, currentUser, canEdit }) {
               </div>
               {[
                 { c: R.backlog > 0 ? "#f59e0b" : TEAL, t: `${R.backlog} ${R.backlog === 1 ? "internação esperando conta" : "internações esperando conta"}`, d: "a montar do prontuário", v: String(R.backlog) },
-                { c: R.emAberto > 0 ? "#f59e0b" : TEAL, t: `${R.emAberto} ${R.emAberto === 1 ? "conta aberta" : "contas abertas"}`, d: "a revisar e fechar", v: String(R.emAberto) },
-                { c: TEAL, t: `${R.porSituacao.faturada} ${R.porSituacao.faturada === 1 ? "faturada" : "faturadas"}`, d: "já transmitidas ao SUS", v: String(R.porSituacao.faturada) },
+                { c: R.emAberto > 0 ? "#f59e0b" : TEAL, t: `${R.emAberto} ${R.emAberto === 1 ? "conta de internação aberta" : "contas de internação abertas"}`, d: "a revisar e fechar", v: String(R.emAberto) },
+                // 🔴 "já transmitidas ao SUS" lia-se como afirmação sobre o
+                // HOSPITAL e era sobre INTERNAÇÕES: uma remessa de BPA inteira
+                // saía e este número não se mexia. O ambulatório aparece no
+                // cartão "Contas da competência", abaixo.
+                { c: TEAL, t: `${R.porSituacao.faturada} ${R.porSituacao.faturada === 1 ? "internação faturada" : "internações faturadas"}`, d: "transmitidas — só internação; o ambulatório está abaixo", v: String(R.porSituacao.faturada) },
               ].map((s, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 0", borderTop: "1px solid var(--border)" }}>
                   <span style={{ width: 8, height: 8, borderRadius: 3, background: s.c, flex: "0 0 auto" }} />
@@ -512,8 +611,10 @@ function VisaoExecutiva({ sb, sigtapRows, currentUser, canEdit }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 12, marginBottom: 16 }}>
               <Kpi lbl="Internações faturáveis" val={R.total} trend="com desfecho de internação" />
               <Kpi lbl="Esperando conta" val={R.backlog} trend="a montar do prontuário" />
-              <Kpi lbl="Contas em aberto" val={R.emAberto} trend="a revisar e fechar" />
-              <Kpi lbl="Faturadas" val={R.porSituacao.faturada} trend="já transmitidas" />
+              <Kpi lbl="Contas de internação abertas" val={R.emAberto} trend="a revisar e fechar" />
+              {/* O rótulo agora diz o que o número mede. Ver o comentário no
+                  hero e o cartão "Contas da competência". */}
+              <Kpi lbl="Internações faturadas" val={R.porSituacao.faturada} trend="transmitidas — só internação" />
             </div>
           )}
 
@@ -523,6 +624,8 @@ function VisaoExecutiva({ sb, sigtapRows, currentUser, canEdit }) {
               fatura ambulatório. Só quem pode editar faturamento registra
               transmissão — é ato sem volta, e o crachá de quem transmitiu
               vai gravado. */}
+          <ContasDaCompetencia sb={sb} competencia={R.competenciaAtual} recarga={recarga} />
+
           {canEdit && (
             <RegistrarRemessa sb={sb} currentUser={currentUser} competenciaAtual={R.competenciaAtual}
               aoRegistrar={() => setRecarga(n => n + 1)} />

@@ -245,3 +245,67 @@ export function resumoPorVia({ producao = [], convenios = [], procedimentos = []
     semValorRef: semTotal,
   };
 }
+
+// ═══════════════════════════════════════════════════════════
+// AS CONTAS DA COMPETÊNCIA — o que o funil de internações não vê
+//
+// 🔴 POR QUE ISTO EXISTE
+// Todo número da Visão Executiva sai da WORKLIST, e a worklist é
+// `desfecho=eq.internacao`. Isso está certo para o funil — "esperando
+// conta" só faz sentido na internação, onde a conta se monta do
+// prontuário — e o funil diz isso no subtítulo.
+//
+// O que NÃO dizia era o KPI: "Faturadas — já transmitidas ao SUS" lia-se
+// como afirmação sobre o hospital, e era sobre internações. Uma remessa de
+// BPA inteira podia sair e o número não se mexia. Quem confere o mês pelo
+// painel concluiria que nada foi transmitido.
+//
+// A correção tem duas metades, e as duas importam:
+//   1. os rótulos passam a dizer INTERNAÇÕES, que é o que eles medem;
+//   2. entra este resumo, que conta as contas DE VERDADE — todas, de
+//      qualquer origem — dentro de uma competência.
+//
+// ⚠️ E ELE NÃO SE MISTURA COM O FUNIL. Ambulatório tem muito mais episódio
+// que internação; jogar os dois no mesmo número afogaria o sinal da
+// internação, que é onde corre o prazo da AIH e está o dinheiro grande.
+// São dois recortes ao lado um do outro, cada um dizendo o que é.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Conta as contas de uma competência por situação e por via.
+ *
+ * Recebe o que `contasDaCompetencia` devolve — a tela não precisa de
+ * consulta nova: o painel de remessa já carrega exatamente esta lista.
+ *
+ * `cancelada` fica de FORA das contagens de trabalho: conta cancelada não
+ * espera nada de ninguém. Mas vai no próprio balde, porque sumir com ela
+ * faria os números não fecharem com o total e alguém procuraria o buraco.
+ */
+export function resumoDeContas(contas = []) {
+  const lista = Array.isArray(contas) ? contas : [];
+  const porSituacao = { aberta: 0, fechada: 0, faturada: 0, glosada: 0, cancelada: 0 };
+  const porVia = {};
+
+  for (const c of lista) {
+    const s = String(c?.status ?? "").trim();
+    if (s in porSituacao) porSituacao[s] += 1;
+    if (s === "cancelada") continue;   // não entra na leitura por via
+    const v = String(c?.via ?? "").trim() || "sem via";
+    porVia[v] = porVia[v] || { total: 0, aberta: 0, fechada: 0, faturada: 0, glosada: 0 };
+    porVia[v].total += 1;
+    if (s in porVia[v]) porVia[v][s] += 1;
+  }
+
+  const vivas = lista.length - porSituacao.cancelada;
+  return {
+    total: lista.length,
+    vivas,
+    porSituacao,
+    porVia,
+    vias: Object.keys(porVia).sort(),
+    // O que a remessa do mês ainda não levou. É o número acionável daqui:
+    // conta fechada é conta pronta parada.
+    esperandoRemessa: porSituacao.fechada,
+    vazio: vivas === 0,
+  };
+}
