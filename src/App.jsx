@@ -31,6 +31,9 @@ import {
 } from "./suprimentos/kardex.js";
 import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
 import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
+// A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
+// cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
+import { podeMarcarPronto } from "./farmacia/preparo.js";
 import { podeAprovarPedido, descreverAlcada, validarLimite } from "./suprimentos/aprovacao.js";
 import { carregarAlcada, salvarAlcada } from "./suprimentos/parametros.js";
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
@@ -8819,7 +8822,8 @@ function FarmPreparoView({ currentUser, canEdit }) {
   const atSet = new Set(atends.map(a => a.id));
   const scoreDe = atId => { const its = itens.filter(i => i.atendimento_id === atId); const a = atendById[atId] || {}; const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return scorePrescricao(its, analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY)); };
 
-  const cards = prescricoes.filter(r => atSet.has(r.atendimento_id)).map(r => ({ reg: r, prep: prepByReg[r.id], status: prepByReg[r.id] ? prepByReg[r.id].status : "aguardando", at: atendById[r.atendimento_id], nItens: itens.filter(i => i.registro_id === r.id).length, score: scoreDe(r.atendimento_id) }));
+  const cards = prescricoes.filter(r => atSet.has(r.atendimento_id)).map(r => ({ reg: r, prep: prepByReg[r.id], status: prepByReg[r.id] ? prepByReg[r.id].status : "aguardando", at: atendById[r.atendimento_id], nItens: itens.filter(i => i.registro_id === r.id).length, score: scoreDe(r.atendimento_id),
+    separacao: podeMarcarPronto({ registro: r, itens, saidas }) }));
   const cols = [
     { key: "aguardando", lista: cards.filter(c => c.status === "aguardando") },
     { key: "preparo", lista: cards.filter(c => c.status === "preparo") },
@@ -8828,7 +8832,18 @@ function FarmPreparoView({ currentUser, canEdit }) {
   const retirados = cards.filter(c => c.status === "retirado");
 
   async function receber(c) { await receberPreparoRemote(c.reg.id, c.reg.atendimento_id, currentUser); addAuditLog(currentUser, "farmácia: receber prescrição", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
-  async function marcarPronto(c) { await atualizarPreparoRemote(c.prep.id, { status: "pronto", pronto_em: nowISO(), pronto_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: preparo pronto", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  async function marcarPronto(c) {
+    // 🔴 A recusa vive aqui também, não só no `disabled`. O botão some da
+    // tela, mas o estado pode estar velho (o kanban recarrega a cada 12s) e
+    // o clique chegar mesmo assim. Gravar "pronto" sem baixa é o defeito
+    // que este arquivo existe para fechar — ver farmacia/preparo.js.
+    const v = c.separacao || podeMarcarPronto({ registro: c.reg, itens, saidas });
+    if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
+    if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nMarcar como pronta assim mesmo?`)) return;
+    await atualizarPreparoRemote(c.prep.id, { status: "pronto", pronto_em: nowISO(), pronto_por: currentUser?.name || null });
+    addAuditLog(currentUser, "farmácia: preparo pronto", `${c.at?.iniciais || ""} · ${v.quadro.separados}/${v.quadro.total} separado(s)`, {});
+    setTimeout(refresh, 300);
+  }
   async function confirmarRetirada(c) { if (!confirm(`Confirmar retirada da prescrição de ${c.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(c.prep.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: retirada confirmada", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
   function ativarSom() { setSomAtivo(true); setSom(true); farmBeep(false); }
   async function registrarDispensacao(mov) { const r = await addFarmMovimentoRemote(mov, currentUser); if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; } addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {}); setTimeout(refresh, 300); return true; }
@@ -8842,12 +8857,23 @@ function FarmPreparoView({ currentUser, canEdit }) {
           <span title={`Score ${c.score}/3`} style={{ fontSize: 10, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[c.score], borderRadius: 5, padding: "1px 6px" }}>{c.score}</span>
         </div>
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "3px 0 8px" }}>{c.nItens} item(ns) · {horaFmt(c.reg.criado_em)}{c.at?.classificacao && MANCHESTER[c.at.classificacao] ? ` · ${MANCHESTER[c.at.classificacao].label}` : ""}</div>
+        {c.status === "preparo" && c.separacao && (c.separacao.erros.length > 0 || c.separacao.avisos.length > 0) && (
+          <div style={{ fontSize: 10.5, lineHeight: 1.4, marginBottom: 8,
+                        color: c.separacao.ok ? "#d97706" : "#f43f5e" }}>
+            {[...c.separacao.erros, ...c.separacao.avisos].join(" ")}
+          </div>
+        )}
         {canEdit && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {c.status === "aguardando" && <button onClick={() => receber(c)} style={btnLeito("#d97706")}>Receber</button>}
             {c.status === "preparo" && <>
               <button onClick={() => setDisp(c.at)} style={btnLeito("#22d3ee")}>Separar</button>
-              <button onClick={() => marcarPronto(c)} style={btnLeito("#3b82f6")}>Marcar pronto</button>
+              {/* Botão desabilitado sem explicação visível é o mesmo defeito
+                  que o resto do sistema evita — e `title` em botão
+                  desabilitado não aparece em todo navegador. */}
+              <button onClick={() => marcarPronto(c)} disabled={!c.separacao?.ok}
+                style={{ ...btnLeito("#3b82f6"), opacity: c.separacao?.ok ? 1 : .45,
+                         cursor: c.separacao?.ok ? "pointer" : "not-allowed" }}>Marcar pronto</button>
             </>}
             {c.status === "pronto" && <button onClick={() => confirmarRetirada(c)} style={btnLeito("#34d399")}>Confirmar retirada</button>}
           </div>
