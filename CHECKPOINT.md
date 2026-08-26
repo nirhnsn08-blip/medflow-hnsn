@@ -1,17 +1,17 @@
-# 📍 Ponto de restauração — checkpoint-v60
+# 📍 Ponto de restauração — checkpoint-v61
 
 Este é um **ponto seguro** do projeto. Se alguma mudança futura quebrar algo,
 dá pra voltar exatamente para este estado.
 
-- **Tag Git mais recente:** `checkpoint-v60` (anteriores: `checkpoint-v59` … `checkpoint-v1`)
-- **Data:** 2026-08-25 · `main` em `a11c68d`
+- **Tag Git mais recente:** `checkpoint-v61` (anteriores: `checkpoint-v60` … `checkpoint-v1`)
+- **Data:** 2026-08-26 · `main` em `53e73ed`
 - **Equipe:** 2 devs; publicação por **branch + Pull Request** (merge na `main` =
-  vai ao ar). Da v59 para cá: **39 PRs (#95–#133)**. O grosso é o **módulo Atendimento**,
-  que deixou de ser a recepção do Pronto-Socorro e virou a **recepção do hospital** —
-  cadastro, agenda, fila, impressos e as regras legais que faltavam. O resto é
-  **integridade do almoxarifado**, **trilha de auditoria atribuível** e **RLS de escrita
-  por módulo**.
-- **1689 testes** · **94 tabelas / 1487 colunas** · build limpo.
+  vai ao ar). Da v60 para cá: **9 PRs (#134–#142)**, todos no **Atendimento** e no
+  **Faturamento**. O tema da rodada não foi construir função nova: foi **fazer chegar
+  em alguém** o que já existia no código e não alcançava ninguém.
+- **1794 testes** · **nenhuma tabela nova · 8 colunas novas** · build limpo.
+  (O total de tabelas/colunas sai do próprio banco, por `supabase/auditoria-banco.sql`
+  — não confie em contagem feita no arquivo.)
 - **Publicado e funcionando** no HNSN (`medflow-hnsn.vercel.app`) — conferido no bundle
   de produção, não só no CI.
 - ✅ **Banco de teste (demo)**: `npm run dev:demo` aponta para `ufxqdvxhruaswuzhmxyf`,
@@ -20,6 +20,147 @@ dá pra voltar exatamente para este estado.
 - ⚠️ **"Rodei o SQL" precisa de RECIBO, não de palavra.** Toda migração desta rodada foi
   conferida por **sonda REST nos dois bancos** (`select=<coluna>&limit=0`: `[]` = existe,
   `42703` = não existe). Já aconteceu de a migração ser dada como rodada e não estar.
+
+## 🆕 Novidades da v61 (desde a v60): o que existia e não chegava em ninguém
+
+A v60 fez o Atendimento virar o balcão do hospital. A v61 tem um tema só, e ele não é
+funcionalidade nova: **é dado que o sistema já guardava e nenhuma tela mostrava**, e
+**estado que o código sabia escrever e nenhum caminho alcançava**.
+
+Nove PRs (#134–#142). O padrão apareceu tantas vezes que virou método de busca.
+
+### 🔴 `faturada` era um estado INALCANÇÁVEL (#138)
+
+`marcarContaFaturada` existia em `dados.js` desde sempre e **nenhuma tela a chamava**.
+Nenhuma conta jamais saiu de "fechada". Três leitores dependiam disso: o KPI
+*"Faturadas — já transmitidas ao SUS"*, a linha equivalente no painel, e
+`concluidas = fechada + faturada`. **Todos zero por construção.**
+
+> Indicador que **não pode** mudar é pior que indicador nenhum: quem olha para ele todo
+> mês aprende que o número não quer dizer nada.
+
+E a função gravava **só o status**. `fecharConta` carimba `fechada_em`/`fechada_por` desde
+sempre; a transmissão, que é o passo **sem volta**, não carimbava nada — justamente as três
+coisas que alguém procura quando a glosa chega meses depois.
+
+O que entrou: registro da transmissão **em lote** (competência + via + data + protocolo),
+com `faturada_em`, `faturada_por` e `remessa_protocolo`, e um **trigger** que recusa sair de
+`faturada` para qualquer coisa que não seja `glosada`.
+
+⚠️ **O sistema continua NÃO gerando o arquivo de remessa** (BPA-I/BPA-C, SISAIH01, XML do
+TISS). É recusa deliberada e documentada em `faturamento.js`, e ela foi respeitada: o que se
+registra não é *"o sistema transmitiu"*, é *"alguém transmitiu, e disse quando e sob qual
+protocolo"*.
+
+⚠️ **Em lote, não conta a conta.** Uma tela que pedisse um clique por conta é tela que
+ninguém usa num mês de trezentas contas — e aí o estado voltaria a ser inalcançável, só que
+com botão.
+
+### 🔗 Unificação de prontuário: o ponteiro, não a mudança de dado (#141)
+
+A mesma pessoa acaba com duas fichas e o histórico fica partido — alergia numa, prescrição
+na outra, e quem atende decide vendo metade.
+
+⚠️ **O levantamento mudou a forma do trabalho:** `prontuario` aparece em **34 tabelas**, e o
+PostgREST **não tem transação entre requisições**. Repontar 34 tabelas em 34 chamadas
+significa que uma falha no meio deixa o paciente partido num estado que **ninguém sabe qual
+é** — pior que a duplicata, porque a duplicata pelo menos é visível.
+
+Então esta fase **liga sem mover**. E o ponteiro é necessário nos dois caminhos de qualquer
+forma: número de prontuário está em pulseira, em papel e na memória das pessoas, então a
+ficha antiga tem de continuar resolvível **para sempre**.
+
+🔴 **A recusa mais importante são os GÊMEOS.** Dois irmãos do mesmo parto dão 90% de
+confiança para o detector de duplicata. Unificá-los junta **duas pessoas numa ficha**, e a
+partir dali a prescrição de um vale para o outro. Aqui é **recusa, não aviso** — aviso se
+fecha sem ler. Idem para CPF ou CNS distintos dos dois lados: documento diferente é **prova**
+de pessoa diferente, não palpite.
+
+O motivo é **obrigatório**: é a única coisa que a máquina não tem como saber, e é o que
+alguém lê daqui a um ano para julgar se a junção estava certa.
+
+No banco: CHECK contra autorreferência, FK para o destino existir (sem ela um erro de
+digitação faz o paciente sumir — a ficha diz "olhe ali" e ali não tem nada) e **trigger
+contra cadeia nos dois sentidos**, porque A→B→C→A não deixa a tela lenta, deixa **travada**.
+
+### 🩺 Idade da mãe: aviso sobre vínculo, não sobre biologia (#140)
+
+O erro que ele procura **não é gravidez improvável — é o bebê ligado ao prontuário errado**.
+Quem traz o recém-nascido muitas vezes é a avó, e escolher a linha errada numa lista de
+homônimas é fácil.
+
+⚠️ **Faixa larga de propósito (silêncio de 10 a 54).** Mãe adolescente existe, e um sistema
+que se recusa a cadastrar o filho dela inverte a prioridade: o **bebê** fica sem prontuário.
+Só acende onde o vínculo trocado é *mais provável que o fato*.
+
+A idade é a do **dia do parto**, não a de hoje — uma mãe de 9 anos num parto de 1999 tem 36
+agora, e usar a idade atual deixaria passar exatamente o caso alvo.
+
+### 🧭 As quatro pontas soltas e o código IBGE (#136, #137, #139)
+
+- **Cadastro vazio gravava.** Um clique errado criava prontuário `?`. Agora **criar** exige
+  nome, CPF **ou** CNS — um dos três. **Editar não tem piso**: editar nunca cria fantasma.
+- **Remarcação era invisível** no relatório: aparecia só como "cancelado", no mesmo balde de
+  quem desistiu. KPI **Remarcadas** com a parte acionável entre parênteses, e o rodapé diz de
+  qual mês o número fala (as duas pontas do movimento ficam em meses diferentes).
+- **`cancelado_motivo/em/por`** eram gravados desde sempre e nenhuma tela mostrava — a
+  pergunta "quem cancelou, e por quê" ia parar no corredor.
+- **O CEP não fazia nada.** Agora preenche o endereço, **não sobrescreve o digitado** e
+  **não bloqueia** se a internet cair. E captura o **código IBGE do município**, que a AIH e o
+  BPA exigem e ninguém digita.
+  🔴 A regra do IBGE é dupla: só grava quando o município que **fica** é o que o CEP
+  respondeu, **e some quando município ou UF são editados à mão**. Código certo ao lado de
+  cidade errada passa direto e volta como glosa.
+- **A mensagem de falha afirmava uma causa que não sabia** (#139): `null` (a requisição
+  falhou) e `[]` (funcionou e não achou nada) estavam no mesmo balde, e a mensagem mandava
+  pedir permissão à TI por causa de um SQL que ninguém rodou. Mesmo `null ≠ 0` de sempre, num
+  lugar novo: a diferença entre *"não consegui perguntar"* e *"perguntei, e a resposta é
+  nenhuma"*.
+
+### 🔴 AS TRÊS LIÇÕES DESTA RODADA — todas armadilhas construídas por nós mesmos
+
+**1. Teste de banco tem que devolver LINHA, não `NOTICE`.**
+O SQL Editor do Supabase **não mostra `RAISE NOTICE`** e mostra a saída da **última**
+instrução. Um teste escrito como `DO $$ … RAISE NOTICE … $$; ROLLBACK;` devolve
+*"Success. No rows returned"* **tanto com a defesa funcionando quanto sem ela** — e o `DO`
+ainda captura as exceções. É o irmão do PostgREST devolvendo 2xx com zero linha alterada.
+> Um teste que passa dos dois jeitos é **pior** que teste nenhum: dá confiança sem dar
+> informação.
+Modelo certo: juntar resultados numa `TEMP TABLE` e terminar com `SELECT`.
+
+**2. Gravar + ler de volta ainda NÃO é pronto — falta DESENHAR.**
+As três colunas da remessa eram gravadas, entravam em `CAMPOS_CONTA` e **nenhuma tela as
+mostrava**. O cartão dizia só "Faturada" — justo o lugar onde alguém vem parar quando a glosa
+chega perguntando em qual remessa a conta foi.
+**A varredura tem TRÊS braços: é escrita? é lida? aparece?**
+
+**3. Trava que depende de premissa não verificada não é trava.**
+O script de limpeza tinha um `DO` no topo que abortava no banco errado. Isso só protege se as
+instruções seguintes rodarem na mesma sessão e transação — e foi **exatamente essa suposição
+que quebrou** (`relation "_antes" does not exist`). A condição agora vai **colada em cada
+`DELETE`**: rodar no banco errado apaga **zero linha**, sem depender da memória do editor.
+
+### 🚶 O passeio na tela acha o que os testes não acham
+
+Com **1.763 testes verdes**, o passeio do #138 achou três defeitos — inclusive o item 2
+acima. No #141 mostrou que os gêmeos **nem chegam** à tela de unificação
+(`possiveisDuplicatas` já os exclui) e que o demo tinha **nove "Clara Lima Barbosa"
+homônimas** — que o sistema **recusou** unificar, com prova (CPFs diferentes).
+
+### 🧹 Demo limpo (#142)
+
+73 pacientes. Saíram os rastros dos passeios. **Ficou de propósito** o endereço do T9020:
+apagar endereço de cadastro para consertar sujeira de teste é remédio pior que a doença, e
+quem for testar CEP de novo precisa de um cadastro com endereço.
+
+### ❓ Em aberto, esperando decisão de produto
+
+- Os KPIs **Faturadas** e o funil contam só **internações** — remessa de BPA não move aquele
+  número. Pode ser intenção ou lacuna.
+- **Internação pela recepção** segue travada de propósito até o Giro de Leitos receber por
+  ela.
+- **Mover o dado clínico** na unificação: exige função Postgres com transação única e trilha
+  do que foi repontado. Só faz sentido depois do uso real do ponteiro.
 
 ## 🆕 Novidades da v60 (desde a v59): o Atendimento vira o balcão do hospital
 
@@ -1110,6 +1251,14 @@ Este checkpoint salva o **código**. Ele **não** desfaz alterações nos **dado
   (ambulatório e altas íntegros); os únicos flagrados eram esses fakes do AQUARIO.
 
 ## Marcos incluídos (mais recentes no topo)
+- `53e73ed` 🧹 Limpeza dos dados de teste do demo (dois passos; trava colada em cada DELETE)
+- `a5057ad` 🔗 Unificação de prontuário — o ponteiro (não move dado clínico; recusa gêmeos)
+- `ff25c36` 🩺 Idade da mãe — aviso sobre VÍNCULO trocado, nunca bloqueia
+- `5e3b234` 🔍 Separada a causa da falha: "não consegui perguntar" ≠ "a resposta é nenhuma"
+- `1bac906` 📤 Transmissão da remessa — `faturada` deixa de ser estado inalcançável
+- `4a83f75` 🗺️ Código IBGE do município, capturado do CEP (some se a cidade mudar)
+- `2cc307a` 🧩 Quatro pontas soltas do Atendimento (piso do cadastro, Remarcadas, cancelamento, CEP)
+- `343e1d2` 📺 Painel de chamada da sala de espera
 - `24ba410` ✅ Aprovação de pedidos de compra pela matriz (aba Aprovações + perfil matriz)
 - `b2c22f2` 🧪 Bloco 5 — BI de exames (lab × imagem) no relatório do PS + aviso de exame pendente no desfecho
 - `83a864d` ⚙️ Portas fixas por ambiente no dev (5173 hospital / 5174 demo, strictPort)
