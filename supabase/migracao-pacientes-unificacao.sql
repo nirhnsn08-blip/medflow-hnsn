@@ -116,3 +116,7 @@ SELECT
   (SELECT count(*) FROM pg_trigger WHERE tgname = 'pacientes_unificacao_sem_cadeia') AS trigger_criado,
   (SELECT count(*) FROM pacientes WHERE unificado_para IS NOT NULL) AS ja_unificados,
   (SELECT count(*) FROM pacientes) AS pacientes_no_acervo;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-pacientes-unificacao.sql') on conflict do nothing;

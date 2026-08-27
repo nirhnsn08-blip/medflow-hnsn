@@ -220,7 +220,7 @@ aproximada** em vez de sugerir por chute.
 
 ---
 
-## 6. O banco: cinco regras não negociáveis
+## 6. O banco: seis regras não negociáveis
 
 1. **Toda migração é aditiva.** `add column if not exists`, `create table if not
    exists`. Nunca `drop` com dado dentro. **Rollback de banco não existe.**
@@ -229,6 +229,43 @@ aproximada** em vez de sugerir por chute.
    não. Invertendo, a tela nova chega procurando coluna que não existe.
 4. **Avise a outra pessoa antes** de rodar SQL no principal.
 5. **Regenere a auditoria** depois de toda migração nova.
+6. **Toda migração termina se anotando.** A última linha do arquivo é sempre:
+
+   ```sql
+   insert into public.migracoes_aplicadas (arquivo)
+   values ('migracao-SEU-NOME-AQUI.sql') on conflict do nothing;
+   ```
+
+   Sem ela a migração roda e ninguém fica sabendo — e o conferidor vai pedir
+   para rodá-la de novo, para sempre.
+
+### Como saber o que falta rodar num banco
+
+**Não confie na memória de ninguém, nem na conversa.** Rode
+`supabase/conferir-migracoes.sql` no banco em questão: ele compara os arquivos
+do repositório com o que aquele banco diz ter aplicado, e lista o que falta —
+com quem rodou e quando. Ele também responde **qual banco é este**, porque as
+duas abas do SQL Editor são idênticas e a única diferença visível é uma string
+na barra de endereço.
+
+Antes de rodar SQL, identifique-se uma vez na sessão:
+
+```sql
+set valentrax.quem = 'laura';
+```
+
+Não é obrigatório — sem isso fica registrado o usuário do banco. Mas com duas
+pessoas mexendo, *quando* sem *quem* não resolve discussão nenhuma.
+
+> **Por que isto existe.** Já custou duas vezes: código publicado com a
+> migração **não rodada no hospital** (descoberta por sonda, depois do merge) e o
+> banco de **teste atrás da produção** (descoberta por um 404 no console). A
+> primeira tentativa de conserto foi um conferidor que *deduzia* pelo esquema —
+> e ele mentiu justamente na migração de dado, que não deixa marca na estrutura.
+> Por isso agora cada migração **afirma** que rodou, em vez de alguém inferir.
+> O conferidor e o anotador são **gerados** (`node supabase/gerar-conferencia.mjs`);
+> lista mantida à mão fica cega exatamente na migração mais nova, que é a menos
+> rodada e a mais provável de faltar em algum dos dois bancos.
 
 **Ao entregar qualquer feature, diga em qual dos dois casos ela cai** — e diga
 explicitamente, mesmo quando for o caso fácil:
@@ -302,6 +339,8 @@ buffer de leitura do navegador automatizado**. Para datar um erro de console, ab
 [ ] npm run build           → limpo
 [ ] node supabase/validar-sql.mjs   (se mexeu em SQL)
 [ ] auditoria e reconstrução regeneradas (se criou migração)
+[ ] a migração TERMINA se anotando em migracoes_aplicadas
+[ ] node supabase/gerar-conferencia.mjs   (se criou migração)
 [ ] o PR diz: precisa de migração? qual arquivo? em que ordem?
 [ ] CI verde nos 3 checks + preview do DEMO testado
 [ ] merge só com OK de quem não escreveu o código

@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 94 tabelas, 1495 colunas.
+-- Cobertura atual: 95 tabelas, 1499 colunas.
 -- ============================================================
 
 with
@@ -53,6 +53,7 @@ tabelas(nome, origem) as (values
   ('leitos','schema'),
   ('leitos_saidas','schema'),
   ('leitos_turnover','schema'),
+  ('migracoes_aplicadas','registro-de-migracoes'),
   ('nsp_acoes','nsp-rca-plano'),
   ('nsp_capacitacoes','nsp-capacitacoes'),
   ('nsp_comunicados','nsp-comunicados'),
@@ -603,6 +604,10 @@ colunas(tabela, coluna, origem) as (values
   ('leitos','status','schema'),
   ('leitos','updated_at','schema'),
   ('leitos','usuario','schema'),
+  ('migracoes_aplicadas','aplicada_em','registro-de-migracoes'),
+  ('migracoes_aplicadas','aplicada_por','registro-de-migracoes'),
+  ('migracoes_aplicadas','arquivo','registro-de-migracoes'),
+  ('migracoes_aplicadas','observacao','registro-de-migracoes'),
   ('nsp_acoes','atualizado_em','nsp-rca-plano'),
   ('nsp_acoes','categoria','nsp-rca-plano'),
   ('nsp_acoes','como','nsp-rca-plano'),

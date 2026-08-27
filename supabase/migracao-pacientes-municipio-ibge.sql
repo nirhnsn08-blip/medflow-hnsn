@@ -45,3 +45,7 @@ SELECT
   (SELECT count(*) FROM pacientes WHERE end_municipio IS NOT NULL AND end_municipio <> '') AS com_municipio,
   (SELECT count(*) FROM pacientes WHERE end_municipio_ibge IS NOT NULL) AS ja_com_codigo,
   (SELECT count(*) FROM pacientes WHERE end_cep IS NOT NULL AND end_cep <> '') AS com_cep_para_reaproveitar;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-pacientes-municipio-ibge.sql') on conflict do nothing;
