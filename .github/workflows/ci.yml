@@ -23,16 +23,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ⚠️ Node 22, e não 20, porque a MÁQUINA DE QUEM DESENVOLVE roda 24.
+      # Com o CI em 20 a deriva já custou um merge: `src/telas.test.jsx`
+      # passava aqui e MORRIA no CI — o jsdom traz um `undici` que exige
+      # Node mais novo, e o arquivo nem carregava ("62 passed (63)"). Um
+      # teste que não roda no CI não é rede de proteção, é enfeite; e o
+      # jeito de isso não se repetir é as duas pontas ficarem perto.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: npm install
 
       - name: Validar scripts SQL
         run: node supabase/validar-sql.mjs
+
+      # Nome solto (`valoresIniciais`, `loteEfetivo`) não quebra o build e
+      # não aparece em teste puro — só na tela, com o paciente na frente.
+      # Aconteceu duas vezes em 27/08/2026, e a segunda chegou ao hospital.
+      # Se o lint não roda aqui, o detector depende de alguém lembrar.
+      - name: Lint (nenhum nome solto)
+        run: npm run lint
 
       - name: Testes (farmácia clínica)
         run: npm test
