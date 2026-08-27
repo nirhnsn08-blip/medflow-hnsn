@@ -102,7 +102,8 @@ import Atendimento from "./atendimento/Atendimento.jsx";
 import FaturamentoPage from "./atendimento/FaturamentoSus.jsx";
 import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
-import { carregarPaciente } from "./atendimento/dados.js";
+import { carregarPaciente, carregarCatalogos } from "./atendimento/dados.js";
+import { avisoDeConta, dadosDeConta, geraConta, convenioSugerido, valoresIniciais } from "./atendimento/faturavel.js";
 // "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
 // como `status !== "finalizado"` em três pontos daqui — e o status
 // 'cancelado', criado depois, vazaria por todos eles: o Paciente 360
@@ -5326,6 +5327,9 @@ function PSPage({ currentUser, canEdit }) {
   const [faixasObst, setFaixasObst] = useState([]);          // critérios obstétricos (Fase 3)
   const [showFaixasObst, setShowFaixasObst] = useState(false);
   const [alocando, setAlocando] = useState(null);      // sala recebendo paciente
+  // Convênios e procedimentos: sem eles o desfecho não tem o que gravar, e o
+  // episódio do PS nunca chega ao faturamento.
+  const [catalogos, setCatalogos] = useState({ convenios: [], procedimentos: [] });
   const buscaRef = useRef(null);
   const [, setTick] = useState(0);
   // Ctrl+K foca a busca rápida (padrão de plantão: achar o paciente sem tirar a mão do teclado)
@@ -5339,6 +5343,9 @@ function PSPage({ currentUser, canEdit }) {
   }, []);
   // Faixas peds + critérios obstétricos: carrega uma vez (os motores leem deles).
   useEffect(() => { if (USE_SUPABASE) { loadFaixasPediatricas().then(setFaixasPed); loadFaixasObstetricas().then(setFaixasObst); } }, []);
+  // Catálogo de convênio e procedimento — o mesmo que a Recepção usa. Carrega
+  // uma vez: é cadastro, não muda durante o plantão.
+  useEffect(() => { if (USE_SUPABASE) carregarCatalogos(sbFetch).then(setCatalogos); }, []);
 
   function refresh() {
     if (!USE_SUPABASE) return;
@@ -5486,8 +5493,16 @@ function PSPage({ currentUser, canEdit }) {
     setTimeout(refresh, 300);
   }
   async function darDesfecho(p, d) {
-    const { desfecho, setorDestino, observacao, medico, leito } = d;
-    await updatePsAtendimentoRemote(p.id, { desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null, observacao: observacao || null, medico: medico || null, status: "finalizado" });
+    const { desfecho, setorDestino, observacao, medico, leito, convenioId, procedimentoCod, cid } = d;
+    // Convênio e procedimento vão JUNTO com o desfecho porque é aqui que o
+    // episódio vira faturável — e o procedimento só se sabe no fim. Sem eles,
+    // `carregarProducaoFaturavel` (que filtra procedimento_cod=not.is.null)
+    // nunca enxerga este atendimento.
+    await updatePsAtendimentoRemote(p.id, {
+      desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null,
+      observacao: observacao || null, medico: medico || null, status: "finalizado",
+      ...dadosDeConta({ convenioId, procedimentoCod, cid }),
+    });
     if (desfecho === "internacao") {
       if (leito) {
         // Reserva automática: o leito fica RESERVADO para o paciente até ele subir.
@@ -6624,7 +6639,7 @@ function PSPage({ currentUser, canEdit }) {
       {reavaliando && <TriagemModal paciente={reavaliando} reavaliacao faixasPediatricas={faixasPed} faixasObstetricas={faixasObst} onClose={() => setReavaliando(null)} onTriar={(cls, vitais, sug, comorb, extras) => reavaliar(reavaliando, cls, vitais, sug, comorb, extras)} />}
 
       {/* MODAL DESFECHO */}
-      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
+      {desfechando && <PsDesfechoModal paciente={desfechando} setores={setores} leitos={leitos} catalogos={catalogos} examesPend={examesPend[desfechando.id]} onClose={() => setDesfechando(null)} onSave={darDesfecho} />}
 
       {/* PAINEL DO ATENDIMENTO (evolução, prescrição, exames) */}
       {atendendo && <AtendimentoModal paciente={atendendo} currentUser={currentUser} abaInicial={atendendoAba} onClose={() => { setAtendendo(null); setAtendendoAba(null); refresh(); }} onChanged={() => {}} />}
@@ -6634,15 +6649,42 @@ function PSPage({ currentUser, canEdit }) {
 }
 
 // Modal de desfecho do PS (alta/internação/transferência/evasão/óbito)
-function PsDesfechoModal({ paciente, setores, leitos = [], examesPend, onClose, onSave }) {
+function PsDesfechoModal({ paciente, setores, leitos = [], catalogos = {}, examesPend, onClose, onSave }) {
   const exAguardando = examesPend?.aguardando || 0;   // exame sem resultado ainda
   const exProntos = examesPend?.prontos || 0;         // resultado saiu, médico não marcou visto
+  const inicial = valoresIniciais(paciente);
   const [desfecho, setDesfecho] = useState("");
   const [setorDestino, setSetorDestino] = useState("");
   const [medico, setMedico] = useState("");
   const [obs, setObs] = useState("");
   const [leitoSel, setLeitoSel] = useState("fila"); // "fila" | identificacao do leito
   const [busy, setBusy] = useState(false);
+  // Faturamento — abre com o que JÁ está gravado (ver valoresIniciais: abrir
+  // vazio faria o UPDATE do desfecho apagar o convênio da Recepção).
+  const [convenioId, setConvenioId] = useState(inicial.convenioId);
+  const [procedimentoCod, setProcedimentoCod] = useState(inicial.procedimentoCod);
+  const [cid, setCid] = useState(inicial.cid);
+  const [sugestao, setSugestao] = useState(null);   // convênio do atendimento anterior
+  const convenios = catalogos.convenios || [];
+  const procedimentos = catalogos.procedimentos || [];
+
+  // Convênio do atendimento anterior desta pessoa: poupa digitação e não
+  // afirma nada — a tela mostra de onde veio e quem confirma é quem está com
+  // o paciente na frente.
+  useEffect(() => {
+    if (!USE_SUPABASE || !paciente.prontuario || inicial.convenioId) return;
+    sbFetch(`ps_atendimentos?prontuario=eq.${encodeURIComponent(paciente.prontuario)}` +
+            `&convenio_id=not.is.null&id=neq.${paciente.id}` +
+            `&select=convenio_id,chegada_em&order=chegada_em.desc&limit=5`)
+      .then(r => setSugestao(convenioSugerido(Array.isArray(r) ? r : [])));
+  }, [paciente.id]);
+
+  // Só depois de escolher o desfecho — antes disso não se sabe sequer se
+  // este atendimento gera conta, e aviso que já nasce aceso não é lido.
+  const aviso = desfecho
+    ? avisoDeConta({ atendimento: { convenio_id: convenioId, procedimento_cod: procedimentoCod }, desfecho })
+    : null;
+  const pedeConta = !!desfecho && geraConta(desfecho);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
 
@@ -6658,8 +6700,16 @@ function PsDesfechoModal({ paciente, setores, leitos = [], examesPend, onClose, 
     if (desfecho === "internacao" && leitoObj) {
       if (!confirm(`Reservar o leito ${leitoObj.identificacao}${leitoObj.setor ? ` (${leitoObj.setor})` : ""} para ${paciente.iniciais}? O leito fica RESERVADO até o paciente chegar (confirme a chegada no Mapa de leitos).`)) return;
     }
+    // ⚠️ AVISA E DEIXA PASSAR. Desfecho é ato de porta — o leito precisa
+    // girar, o paciente está indo embora, e às vezes é óbito. Travar a saída
+    // por campo de faturamento inverteria a prioridade. O que não pode é
+    // alguém descobrir a falta só no fechamento do mês.
+    if (aviso && !confirm(`${aviso.texto}${String.fromCharCode(10, 10)}Finalizar assim mesmo?`)) return;
     setBusy(true);
-    await onSave(paciente, { desfecho, setorDestino, observacao: obs.trim(), medico: medico.trim(), leito: leitoObj });
+    await onSave(paciente, {
+      desfecho, setorDestino, observacao: obs.trim(), medico: medico.trim(), leito: leitoObj,
+      convenioId, procedimentoCod, cid: cid.trim(),
+    });
     setBusy(false);
   }
   return (
@@ -6728,6 +6778,46 @@ function PsDesfechoModal({ paciente, setores, leitos = [], examesPend, onClose, 
               })}
             </div>
             <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 5 }}>Vaga Zero = imposição de vaga na urgência · GERINT = regulação. A via fica registrada na observação e aparece no painel de Transferências.</div>
+          </div>
+        )}
+
+        {/* ── Faturamento ──────────────────────────────────────
+            Aqui, e não na chegada, porque o procedimento só se sabe no fim —
+            e porque é este UPDATE que o faturamento vai ler depois. Some na
+            evasão: atendimento que não gera conta não tem o que cobrar. */}
+        {pedeConta && (
+          <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "12px 13px", marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Faturamento</div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={lbl}>Convênio / fonte pagadora</label>
+              <select value={convenioId} onChange={e => setConvenioId(e.target.value)} style={inp}>
+                <option value="">Escolha o convênio…</option>
+                {convenios.map(c => <option key={c.id} value={String(c.id)}>{c.nome}</option>)}
+              </select>
+              {convenios.length === 0 && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Nenhum convênio cadastrado — cadastre em ATENDIMENTO › Tabelas.</div>}
+              {sugestao && !convenioId && (
+                <button onClick={() => setConvenioId(sugestao.convenio_id)} style={{ marginTop: 5, background: "transparent", border: "1px dashed var(--border-2)", borderRadius: 6, padding: "5px 10px", fontSize: 11.5, color: "var(--text-3)", cursor: "pointer" }}>
+                  Usar {convenios.find(c => String(c.id) === sugestao.convenio_id)?.nome || "o convênio anterior"} — foi o do atendimento de {fmtDataBR(sugestao.de)}
+                </button>
+              )}
+            </div>
+            <div style={{ marginBottom: 10 }}>
+              <label style={lbl}>Procedimento</label>
+              <select value={procedimentoCod} onChange={e => setProcedimentoCod(e.target.value)} style={inp}>
+                <option value="">Escolha o procedimento…</option>
+                {procedimentos.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nome}</option>)}
+              </select>
+              {procedimentos.length === 0 && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Nenhum procedimento cadastrado — cadastre em ATENDIMENTO › Tabelas.</div>}
+            </div>
+            <div>
+              <label style={lbl}>CID (opcional)</label>
+              <input value={cid} onChange={e => setCid(e.target.value)} placeholder="Ex.: J18" style={inp} />
+            </div>
+            {aviso && (
+              <div style={{ background: "#d9770618", border: "1px solid #d9770655", borderRadius: 7, padding: "8px 11px", marginTop: 10, fontSize: 11.5, color: "#d97706", lineHeight: 1.5 }}>
+                {aviso.texto}
+              </div>
+            )}
           </div>
         )}
 
