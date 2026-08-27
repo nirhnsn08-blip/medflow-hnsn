@@ -47,14 +47,18 @@ COMMENT ON TABLE public.migracoes_aplicadas IS
 -- não a garantia.
 ALTER TABLE public.migracoes_aplicadas ENABLE ROW LEVEL SECURITY;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                  WHERE tablename = 'migracoes_aplicadas' AND policyname = 'migracoes_leitura') THEN
-    CREATE POLICY migracoes_leitura ON public.migracoes_aplicadas
-      FOR SELECT TO authenticated USING (true);
-  END IF;
-END $$;
+-- ⚠️ O NOME DA POLÍTICA SEGUE A CONVENÇÃO `<tabela>_leitura`, e isso não é
+-- estética: o `migracao-rls-leitura.sql` derruba e recria as políticas POR
+-- ESSE NOME. Uma política fora do padrão sobreviveria ao drop e conviveria
+-- com a gerada — duas regras na mesma tabela, e ninguém sabendo qual vale.
+--
+-- A leitura é de TODOS os autenticados, declarada em `mapa-tabelas.js`:
+-- aqui só há nome de arquivo, data e quem rodou. Esconder não protegeria
+-- ninguém e faria a conferência depender de quem tem qual perfil.
+DROP POLICY IF EXISTS migracoes_leitura ON public.migracoes_aplicadas;
+DROP POLICY IF EXISTS migracoes_aplicadas_leitura ON public.migracoes_aplicadas;
+CREATE POLICY migracoes_aplicadas_leitura ON public.migracoes_aplicadas
+  FOR SELECT TO authenticated USING (true);
 
 -- ⚠️ ESTE ARQUIVO NÃO ANOTA AS MIGRAÇÕES ANTIGAS.
 -- São 82 no repositório, e deduzir cada uma pelo esquema seria repetir o

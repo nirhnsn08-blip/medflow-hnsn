@@ -213,7 +213,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 24 das 94 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 95 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -276,6 +276,7 @@ begin
       ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
+      ('migracoes_aplicadas', 'true'),                                                                -- todos os autenticados
       ('nsp_acoes', 'public.pode_ver_algum(''nsp'')'),                                                -- nsp
       ('nsp_capacitacoes', 'public.pode_ver_algum(''nsp'')'),                                         -- nsp
       ('nsp_comunicados', 'public.pode_ver_algum(''nsp'')'),                                          -- nsp
@@ -540,6 +541,7 @@ with esperadas_abertas(tabela) as (values
   ('farm_incompat_y'),
   ('farm_interacoes'),
   ('farm_medicamentos'),
+  ('migracoes_aplicadas'),
   ('nsp_meta_faixas'),
   ('nsp_protocolos'),
   ('perfis_acesso'),

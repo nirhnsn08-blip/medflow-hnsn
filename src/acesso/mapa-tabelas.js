@@ -82,6 +82,13 @@ export const MAPA_TABELAS = {
   // glosa rodam dentro do Atendimento, do PS e do prontuário.
   sigtap_procedimentos:     [TODOS],
 
+  // ── Registro de migrações: o que já rodou NESTE banco ─────
+  // Nome de arquivo, data e quem rodou. Nenhum dado de paciente, e a
+  // pergunta que ela responde ("o banco está em dia?") é de quem opera o
+  // sistema, não de um módulo. Esconder não protegeria ninguém e faria a
+  // conferência depender de quem tem qual perfil.
+  migracoes_aplicadas:      [TODOS],
+
   // ── Produção ambulatorial: contagem por dia/especialidade ──
   // Números agregados, ninguém identificável. É a fonte da Visão Geral.
   atendimentos:             ["overview", "atendimento", "ambulatorio", "print"],
