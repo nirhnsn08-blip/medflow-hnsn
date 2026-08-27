@@ -832,7 +832,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
     } catch { setWorklist([]); }
     finally { setCarregandoWL(false); }
   }
-  useEffect(() => { carregarWL(); }, [sb]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { carregarWL(); }, [sb]);   // só quando o cliente do banco troca — de propósito
 
   async function montar(idArg) {
     const n = String(idArg ?? numero).replace(/\D/g, "");
