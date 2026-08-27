@@ -23,6 +23,11 @@ import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 // vazio por construção. Ver prontuario/internacao.js.
 import { abrirEpisodio, encerrarEpisodio } from "./prontuario/dados.js";
 import { podeAbrirEpisodio, dadosDoEpisodio, desfechoDoLeito, avisoEpisodioNaoAberto } from "./prontuario/internacao.js";
+// 🔴 pep_alergias era lida em 4 lugares — inclusive na pulseira — e escrita
+// em nenhum. A tela MANDAVA registrar e não oferecia caminho.
+import { registrarAlergia } from "./prontuario/dados.js";
+import { validarAlergia, dadosDaAlergia, recadoDepoisDeGravar,
+         TIPOS as TIPOS_ALERGIA, GRAVIDADES as GRAVIDADES_ALERGIA } from "./clinico/registro-alergia.js";
 // Categorias profissionais — usadas na tela que classifica a equipe.
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
@@ -3787,6 +3792,10 @@ function PacientePage({ currentUser, canEdit }) {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [cadForm, setCadForm] = useState(null); // form de cadastro mínimo quando não existe
+  // Registro de alergia: `null` = fechado. Aberto, é o formulário em edição.
+  const [algForm, setAlgForm] = useState(null);
+  const [algBusy, setAlgBusy] = useState(false);
+  const [algMsg, setAlgMsg] = useState(null);   // { tom, texto }
   const [resumoIA, setResumoIA] = useState(null);
   // "resumo" = linha do tempo de todos os módulos (o que já existia).
   // "internacao" = prontuário do episódio em curso.
@@ -3810,7 +3819,28 @@ function PacientePage({ currentUser, canEdit }) {
   async function abrir(pront) {
     setCarregando(true); setProntuario(pront); setSugestoes([]); setResumoIA(null);
     const d = await loadPaciente360(pront);
-    setDados(d); setCadForm(null); setCarregando(false);
+    setDados(d); setCadForm(null); setCarregando(false); setAlgForm(null); setAlgMsg(null);
+  }
+
+  /**
+   * Grava a alergia e recarrega — sem recarregar, a pessoa registra e a
+   * tela continua dizendo "não avaliadas", que é o oposto do que aconteceu.
+   */
+  async function salvarAlergia() {
+    const v = validarAlergia(algForm || {});
+    if (!v.ok) { setAlgMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
+    if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nRegistrar assim mesmo?`)) return;
+    setAlgBusy(true);
+    const r = await registrarAlergia(sbFetch, prontuario, dadosDaAlergia(algForm), currentUser).catch(() => null);
+    setAlgBusy(false);
+    if (!Array.isArray(r) || !r.length) {
+      setAlgMsg({ tom: "erro", texto: "Nada foi gravado. O aviso vermelho no topo diz o motivo — costuma ser permissão de escrita no prontuário." });
+      return;
+    }
+    addAuditLog(currentUser, "registrar alergia", `${prontuario} · ${algForm.nega ? "nega alergias" : (algForm.agente || "?")}`, {});
+    setAlgMsg({ tom: "ok", texto: recadoDepoisDeGravar(algForm) });
+    setAlgForm(null);
+    setDados(await loadPaciente360(prontuario));
   }
   function resumir() {
     setResumoIA(resumoLocalPaciente(prontuario, dados, timeline, alertas));
@@ -3938,6 +3968,95 @@ function PacientePage({ currentUser, canEdit }) {
           {alergia.estado === "sem_registro" && (
             <div style={{ background: "#d9770612", border: "1px solid #d9770644", borderRadius: 10, padding: "9px 16px", marginBottom: 16, fontSize: 12.5, color: "#d97706", fontWeight: 600 }}>
               Alergias não avaliadas — pergunte ao paciente e registre. Campo em branco não é o mesmo que "não tem".
+            </div>
+          )}
+
+          {/* 🔴 O CAMINHO QUE A MENSAGEM ACIMA MANDAVA SEGUIR E NÃO EXISTIA.
+              `pep_alergias` era lida em 4 lugares — inclusive na pulseira do
+              punho do paciente — e escrita em nenhum. Instruir alguém a
+              fazer o que o sistema não permite ensina que a tela não vale. */}
+          {canEdit && dados && !algForm && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              <button onClick={() => { setAlgForm({ tipo: "medicamento" }); setAlgMsg(null); }}
+                style={{ background: "transparent", color: "#d97706", border: "1px solid #d9770688", borderRadius: 7, padding: "7px 13px", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                + Registrar alergia
+              </button>
+              <button onClick={() => { setAlgForm({ nega: true }); setAlgMsg(null); }}
+                style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 13px", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+                Paciente nega alergias
+              </button>
+            </div>
+          )}
+
+          {algForm && (
+            <div style={{ background: "var(--surface)", border: "1px solid #d9770655", borderLeft: "4px solid #d97706", borderRadius: 10, padding: "16px 18px", marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#d97706", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12 }}>
+                {algForm.nega ? "Paciente nega alergias conhecidas" : "Registrar alergia"}
+              </div>
+
+              {algForm.nega ? (
+                <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.6, marginBottom: 12 }}>
+                  Vai constar que <strong>alguém perguntou</strong> e o paciente negou — que é diferente
+                  de campo em branco. O registro fica com seu nome e a data.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                  <label><span style={secLbl}>A que é alérgico *</span>
+                    <input style={{ ...inp, width: "100%" }} value={algForm.agente || ""} autoFocus
+                      placeholder="como o paciente chama"
+                      onChange={e => setAlgForm(f => ({ ...f, agente: e.target.value }))} />
+                  </label>
+                  <label><span style={secLbl}>Tipo *</span>
+                    <select style={{ ...inp, width: "100%" }} value={algForm.tipo || ""}
+                      onChange={e => setAlgForm(f => ({ ...f, tipo: e.target.value }))}>
+                      <option value="">—</option>
+                      {TIPOS_ALERGIA.map(t => <option key={t.chave} value={t.chave}>{t.rotulo}</option>)}
+                    </select>
+                  </label>
+                  {algForm.tipo === "medicamento" && (
+                    <label><span style={secLbl}>Princípio ativo</span>
+                      <input style={{ ...inp, width: "100%" }} value={algForm.substancia || ""}
+                        placeholder="é o que faz o alerta funcionar"
+                        onChange={e => setAlgForm(f => ({ ...f, substancia: e.target.value }))} />
+                    </label>
+                  )}
+                  <label><span style={secLbl}>Gravidade</span>
+                    <select style={{ ...inp, width: "100%" }} value={algForm.gravidade || ""}
+                      onChange={e => setAlgForm(f => ({ ...f, gravidade: e.target.value }))}>
+                      <option value="">—</option>
+                      {GRAVIDADES_ALERGIA.map(g => <option key={g.chave} value={g.chave}>{g.rotulo} — {g.nota}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ gridColumn: "1 / -1" }}><span style={secLbl}>O que aconteceu</span>
+                    <input style={{ ...inp, width: "100%" }} value={algForm.reacao || ""}
+                      placeholder="urticária, broncoespasmo, anafilaxia…"
+                      onChange={e => setAlgForm(f => ({ ...f, reacao: e.target.value }))} />
+                  </label>
+                </div>
+              )}
+
+              <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 12, lineHeight: 1.5 }}>
+                O registro é permanente: alergia não se apaga. Engano se corrige com um registro novo,
+                e o histórico continua — saber que alguém já suspeitou é informação clínica.
+              </div>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={salvarAlergia} disabled={algBusy}
+                  style={{ background: "#d97706", color: "#fff", border: "none", borderRadius: 7, padding: "8px 16px", fontWeight: 700, fontSize: 12.5, cursor: algBusy ? "not-allowed" : "pointer", opacity: algBusy ? .5 : 1 }}>
+                  {algBusy ? "Gravando…" : "Registrar"}
+                </button>
+                <button onClick={() => { setAlgForm(null); setAlgMsg(null); }}
+                  style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 7, padding: "8px 16px", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {algMsg && (
+            <div style={{ marginBottom: 16, fontSize: 12.5, fontWeight: 600, lineHeight: 1.55,
+                          color: algMsg.tom === "erro" ? "#f43f5e" : "#34d399" }}>
+              {algMsg.texto}
             </div>
           )}
 
