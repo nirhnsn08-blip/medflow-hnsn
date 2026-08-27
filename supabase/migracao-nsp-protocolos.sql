@@ -47,3 +47,7 @@ on conflict (chave) do nothing;
 
 -- Verificação
 select 'NSP: nsp_protocolos ok — ' || count(*) || ' protocolos' as resultado from public.nsp_protocolos;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-nsp-protocolos.sql') on conflict do nothing;
