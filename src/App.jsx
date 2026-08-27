@@ -43,7 +43,7 @@ import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
 import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
-import { podeMarcarPronto } from "./farmacia/preparo.js";
+import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
 // Lote vencido não vai para paciente — mas SAI por descarte, senão fica
 // preso na prateleira. Ver o cabeçalho de validade.js.
 import { podeSair, lotesParaEscolha, situacaoDoLote } from "./farmacia/validade.js";
@@ -2458,6 +2458,7 @@ const FARM_NAV = [
   { key: "dispensacao", label: "Dispensações",      icon: "pill" },
   { key: "intervencao", label: "Intervenção",       icon: "shield" },
   { key: "estoque",     label: "Estoque",           icon: "box" },
+  { key: "inventario",  label: "Inventário",        icon: "clipboard" },
   { key: "interacoes",  label: "Interações",        icon: "flask" },
   { key: "controlados", label: "Controlados",       icon: "lock" },
   { key: "naopad",      label: "Não padronizados",  icon: "record" },
@@ -2674,6 +2675,37 @@ async function addSupInventarioRemote(inv, user) {
 async function marcarInventarioRemote(id, campos) {
   if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
   const r = await sbFetch(`sup_inventarios?id=eq.${id}`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify(campos),
+  });
+  const linhas = Array.isArray(r) ? r : r ? [r] : [];
+  if (!linhas.length) return { ok: false, erro: "A gravação não alterou nenhuma linha." };
+  return { ok: true, linha: linhas[0] };
+}
+// ── Inventário da FARMÁCIA ──────────────────────────────────
+// Mesma forma dos três acima. A farmácia e o almoxarifado são o mesmo
+// kardex com nomes diferentes, e a diferença que sobra é a coluna que
+// identifica o que se conta: `medicamento_id` em vez de `item_id`.
+async function loadFarmInventarios(limit = 400) {
+  const rows = await sbFetch(`farm_inventarios?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+async function addFarmInventarioRemote(inv, user) {
+  if (!USE_SUPABASE) return null;
+  const r = await sbFetch("farm_inventarios", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...inv, usuario: user?.name || null }),
+  });
+  return Array.isArray(r) ? r[0] : r;
+}
+// Confere o RETORNO, nunca o status: sem a política de UPDATE o PostgREST
+// responde 200 com `[]` — zero linhas alteradas — e o código daria por
+// gravado. É a mesma armadilha que o almoxarifado já pagou uma vez.
+async function marcarFarmInventarioRemote(id, campos) {
+  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
+  const r = await sbFetch(`farm_inventarios?id=eq.${id}`, {
     method: "PATCH",
     headers: { "Prefer": "return=representation" },
     body: JSON.stringify(campos),
@@ -3303,11 +3335,11 @@ const psDosesDadas = (itemId, adms) => adms.filter(a => String(a.prescricao_item
 // Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
 async function loadFarmSaidasByAtendimentos(ids) {
   if (!ids.length) return [];
-  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&tipo=eq.saida&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at`);
+  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at,tipo,estorno_de`);
   return Array.isArray(rows) ? rows : [];
 }
 async function loadFarmSaidasByAtendimento(atendimentoId) {
-  const rows = await sbFetch(`farm_movimentos?atendimento_id=eq.${atendimentoId}&tipo=eq.saida&select=*&order=created_at.desc`);
+  const rows = await sbFetch(`farm_movimentos?atendimento_id=eq.${atendimentoId}&select=*&order=created_at.desc`);
   return Array.isArray(rows) ? rows : [];
 }
 // Prioridade de ordenação da fila (menor = mais urgente)
@@ -5365,8 +5397,11 @@ function PSPage({ currentUser, canEdit }) {
       ]).then(([itens, saidasAll, admsAll]) => {
         const m = {};
         itens.forEach(it => {
-          const doItem = saidasAll.filter(s => String(s.prescricao_item_id) === String(it.id));
-          if (!doItem.length) return;                                                    // farmácia ainda não entregou
+          const doItem = saidasAll.filter(s => String(s.prescricao_item_id) === String(it.id) && s.tipo !== "entrada");
+          // LÍQUIDO, não bruto: se a dispensação foi estornada o medicamento
+          // voltou para a farmácia, e cobrar a checagem de uma dose que não
+          // está mais no leito é alarme falso — o tipo que ensina a ignorar.
+          if (dispensadoDoItem(it.id, saidasAll) <= 0) return;                           // farmácia ainda não entregou
           if (admsAll.some(a => String(a.prescricao_item_id) === String(it.id))) return; // já checado
           const desde = doItem.map(s => s.created_at).filter(Boolean).sort()[0] || null;
           const e = m[it.atendimento_id] || (m[it.atendimento_id] = { itens: [], desde: null });
@@ -7691,6 +7726,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
   const [kardex, setKardex]   = useState(null);   // med para histórico
   const [sub, setSub] = useState("dashboard");    // ver FARM_NAV
   const [saidasHist, setSaidasHist] = useState([]);
+  const [invs, setInvs] = useState([]);
   const [, setTick] = useState(0);
   const isMaster = currentUser?.role === "adm_master";
 
@@ -7699,6 +7735,67 @@ function FarmaciaPage({ currentUser, canEdit }) {
     loadFarmMedicamentos().then(setMeds);
     loadFarmLotes().then(setLotes);
     loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
+    loadFarmInventarios().then(setInvs);
+  }
+
+  // Contagem de inventário da farmácia — mesma regra do almoxarifado, e de
+  // propósito: `planejarAjuste` sabe tirar por FEFO, recusar sobra sem lote
+  // escolhido e recusar falta maior que o saldo. Uma segunda cópia dessas
+  // decisões divergiria da primeira na primeira regra que mudasse.
+  //
+  // ⚠️ `ajustado` só vira verdadeiro se o movimento ENTROU no kardex.
+  // Marcar pela intenção era o defeito que fazia a acuracidade do
+  // almoxarifado mentir para sempre — a contagem seguinte achava a mesma
+  // divergência e "ajustava" de novo.
+  async function salvarInventarioFarm(inv, plano = []) {
+    const linha = await addFarmInventarioRemote({ ...inv, ajustado: false }, currentUser);
+    const med = meds.find(x => x.id === inv.medicamento_id);
+    addAuditLog(currentUser, "contagem de inventário (farmácia)",
+      `${med?.nome || inv.medicamento_id} · sistema ${farmFmtQtd(inv.saldo_sistema)} → contado ${farmFmtQtd(inv.contado)}`, {});
+
+    if (!plano.length) { setTimeout(refresh, 350); return { ok: true }; }
+    if (!linha?.id) {
+      alert("A contagem não pôde ser gravada, então o ajuste não foi lançado.");
+      setTimeout(refresh, 350);
+      return { ok: false, erro: "contagem não gravada" };
+    }
+
+    const doc = documentoDaContagem(linha.id);
+    const erros = [];
+    let lancados = 0;
+    for (const p of plano) {
+      const r = await addFarmMovimentoRemote({
+        medicamento_id: inv.medicamento_id, lote: p.lote, validade: p.validade || null,
+        tipo: p.tipo, quantidade: p.quantidade,
+        motivo: MOTIVO_AJUSTE, documento: doc,
+      }, currentUser);
+      if (r.ok) lancados++; else erros.push(`${p.lote || "sem lote"}: ${r.erro}`);
+    }
+
+    // Parcial conta como NÃO ajustado: se um dos passos falhou, o saldo não
+    // chegou ao valor contado, e dizer "ajustado" seria a mesma mentira de
+    // antes, só que menor.
+    const completo = erros.length === 0;
+    const marcou = await marcarFarmInventarioRemote(linha.id, {
+      ajustado: completo,
+      autorizado_por: currentUser?.name || null,
+      ajuste_erro: completo ? null : erros.join(" · ").slice(0, 500),
+    });
+    if (!marcou.ok) {
+      alert(`O ajuste do estoque foi feito, mas o desfecho não pôde ser gravado na contagem ${doc}.` +
+        String.fromCharCode(10, 10) + `${marcou.erro}` + String.fromCharCode(10, 10) +
+        "O kardex está correto; a contagem é que ficou sem o registro de quem autorizou.");
+    }
+    if (!completo) {
+      alert(`A contagem foi registrada, mas o ajuste do estoque NÃO foi concluído.` +
+        String.fromCharCode(10, 10) + erros.join(String.fromCharCode(10)) + String.fromCharCode(10, 10) +
+        (lancados ? `${lancados} de ${plano.length} lançamento(s) entraram — o saldo ficou entre o antigo e o contado.` + String.fromCharCode(10, 10) : "") +
+        "O motivo ficou guardado na contagem. Confira e refaça.");
+    }
+    addAuditLog(currentUser, completo ? "ajuste de inventário (farmácia)" : "ajuste de inventário RECUSADO (farmácia)",
+      `${med?.nome || inv.medicamento_id} · ${doc} · ${descreverPlano(plano)}${completo ? "" : ` · ${erros.join(" · ")}`}`, {});
+    setTimeout(refresh, 350);
+    return { ok: completo, erro: erros.join(" · ") || null };
   }
   useEffect(() => {
     refresh();
@@ -7816,6 +7913,15 @@ function FarmaciaPage({ currentUser, canEdit }) {
       {sub === "controlados" && <FarmControladosView />}
       {sub === "naopad" && <FarmNaoPadronizadosView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "indicadores" && <FarmIndicadoresView />}
+      {/* A MESMA view do almoxarifado, com a chave trocada. Contagem cega,
+          curva ABC, acuracidade e conciliação são a mesma regra nos dois
+          módulos — e duas cópias divergiriam na primeira mudança. */}
+      {sub === "inventario" && (
+        <SupInventarioView currentUser={currentUser} canEdit={canEdit}
+          itens={meds.filter(m => m.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs}
+          onSave={salvarInventarioFarm}
+          chave="medicamento_id" origem="farmacia" rotuloItem="Medicamento" />
+      )}
 
       {sub === "estoque" && (<>
       {/* PAINÉIS DE ALERTA */}
@@ -7937,7 +8043,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
 
       {showMed && <FarmMedModal med={showMed} onClose={() => setShowMed(null)} onSave={salvarMed} />}
       {movMed && <FarmMovModal med={movMed.med} tipoInicial={movMed.tipo} lotes={lotes.filter(l => l.medicamento_id === movMed.med.id)} onClose={() => setMovMed(null)} onSave={registrarMov} />}
-      {kardex && <FarmKardexModal med={kardex} onClose={() => setKardex(null)} />}
+      {kardex && <FarmKardexModal med={kardex} currentUser={currentUser} canEdit={canEdit} onClose={() => setKardex(null)} />}
       </div>
     </div>
   );
@@ -8190,9 +8296,43 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
 }
 
 // Kardex — histórico de movimentos do medicamento
-function FarmKardexModal({ med, onClose }) {
+function FarmKardexModal({ med, currentUser, canEdit, onClose }) {
   const [movs, setMovs] = useState(null);
-  useEffect(() => { loadFarmMovimentos(med.id).then(setMovs); }, [med.id]);
+  const [ocupado, setOcupado] = useState(false);
+  const recarregar = () => loadFarmMovimentos(med.id).then(setMovs);
+  useEffect(() => { recarregar(); }, [med.id]);
+  const jaEstornados = idsJaEstornados(movs || []);
+
+  // O kardex é append-only, então desfazer é criar o movimento oposto
+  // APONTANDO para o original — nunca apagar. O banco garante que cada
+  // movimento só é estornado uma vez (índice único em `estorno_de`) e que o
+  // estorno é mesmo o oposto (mesmo medicamento, lote e quantidade).
+  //
+  // `copiar` leva o paciente junto: sem isso a devolução entra no kardex
+  // como entrada anônima, e o rastro se perde no lugar em que ele é
+  // obrigatório — que numa farmácia é o motivo de o kardex existir.
+  async function estornar(mv) {
+    const pode = podeEstornar(mv, jaEstornados);
+    if (!pode.ok) { alert(pode.motivo); return; }
+    const oposto = mv.tipo === "entrada" ? "saída" : "entrada";
+    if (!confirm(
+      `Estornar este movimento?${String.fromCharCode(10, 10)}` +
+      `${mv.tipo === "entrada" ? "Entrada" : "Saída"} de ${farmFmtQtd(mv.quantidade)}` +
+      `${mv.lote ? ` no lote ${mv.lote}` : ""} — ${med.nome}` +
+      `${mv.paciente_iniciais ? ` · ${mv.paciente_iniciais}` : ""}${String.fromCharCode(10, 10)}` +
+      `Será criada uma ${oposto} de ${farmFmtQtd(mv.quantidade)} no mesmo lote. ` +
+      `O movimento original permanece no histórico: estorno não apaga nada.`
+    )) return;
+    setOcupado(true);
+    const r = await addFarmMovimentoRemote(
+      movimentoDeEstorno(mv, { chave: "medicamento_id", copiar: ["paciente_iniciais", "paciente_prontuario", "setor", "atendimento_id", "prescricao_item_id"] }),
+      currentUser);
+    setOcupado(false);
+    if (!r.ok) { alert("Não foi possível estornar." + String.fromCharCode(10, 10) + (r.erro || "")); return; }
+    addAuditLog(currentUser, "estorno de movimento (farmácia)",
+      `${med.nome} · desfaz #${mv.id} (${mv.tipo} ${farmFmtQtd(mv.quantidade)}${mv.lote ? ` lote ${mv.lote}` : ""})`, {});
+    recarregar();
+  }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>
@@ -8209,9 +8349,16 @@ function FarmKardexModal({ med, onClose }) {
                   <div key={mv.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
                     <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: cor, fontSize: 14, minWidth: 62, textAlign: "right" }}>{ent ? "+" : "−"}{farmFmtQtd(mv.quantidade)}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.paciente_iniciais ? ` · ${mv.paciente_iniciais}` : ""}</div>
+                      <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.paciente_iniciais ? ` · ${mv.paciente_iniciais}` : ""}
+                        {mv.estorno_de != null && <span title={`Desfaz o movimento #${mv.estorno_de}`} style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>estorno de #{mv.estorno_de}</span>}
+                        {jaEstornados.has(mv.id) && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 7px" }}>estornado</span>}
+                      </div>
                       <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{mv.created_at ? new Date(mv.created_at).toLocaleString("pt-BR") : ""}{mv.documento ? ` · doc ${mv.documento}` : ""}{mv.usuario ? ` · ${mv.usuario}` : ""}</div>
                     </div>
+                    {canEdit && !jaEstornados.has(mv.id) && (
+                      <button onClick={() => estornar(mv)} disabled={ocupado} title="Cria o movimento oposto apontando para este. Não apaga nada."
+                        style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: ocupado ? "default" : "pointer", flexShrink: 0 }}>Estornar</button>
+                    )}
                   </div>
                 );
               })}
@@ -16255,7 +16402,7 @@ function SupAssistenteView() {
 
 // Inventário cíclico — contagem cega rotativa (curva ABC) + acuracidade
 const SUP_INV_INTERVALO = { A: 7, B: 30, C: 90 };   // dias entre contagens por classe
-function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, invs, onSave }) {
+function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, invs, onSave, chave = "item_id", origem = "suprimentos", rotuloItem = "Material" }) {
   const [contar, setContar] = useState(null);   // item em contagem
   const [busca, setBusca] = useState("");
   const [soPendentes, setSoPendentes] = useState(true);
@@ -16353,13 +16500,13 @@ function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, inv
         </div>
       )}
 
-      {contar && <SupContagemModal item={contar} saldoSistema={supSaldoTotal(contar.id, lotes)} lotesDoItem={lotes.filter(l => l.item_id === contar.id)} onClose={() => setContar(null)} onSave={async (inv, plano) => { await onSave(inv, plano); setContar(null); }} />}
+      {contar && <SupContagemModal item={contar} chave={chave} saldoSistema={supSaldoTotal(contar.id, lotes, chave)} lotesDoItem={lotes.filter(l => l[chave] === contar.id)} onClose={() => setContar(null)} onSave={async (inv, plano) => { await onSave(inv, plano); setContar(null); }} />}
     </div>
   );
 }
 
 // Contagem cega de um item — só revela o saldo do sistema após "Conferir"
-function SupContagemModal({ item, saldoSistema, lotesDoItem = [], onClose, onSave }) {
+function SupContagemModal({ item, saldoSistema, lotesDoItem = [], chave = "item_id", onClose, onSave }) {
   const [contado, setContado] = useState("");
   const [revelado, setRevelado] = useState(false);
   const [ajustar, setAjustar] = useState(true);
@@ -16387,7 +16534,7 @@ function SupContagemModal({ item, saldoSistema, lotesDoItem = [], onClose, onSav
   async function salvar() {
     setBusy(true);
     await onSave({
-      item_id: item.id,
+      [chave]: item.id,
       saldo_sistema: Number(saldoSistema),
       contado: Number(contado),
       diferenca: Number(contado) - Number(saldoSistema),

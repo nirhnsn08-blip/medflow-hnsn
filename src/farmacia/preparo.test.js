@@ -131,6 +131,38 @@ describe("de quem são os itens", () => {
   });
 });
 
+describe("🔴 o estorno devolve, e a conta sabe disso", () => {
+  const itens = [{ id: 1, atendimento_id: 9, registro_id: 5, medicamento_nome: "Dipirona" }];
+  const reg = { id: 5, atendimento_id: 9 };
+
+  it("dispensação estornada volta a contar como NÃO separada", () => {
+    // Sem isto, a prescrição ficaria "pronta para retirada" depois de o
+    // medicamento ter voltado para a farmácia — a mesma mentira que
+    // podeMarcarPronto impede, entrando pela outra ponta.
+    const saidas = [
+      { prescricao_item_id: 1, quantidade: 2, tipo: "saida" },
+      { prescricao_item_id: 1, quantidade: 2, tipo: "entrada", estorno_de: 77 },
+    ];
+    expect(dispensadoDoItem(1, saidas)).toBe(0);
+    const r = podeMarcarPronto({ registro: reg, itens, saidas });
+    expect(r.ok).toBe(false);
+    expect(r.quadro.nenhum).toBe(true);
+  });
+
+  it("estorno parcial deixa o que sobrou", () => {
+    const saidas = [
+      { prescricao_item_id: 1, quantidade: 5, tipo: "saida" },
+      { prescricao_item_id: 1, quantidade: 2, tipo: "entrada" },
+    ];
+    expect(dispensadoDoItem(1, saidas)).toBe(3);
+    expect(podeMarcarPronto({ registro: reg, itens, saidas }).ok).toBe(true);
+  });
+
+  it("movimento sem tipo continua contando como saída (dado antigo)", () => {
+    expect(dispensadoDoItem(1, [{ prescricao_item_id: 1, quantidade: 4 }])).toBe(4);
+  });
+});
+
 describe("o quadro da separação", () => {
   it("soma várias saídas do mesmo item", () => {
     expect(dispensadoDoItem(1, [saida(1, 2), saida(1, 4)])).toBe(6);

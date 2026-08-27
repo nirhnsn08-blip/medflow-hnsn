@@ -68,11 +68,23 @@ export function itensDaPrescricao(registro, itens = []) {
   return algumLigado ? [] : doAtendimento;
 }
 
-/** Quanto já saiu do estoque para um item da prescrição. */
+/**
+ * Quanto já saiu do estoque para um item da prescrição — LÍQUIDO.
+ *
+ * 🔴 O ESTORNO DEVOLVE, E A CONTA PRECISA SABER DISSO.
+ * A dispensação sai como `saida`; o estorno que a desfaz entra como
+ * `entrada` apontando para ela. Somar só as saídas deixaria a prescrição
+ * "pronta para retirada" depois de o medicamento ter VOLTADO para a
+ * farmácia — que é exatamente a mentira que `podeMarcarPronto` existe para
+ * impedir, reaparecendo pela outra ponta.
+ *
+ * Movimento sem `tipo` conta como saída: é como o kardex antigo gravava,
+ * e o recuo preserva o comportamento anterior para dado já existente.
+ */
 export const dispensadoDoItem = (itemId, saidas = []) =>
   (Array.isArray(saidas) ? saidas : [])
     .filter(s => id(s?.prescricao_item_id) === id(itemId))
-    .reduce((soma, s) => soma + num(s?.quantidade), 0);
+    .reduce((soma, s) => soma + (s?.tipo === "entrada" ? -num(s?.quantidade) : num(s?.quantidade)), 0);
 
 /**
  * O quadro da separação: quanto foi prescrito, quanto saiu, o que falta.

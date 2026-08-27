@@ -26,6 +26,19 @@ export const COLUNAS_MOVIMENTO = "id,item_id,lote_id,tipo,quantidade";
 export const COLUNAS_LOTE = "id,item_id,lote,validade,quantidade";
 
 /**
+ * Onde mora o estoque de cada módulo.
+ *
+ * Almoxarifado e farmácia são o MESMO kardex com nomes diferentes: saldo
+ * mantido em `*_lotes`, histórico paralelo em `*_movimentos`, aplicados
+ * por trigger. As duas fontes se separam pelos mesmos três caminhos, e um
+ * detector escrito duas vezes é um detector que vai divergir.
+ */
+export const ORIGENS = {
+  suprimentos: { movimentos: "sup_movimentos",  lotes: "sup_lotes",  chave: "item_id" },
+  farmacia:    { movimentos: "farm_movimentos", lotes: "farm_lotes", chave: "medicamento_id" },
+};
+
+/**
  * Percorre uma tabela inteira por CHAVE, não por offset.
  *
  * Offset em tabela que recebe inserção durante a leitura pula e repete
@@ -58,13 +71,17 @@ export async function carregarTudoPorId(sb, tabela, colunas, { pagina = PAGINA, 
  * qualquer uma das duas leituras falhou ou veio truncada.
  */
 export async function conciliarAgora(sb, opcoes = {}) {
+  const { origem = "suprimentos", ...resto } = opcoes;
+  const o = ORIGENS[origem] || ORIGENS.suprimentos;
+  const colMov = `id,${o.chave},lote_id,tipo,quantidade`;
+  const colLote = `id,${o.chave},lote,validade,quantidade`;
   const [mv, lt] = await Promise.all([
-    carregarTudoPorId(sb, "sup_movimentos", COLUNAS_MOVIMENTO, opcoes),
-    carregarTudoPorId(sb, "sup_lotes", COLUNAS_LOTE, opcoes),
+    carregarTudoPorId(sb, o.movimentos, colMov, resto),
+    carregarTudoPorId(sb, o.lotes, colLote, resto),
   ]);
   const completo = mv.completo && lt.completo;
   return {
-    ...conciliar(mv.linhas, lt.linhas, { historicoCompleto: completo }),
+    ...conciliar(mv.linhas, lt.linhas, { historicoCompleto: completo, chave: o.chave }),
     // Por que não conciliou — a tela precisa distinguir "não deu para ler"
     // de "li demais": o primeiro é problema de acesso, o segundo é volume.
     motivo: mv.linhas == null || lt.linhas == null ? "falha"
