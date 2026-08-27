@@ -46,7 +46,7 @@ export default function PerfisAcesso({ sb, currentUser, usuarios = [], onMudou }
     for (const g of (Array.isArray(gs) ? gs : [])) (mapa[g.perfil_chave] ||= {})[g.modulo] = g.nivel;
     setPerfis(ps); setGrants(mapa);
   }
-  useEffect(() => { carregar(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { carregar(); }, []);   // uma vez, na montagem — de propósito
 
   function abrir(p) {
     setRascunho({ ...p, grants: { ...(grants[p.chave] || {}) } });

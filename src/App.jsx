@@ -8595,7 +8595,12 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                         <div style={{ flex: "2 1 220px" }}>
                           <label style={farmLbl}>Lote (FEFO)</label>
-                          <select value={loteEfetivo} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
+                          {/* `f.lote_id`, e não um `loteEfetivo` como nos outros dois
+                              modais: aqui o `abrir()` JÁ semeia o lote com o primeiro
+                              da ordem FEFO, e é `f.lote_id` que o `confirmar()` lê.
+                              Mostrar no select um valor diferente do que a baixa usa
+                              faria o farmacêutico ver um lote e o estoque sair de outro. */}
+                          <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
                             {selItem._lotes.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
                           </select>
                         </div>
