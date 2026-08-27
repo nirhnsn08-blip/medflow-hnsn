@@ -65,13 +65,19 @@ WITH checagens(ordem, migracao, o_que_faz, aplicada) AS (VALUES
       'lote vencido não vai para paciente (mas sai por descarte)',
       EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='farm_movimentos_vencido_nao_dispensa')),
 
+  -- ⚠️ ESTA É A ÚNICA QUE NÃO DÁ PARA CONFERIR PELO ESQUEMA, e por isso é
+  -- a única que já mentiu. Migração de DADO não deixa marca na estrutura.
+  --
+  -- A pergunta "existe leito ocupado sem episódio?" responde `não` de dois
+  -- jeitos MUITO diferentes: porque a migração rodou, ou porque não há
+  -- leito ocupado nenhum. Num hospital com poucos internados, a segunda
+  -- resposta virava um `ok` falso.
+  --
+  -- Agora ela distingue os três estados, usando o rastro que a própria
+  -- migração deixa (`usuario = 'migracao-retroativa'`).
   (10, 'migracao-pep-episodio-retroativo',
       'abre o episódio de quem JÁ está internado',
-      NOT EXISTS (SELECT 1 FROM public.leitos l
-                   WHERE l.status='ocupado'
-                     AND coalesce(trim(l.prontuario),'')<>''
-                     AND NOT EXISTS (SELECT 1 FROM public.pep_episodios e
-                                      WHERE e.prontuario=l.prontuario AND e.status='aberto'))),
+      NULL::boolean),   -- avaliada à parte, abaixo
 
   (11, 'migracao-episodio-id-tipo',
       'episodio_id das tabelas de enfermagem: uuid -> bigint',
@@ -89,9 +95,23 @@ SELECT
   ordem,
   migracao || '.sql' AS arquivo,
   o_que_faz,
-  CASE WHEN aplicada THEN 'ok' ELSE '>>> FALTA — rode este' END AS situacao
+  CASE
+    -- a de dado (10) tem três respostas, não duas
+    WHEN aplicada IS NULL THEN
+      CASE
+        WHEN EXISTS (SELECT 1 FROM public.pep_episodios WHERE usuario = 'migracao-retroativa')
+          THEN 'ok'
+        WHEN NOT EXISTS (SELECT 1 FROM public.leitos
+                          WHERE status = 'ocupado' AND coalesce(trim(prontuario), '') <> '')
+          THEN 'nada a fazer — nenhum leito ocupado com prontuário'
+        ELSE '>>> FALTA — rode este'
+      END
+    WHEN aplicada THEN 'ok'
+    ELSE '>>> FALTA — rode este'
+  END AS situacao
 FROM checagens
-ORDER BY aplicada, ordem;
+-- '>>>' vem antes de 'n' e de 'o' na ordenação: o que falta aparece no topo.
+ORDER BY situacao, ordem;
 
 -- ── QUAL BANCO É ESTE? ──────────────────────────────────────
 -- As duas abas do SQL Editor são idênticas; a única diferença visível é
