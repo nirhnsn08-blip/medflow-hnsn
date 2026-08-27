@@ -72,3 +72,7 @@ SELECT
   (SELECT count(*) FROM at_contas WHERE status = 'fechada') AS fechadas_esperando_remessa,
   (SELECT count(*) FROM at_contas WHERE status = 'faturada') AS ja_faturadas,
   (SELECT count(DISTINCT competencia) FROM at_contas WHERE status = 'fechada') AS competencias_com_pendencia;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-faturamento-remessa.sql') on conflict do nothing;

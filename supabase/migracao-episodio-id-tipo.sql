@@ -86,3 +86,7 @@ SELECT
                           'enf_sae_prescricoes','enf_sae_prescricao_itens','enf_sae_checagem','nsp_incidentes')) AS agora_bigint,
   (SELECT count(*) FROM pg_constraint WHERE conname LIKE '%\_episodio\_fk') AS com_fk,
   (SELECT count(*) FROM public.pep_episodios WHERE status = 'aberto') AS episodios_abertos;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-episodio-id-tipo.sql') on conflict do nothing;

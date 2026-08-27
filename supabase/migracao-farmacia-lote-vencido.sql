@@ -75,3 +75,7 @@ SELECT
   (SELECT count(*) FROM public.farm_movimentos
      WHERE tipo = 'saida' AND motivo = 'Dispensação'
        AND validade IS NOT NULL AND validade < created_at::date) AS dispensados_vencidos;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-farmacia-lote-vencido.sql') on conflict do nothing;

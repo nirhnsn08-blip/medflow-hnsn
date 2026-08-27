@@ -96,3 +96,7 @@ SELECT
                  OR (i.registro_id IS NULL
                      AND i.atendimento_id = (SELECT atendimento_id FROM public.ps_registros WHERE id = p.registro_id)))
        )) AS ja_prontas_sem_baixa;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-farmacia-preparo-exige-baixa.sql') on conflict do nothing;

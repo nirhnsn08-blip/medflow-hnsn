@@ -66,3 +66,7 @@ SELECT
        AND coalesce(trim(l.prontuario), '') <> ''
        AND NOT EXISTS (SELECT 1 FROM public.pep_episodios e
                         WHERE e.prontuario = l.prontuario AND e.status = 'aberto')) AS ficaram_de_fora;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-pep-episodio-retroativo.sql') on conflict do nothing;

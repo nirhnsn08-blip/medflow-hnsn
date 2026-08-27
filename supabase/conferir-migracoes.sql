@@ -1,124 +1,137 @@
--- ═══════════════════════════════════════════════════════════
--- O QUE JÁ RODOU NESTE BANCO — pergunte, não lembre
+-- ============================================================
+-- Valentrax — O QUE FALTA RODAR NESTE BANCO
 --
--- Rode em QUALQUER um dos dois bancos. Ele diz, migração por migração,
--- se já foi aplicada aqui — lendo o próprio esquema, não uma lista que
--- alguém manteve à mão.
+-- Rode em QUALQUER um dos dois bancos. Ele compara os arquivos que
+-- existem no repositório com os que ESTE banco diz ter aplicado.
 --
--- POR QUE ISTO EXISTE
--- As migrações rodam manualmente, uma de cada vez, em dois bancos
--- diferentes, às vezes com dias de intervalo. A lista de "o que falta"
--- vivia no meio da conversa, e isso é exatamente o tipo de coisa que se
--- perde. Já aconteceu de o código estar publicado com a migração NÃO
--- rodada no hospital (a `faturamento-remessa`, descoberta por sonda) e de
--- o banco de teste estar ATRÁS da produção (a `nsp-protocolos`).
+-- ⚠️ ARQUIVO GERADO — não edite à mão. Ao criar uma migração, rode:
+--        node supabase/gerar-conferencia.mjs
 --
--- ⚠️ CADA LINHA PERGUNTA AO ESQUEMA, não a um registro de execução. É a
--- mesma escolha do `auditoria-banco.sql`: lista mantida à mão fica cega
--- justamente no item mais novo, que é o menos testado.
+-- ⚠️ DEPENDE DE `migracoes_aplicadas`. Se a tabela não existir, rode antes
+--    `migracao-registro-de-migracoes.sql` — ela cria o registro e anota as
+--    que já rodaram.
 --
--- COMO LER: `falta` na coluna situacao = rode o arquivo indicado.
--- ═══════════════════════════════════════════════════════════
+-- ⚠️ E CADA MIGRAÇÃO NOVA PRECISA TERMINAR COM ESTA LINHA:
+--
+--        insert into public.migracoes_aplicadas (arquivo)
+--        values ('migracao-SEU-NOME-AQUI.sql') on conflict do nothing;
+--
+--    Sem ela a migração roda e não se anota — e o conferidor vai pedir
+--    para rodar de novo, para sempre.
+--
+-- Cobertura: 82 migrações.
+-- ============================================================
 
-WITH checagens(ordem, migracao, o_que_faz, aplicada) AS (VALUES
+-- quem está rodando? (opcional, mas ajuda quando são duas pessoas)
+-- set valentrax.quem = 'seu-nome';
 
-  (1, 'migracao-pacientes-nacionalidade-etnia',
-      'estrangeiro, passaporte e etnia indígena no cadastro',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='pacientes' AND column_name='pais_nascimento')),
-
-  (2, 'migracao-agenda-remarcacao',
-      'remarcação com vínculo à consulta original',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='ag_agendamentos' AND column_name='remarcado_de')),
-
-  (3, 'migracao-pacientes-obito',
-      'óbito carimbado no cadastro por gatilho',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='pacientes' AND column_name='obito_origem')),
-
-  (4, 'migracao-pacientes-recem-nascido',
-      'DNV, hora e ordem de nascimento; separa gêmeos',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='pacientes' AND column_name='dnv')),
-
-  (5, 'migracao-pacientes-municipio-ibge',
-      'código IBGE do município, exigido pela AIH e pelo BPA',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='pacientes' AND column_name='end_municipio_ibge')),
-
-  (6, 'migracao-faturamento-remessa',
-      'transmissão da remessa: faturada_em, por quem, protocolo',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='at_contas' AND column_name='remessa_protocolo')),
-
-  (7, 'migracao-pacientes-unificacao',
-      'unificação de prontuário (o ponteiro entre duas fichas)',
-      EXISTS (SELECT 1 FROM information_schema.columns
-               WHERE table_name='pacientes' AND column_name='unificado_para')),
-
-  (8, 'migracao-farmacia-preparo-exige-baixa',
-      'prescrição só fica "pronta" se saiu do estoque',
-      EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='farm_preparo_exige_baixa')),
-
-  (9, 'migracao-farmacia-lote-vencido',
-      'lote vencido não vai para paciente (mas sai por descarte)',
-      EXISTS (SELECT 1 FROM pg_trigger WHERE tgname='farm_movimentos_vencido_nao_dispensa')),
-
-  -- ⚠️ ESTA É A ÚNICA QUE NÃO DÁ PARA CONFERIR PELO ESQUEMA, e por isso é
-  -- a única que já mentiu. Migração de DADO não deixa marca na estrutura.
-  --
-  -- A pergunta "existe leito ocupado sem episódio?" responde `não` de dois
-  -- jeitos MUITO diferentes: porque a migração rodou, ou porque não há
-  -- leito ocupado nenhum. Num hospital com poucos internados, a segunda
-  -- resposta virava um `ok` falso.
-  --
-  -- Agora ela distingue os três estados, usando o rastro que a própria
-  -- migração deixa (`usuario = 'migracao-retroativa'`).
-  (10, 'migracao-pep-episodio-retroativo',
-      'abre o episódio de quem JÁ está internado',
-      NULL::boolean),   -- avaliada à parte, abaixo
-
-  (11, 'migracao-episodio-id-tipo',
-      'episodio_id das tabelas de enfermagem: uuid -> bigint',
-      NOT EXISTS (SELECT 1 FROM information_schema.columns
-                   WHERE column_name='episodio_id' AND data_type='uuid'
-                     AND table_name IN ('enf_escalas','enf_lesao_pressao','enf_sae_historico',
-                                        'enf_sae_diagnosticos','enf_sae_prescricoes',
-                                        'enf_sae_prescricao_itens','enf_sae_checagem','nsp_incidentes'))),
-
-  (12, 'migracao-nsp-protocolos',
-      'protocolos do Núcleo de Segurança do Paciente',
-      EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='nsp_protocolos'))
+with esperadas(arquivo, o_que_faz) as (values
+  ('migracao-agenda-confirmacao.sql', 'A tela da Agenda exibe um KPI de ABSENTEÍSMO e o hospital não tem como'),
+  ('migracao-agenda-remarcacao.sql', 'Remarcar não existe no sistema. Existe CANCELAR (com um motivo em texto'),
+  ('migracao-agenda-vaga-por-profissional.sql', 'A trava que impede dois pacientes no mesmo horário estava na chave'),
+  ('migracao-atendimento-agenda.sql', 'AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia'),
+  ('migracao-atendimento-ciclo.sql', 'CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro'),
+  ('migracao-atendimento-fase2.sql', 'ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde'),
+  ('migracao-atendimento-faturamento.sql', 'FATURAMENTO — a conta do atendimento (fundação)'),
+  ('migracao-atendimento-fk.sql', 'ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)'),
+  ('migracao-atendimento-recepcao.sql', 'ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital'),
+  ('migracao-atendimento-responsavel.sql', 'RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta'),
+  ('migracao-auditoria-atribuivel.sql', 'AUDITORIA — trilha atribuível e consultável'),
+  ('migracao-enf-escalas-lpp.sql', 'ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)'),
+  ('migracao-enf-sae.sql', 'ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)'),
+  ('migracao-episodio-id-tipo.sql', '`episodio_id` DAS TABELAS DE ENFERMAGEM: uuid → bigint'),
+  ('migracao-farmacia-clinica-fase1.sql', 'Idempotente nas colunas (add if not exists). O bloco de seed preenche'),
+  ('migracao-farmacia-clinica-fase2.sql', 'Tabelas de PARES de substâncias, curáveis pela equipe. O seed traz'),
+  ('migracao-farmacia-clinica-fase3.sql', 'NÃO altera estrutura (colunas ajuste_renal/ajuste_hepatico já existem'),
+  ('migracao-farmacia-custos.sql', 'Não altera dados; só adiciona a coluna de custo. Os preços são'),
+  ('migracao-farmacia-faseA.sql', 'Idempotente: pode rodar de novo sem quebrar nada.'),
+  ('migracao-farmacia-faseB.sql', 'Idempotente: pode rodar de novo sem quebrar nada.'),
+  ('migracao-farmacia-intervencoes.sql', 'Registro das intervenções do farmacêutico sobre a prescrição, com'),
+  ('migracao-farmacia-lote-vencido.sql', 'LOTE VENCIDO NÃO VAI PARA O PACIENTE'),
+  ('migracao-farmacia-nao-padronizados.sql', 'Registro dos medicamentos que NÃO estão no catálogo do hospital e que'),
+  ('migracao-farmacia-preparo-exige-baixa.sql', 'A PRESCRIÇÃO SÓ FICA "PRONTA" SE SAIU DO ESTOQUE'),
+  ('migracao-farmacia-preparo.sql', 'Uma linha por prescrição assinada (registro_id). "aguardando" é implícito:'),
+  ('migracao-farmacia-seed.sql', 'Idempotente: só insere o que ainda não existe (por nome).'),
+  ('migracao-faturamento-remessa.sql', 'REMESSA TRANSMITIDA — quem, quando, e sob qual protocolo'),
+  ('migracao-leitos-kanban-metas.sql', '(idempotente e reversível de fato — não apaga nem altera nada existente).'),
+  ('migracao-leitos-nir-regulacao.sql', 'GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"'),
+  ('migracao-leitos-saida-setor.sql', '(idempotente; não apaga nem altera nada existente).'),
+  ('migracao-nsp-capacitacoes.sql', 'NSP — Capacitações em segurança do paciente (Fase 2d)'),
+  ('migracao-nsp-comunicados.sql', 'NSP — Comunicação / mural de segurança (Fase 2d)'),
+  ('migracao-nsp-incidentes.sql', 'NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes'),
+  ('migracao-nsp-metas.sql', 'NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)'),
+  ('migracao-nsp-protocolos.sql', 'NSP — Protocolos gerenciados de segurança (Fase 2d)'),
+  ('migracao-nsp-rca-plano.sql', 'NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)'),
+  ('migracao-pacientes-busca.sql', 'A busca da recepção não achava o paciente que está cadastrado. Três'),
+  ('migracao-pacientes-identificacao.sql', 'IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário'),
+  ('migracao-pacientes-municipio-ibge.sql', 'CÓDIGO IBGE DO MUNICÍPIO DE RESIDÊNCIA'),
+  ('migracao-pacientes-nacionalidade-etnia.sql', 'O cadastro atende mal duas populações que chegam no balcão, cada uma de'),
+  ('migracao-pacientes-obito.sql', '`pacientes.obito` é lido em CINCO lugares do código e escrito em NENHUM.'),
+  ('migracao-pacientes-recem-nascido.sql', 'O hospital faz parto e o bebê NÃO TINHA COMO SER CADASTRADO. Não é que o'),
+  ('migracao-pacientes-unificacao.sql', 'UNIFICAÇÃO DE PRONTUÁRIO — ligar duas fichas da mesma pessoa'),
+  ('migracao-pep-acessos.sql', 'PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)'),
+  ('migracao-pep-categoria-profissional.sql', 'PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO'),
+  ('migracao-pep-episodio-retroativo.sql', 'ABRE O EPISÓDIO DE QUEM JÁ ESTÁ INTERNADO'),
+  ('migracao-pep-fase1.sql', 'PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1'),
+  ('migracao-pep-fase3.sql', 'PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA'),
+  ('migracao-pep-perfis-update.sql', 'PERFIS — permitir que o administrador classifique a equipe'),
+  ('migracao-pep-sinais-spo2.sql', 'PEP — saturação e suporte de O₂ nos sinais vitais'),
+  ('migracao-perfis-acesso.sql', 'PERFIS DE ACESSO — o cargo vira um pacote de permissões'),
+  ('migracao-perfis-auditoria-diretor.sql', 'AUDITORIA: DIRETOR TÉCNICO PASSA A SÓ CONSULTAR A TRILHA'),
+  ('migracao-perfis-faturamento.sql', 'GRANTS DO MÓDULO FATURAMENTO — migração avulsa (Tier 1 — Fase 4)'),
+  ('migracao-perfis-nsp.sql', 'SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS'),
+  ('migracao-protocolos-avc.sql', 'PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)'),
+  ('migracao-protocolos-iam.sql', 'PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)'),
+  ('migracao-protocolos-tev.sql', 'PROTOCOLOS CLINICOS · Fase 3d: TEV / profilaxia (seed do template)'),
+  ('migracao-protocolos.sql', 'PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)'),
+  ('migracao-ps-checagem-medicacao.sql', 'PRONTO-SOCORRO — checagem de medicação administrada'),
+  ('migracao-ps-comorbidades.sql', 'PRONTO-SOCORRO — Comorbidades na triagem'),
+  ('migracao-ps-faixas-obstetricas.sql', 'PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)'),
+  ('migracao-ps-faixas-pediatricas.sql', 'PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)'),
+  ('migracao-ps-origem-elo.sql', 'PRONTO-SOCORRO — origem da chegada + elo forte PS → leito'),
+  ('migracao-ps-salas-censo.sql', 'PRONTO-SOCORRO — estrutura real das vagas + regra de censo'),
+  ('migracao-ps-salas.sql', 'PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)'),
+  ('migracao-ps-triagem-tipo.sql', 'PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)'),
+  ('migracao-registro-de-migracoes.sql', 'REGISTRO DE MIGRAÇÕES — cada uma passa a se anotar ao rodar'),
+  ('migracao-rls-leitura.sql', 'Regenere com:  node supabase/gerar-rls.mjs'),
+  ('migracao-sigtap-valores.sql', 'Regenere com:  node supabase/importar-aih.mjs <arquivo.dbc> [·cnes N]'),
+  ('migracao-sigtap.sql', 'SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)'),
+  ('migracao-suprimentos-ajuste-estorno.sql', 'SUPRIMENTOS — ajuste de inventário rastreável e estorno com vínculo'),
+  ('migracao-suprimentos-alcada.sql', 'SUPRIMENTOS — alçada de aprovação de compra'),
+  ('migracao-suprimentos-aprovacao.sql', 'SUPRIMENTOS — Aprovação de pedidos de compra pela matriz'),
+  ('migracao-suprimentos-cotacao.sql', 'SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)'),
+  ('migracao-suprimentos-faseA.sql', 'SUPRIMENTOS (Estoque & Compras) — Fase A'),
+  ('migracao-suprimentos-faseB.sql', 'SUPRIMENTOS — Fase B: requisições de materiais pelos setores'),
+  ('migracao-suprimentos-faseC.sql', 'SUPRIMENTOS — Fase C: pedidos de compra'),
+  ('migracao-suprimentos-integridade.sql', 'SUPRIMENTOS — integridade do saldo (travas duras no banco)'),
+  ('migracao-suprimentos-inventario.sql', 'SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras'),
+  ('migracao-suprimentos-ponto-de-pedido.sql', 'SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor'),
+  ('migracao-suprimentos-seed.sql', 'SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)'),
+  ('migracao-suprimentos-unidade-compra.sql', 'SUPRIMENTOS — unidade de compra × unidade de consumo')
 )
-SELECT
-  ordem,
-  migracao || '.sql' AS arquivo,
-  o_que_faz,
-  CASE
-    -- a de dado (10) tem três respostas, não duas
-    WHEN aplicada IS NULL THEN
-      CASE
-        WHEN EXISTS (SELECT 1 FROM public.pep_episodios WHERE usuario = 'migracao-retroativa')
-          THEN 'ok'
-        WHEN NOT EXISTS (SELECT 1 FROM public.leitos
-                          WHERE status = 'ocupado' AND coalesce(trim(prontuario), '') <> '')
-          THEN 'nada a fazer — nenhum leito ocupado com prontuário'
-        ELSE '>>> FALTA — rode este'
-      END
-    WHEN aplicada THEN 'ok'
-    ELSE '>>> FALTA — rode este'
-  END AS situacao
-FROM checagens
--- '>>>' vem antes de 'n' e de 'o' na ordenação: o que falta aparece no topo.
-ORDER BY situacao, ordem;
+select
+  case when a.arquivo is null then '>>> FALTA — rode este' else 'ok' end as situacao,
+  e.arquivo,
+  e.o_que_faz,
+  to_char(a.aplicada_em, 'DD/MM/YYYY HH24:MI') as quando,
+  a.aplicada_por as quem
+from esperadas e
+left join public.migracoes_aplicadas a on a.arquivo = e.arquivo
+order by situacao, e.arquivo;
 
--- ── QUAL BANCO É ESTE? ──────────────────────────────────────
+-- ── e o contrário: rodou algo que não está mais no repositório? ──
+-- Não é erro: pode ser migração antiga renomeada. Mas vale saber.
+select a.arquivo as registrada_mas_sem_arquivo,
+       to_char(a.aplicada_em, 'DD/MM/YYYY') as quando, a.aplicada_por as quem
+from public.migracoes_aplicadas a
+where a.arquivo not in ('migracao-agenda-confirmacao.sql', 'migracao-agenda-remarcacao.sql', 'migracao-agenda-vaga-por-profissional.sql', 'migracao-atendimento-agenda.sql', 'migracao-atendimento-ciclo.sql', 'migracao-atendimento-fase2.sql', 'migracao-atendimento-faturamento.sql', 'migracao-atendimento-fk.sql', 'migracao-atendimento-recepcao.sql', 'migracao-atendimento-responsavel.sql', 'migracao-auditoria-atribuivel.sql', 'migracao-enf-escalas-lpp.sql', 'migracao-enf-sae.sql', 'migracao-episodio-id-tipo.sql', 'migracao-farmacia-clinica-fase1.sql', 'migracao-farmacia-clinica-fase2.sql', 'migracao-farmacia-clinica-fase3.sql', 'migracao-farmacia-custos.sql', 'migracao-farmacia-faseA.sql', 'migracao-farmacia-faseB.sql', 'migracao-farmacia-intervencoes.sql', 'migracao-farmacia-lote-vencido.sql', 'migracao-farmacia-nao-padronizados.sql', 'migracao-farmacia-preparo-exige-baixa.sql', 'migracao-farmacia-preparo.sql', 'migracao-farmacia-seed.sql', 'migracao-faturamento-remessa.sql', 'migracao-leitos-kanban-metas.sql', 'migracao-leitos-nir-regulacao.sql', 'migracao-leitos-saida-setor.sql', 'migracao-nsp-capacitacoes.sql', 'migracao-nsp-comunicados.sql', 'migracao-nsp-incidentes.sql', 'migracao-nsp-metas.sql', 'migracao-nsp-protocolos.sql', 'migracao-nsp-rca-plano.sql', 'migracao-pacientes-busca.sql', 'migracao-pacientes-identificacao.sql', 'migracao-pacientes-municipio-ibge.sql', 'migracao-pacientes-nacionalidade-etnia.sql', 'migracao-pacientes-obito.sql', 'migracao-pacientes-recem-nascido.sql', 'migracao-pacientes-unificacao.sql', 'migracao-pep-acessos.sql', 'migracao-pep-categoria-profissional.sql', 'migracao-pep-episodio-retroativo.sql', 'migracao-pep-fase1.sql', 'migracao-pep-fase3.sql', 'migracao-pep-perfis-update.sql', 'migracao-pep-sinais-spo2.sql', 'migracao-perfis-acesso.sql', 'migracao-perfis-auditoria-diretor.sql', 'migracao-perfis-faturamento.sql', 'migracao-perfis-nsp.sql', 'migracao-protocolos-avc.sql', 'migracao-protocolos-iam.sql', 'migracao-protocolos-tev.sql', 'migracao-protocolos.sql', 'migracao-ps-checagem-medicacao.sql', 'migracao-ps-comorbidades.sql', 'migracao-ps-faixas-obstetricas.sql', 'migracao-ps-faixas-pediatricas.sql', 'migracao-ps-origem-elo.sql', 'migracao-ps-salas-censo.sql', 'migracao-ps-salas.sql', 'migracao-ps-triagem-tipo.sql', 'migracao-registro-de-migracoes.sql', 'migracao-rls-leitura.sql', 'migracao-sigtap-valores.sql', 'migracao-sigtap.sql', 'migracao-suprimentos-ajuste-estorno.sql', 'migracao-suprimentos-alcada.sql', 'migracao-suprimentos-aprovacao.sql', 'migracao-suprimentos-cotacao.sql', 'migracao-suprimentos-faseA.sql', 'migracao-suprimentos-faseB.sql', 'migracao-suprimentos-faseC.sql', 'migracao-suprimentos-integridade.sql', 'migracao-suprimentos-inventario.sql', 'migracao-suprimentos-ponto-de-pedido.sql', 'migracao-suprimentos-seed.sql', 'migracao-suprimentos-unidade-compra.sql')
+order by a.arquivo;
+
+-- ── qual banco é este? ──────────────────────────────────────
 -- As duas abas do SQL Editor são idênticas; a única diferença visível é
--- uma string na barra de endereço. Esta linha responde sem depender disso.
-SELECT
-  CASE WHEN (SELECT count(*) FROM public.pacientes) >= 40
-       THEN 'DEMO (banco de teste)' ELSE 'PRINCIPAL (hospital)' END AS banco,
-  (SELECT count(*) FROM public.pacientes) AS pacientes,
-  (SELECT count(*) FROM public.leitos WHERE status='ocupado') AS leitos_ocupados,
-  (SELECT count(*) FROM public.pep_episodios WHERE status='aberto') AS internacoes_abertas;
+-- uma string na barra de endereço.
+select
+  case when (select count(*) from public.pacientes) >= 40
+       then 'DEMO (banco de teste)' else 'PRINCIPAL (hospital)' end as banco,
+  (select count(*) from public.pacientes) as pacientes,
+  (select count(*) from public.migracoes_aplicadas) as migracoes_registradas;
