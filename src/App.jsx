@@ -18,6 +18,11 @@ import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js
 // Prontuário do paciente internado — em arquivo próprio para o módulo
 // evoluir sem disputar espaço neste arquivo, que já tem 14 mil linhas.
 import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
+// 🔴 A LIGAÇÃO QUE FALTAVA: ocupar o leito não abria o prontuário da
+// internação, e sem episódio TUDO que se registra sobre o internado ficava
+// vazio por construção. Ver prontuario/internacao.js.
+import { abrirEpisodio, encerrarEpisodio } from "./prontuario/dados.js";
+import { podeAbrirEpisodio, dadosDoEpisodio, desfechoDoLeito, avisoEpisodioNaoAberto } from "./prontuario/internacao.js";
 // Categorias profissionais — usadas na tela que classifica a equipe.
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
@@ -3427,6 +3432,11 @@ function InternarModal({ leito, onClose, onSave, refs = [], realPorCid = {} }) {
   const real = f.cid.trim() ? realPorCid[f.cid.trim().toUpperCase()] : null;
   function submit() {
     if (!f.iniciais.trim() || !f.dias_previstos) { alert("Informe ao menos as iniciais e os dias previstos."); return; }
+    // 🔴 Sem prontuário não há prontuário da internação: o paciente ocupa
+    // leito e fica invisível para evolução, prescrição e conta. A recusa
+    // aparece AQUI, no formulário, e não depois de o leito já ter ocupado.
+    const vEp = podeAbrirEpisodio({ prontuario: f.prontuario });
+    if (!vEp.ok) { alert("⚠ " + vEp.erros.join(" ")); return; }
     onSave({
       iniciais: f.iniciais.trim(), prontuario: f.prontuario.trim(), motivo: f.motivo.trim(),
       cid: f.cid.trim().toUpperCase(), data_internacao: f.data_internacao, dias_previstos: Number(f.dias_previstos),
@@ -12261,9 +12271,31 @@ function LeitosPage({ currentUser, canEdit }) {
     await salvarLeito({ identificacao: id, status: "livre" });
     addAuditLog(currentUser, "cadastrar leito", id, {});
   }
+  /** Os episódios em aberto deste prontuário — para não abrir dois. */
+  async function episodiosAbertosDe(prontuario) {
+    if (!prontuario) return [];
+    const r = await sbFetch(`pep_episodios?prontuario=eq.${encodeURIComponent(prontuario)}&status=eq.aberto&select=id,prontuario,status,leito`).catch(() => null);
+    return Array.isArray(r) ? r : [];
+  }
+
   async function internar(leito, dados) {
     const now = nowISO();
     const editando = leito.status === "ocupado";
+
+    // 🔴 A LIGAÇÃO QUE FALTAVA. Ocupar o leito não abria `pep_episodios`, e
+    // sem episódio ficavam vazios — por construção e sem erro na tela —
+    // evolução, prescrição do internado, sinais vitais, NEWS, Braden,
+    // Morse, LPP, SAE, reconciliação, sumário de alta, e o Mapa de risco e
+    // a Checagem SAE deste mesmo módulo.
+    //
+    // ⚠️ A VALIDAÇÃO VEM ANTES DE QUALQUER ESCRITA: recusa previsível não
+    // pode deixar o leito ocupado pela metade. Só a falha imprevisível (a
+    // rede) acontece depois — e essa é avisada.
+    let vEp = { ok: true };
+    if (!editando) {
+      vEp = podeAbrirEpisodio({ prontuario: dados.prontuario, episodiosAbertos: await episodiosAbertosDe(dados.prontuario) });
+      if (!vEp.ok) { alert("⚠ " + vEp.erros.join(" ")); return; }
+    }
     // Se o leito passou por higienização antes desta internação, fecha o ciclo de turnover.
     if (!editando && leito.disp_em) {
       await registrarTurnoverRemote({ leito: leito.identificacao, solic_em: dados.solic_em || null, disp_em: leito.disp_em, pronto_em: leito.pronto_em || null, entrada_em: now }, currentUser);
@@ -12277,8 +12309,38 @@ function LeitosPage({ currentUser, canEdit }) {
       ...(editando ? {} : { alta_pendencias: null, alta_periodo: null }),
     });
     addAuditLog(currentUser, editando ? "editar internação" : "internar", leito.identificacao, { cid: dados.cid });
+
+    // O leito já está ocupado — o paciente aparece no mapa. Se o episódio
+    // falhar aqui, é falha de rede, e o aviso diz o estado e o caminho de
+    // volta em vez de deixar o buraco silencioso.
+    if (!editando) {
+      const r = await abrirEpisodio(sbFetch, dadosDoEpisodio(leito, dados), currentUser).catch(() => null);
+      if (!Array.isArray(r) || !r.length) {
+        alert("⚠ " + avisoEpisodioNaoAberto({ leito: leito.identificacao }));
+      } else {
+        addAuditLog(currentUser, "abrir prontuário da internação", `${leito.identificacao} · reg. ${dados.prontuario}`, {});
+      }
+    }
     setModal(null);
   }
+  /**
+   * Fecha o episódio do paciente que está saindo do leito.
+   *
+   * ⚠️ Não bloqueia a alta se falhar. O paciente saiu de verdade e o leito
+   * precisa girar; episódio aberto com leito vazio é situação VISÍVEL (o
+   * Paciente 360 mostra internação aberta sem leito) e corrigível. Travar a
+   * alta por causa disso prenderia o leito por um problema de registro.
+   */
+  async function fecharEpisodioDoLeito(leito, desfechoLeito) {
+    const abertos = await episodiosAbertosDe(leito.prontuario);
+    if (!abertos.length) return;
+    const r = await encerrarEpisodio(sbFetch, abertos[0],
+      { desfecho: desfechoDoLeito(desfechoLeito) }, currentUser).catch(() => null);
+    if (!Array.isArray(r) || !r.length) {
+      alert(`A saída do leito ${leito.identificacao} foi registrada, mas o prontuário da internação continua ABERTO. Ele aparece no Paciente 360 como internação sem leito — encerre por lá.`);
+    }
+  }
+
   async function encerrarLeito(leito, desfecho) {
     const obito = desfecho === "obito";
     if (!confirm(obito
@@ -12297,6 +12359,7 @@ function LeitosPage({ currentUser, canEdit }) {
       alta_pendencias: null, alta_periodo: null,
     });
     addAuditLog(currentUser, obito ? "óbito no leito" : "dar alta", leito.identificacao, {});
+    await fecharEpisodioDoLeito(leito, desfecho);
   }
   const darAlta = leito => encerrarLeito(leito, "alta");
   // Kanban de alta segura: marca/desmarca uma pendência e define o turno previsto
@@ -12326,6 +12389,7 @@ function LeitosPage({ currentUser, canEdit }) {
       alta_pendencias: null, alta_periodo: null,
     });
     addAuditLog(currentUser, "transferência externa", `${leito.identificacao} → ${destino.trim() || "?"}`, {});
+    await fecharEpisodioDoLeito(leito, "transferencia");
   }
   async function marcarPronto(leito) {
     await salvarLeito({ identificacao: leito.identificacao, status: "livre", pronto_em: nowISO() });
