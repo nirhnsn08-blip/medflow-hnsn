@@ -157,10 +157,20 @@ export function podeEstornar(mv, jaEstornados = []) {
  * para o original. Não leva `custo_unit`: estorno não é compra nem venda,
  * e deixar custo aqui mexeria no custo médio ponderado — trocando um erro
  * de quantidade por um erro de valor.
+ *
+ * `chave` é a coluna que identifica o QUE se move: `item_id` no
+ * almoxarifado, `medicamento_id` na farmácia. As duas tabelas são o mesmo
+ * kardex com nomes diferentes, e uma segunda cópia desta função divergiria
+ * da primeira na próxima regra que mudasse.
+ *
+ * `copiar` são colunas do original que o estorno carrega junto. A farmácia
+ * usa para o paciente: sem isso, a devolução aparece no kardex como uma
+ * entrada anônima, e quem procura "para onde foi este remédio" perde o fio
+ * exatamente onde ele importa.
  */
-export function movimentoDeEstorno(mv, { motivo = null } = {}) {
-  return {
-    item_id: mv.item_id,
+export function movimentoDeEstorno(mv, { motivo = null, chave = "item_id", copiar = [] } = {}) {
+  const out = {
+    [chave]: mv[chave],
     lote: mv.lote || "",
     tipo: mv.tipo === "entrada" ? "saida" : "entrada",
     quantidade: Number(mv.quantidade),
@@ -168,6 +178,8 @@ export function movimentoDeEstorno(mv, { motivo = null } = {}) {
     documento: mv.documento || null,
     estorno_de: mv.id,
   };
+  for (const c of copiar) if (mv[c] != null) out[c] = mv[c];
+  return out;
 }
 
 /** Os ids que já possuem estorno, a partir da lista de movimentos. */

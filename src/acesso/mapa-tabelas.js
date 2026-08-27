@@ -132,6 +132,9 @@ export const MAPA_TABELAS = {
   farm_interacoes:          [TODOS],
   farm_medicamentos:        [TODOS],
   farm_intervencoes:        ["farmacia"],
+  // Contagem cega do estoque. Não carrega paciente — é saldo, como
+  // `sup_inventarios`, e por isso não entra em SENSIVEIS.
+  farm_inventarios:         ["farmacia"],
   farm_lotes:               ["farmacia"],
   farm_nao_padronizados:    ["farmacia"],
   farm_preparo:             ["farmacia", "ps"],

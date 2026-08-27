@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 95 tabelas, 1499 colunas.
+-- Cobertura atual: 96 tabelas, 1511 colunas.
 -- ============================================================
 
 with
@@ -45,6 +45,7 @@ tabelas(nome, origem) as (values
   ('farm_incompat_y','farmacia-clinica-fase2'),
   ('farm_interacoes','farmacia-clinica-fase2'),
   ('farm_intervencoes','farmacia-intervencoes'),
+  ('farm_inventarios','farmacia-estorno-inventario'),
   ('farm_lotes','farmacia-faseA'),
   ('farm_medicamentos','farmacia-faseA'),
   ('farm_movimentos','farmacia-faseA'),
@@ -480,6 +481,17 @@ colunas(tabela, coluna, origem) as (values
   ('farm_intervencoes','tipo','farmacia-intervencoes'),
   ('farm_intervencoes','updated_at','farmacia-intervencoes'),
   ('farm_intervencoes','usuario','farmacia-intervencoes'),
+  ('farm_inventarios','ajustado','farmacia-estorno-inventario'),
+  ('farm_inventarios','ajuste_erro','farmacia-estorno-inventario'),
+  ('farm_inventarios','autorizado_por','farmacia-estorno-inventario'),
+  ('farm_inventarios','contado','farmacia-estorno-inventario'),
+  ('farm_inventarios','created_at','farmacia-estorno-inventario'),
+  ('farm_inventarios','diferenca','farmacia-estorno-inventario'),
+  ('farm_inventarios','id','farmacia-estorno-inventario'),
+  ('farm_inventarios','medicamento_id','farmacia-estorno-inventario'),
+  ('farm_inventarios','observacao','farmacia-estorno-inventario'),
+  ('farm_inventarios','saldo_sistema','farmacia-estorno-inventario'),
+  ('farm_inventarios','usuario','farmacia-estorno-inventario'),
   ('farm_lotes','id','farmacia-faseA'),
   ('farm_lotes','lote','farmacia-faseA'),
   ('farm_lotes','medicamento_id','farmacia-faseA'),
@@ -518,6 +530,7 @@ colunas(tabela, coluna, origem) as (values
   ('farm_movimentos','created_at','farmacia-faseA'),
   ('farm_movimentos','custo_unit','suprimentos-inventario'),
   ('farm_movimentos','documento','farmacia-faseA'),
+  ('farm_movimentos','estorno_de','farmacia-estorno-inventario'),
   ('farm_movimentos','id','farmacia-faseA'),
   ('farm_movimentos','lote','farmacia-faseA'),
   ('farm_movimentos','lote_id','farmacia-faseA'),

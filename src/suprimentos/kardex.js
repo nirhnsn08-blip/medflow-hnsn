@@ -45,8 +45,8 @@ export const supPrazoReposicao = (itemId, leadMap = {}) =>
   (Number(leadMap[itemId]) || SUP_LEAD_PADRAO) + SUP_MARGEM_SEG;
 
 /** Saldo total de um item = soma dos lotes. */
-export function supSaldoTotal(itemId, lotes) {
-  return lotes.filter(l => l.item_id === itemId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
+export function supSaldoTotal(itemId, lotes, chave = "item_id") {
+  return lotes.filter(l => l[chave] === itemId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
 }
 
 /**
@@ -125,7 +125,7 @@ export const tipoValido = tipo => tipo === "entrada" || tipo === "saida";
  * errado". (Mesma disciplina do checklist de implantação: um número que
  * pode significar três coisas não pode virar acusação.)
  */
-export function conciliar(movimentos, lotes, { historicoCompleto = true } = {}) {
+export function conciliar(movimentos, lotes, { historicoCompleto = true, chave = "item_id" } = {}) {
   const vazio = {
     conciliavel: false, linhas: [], divergentes: 0, negativos: 0,
     tiposInvalidos: 0, semHistorico: 0, orfaos: 0, totalLotes: 0,
@@ -159,7 +159,7 @@ export function conciliar(movimentos, lotes, { historicoCompleto = true } = {}) 
     // divergência de 1e-15 e destruiria a confiança no indicador.
     const diferenca = Math.round((saldo - kardex) * 1e6) / 1e6;
     linhas.push({
-      lote_id: l.id, item_id: l.item_id, lote: l.lote, validade: l.validade,
+      lote_id: l.id, [chave]: l[chave], lote: l.lote, validade: l.validade,
       saldo, kardex, diferenca,
       negativo: saldo < 0,
       semHistorico: !temHistorico && saldo !== 0,

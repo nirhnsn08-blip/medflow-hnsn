@@ -213,7 +213,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 95 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 96 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -268,6 +268,7 @@ begin
       ('farm_incompat_y', 'true'),                                                                    -- todos os autenticados
       ('farm_interacoes', 'true'),                                                                    -- todos os autenticados
       ('farm_intervencoes', 'public.pode_ver_algum(''farmacia'')'),                                   -- farmacia
+      ('farm_inventarios', 'public.pode_ver_algum(''farmacia'')'),                                    -- farmacia
       ('farm_lotes', 'public.pode_ver_algum(''farmacia'')'),                                          -- farmacia
       ('farm_medicamentos', 'true'),                                                                  -- todos os autenticados
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
@@ -442,6 +443,7 @@ begin
       ('enf_sae_prescricao_itens', 'public.pode_editar_algum(''paciente'', ''leitos'')'),             -- paciente, leitos
       ('enf_sae_prescricoes', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                  -- paciente, leitos
       ('farm_intervencoes', 'public.pode_editar_algum(''farmacia'')'),                                -- farmacia
+      ('farm_inventarios', 'public.pode_editar_algum(''farmacia'')'),                                 -- farmacia
       ('farm_lotes', 'public.pode_editar_algum(''farmacia'')'),                                       -- farmacia
       ('farm_movimentos', 'public.pode_editar_algum(''farmacia'', ''controlados'', ''ps'')'),         -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_editar_algum(''farmacia'')'),                            -- farmacia

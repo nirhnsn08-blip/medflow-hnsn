@@ -20,7 +20,7 @@ const VERDE = "#34d399", AMBAR = "#fbbf24", VERMELHO = "#f43f5e", CINZA = "var(-
 
 const num = n => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(n);
 
-export default function ConciliacaoKardex({ sb, itens = [] }) {
+export default function ConciliacaoKardex({ sb, itens = [], origem = "suprimentos", chave = "item_id" }) {
   const [r, setR] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [aberto, setAberto] = useState(false);
@@ -28,7 +28,7 @@ export default function ConciliacaoKardex({ sb, itens = [] }) {
   const conferir = useCallback(() => {
     if (typeof sb !== "function") return;
     setCarregando(true);
-    conciliarAgora(sb).then(res => { setR(res); setCarregando(false); });
+    conciliarAgora(sb, { origem }).then(res => { setR(res); setCarregando(false); });
   }, [sb]);
 
   useEffect(() => { conferir(); }, [conferir]);
@@ -115,7 +115,7 @@ export default function ConciliacaoKardex({ sb, itens = [] }) {
                 <tbody>
                   {fila.map(l => (
                     <tr key={l.lote_id} style={{ borderTop: "1px solid var(--border)" }}>
-                      <td style={{ padding: "6px 8px" }}>{nomeDoItem(l.item_id)}</td>
+                      <td style={{ padding: "6px 8px" }}>{nomeDoItem(l[chave])}</td>
                       <td style={{ padding: "6px 8px", fontFamily: "JetBrains Mono, monospace", color: "var(--text-3)" }}>
                         {l.lote || "—"}
                         {l.semHistorico && <span title="Lote com saldo e nenhum movimento no histórico" style={{ marginLeft: 6, fontSize: 10, color: AMBAR }}>sem histórico</span>}
