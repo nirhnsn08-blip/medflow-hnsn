@@ -2103,20 +2103,31 @@ const MOTIVO_ESPERA = {
 const LEITOS_SETOR_ORDEM = ["emergencia", "avc", "posto 1", "posto 2", "posto 3", "psiquiatria", "uti"];
 const ordSetor = nome => { const n = normTxt(nome); const i = LEITOS_SETOR_ORDEM.findIndex(o => n === o || n.startsWith(o)); return i === -1 ? 500 : i; };
 // Barra lateral interna do Giro de Leitos (padrão da Farmácia)
+// Ordenado pelo FLUXO do leito: entra, é cuidado, sai — e só depois o
+// histórico. Dois itens estavam fora de lugar: "Alertas" (alta vencida,
+// limpeza demorada, ocupação alta) era o 12º, DEPOIS dos indicadores, e
+// alerta é para agir, não para consultar; e os dois HISTÓRICOS (altas e
+// internações) ficavam no meio do fluxo operacional, entre a alta segura e
+// os indicadores.
 const LEITOS_NAV = [
   { key: "dashboard",      label: "Dashboard",            icon: "dashboard" },
-  { key: "mapa",           label: "Mapa de leitos",       icon: "bed" },
-  { key: "fila",           label: "Fila de internação",   icon: "list" },
-  { key: "pacientes",      label: "Pacientes",            icon: "users" },
-  { key: "risco",          label: "Mapa de risco",        icon: "shield" },
-  { key: "checagem-sae",   label: "Checagem SAE",         icon: "clipboard" },
-  { key: "kanban",         label: "Alta segura",          icon: "clipboard" },
-  { key: "altas",          label: "Altas",                icon: "record" },
-  { key: "transferencias", label: "Transferências ext.",  icon: "upload" },
-  { key: "internacoes",    label: "Internações",          icon: "clipboard" },
-  { key: "indicadores",    label: "Indicadores",          icon: "chart" },
-  { key: "alertas",        label: "Alertas inteligentes", icon: "shield" },
-  { key: "assistente",     label: "IA Assistente",        icon: "chat" },
+  { key: "alertas",        label: "Alertas do setor",     icon: "shield" },
+
+  { key: "mapa",           label: "Mapa de leitos",       icon: "bed",  grupo: "Ocupação" },
+  { key: "fila",           label: "Fila de internação",   icon: "list", grupo: "Ocupação" },
+  { key: "pacientes",      label: "Pacientes",            icon: "users", grupo: "Ocupação" },
+
+  { key: "risco",          label: "Mapa de risco",        icon: "shield",    grupo: "Cuidado" },
+  { key: "checagem-sae",   label: "Checagem SAE",         icon: "clipboard", grupo: "Cuidado" },
+
+  { key: "kanban",         label: "Alta segura",          icon: "clipboard", grupo: "Saída" },
+  { key: "transferencias", label: "Transferências ext.",  icon: "upload",    grupo: "Saída" },
+
+  { key: "altas",          label: "Altas",                icon: "record",    grupo: "Histórico" },
+  { key: "internacoes",    label: "Internações",          icon: "clipboard", grupo: "Histórico" },
+
+  { key: "indicadores",    label: "Indicadores",          icon: "chart", grupo: "Acompanhar" },
+  { key: "assistente",     label: "IA Assistente",        icon: "chat",  grupo: "Acompanhar" },
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -2451,19 +2462,29 @@ const somAtivo = () => { try { return localStorage.getItem("hnsn_som") === "1"; 
 const setSomAtivo = v => { try { localStorage.setItem("hnsn_som", v ? "1" : "0"); } catch {} };
 const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
 // Barra lateral interna da Farmácia (mantém as chaves internas das telas)
+// Ordenado pelo FLUXO do farmacêutico, e os grupos separam natureza de
+// trabalho. A cadeia clínica (2 a 5) já estava certa; o que estava fora de
+// lugar era o ESTOQUE — três telas do módulo apontam para ele como
+// pré-requisito ("Sem lote em estoque. Registre uma entrada no Estoque"),
+// e ele vinha DEPOIS do ato que depende dele, misturado com a base de
+// interações e o livro de controlados. Coisas de natureza diferente.
 const FARM_NAV = [
   { key: "dashboard",   label: "Dashboard",         icon: "dashboard" },
-  { key: "analise",     label: "Prescrições",       icon: "clipboard" },
-  { key: "preparo",     label: "Solicitações",      icon: "list" },
-  { key: "dispensacao", label: "Dispensações",      icon: "pill" },
-  { key: "intervencao", label: "Intervenção",       icon: "shield" },
-  { key: "estoque",     label: "Estoque",           icon: "box" },
-  { key: "inventario",  label: "Inventário",        icon: "clipboard" },
-  { key: "interacoes",  label: "Interações",        icon: "flask" },
-  { key: "controlados", label: "Controlados",       icon: "lock" },
-  { key: "naopad",      label: "Não padronizados",  icon: "record" },
-  { key: "indicadores", label: "Indicadores",       icon: "chart" },
-  { key: "assistente",  label: "Assistente AI",     icon: "chat" },
+
+  { key: "analise",     label: "Prescrições",       icon: "clipboard", grupo: "Cuidado ao paciente" },
+  { key: "preparo",     label: "Solicitações",      icon: "list",      grupo: "Cuidado ao paciente" },
+  { key: "dispensacao", label: "Dispensações",      icon: "pill",      grupo: "Cuidado ao paciente" },
+  { key: "intervencao", label: "Intervenção",       icon: "shield",    grupo: "Cuidado ao paciente" },
+
+  { key: "estoque",     label: "Estoque",           icon: "box",       grupo: "Estoque" },
+  { key: "inventario",  label: "Inventário",        icon: "clipboard", grupo: "Estoque" },
+  { key: "naopad",      label: "Não padronizados",  icon: "record",    grupo: "Estoque" },
+
+  { key: "controlados", label: "Controlados",       icon: "lock",  grupo: "Registro e referência" },
+  { key: "interacoes",  label: "Interações",        icon: "flask", grupo: "Registro e referência" },
+
+  { key: "indicadores", label: "Indicadores",       icon: "chart", grupo: "Acompanhar" },
+  { key: "assistente",  label: "Assistente AI",     icon: "chat",  grupo: "Acompanhar" },
 ];
 // Rótulos dos tipos de alerta (para filtrar prescrições)
 const FARM_ALERTA_TIPOS = {
@@ -2497,21 +2518,34 @@ const SUP_CATEGORIAS = [
 const SUP_UNIDADES = ["unidade", "caixa", "pacote", "par", "rolo", "frasco", "galão", "litro", "kg", "resma"];
 const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
+// Ordenado pelo FLUXO do almoxarife. Dois itens estavam no lugar errado:
+// "Painel executivo" é leitura de GESTOR e ficava em 3º, no meio do caminho
+// de quem opera; e "Fornecedores" — que Cotações e Compras exigem para
+// funcionar — ficava em 12º, depois de tudo que depende dele.
+//
+// "Ações de hoje" fica no topo, fora de grupo: é a lista do dia, e o texto
+// do próprio módulo a descreve como "tudo que precisa de decisão hoje, em
+// ordem de prioridade".
 const SUP_NAV = [
-  { key: "dashboard",    label: "Dashboard",    icon: "dashboard" },
+  { key: "dashboard",    label: "Dashboard",     icon: "dashboard" },
   { key: "acoes",        label: "Ações de hoje", icon: "checks" },
-  { key: "executivo",    label: "Painel executivo", icon: "briefcase" },
-  { key: "requisicoes",  label: "Requisições",  icon: "list" },
-  { key: "cotacoes",     label: "Cotações",     icon: "flask" },
-  { key: "compras",      label: "Compras",      icon: "cart" },
-  { key: "aprovacoes",   label: "Aprovações",   icon: "shield" },
-  { key: "estoque",      label: "Estoque",      icon: "box" },
-  { key: "inventario",   label: "Inventário",   icon: "clipboard" },
-  { key: "preditivo",    label: "Estoque preditivo", icon: "activity" },
-  { key: "vencimentos",  label: "Vencimentos",  icon: "clock" },
-  { key: "fornecedores", label: "Fornecedores", icon: "truck" },
-  { key: "indicadores",  label: "Indicadores",     icon: "chart" },
-  { key: "assistente",   label: "Assistente AI",   icon: "chat" },
+
+  { key: "requisicoes",  label: "Requisições",   icon: "list", grupo: "Atender o hospital" },
+
+  { key: "cotacoes",     label: "Cotações",      icon: "flask",  grupo: "Comprar" },
+  { key: "compras",      label: "Compras",       icon: "cart",   grupo: "Comprar" },
+  { key: "aprovacoes",   label: "Aprovações",    icon: "shield", grupo: "Comprar" },
+  { key: "fornecedores", label: "Fornecedores",  icon: "truck",  grupo: "Comprar" },
+
+  { key: "estoque",      label: "Estoque",       icon: "box",       grupo: "Estoque" },
+  { key: "inventario",   label: "Inventário",    icon: "clipboard", grupo: "Estoque" },
+
+  { key: "preditivo",    label: "Estoque preditivo", icon: "activity", grupo: "Antecipar" },
+  { key: "vencimentos",  label: "Vencimentos",   icon: "clock",       grupo: "Antecipar" },
+
+  { key: "executivo",    label: "Painel executivo", icon: "briefcase", grupo: "Acompanhar" },
+  { key: "indicadores",  label: "Indicadores",   icon: "chart", grupo: "Acompanhar" },
+  { key: "assistente",   label: "Assistente AI", icon: "chat",  grupo: "Acompanhar" },
 ];
 // Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
 // (casam por nome ou princípio ativo; edite a lista conforme o hospital)
@@ -7941,7 +7975,11 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
           <Icon name="pill" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>FARMÁCIA</span>
         </div>
-        {abasVisiveis(FARM_NAV, { podeControlados }).map(it => { const active = sub === it.key; return (
+        {comGrupos(abasVisiveis(FARM_NAV, { podeControlados })).map(it => {
+          if (it.grupoTitulo) return (
+            <div key={it.grupoTitulo} style={{ padding: "14px 16px 4px", fontSize: 9.5, fontWeight: 700, letterSpacing: ".13em", textTransform: "uppercase", color: "var(--text-muted)" }}>{it.grupoTitulo}</div>
+          );
+          const active = sub === it.key; return (
           <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
             <Icon name={it.icon} size={16} />{it.label}
           </button>
@@ -13226,7 +13264,11 @@ function LeitosPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
           <Icon name="bed" size={16} /><span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>GIRO DE LEITOS</span>
         </div>
-        {LEITOS_NAV.map(it => { const active = sub === it.key; return (
+        {comGrupos(LEITOS_NAV).map(it => {
+          if (it.grupoTitulo) return (
+            <div key={it.grupoTitulo} style={{ padding: "14px 16px 4px", fontSize: 9.5, fontWeight: 700, letterSpacing: ".13em", textTransform: "uppercase", color: "var(--text-muted)" }}>{it.grupoTitulo}</div>
+          );
+          const active = sub === it.key; return (
           <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
             <Icon name={it.icon} size={16} />{it.label}
           </button>
@@ -14108,7 +14150,11 @@ function SuprimentosPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
           <Icon name="cart" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>SUPRIMENTOS</span>
         </div>
-        {SUP_NAV.map(it => { const active = sub === it.key; return (
+        {comGrupos(SUP_NAV).map(it => {
+          if (it.grupoTitulo) return (
+            <div key={it.grupoTitulo} style={{ padding: "14px 16px 4px", fontSize: 9.5, fontWeight: 700, letterSpacing: ".13em", textTransform: "uppercase", color: "var(--text-muted)" }}>{it.grupoTitulo}</div>
+          );
+          const active = sub === it.key; return (
           <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
             <Icon name={it.icon} size={16} />{it.label}
           </button>
