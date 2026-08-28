@@ -307,18 +307,28 @@ export async function abrirAtendimento(sb, { paciente, tipo = "emergencia", orig
  * menos, nunca travar.
  */
 export async function carregarCatalogos(sb) {
-  const vazio = { convenios: [], planos: [], procedimentos: [] };
+  const vazio = { convenios: [], planos: [], procedimentos: [], sigtap: [] };
   for (const d of DOMINIOS) vazio[d.chave] = [];
 
-  const [convenios, planos, procedimentos, dominios] = await Promise.all([
+  const [convenios, planos, procedimentos, dominios, sigtap] = await Promise.all([
     sb("at_convenios?ativo=is.true&select=*&order=nome"),
     sb("at_planos?ativo=is.true&select=*&order=nome"),
     sb("at_procedimentos?ativo=is.true&select=*&order=nome"),
     sb("at_dominios?ativo=is.true&select=*&order=dominio,ordem,nome"),
+    // 🔴 O catálogo que a tela não enxergava. `at_procedimentos` está vazia
+    // no banco do hospital enquanto `sigtap_procedimentos` tem centenas de
+    // procedimentos reais — e o motor de conta já sabe cruzar os dois.
+    // Só as colunas que a ESCOLHA usa: a tabela é grande e o resto (faixas
+    // etárias, CIDs, valores) quem lê é `montar-conta.js`, na hora da conta.
+    sb("sigtap_procedimentos?select=codigo,nome,via,competencia&order=codigo"),
   ]);
 
   const out = {
     ...vazio,
+    // `sigtap_procedimentos` está em TABELAS_OPCIONAIS: num banco onde a
+    // migração ainda não rodou, o sbFetch devolve null. Array vazio faz a
+    // escolha oferecer só o catálogo do hospital, em vez de quebrar.
+    sigtap: Array.isArray(sigtap) ? sigtap : [],
     convenios: Array.isArray(convenios) ? convenios : [],
     planos: Array.isArray(planos) ? planos : [],
     procedimentos: Array.isArray(procedimentos) ? procedimentos : [],

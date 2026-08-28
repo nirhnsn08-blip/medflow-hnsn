@@ -105,6 +105,7 @@ import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 import { carregarPaciente, carregarCatalogos } from "./atendimento/dados.js";
 import { avisoDeConta, dadosDeConta, geraConta, convenioSugerido, valoresIniciais } from "./atendimento/faturavel.js";
+import { opcoesDeProcedimento, filtrarProcedimentos, avisoDeCatalogo, viaEsperada } from "./atendimento/escolha-procedimento.js";
 // "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
 // como `status !== "finalizado"` em três pontos daqui — e o status
 // 'cancelado', criado depois, vazaria por todos eles: o Paciente 360
@@ -6698,6 +6699,19 @@ function PsDesfechoModal({ paciente, setores, leitos = [], catalogos = {}, exame
   const [sugestao, setSugestao] = useState(null);   // convênio do atendimento anterior
   const convenios = catalogos.convenios || [];
   const procedimentos = catalogos.procedimentos || [];
+  const [buscaProc, setBuscaProc] = useState("");
+  // As opções vêm dos DOIS catálogos: o do hospital e o SIGTAP já carregado.
+  // A via sai do desfecho — internação é AIH, o resto do PS é BPA — e é ela
+  // que impede oferecer um código de internação para quem teve alta.
+  const convObj = convenios.find(c => String(c.id) === String(convenioId)) || null;
+  const opcoesProc = opcoesDeProcedimento({
+    procedimentos, sigtap: catalogos.sigtap || [], desfecho, convenio: convObj,
+  });
+  const opcoesFiltradas = filtrarProcedimentos(opcoesProc, buscaProc).slice(0, 40);
+  const semCatalogo = avisoDeCatalogo({
+    opcoes: opcoesProc, procedimentos, sigtap: catalogos.sigtap || [], desfecho, convenio: convObj,
+  });
+  const procEscolhido = opcoesProc.find(o => o.codigo === procedimentoCod) || null;
 
   // Convênio do atendimento anterior desta pessoa: poupa digitação e não
   // afirma nada — a tela mostra de onde veio e quem confirma é quem está com
@@ -6832,13 +6846,35 @@ function PsDesfechoModal({ paciente, setores, leitos = [], catalogos = {}, exame
                 </button>
               )}
             </div>
+            {/* Busca em vez de <select>: são centenas de procedimentos, e
+                rolar 219 opções com o paciente saindo é o mesmo que não ter
+                lista. A escolha some assim que um código é fixado. */}
             <div style={{ marginBottom: 10 }}>
               <label style={lbl}>Procedimento</label>
-              <select value={procedimentoCod} onChange={e => setProcedimentoCod(e.target.value)} style={inp}>
-                <option value="">Escolha o procedimento…</option>
-                {procedimentos.map(p => <option key={p.codigo} value={p.codigo}>{p.codigo} — {p.nome}</option>)}
-              </select>
-              {procedimentos.length === 0 && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Nenhum procedimento cadastrado — cadastre em ATENDIMENTO › Tabelas.</div>}
+              {procEscolhido ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px" }}>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--text-2)" }}>
+                    <strong style={{ fontFamily: "JetBrains Mono, monospace" }}>{procEscolhido.codigo}</strong> — {procEscolhido.nome}
+                    <div style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{procEscolhido.fonte === "sigtap" ? `tabela SIGTAP${procEscolhido.competencia ? ` · competência ${procEscolhido.competencia}` : ""}` : "catálogo do hospital"} · via {procEscolhido.via.toUpperCase()}</div>
+                  </div>
+                  <button onClick={() => { setProcedimentoCod(""); setBuscaProc(""); }} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "4px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Trocar</button>
+                </div>
+              ) : semCatalogo ? (
+                <div style={{ fontSize: 11.5, color: "#d97706", background: "#d9770614", border: "1px solid #d9770633", borderRadius: 6, padding: "8px 11px", lineHeight: 1.5 }}>{semCatalogo}</div>
+              ) : (
+                <>
+                  <input value={buscaProc} onChange={e => setBuscaProc(e.target.value)} placeholder={`Buscar entre ${opcoesProc.length} procedimentos de ${viaEsperada(desfecho).toUpperCase()}…`} style={inp} />
+                  <div style={{ maxHeight: 168, overflowY: "auto", border: buscaProc ? "1px solid var(--border)" : "none", borderRadius: 6, marginTop: buscaProc ? 6 : 0 }}>
+                    {buscaProc && opcoesFiltradas.length === 0 && <div style={{ fontSize: 11.5, color: "var(--text-muted)", padding: "8px 11px" }}>Nada encontrado para “{buscaProc}”.</div>}
+                    {buscaProc && opcoesFiltradas.map(o => (
+                      <button key={o.codigo} onClick={() => setProcedimentoCod(o.codigo)} style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", padding: "7px 11px", cursor: "pointer", color: "var(--text-2)", fontSize: 12, fontFamily: "inherit" }}>
+                        <strong style={{ fontFamily: "JetBrains Mono, monospace" }}>{o.codigo}</strong> — {o.nome}
+                        {o.fonte === "sigtap" && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 6px" }}>SIGTAP</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
             <div>
               <label style={lbl}>CID (opcional)</label>
