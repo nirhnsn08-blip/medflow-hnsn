@@ -422,10 +422,14 @@ describe("leituras da recepção", () => {
     conferirLeitura(chamadas[0]);
   });
 
-  it("os quatro catálogos consultam tabelas e colunas reais", async () => {
+  it("os cinco catálogos consultam tabelas e colunas reais", async () => {
+    // O quinto é `sigtap_procedimentos`: `at_procedimentos` está vazia no
+    // banco do hospital enquanto a tabela do SUS tem centenas de linhas, e
+    // era ela que as telas de escolha não enxergavam.
     const { sb, chamadas } = espiao([]);
     await carregarCatalogos(sb);
-    expect(chamadas).toHaveLength(4);
+    expect(chamadas).toHaveLength(5);
+    expect(chamadas.some(c => String(c.recurso).startsWith("sigtap_procedimentos?"))).toBe(true);
     for (const c of chamadas) conferirLeitura(c);
   });
 
