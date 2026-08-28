@@ -58,46 +58,72 @@ export const NIVEL_LABEL = {
  * próprio erro de configuração.
  */
 export const MODULOS = [
-  { chave: "overview",     label: "Visão Geral",        grupo: "Geral" },
+  { chave: "overview",     label: "Centro de Monitoramento", grupo: "Geral" },
   // A porta de entrada. NÃO é marcado como `clinico`: o que se registra
   // aqui é identificação e abertura de atendimento, não ato assistencial —
   // é exatamente o recorte administrativo que a COFEN 754/2024 art. 6º
   // manda separar do prontuário, e é por isso que a Recepção pode ter este
   // módulo sem alcançar o Paciente 360.
-  { chave: "atendimento",  label: "Atendimento / Recepção", grupo: "Assistencial",
+  { chave: "atendimento",  label: "Atendimento / Recepção", grupo: "Jornada do paciente",
     nota: "Não é prontuário, mas concentra o dado pessoal identificável (nome, CPF, filiação, endereço) de todo mundo que já passou pelo hospital." },
-  { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Assistencial", clinico: true },
-  { chave: "ps",           label: "Pronto-Socorro",     grupo: "Assistencial", clinico: true },
-  { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Assistencial", clinico: true },
-  { chave: "leitos",       label: "Giro de Leitos",     grupo: "Assistencial", clinico: true },
-  { chave: "scih",         label: "SCIH",               grupo: "Assistencial", clinico: true },
-  { chave: "nsp",          label: "Segurança do Paciente", grupo: "Assistencial", clinico: true,
+  { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Receita e produção", clinico: true },
+  { chave: "ps",           label: "Pronto-Socorro",     grupo: "Jornada do paciente", clinico: true },
+  { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Jornada do paciente", clinico: true },
+  { chave: "leitos",       label: "Giro de Leitos",     grupo: "Jornada do paciente", clinico: true },
+  { chave: "scih",         label: "SCIH",               grupo: "Qualidade e vigilância", clinico: true },
+  { chave: "nsp",          label: "Segurança do Paciente", grupo: "Qualidade e vigilância", clinico: true,
     // Este é o único módulo que quase todo perfil recebe em ESCRITA, e é de
     // propósito: notificar incidente é dever de quem presta o cuidado (RDC
     // 36/2013, art. 8º), não atribuição do núcleo. Núcleo é quem INVESTIGA.
     // Sem isso, o incidente vira conversa de corredor e o indicador mente por
     // baixo — subnotificação parece segurança.
     nota: "Núcleo de Segurança do Paciente (RDC 36/2013). Notificação de incidentes e eventos adversos." },
-  { chave: "protocolos",   label: "Protocolos Clínicos", grupo: "Assistencial", clinico: true,
+  { chave: "protocolos",   label: "Protocolos Clínicos", grupo: "Qualidade e vigilância", clinico: true,
     nota: "Protocolos gerenciados tempo-dependentes (sepse, IAM, AVC, TEV): gatilho por NEWS/triagem, bundle com relógio e indicadores porta→ação, por setor assistencial." },
-  { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Assistencial", clinico: true,
+  { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Jornada do paciente", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
-  { chave: "farmacia",     label: "Farmácia",           grupo: "Apoio" },
-  { chave: "controlados",  label: "Livro de Controlados", grupo: "Apoio",
+  { chave: "farmacia",     label: "Farmácia",           grupo: "Farmácia e suprimentos" },
+  { chave: "controlados",  label: "Livro de Controlados", grupo: "Farmácia e suprimentos",
     nota: "Documento fiscalizável (Portaria 344/98) — acesso restrito por norma." },
-  { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Apoio" },
-  { chave: "faturamento",  label: "Faturamento",        grupo: "Apoio",
+  { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Farmácia e suprimentos" },
+  { chave: "faturamento",  label: "Faturamento",        grupo: "Receita e produção",
     nota: "Faturamento SUS: SIGTAP, conta montada do prontuário e trava de glosa antes do envio (AIH/APAC/BPA). Sem prontuário — é administrativo." },
-  { chave: "print",        label: "Imprimir Dashboard", grupo: "Gestão" },
-  { chave: "auditoria",    label: "Auditoria",          grupo: "Gestão",
+  { chave: "print",        label: "Imprimir Dashboard", grupo: "Receita e produção" },
+  { chave: "auditoria",    label: "Auditoria",          grupo: "Administração do sistema",
     nota: "Trilha de quem fez o quê. Quem é auditado não deveria administrar a própria trilha." },
-  { chave: "import",       label: "Importar Dados",     grupo: "Sistema" },
-  { chave: "users",        label: "Usuários e Perfis",  grupo: "Sistema", exigeMaster: true,
+  { chave: "import",       label: "Importar Dados",     grupo: "Administração do sistema" },
+  { chave: "users",        label: "Usuários e Perfis",  grupo: "Administração do sistema", exigeMaster: true,
     nota: "Exige ADM Master sempre — é a porta de volta se um perfil for configurado errado." },
 ];
 
 export const MODULO_POR_CHAVE = Object.fromEntries(MODULOS.map(m => [m.chave, m]));
-export const GRUPOS = [...new Set(MODULOS.map(m => m.grupo))];
+
+/**
+ * Os grupos, NA ORDEM em que aparecem — no menu e na matriz de perfis.
+ *
+ * 🔴 EXPLÍCITA, e não derivada da ordem de `MODULOS`.
+ * Antes isto era `[...new Set(MODULOS.map(m => m.grupo))]`, e a ordem saía
+ * de qual módulo aparecia primeiro no array. Com `ambulatorio` na terceira
+ * posição, "Receita e produção" pulava para o topo — a ordem do menu passava
+ * a depender de um detalhe de arrumação da lista, sem ninguém decidir.
+ *
+ * A ordem aqui é a do TRABALHO: onde o paciente entra, quem vigia o
+ * cuidado, o que sustenta a assistência, o que vira dinheiro, e por fim o
+ * que só a administração toca.
+ */
+export const GRUPOS = [
+  "Geral",
+  "Jornada do paciente",
+  "Qualidade e vigilância",
+  "Farmácia e suprimentos",
+  "Receita e produção",
+  "Administração do sistema",
+];
+
+// Um módulo com grupo fora desta lista sumiria do menu E da matriz de
+// perfis, em silêncio — some da tela sem erro nenhum. O teste
+// `modulos.test.js` guarda isso; aqui fica o porquê.
+export const GRUPOS_ORFAOS = MODULOS.filter(m => !GRUPOS.includes(m.grupo)).map(m => m.chave);
 
 // ── PERFIS-MODELO ───────────────────────────────────────────
 

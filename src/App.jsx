@@ -33,6 +33,7 @@ import { validarAlergia, dadosDaAlergia, recadoDepoisDeGravar,
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
          modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
+import { GRUPOS } from "./acesso/modulos.js";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 import { validarCbo, formatarCbo, cbosDoCatalogo } from "./acesso/cbo.js";
 import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
@@ -2111,7 +2112,7 @@ const LEITOS_NAV = [
   { key: "altas",          label: "Altas",                icon: "record" },
   { key: "transferencias", label: "Transferências ext.",  icon: "upload" },
   { key: "internacoes",    label: "Internações",          icon: "clipboard" },
-  { key: "indicadores",    label: "Relatórios & BI",      icon: "chart" },
+  { key: "indicadores",    label: "Indicadores",          icon: "chart" },
   { key: "alertas",        label: "Alertas inteligentes", icon: "shield" },
   { key: "assistente",     label: "IA Assistente",        icon: "chat" },
 ];
@@ -2459,7 +2460,7 @@ const FARM_NAV = [
   { key: "interacoes",  label: "Interações",        icon: "flask" },
   { key: "controlados", label: "Controlados",       icon: "lock" },
   { key: "naopad",      label: "Não padronizados",  icon: "record" },
-  { key: "indicadores", label: "Relatórios & BI",   icon: "chart" },
+  { key: "indicadores", label: "Indicadores",       icon: "chart" },
   { key: "assistente",  label: "Assistente AI",     icon: "chat" },
 ];
 // Rótulos dos tipos de alerta (para filtrar prescrições)
@@ -2507,7 +2508,7 @@ const SUP_NAV = [
   { key: "preditivo",    label: "Estoque preditivo", icon: "activity" },
   { key: "vencimentos",  label: "Vencimentos",  icon: "clock" },
   { key: "fornecedores", label: "Fornecedores", icon: "truck" },
-  { key: "indicadores",  label: "Relatórios & BI", icon: "chart" },
+  { key: "indicadores",  label: "Indicadores",     icon: "chart" },
   { key: "assistente",   label: "Assistente AI",   icon: "chat" },
 ];
 // Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
@@ -10223,7 +10224,7 @@ function ScihPage({ currentUser, canEdit }) {
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <button onClick={() => setSub("vigilancia")} style={subBtn(sub === "vigilancia")}>Vigilância & Isolamentos</button>
-        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores & Relatórios</button>
+        <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
       </div>
 
       {sub === "vigilancia" && (<>
@@ -11059,7 +11060,7 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // ═══════════════════════════════════════════════════════════
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
-  { key: "dashboard",    label: "Dashboard",           icon: "dashboard" },
+  { key: "dashboard",    label: "Panorama de incidentes", icon: "dashboard" },
   { key: "notificacoes", label: "Notificações",        icon: "activity" },
   { key: "registrar",    label: "Registrar incidente", icon: "record" },
   { key: "consultar",    label: "Consultar incidente", icon: "list" },
@@ -14047,7 +14048,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     inventario: "Inventário cíclico — contagem cega rotativa (curva ABC), ajuste no kardex e acuracidade do estoque.",
     preditivo: "Previsão item a item: no ritmo atual de consumo, quando acaba cada material e medicamento.",
     vencimentos: "Vencimentos inteligentes — o que vence, quanto vale e o que NÃO será consumido a tempo no ritmo atual.",
-    indicadores: "Relatórios & BI — consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
+    indicadores: "Consumo por setor e categoria, gasto por fornecedor, curva ABC e relatório mensal imprimível.",
     assistente: "Assistente local para perguntas sobre o almoxarifado (nada é enviado para fora).",
     estoque: `Catálogo de materiais, entradas e saídas por lote e validade. ${totalAtivos} ativos · ${itens.length} cadastrados.`,
     fornecedores: `Cadastro de fornecedores usados nas entradas e nas compras. ${forns.filter(f => f.ativo !== false).length} ativos.`,
@@ -18169,27 +18170,57 @@ export default function App() {
   // esconder módulo por engano trava o trabalho de alguém no plantão.
   const verModulo = (chave, padrao = true) => (perms ? podeVer(perms, chave) : padrao);
 
-  const sidebarItems = [
-    ...(verModulo("overview")    ? [{ id: "overview",  icon: "dashboard", label: "Visão Geral" }] : []),
-    { id: "d1" },
-    ...(verModulo("atendimento") ? [{ id: "atendimento", icon: "door", label: "Atendimento" }] : []),
-    ...(verModulo("ambulatorio") ? [{ id: "ambulatorio", icon: "clinic", label: "Ambulatório", children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) }] : []),
-    { id: "d2" },
-    ...(verModulo("ps")          ? [{ id: "ps",       icon: "activity", label: "Pronto-Socorro" }]    : []),
-    ...(verModulo("bloco")       ? [{ id: "bloco",    icon: "scissors", label: "Bloco Cirúrgico" }]   : []),
-    ...(verModulo("leitos")      ? [{ id: "leitos",   icon: "bed", label: "Giro de Leitos", aviso: filaAviso.n ? filaAviso : null }] : []),
-    ...(verModulo("scih")        ? [{ id: "scih",     icon: "shield", label: "SCIH" }]                : []),
-    ...(verModulo("nsp")         ? [{ id: "nsp",      icon: "clipboard", label: "Segurança do Paciente" }] : []),
-    ...(verModulo("protocolos")  ? [{ id: "protocolos", icon: "activity", label: "Protocolos Clínicos" }] : []),
-    ...(verModulo("farmacia")    ? [{ id: "farmacia", icon: "pill", label: "Farmácia" }]              : []),
-    ...(verModulo("suprimentos") ? [{ id: "suprimentos", icon: "cart", label: "Estoque & Compras" }]  : []),
-    ...(verModulo("faturamento") ? [{ id: "faturamento", icon: "briefcase", label: "Faturamento" }]    : []),
-    ...(verModulo("paciente")    ? [{ id: "paciente", icon: "record", label: "Paciente 360" }]        : []),
-    ...(canPrint    && verModulo("print")     ? [{ id: "print",     icon: "printer",   label: "Imprimir Dashboard" }] : []),
-    ...(canAudit    && verModulo("auditoria") ? [{ id: "auditoria", icon: "clipboard", label: "Auditoria" }]           : []),
-    ...(canImport   && verModulo("import")    ? [{ id: "import",    icon: "upload",    label: "Importar Dados" }]      : []),
-    ...(canUsers    ? [{ id: "users",     icon: "users",     label: "Usuários" }]            : []),
-  ];
+  // 🔴 A ORDEM E O AGRUPAMENTO SAEM DE `modulos.js`, não daqui.
+  // Antes esta lista era plana, com dois separadores anônimos (`d1`/`d2`) —
+  // 17 itens em fila, sem dizer o que se agrupa com o quê. E o campo `grupo`
+  // já existia no catálogo desde sempre: quem o consumia era só a matriz de
+  // perfis. Quem configura acesso via o sistema organizado; quem trabalha
+  // nele, não.
+  //
+  // Os grupos estão na ordem do TRABALHO: onde o paciente entra, quem vigia
+  // o cuidado, o que sustenta a assistência, o que vira dinheiro, e o que só
+  // a administração toca. Quem aprende o menu aprende o fluxo do hospital.
+  //
+  // ⚠️ O grupo "Geral" NÃO ganha cabeçalho: é a home, e um título acima de
+  // um item só é ruído. `verModulo` continua decidindo item a item, e um
+  // grupo cujos itens todos sumiram não desenha cabeçalho órfão.
+  const itensDoMenu = [
+    { grupo: "Geral", id: "overview", icon: "dashboard", label: "Centro de Monitoramento", ver: verModulo("overview") },
+
+    { grupo: "Jornada do paciente", id: "atendimento", icon: "door", label: "Atendimento", ver: verModulo("atendimento") },
+    { grupo: "Jornada do paciente", id: "ps", icon: "activity", label: "Pronto-Socorro", ver: verModulo("ps") },
+    { grupo: "Jornada do paciente", id: "bloco", icon: "scissors", label: "Bloco Cirúrgico", ver: verModulo("bloco") },
+    { grupo: "Jornada do paciente", id: "leitos", icon: "bed", label: "Giro de Leitos", ver: verModulo("leitos"), aviso: filaAviso.n ? filaAviso : null },
+    { grupo: "Jornada do paciente", id: "paciente", icon: "record", label: "Paciente 360", ver: verModulo("paciente") },
+
+    // Ordenados por TEMPO ATÉ AGIR, não por hierarquia: protocolo tem
+    // relógio contando, notificação é do dia, vigilância é de meses.
+    { grupo: "Qualidade e vigilância", id: "protocolos", icon: "activity", label: "Protocolos Clínicos", ver: verModulo("protocolos") },
+    { grupo: "Qualidade e vigilância", id: "nsp", icon: "clipboard", label: "Segurança do Paciente", ver: verModulo("nsp") },
+    { grupo: "Qualidade e vigilância", id: "scih", icon: "shield", label: "SCIH", ver: verModulo("scih") },
+
+    // Farmácia antes: ela consome o catálogo do almoxarifado e toca
+    // paciente; o estoque não toca ninguém.
+    { grupo: "Farmácia e suprimentos", id: "farmacia", icon: "pill", label: "Farmácia", ver: verModulo("farmacia") },
+    { grupo: "Farmácia e suprimentos", id: "suprimentos", icon: "cart", label: "Estoque & Compras", ver: verModulo("suprimentos") },
+
+    { grupo: "Receita e produção", id: "faturamento", icon: "briefcase", label: "Faturamento SUS", ver: verModulo("faturamento") },
+    { grupo: "Receita e produção", id: "ambulatorio", icon: "clinic", label: "Ambulatório", ver: verModulo("ambulatorio"), children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
+    { grupo: "Receita e produção", id: "print", icon: "printer", label: "Imprimir Dashboard", ver: canPrint && verModulo("print") },
+
+    { grupo: "Administração do sistema", id: "auditoria", icon: "clipboard", label: "Auditoria", ver: canAudit && verModulo("auditoria") },
+    { grupo: "Administração do sistema", id: "import", icon: "upload", label: "Importar Dados", ver: canImport && verModulo("import") },
+    // `users` ignora `verModulo` de propósito — é a porta de volta quando um
+    // perfil é configurado errado (ver `modulos.js`, `exigeMaster`).
+    { grupo: "Administração do sistema", id: "users", icon: "users", label: "Usuários e Perfis", ver: canUsers },
+  ].filter(it => it.ver);
+
+  // Intercala os cabeçalhos, pulando grupo que ficou sem nenhum item.
+  const sidebarItems = GRUPOS.flatMap(g => {
+    const doGrupo = itensDoMenu.filter(it => it.grupo === g);
+    if (!doGrupo.length) return [];
+    return g === "Geral" ? doGrupo : [{ grupoTitulo: g }, ...doGrupo];
+  });
   const currentSpec = SPECS.find(s => s.id === active);
 
   return (
@@ -18235,7 +18266,13 @@ export default function App() {
         <nav style={{ width: 215, minWidth: 215, background: "var(--bg-2)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
           {isReadOnly && <div style={{ margin: "0 10px 8px", background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>Somente visualização</div>}
           {sidebarItems.map((item, i) => {
-            if (item.id?.startsWith("d")) return <div key={i} style={{ height: 1, background: "var(--surface-3)", margin: ".5rem 0" }} />;
+            // Cabeçalho de grupo. Substituiu os separadores anônimos: a linha
+            // dizia "aqui muda alguma coisa" e não dizia o quê.
+            if (item.grupoTitulo) return (
+              <div key={item.grupoTitulo} style={{ padding: "16px 1rem 5px", fontSize: 10, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+                {item.grupoTitulo}
+              </div>
+            );
 
             // Grupo expansível (ex.: Ambulatório → especialidades)
             if (item.children) {
