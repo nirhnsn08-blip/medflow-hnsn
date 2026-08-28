@@ -201,7 +201,11 @@ monta do prontuário** (módulo Faturamento → aba Pendentes): lista as interna
 episódio (procedimento, medicação administrada, permanência real do leito) → antecipa glosa
 (permanência e **CID × procedimento**) → lança na conta do Atendimento. Os valores em R$ e os CIDs
 compatíveis vêm das **AIHs reais do SUS**, lidas de um `.dbc` do DATASUS por uma ferramenta
-versionada (`supabase/importar-aih.mjs`). Motores puros em `src/atendimento/montar-conta.js` +
+versionada (`supabase/importar-aih.mjs`). A metade **ambulatorial** tem a ferramenta irmã,
+`supabase/importar-bpa.mjs`, que lê a Produção Ambulatorial do SIA-SUS (`PA…dbc`) — **falta
+rodar**: enquanto não roda, `sigtap_procedimentos` só tem procedimentos de AIH, e a alta de PS
+e a consulta não têm código oficial para escolher (a tela avisa isso em vez de ficar muda).
+Motores puros em `src/atendimento/montar-conta.js` +
 `sigtap.js`. E a **Visão Executiva** do Faturamento passou a **ler a produção de verdade** —
 funil das internações, **faturamento por via** (AIH/BPA/APAC/TISS/direta) e **R$ de referência
 SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
