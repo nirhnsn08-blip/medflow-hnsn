@@ -202,7 +202,7 @@ episódio (procedimento, medicação administrada, permanência real do leito) �
 (permanência e **CID × procedimento**) → lança na conta do Atendimento. Os valores em R$ e os CIDs
 compatíveis vêm das **AIHs reais do SUS**, lidas de um `.dbc` do DATASUS por uma ferramenta
 versionada (`supabase/importar-aih.mjs`). A metade **ambulatorial** tem a ferramenta irmã,
-`supabase/importar-bpa.mjs`, que lê a Produção Ambulatorial do SIA-SUS (`PA…dbc`) — **falta
+`supabase/importar-bpa.mjs`, que lê a Produção Ambulatorial do SIA-SUS (`PA…dbc`) — passo a passo em `docs/SIGTAP-BPA-COMO-APLICAR.md`, e **falta
 rodar**: enquanto não roda, `sigtap_procedimentos` só tem procedimentos de AIH, e a alta de PS
 e a consulta não têm código oficial para escolher (a tela avisa isso em vez de ficar muda).
 Motores puros em `src/atendimento/montar-conta.js` +
