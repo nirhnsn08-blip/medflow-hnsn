@@ -123,17 +123,47 @@ function fecho(raiz) {
   return visto;
 }
 
-/** Separa o que sai de graça (só este domínio usa) do que é compartilhado. */
+/**
+ * Separa o que sai de graça (só este domínio usa) do que é compartilhado.
+ *
+ * 🔴 O COMPARTILHAMENTO SE PROPAGA, e a primeira versão não propagava.
+ * Ela perguntava só "alguém de fora usa este nó?". Com isso o `ICON_PATHS`
+ * saía como EXCLUSIVO do módulo de Segurança do Paciente — porque quem o
+ * usa é o `Icon`, e o `Icon` está dentro do fecho. Só que o `Icon` aparece
+ * 21 vezes no arquivo: mover o `ICON_PATHS` junto teria apagado o ícone de
+ * todos os outros módulos.
+ *
+ * Um nó usado por um nó COMPARTILHADO é compartilhado também. A regra
+ * precisa ser aplicada em laço até estabilizar, porque marcar um nó pode
+ * arrastar os que ele usa.
+ */
 function domínio(p) {
   const raiz = porNome.get(p);
   if (!raiz) return null;
   const f = fecho(p); f.delete(p);
+
+  // 1ª passada: quem é usado por alguém FORA do fecho já é compartilhado.
+  const compartilhado = new Set();
+  for (const n of f) {
+    const outros = [...(usadoPor.get(n) || [])].filter(q => !f.has(q) && q !== p);
+    if (outros.length) compartilhado.add(n);
+  }
+  // 2ª em diante: o que um compartilhado usa também é compartilhado.
+  for (;;) {
+    let mudou = false;
+    for (const n of [...compartilhado]) {
+      for (const usado of arestas.get(n) || []) {
+        if (f.has(usado) && !compartilhado.has(usado)) { compartilhado.add(usado); mudou = true; }
+      }
+    }
+    if (!mudou) break;
+  }
+
   const excl = [], com = [];
   for (const n of f) {
     const t = porNome.get(n);
     if (!t) continue;
-    const outros = [...(usadoPor.get(n) || [])].filter(q => !f.has(q) && q !== p);
-    (outros.length === 0 ? excl : com).push(t);
+    (compartilhado.has(n) ? com : excl).push(t);
   }
   const soma = a => a.reduce((s, t) => s + t.tam, 0);
   return { p, propria: raiz.tam, excl, com, exclL: soma(excl), comL: soma(com), total: raiz.tam + soma(excl) };
