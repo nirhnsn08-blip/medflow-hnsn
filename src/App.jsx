@@ -46,6 +46,7 @@ import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
 import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
+import { abasVisiveis, podeAbrirAba } from "./farmacia/abas.js";
 // Lote vencido não vai para paciente — mas SAI por descarte, senão fica
 // preso na prateleira. Ver o cabeçalho de validade.js.
 import { podeSair, lotesParaEscolha, situacaoDoLote } from "./farmacia/validade.js";
@@ -7753,7 +7754,23 @@ const custoUnit = med => Number(med?.custo_unitario || 0);
 const farmInp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
 const farmLbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
 
-function FarmaciaPage({ currentUser, canEdit }) {
+/**
+ * ⚠️ `podeControlados` NÃO É SELO NO DADO — é controle de quem lê o LIVRO.
+ *
+ * O Livro de Controlados é uma VISTA de `farm_movimentos` filtrada pelos
+ * medicamentos com `controlado = true`. E `farm_movimentos` é legitimamente
+ * da farmácia: é o kardex, a dispensação, o estorno. Tirar `farmacia` da
+ * política de leitura dessa tabela quebraria o módulo inteiro.
+ *
+ * Então o que esta permissão restringe é quem PRODUZ E LÊ o documento
+ * fiscalizável — que é o controle interno que a Portaria 344/98 pede. Quem
+ * tem `farmacia` continua alcançando os movimentos pela API; o que ele não
+ * alcança mais é o livro montado, com saldo e balanço por mês.
+ *
+ * Dizer que a tabela ficou selada seria mentira, e mentira sobre acesso é
+ * pior que acesso aberto: o hospital para de olhar.
+ */
+function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
   const [meds, setMeds]   = useState([]);
   const [lotes, setLotes] = useState([]);
   const [busca, setBusca] = useState("");
@@ -7923,7 +7940,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
           <Icon name="pill" size={16} /><span style={{ fontSize: 13, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>FARMÁCIA</span>
         </div>
-        {FARM_NAV.map(it => { const active = sub === it.key; return (
+        {abasVisiveis(FARM_NAV, { podeControlados }).map(it => { const active = sub === it.key; return (
           <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".55rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
             <Icon name={it.icon} size={16} />{it.label}
           </button>
@@ -7947,7 +7964,7 @@ function FarmaciaPage({ currentUser, canEdit }) {
       {sub === "dispensacao" && <FarmDispensacaoView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "analise" && <FarmAnaliseView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "intervencao" && <FarmIntervencaoView currentUser={currentUser} canEdit={canEdit} />}
-      {sub === "controlados" && <FarmControladosView />}
+      {sub === "controlados" && podeAbrirAba(sub, { podeControlados }) && <FarmControladosView />}
       {sub === "naopad" && <FarmNaoPadronizadosView currentUser={currentUser} canEdit={canEdit} />}
       {sub === "indicadores" && <FarmIndicadoresView />}
       {/* A MESMA view do almoxarifado, com a chave trocada. Contagem cega,
@@ -18317,7 +18334,15 @@ export default function App() {
           {active === "scih"      && <ScihPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "nsp"       && <NSPPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "protocolos" && <ProtocolosPage currentUser={currentUser} canEdit={canLaunch} />}
-          {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} />}
+          {/* 🔴 `false` COMO PADRÃO — e é o único lugar do menu onde isso vale.
+              `verModulo` falha ABERTO de propósito (ver o comentário na
+              montagem da barra): esconder módulo por engano trava alguém no
+              plantão, e a barreira de verdade é o RLS. O Livro de Controlados
+              é a exceção: é documento fiscalizável (Portaria 344/98), não é
+              trabalho de beira de leito, e ninguém para de atender porque o
+              livro demorou a aparecer. Aqui o custo de abrir por engano é
+              maior que o de fechar por engano — então falha FECHADO. */}
+          {active === "farmacia"  && <FarmaciaPage currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} />}
           {active === "suprimentos" && <SuprimentosPage currentUser={currentUser} canEdit={canLaunch} />}
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "paciente"  && <PacientePage currentUser={currentUser} canEdit={canLaunch} />}
