@@ -14,7 +14,7 @@
 import { describe, it, expect } from "vitest";
 import {
   CAMPOS_PA, conferirCampos, agregarBpa, cidLimpo, competenciaPa,
-  lerNomes, codigosExistentes, gerarSqlBpa,
+  lerNomes, lerNomesFixo, detectarFormatoNomes, decodificar, codigosExistentes, gerarSqlBpa,
 } from "./importar-bpa.mjs";
 
 /** Monta um DBF sintético: cabeçalho + registros em claro. */
@@ -151,12 +151,103 @@ describe("CID limpo", () => {
   });
 });
 
-describe("o CSV de nomes", () => {
-  it("aceita ponto-e-vírgula e vírgula, e ignora cabeçalho", () => {
-    const m = lerNomes(`codigo;nome\n0301010013;CONSULTA MEDICA\n0302010013,SESSAO DE HEMODIALISE\nlixo`);
-    expect(m.get("0301010013")).toBe("CONSULTA MEDICA");
-    expect(m.get("0302010013")).toBe("SESSAO DE HEMODIALISE");
-    expect(m.size).toBe(2);
+describe("de onde vêm os nomes", () => {
+  it("CSV: aceita ponto-e-vírgula e vírgula, e ignora cabeçalho", () => {
+    const r = lerNomes(`codigo;nome\n0301010013;CONSULTA MEDICA\n0302010013,SESSAO DE HEMODIALISE\nlixo`);
+    expect(r.formato).toBe("csv");
+    expect(r.nomes.get("0301010013")).toBe("CONSULTA MEDICA");
+    expect(r.nomes.get("0302010013")).toBe("SESSAO DE HEMODIALISE");
+    expect(r.nomes.size).toBe(2);
+    expect(r.erros).toEqual([]);
+  });
+
+  it("arquivo que não é nem um nem outro é RECUSADO, não interpretado", () => {
+    const r = lerNomes("uma coisa qualquer\noutra linha");
+    expect(r.nomes.size).toBe(0);
+    expect(r.erros.length).toBeGreaterThan(0);
+  });
+});
+
+describe("🔴 o `tb_procedimento.txt` do pacote SIGTAP", () => {
+  // Largura fixa: 10 do código + 40 do nome + campos numéricos depois.
+  // A ferramenta NÃO sabe esses números — ela os deriva do arquivo.
+  const linha = (cod, nome) => cod + nome.padEnd(40) + "0301" + "20260801";
+  const arquivo = [
+    linha("0301010013", "CONSULTA MEDICA EM ATENCAO ESPECIALIZADA"),
+    linha("0302010013", "SESSAO DE HEMODIALISE"),
+    linha("0303010037", "TRATAMENTO DE OUTRAS DOENCAS BACTERIANAS"),
+    ...Array.from({ length: 12 }, (_, i) => linha(String(4000000000 + i), `PROCEDIMENTO DE TESTE ${i}`)),
+  ].join("\n");
+
+  it("🔴 SEM a largura confirmada, não extrai NADA — só sugere", () => {
+    // A primeira versão derivava a largura sozinha. O próprio teste
+    // derrubou a ideia: nome de procedimento CONTÉM dígito ("CONSULTA DE
+    // 1A VEZ"), e um dígito em coluna recorrente cortava o nome no meio,
+    // devolvendo nome truncado com cara de certo.
+    const r = lerNomes(arquivo);
+    expect(r.formato).toBe("fixo");
+    expect(r.precisaConfirmar).toBe(true);
+    expect(r.nomes.size).toBe(0);          // nada extraído sem confirmação
+    expect(r.largura).toBeGreaterThan(0);  // mas há um palpite
+    expect(r.amostra.length).toBeGreaterThan(0);
+  });
+
+  it("com a largura informada, extrai e não pergunta mais", () => {
+    const r = lerNomes(arquivo, { largura: 40 });
+    expect(r.precisaConfirmar).toBe(false);
+    expect(r.erros).toEqual([]);
+    expect(r.nomes.get("0301010013")).toBe("CONSULTA MEDICA EM ATENCAO ESPECIALIZADA");
+    expect(r.nomes.get("0302010013")).toBe("SESSAO DE HEMODIALISE");
+  });
+
+  it("⚠️ e nome com DÍGITO dentro sai inteiro — era o caso que derrubou a derivação", () => {
+    const comDigito = Array.from({ length: 12 }, (_, i) =>
+      linha(String(4000000000 + i), "CONSULTA DE 1A VEZ EM 2 ETAPAS")).join("\n");
+    const r = lerNomes(comDigito, { largura: 40 });
+    expect(r.nomes.get("4000000000")).toBe("CONSULTA DE 1A VEZ EM 2 ETAPAS");
+  });
+
+  it("🔴 largura CURTA DEMAIS é acusada — corte no meio da palavra", () => {
+    // Achado no teste de fumaça do CLI: com largura 3, "CONSULTA MEDICA"
+    // vira "CON" — tem letra, não tem dígito, nenhuma linha fica sem nome,
+    // e passava limpo por todas as outras conferências. Truncar é
+    // exatamente o modo de falha que este arquivo diz estar guardando.
+    const r = lerNomes(arquivo, { largura: 3 });
+    expect(r.nomes.size).toBeGreaterThan(0);      // extraiu…
+    expect(r.erros.length).toBeGreaterThan(0);    // …mas recusa entregar
+    expect(r.erros.join(" ")).toMatch(/meio de uma palavra/);
+  });
+
+  it("e a largura CERTA não é acusada por engano", () => {
+    // Nome que preenche o campo inteiro tem letra na última posição — não
+    // pode ser confundido com corte.
+    expect(lerNomes(arquivo, { largura: 40 }).erros).toEqual([]);
+  });
+
+  it("🔴 largura errada é ACUSADA, não gravada", () => {
+    // A pessoa pode digitar o número errado, e aí o erro é dela mas o dano
+    // é o mesmo. Largura 4 pega só o começo — e sobra lixo numérico.
+    const numerico = Array.from({ length: 15 }, (_, i) =>
+      String(4000000000 + i) + "000000000000000000".padEnd(40) + "0301").join("\n");
+    const r = lerNomes(numerico, { largura: 40 });
+    expect(r.erros.length).toBeGreaterThan(0);
+    expect(r.erros.join(" ")).toMatch(/só com números|não parece texto/);
+  });
+
+  it("arquivo curto demais não é tratado como tabela", () => {
+    const r = lerNomes(linha("0301010013", "CONSULTA"), { largura: 40 });
+    expect(r.erros.length).toBeGreaterThan(0);
+  });
+
+  it("⚠️ latin1 do DATASUS não vira caractere quebrado", () => {
+    // O DATASUS publica em latin1. Ler como UTF-8 estragaria todo acento —
+    // e "ATENÇÃO" viraria "ATEN��O" dentro do catálogo.
+    const bruto = Buffer.from(
+      Array.from({ length: 12 }, (_, i) =>
+        String(4000000000 + i) + "ATENÇÃO ESPECIALIZADA".padEnd(40) + "0301").join("\n"),
+      "latin1");
+    const r = lerNomes(bruto, { largura: 40 });
+    expect(r.nomes.get("4000000000")).toBe("ATENÇÃO ESPECIALIZADA");
   });
 });
 

@@ -82,23 +82,52 @@ A ferramenta **não inventa nome**. Nome inventado faria alguém escolher pelo r
 a conta voltaria rejeitada — que é exatamente o problema que este trabalho existe para
 evitar. Então ela lista os códigos sem nome no cabeçalho do SQL gerado e não os insere.
 
-Para incluí-los, rode de novo passando um CSV `codigo;nome`:
+Você tem **duas opções**, e o `--nomes` aceita as duas.
+
+### Opção A — o pacote oficial do SIGTAP (recomendada)
+
+Baixe o pacote em **sigtap.datasus.gov.br → Download** e aponte para o `tb_procedimento.txt`
+que vem dentro dele:
 
 ```bash
-node supabase/importar-bpa.mjs PARS2606.dbc --nomes lista.csv
+node supabase/importar-bpa.mjs PARS2606.dbc --nomes tb_procedimento.txt
 ```
 
-O CSV é simples — uma linha por procedimento:
+Esse arquivo é de **largura fixa**, e a ferramenta **não adivinha** onde o nome termina.
+Adivinhar layout do DATASUS não dá erro — dá nome truncado com cara de certo. Então ela
+mostra uma amostra cortada pelo palpite dela e **para**, pedindo confirmação:
+
+```
+tb_procedimento.txt: tabela de largura fixa
+  amostra:
+    0301010013  CONSULTA MEDICA EM ATENCAO ESPECIALIZADA
+    0302010013  CONSULTA DE 1A VEZ EM 2 ETAPAS
+
+⚠️ Este arquivo é de largura fixa e eu NÃO vou adivinhar onde o nome termina.
+   Meu palpite é 250 caracteres, e a amostra acima foi cortada com ele.
+   Se os nomes acima estão INTEIROS, rode de novo confirmando:
+
+     node supabase/importar-bpa.mjs PARS2606.dbc --nomes tb_procedimento.txt --largura-nome 250
+```
+
+**Você só precisa olhar a amostra.** Se os nomes estão inteiros, repete o comando com o
+`--largura-nome`. Se estão cortados ou com lixo no fim, ajusta o número até sair limpo.
+
+Se a largura estiver errada, a ferramenta ainda recusa: ela detecta nome terminando no meio
+de palavra, nome que saiu só com números, e linha que ficou sem nome.
+
+### Opção B — um CSV que você monte
 
 ```
 0301010013;CONSULTA MEDICA EM ATENCAO ESPECIALIZADA
 0302010013;SESSAO DE HEMODIALISE
 ```
 
-**Onde conseguir os nomes:** o pacote oficial do SIGTAP (sigtap.datasus.gov.br → Download)
-traz código e nome juntos. Quando chegar a hora, vale estender o importador para ler esse
-pacote direto, em vez de montar o CSV à mão — o pacote vem com um arquivo de layout junto,
-então dá para ler sem adivinhar formato. **Isso ainda não foi feito.**
+```bash
+node supabase/importar-bpa.mjs PARS2606.dbc --nomes lista.csv
+```
+
+Sem confirmação de largura — o CSV já diz onde o nome começa e termina.
 
 ---
 
