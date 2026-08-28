@@ -26,7 +26,7 @@ import { pendenciaDeNomeDefinitivo } from "../pacientes/recem-nascido.js";
 // O bloco de fonte pagadora e o campo de catálogo moram fora desde que a
 // Agenda passou a precisar dos dois. Duas cópias divergiriam na primeira
 // regra nova de convênio — e regra de convênio muda por contrato.
-import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
+import FontePagadora, { CampoCatalogo, CampoProcedimento } from "./FontePagadora.jsx";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone, avisoDeObito } from "../pacientes/identidade.js";
 import {
@@ -959,7 +959,10 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                       : "No PS costuma ficar em branco — quem atende só se sabe depois da triagem."}
                   </div>
                 </div>
-                <CampoCatalogo label="Procedimento" lista={cat.procedimentos}
+                {/* Não é `CampoCatalogo`: o procedimento tem DUAS fontes (o
+                    catálogo do hospital e o SIGTAP já carregado) e a via do
+                    atendimento decide qual serve. Ver `CampoProcedimento`. */}
+                <CampoProcedimento catalogos={cat} ficha={ficha}
                   valor={ficha.procedimento_cod} onChange={v => setFi("procedimento_cod", v)} />
                 <div>
                   <label style={lbl}>CID</label>
@@ -1102,7 +1105,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 <CampoCatalogo label="Especialidade" lista={cat.especialidade}
                   valor={corrigindo.campos.especialidade_cod}
                   onChange={v => setCorrigindo(p => ({ ...p, campos: { ...p.campos, especialidade_cod: v } }))} />
-                <CampoCatalogo label="Procedimento" lista={cat.procedimentos}
+                <CampoProcedimento catalogos={cat} ficha={corrigindo.campos}
                   valor={corrigindo.campos.procedimento_cod}
                   onChange={v => setCorrigindo(p => ({ ...p, campos: { ...p.campos, procedimento_cod: v } }))} />
                 <div>
