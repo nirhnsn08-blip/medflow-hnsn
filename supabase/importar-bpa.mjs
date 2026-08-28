@@ -1,7 +1,7 @@
 // ============================================================
 // Valentrax — IMPORTADOR DE BPA DO SIA-SUS (.dbc do DATASUS)
 //
-//     node supabase/importar-bpa.mjs <PA…dbc> [--cnes 1234567] [--nomes lista.csv]
+//     node supabase/importar-bpa.mjs <PA…dbc> [--cnes N] [--nomes arq] [--largura-nome N]
 //
 // Irmão do `importar-aih.mjs`, e de propósito: o descompactador `.dbc`, o
 // leitor de DBF e a mediana vêm DE LÁ, importados. Duas cópias do blast
@@ -161,16 +161,149 @@ export function agregarBpa({ header, dados }, { cnes = null, campos = CAMPOS_PA 
   return { linhas, lidos, semQtd, competencias: [...competencias].sort() };
 }
 
-/** Lê o CSV `codigo;nome` do `--nomes`. Aceita `;` ou `,` e ignora cabeçalho. */
-export function lerNomes(texto) {
-  const mapa = new Map();
-  for (const linha of String(texto ?? "").split(/\r?\n/)) {
+// ── De onde vêm os NOMES dos procedimentos ──────────────────
+//
+// 🔴 O ARQUIVO DE PRODUÇÃO NÃO TEM NOME, e `nome` é `not null`.
+// Duas origens são aceitas, e as duas passam pela mesma porta:
+//
+//   • CSV `codigo;nome` — qualquer um que a pessoa consiga montar;
+//   • `tb_procedimento.txt` do PACOTE OFICIAL do SIGTAP (largura fixa).
+//
+// ⚠️ O SEGUNDO NÃO TEM POSIÇÃO DE CAMPO CRAVADA AQUI.
+// Cravar offset de arquivo do DATASUS é a mesma armadilha do nome de campo
+// do .dbc: se o layout mudar, o programa não erra — ele extrai o pedaço
+// errado da linha e devolve nome errado com cara de certo, e alguém escolhe
+// o procedimento pelo rótulo trocado. Então a largura do nome é DERIVIDA do
+// próprio arquivo, VALIDADA, e uma amostra é mostrada para conferência
+// humana antes de qualquer coisa entrar no SQL.
+
+/** Decodifica respeitando o latin1 do DATASUS sem estragar arquivo em UTF-8. */
+export function decodificar(buf) {
+  const utf8 = Buffer.isBuffer(buf) ? buf.toString("utf8") : String(buf ?? "");
+  // U+FFFD é o que o decodificador põe onde o byte não era UTF-8 válido —
+  // sinal de que o arquivo é latin1 (que é como o DATASUS publica).
+  return utf8.includes("�") && Buffer.isBuffer(buf) ? buf.toString("latin1") : utf8;
+}
+
+/** CSV ou largura fixa? Decide pelo que a maioria das linhas parece. */
+export function detectarFormatoNomes(texto) {
+  const linhas = String(texto ?? "").split(/\r?\n/).filter(l => l.trim()).slice(0, 200);
+  if (!linhas.length) return null;
+  const csv = linhas.filter(l => /^\s*\d{10}\s*[;,]/.test(l)).length;
+  if (csv >= Math.max(1, linhas.length * 0.5)) return "csv";
+  const fixo = linhas.filter(l => /^\d{10}/.test(l) && l.length > 30).length;
+  return fixo >= linhas.length * 0.9 ? "fixo" : null;
+}
+
+/**
+ * Extrai `codigo → nome` de um arquivo de largura fixa.
+ *
+ * 🔴 A LARGURA DO NOME É INFORMADA, NÃO ADIVINHADA.
+ * A primeira versão disto derivava a largura sozinha, medindo coluna a
+ * coluna se era "texto" ou "dígito". O próprio teste derrubou a ideia: nome
+ * de procedimento CONTÉM dígito ("CONSULTA DE 1A VEZ", "SESSAO DE 4 HORAS"),
+ * e um dígito numa coluna recorrente fazia a derivação cortar o nome no
+ * meio — devolvendo nome truncado com cara de certo.
+ *
+ * Adivinhar layout de arquivo do DATASUS é a mesma armadilha do nome de
+ * campo do `.dbc`, noutra roupa: não dá erro, dá dado errado.
+ *
+ * Então: sem `largura`, isto NÃO extrai nada. Devolve um PALPITE e a
+ * amostra correspondente, para a pessoa olhar e confirmar com
+ * `--largura-nome`. Sugerir não é preencher.
+ */
+export function lerNomesFixo(texto, { largura = null } = {}) {
+  const linhas = String(texto ?? "").split(/\r?\n/).filter(l => /^\d{10}/.test(l));
+  if (linhas.length < 10) {
+    return { nomes: new Map(), largura: 0, amostra: [], precisaConfirmar: false,
+      erros: ["Menos de 10 linhas com código de 10 dígitos — isto não parece o tb_procedimento.txt."] };
+  }
+
+  // O palpite: até onde a coluna ainda tem LETRA em alguma linha da
+  // amostra. Serve só para a pessoa ter um número por onde começar.
+  const amostraLinhas = linhas.slice(0, 400);
+  const maxCol = Math.max(...amostraLinhas.map(l => l.length));
+  let ultimaLetra = 10;
+  for (let col = 10; col < maxCol; col++) {
+    if (amostraLinhas.some(l => col < l.length && /[A-Za-zÀ-ÿ]/.test(l[col]))) ultimaLetra = col;
+  }
+  const palpite = ultimaLetra - 10 + 1;
+
+  const corta = w => {
+    const m = new Map();
+    for (const l of linhas) {
+      const nome = l.slice(10, 10 + w).trim().replace(/\s+/g, " ");
+      if (nome) m.set(l.slice(0, 10), nome);
+    }
+    return m;
+  };
+
+  if (largura == null) {
+    const previa = corta(palpite);
+    return {
+      nomes: new Map(), largura: palpite, precisaConfirmar: true, erros: [],
+      amostra: [...previa.entries()].slice(0, 5).map(([c, n]) => `${c}  ${n}`),
+    };
+  }
+
+  const nomes = corta(largura);
+  const erros = [];
+  // ── as provas, mesmo com a largura informada ──
+  // A pessoa pode digitar o número errado, e aí o erro é dela mas o dano é
+  // o mesmo. Estas conferências pegam o engano grosseiro.
+
+  // 🔴 CORTE NO MEIO DA PALAVRA — o defeito que as outras provas NÃO viam.
+  // Com largura 3, "CONSULTA MEDICA" vira "CON": tem letra, não tem dígito,
+  // nenhuma linha fica sem nome — e passava limpo por todas as conferências
+  // abaixo. O sinal certo é o caractere logo DEPOIS do corte: num arquivo de
+  // largura fixa o nome é preenchido com espaço até o fim do campo, então
+  // uma letra ali significa que a fatia parou no meio de uma palavra.
+  const cortadas = linhas.filter(l =>
+    /[A-Za-zÀ-ÿ]/.test(l[10 + largura - 1] || " ") &&
+    /[A-Za-zÀ-ÿ]/.test(l[10 + largura] || " ")).length;
+  if (cortadas > linhas.length * 0.2) {
+    erros.push(`${cortadas} de ${linhas.length} nome(s) terminam no meio de uma palavra — a largura ${largura} corta o nome.`);
+  }
+
+  const semNome = linhas.length - nomes.size;
+  if (semNome > linhas.length * 0.02) erros.push(`${semNome} de ${linhas.length} linha(s) ficaram sem nome — a largura ${largura} provavelmente está errada.`);
+  const soDigito = [...nomes.values()].filter(n => /^[\d.,-]+$/.test(n)).length;
+  if (soDigito > nomes.size * 0.05) erros.push(`${soDigito} nome(s) saíram só com números — a largura ${largura} pegou outro campo.`);
+  const comLetra = [...nomes.values()].filter(n => /[A-Za-zÀ-ÿ]{3}/.test(n)).length;
+  if (comLetra < nomes.size * 0.9) erros.push("Boa parte dos nomes extraídos não parece texto.");
+
+  return {
+    nomes, largura, precisaConfirmar: false, erros,
+    amostra: [...nomes.entries()].slice(0, 5).map(([c, n]) => `${c}  ${n}`),
+  };
+}
+
+/**
+ * Lê o `--nomes`, seja CSV ou o `tb_procedimento.txt` do pacote SIGTAP.
+ *
+ * Devolve `{ nomes, formato, largura, amostra, erros }` — e quem chama PARA
+ * quando há erro, mostrando a amostra. Nome errado é pior que nome nenhum:
+ * sem nome o código não entra; com nome errado ele entra e alguém escolhe
+ * por ele.
+ */
+export function lerNomes(entrada, { largura = null } = {}) {
+  const texto = decodificar(entrada);
+  const formato = detectarFormatoNomes(texto);
+
+  if (formato === "fixo") return { formato, ...lerNomesFixo(texto, { largura }) };
+
+  const nomes = new Map();
+  for (const linha of texto.split(/\r?\n/)) {
     const t = linha.trim();
     if (!t) continue;
     const m = /^(\d{10})\s*[;,]\s*(.+)$/.exec(t);
-    if (m) mapa.set(m[1], m[2].trim().replace(/^"|"$/g, ""));
+    if (m) nomes.set(m[1], m[2].trim().replace(/^"|"$/g, ""));
   }
-  return mapa;
+  const erros = formato ? [] : ["Não reconheci o arquivo como CSV `codigo;nome` nem como tabela de largura fixa do SIGTAP."];
+  return {
+    formato: formato || null, nomes, largura: 0, erros: nomes.size ? [] : erros,
+    amostra: [...nomes.entries()].slice(0, 5).map(([c, n]) => `${c}  ${n}`),
+  };
 }
 
 /** Os códigos que `sigtap_procedimentos` já tem, lidos do seed versionado. */
@@ -292,12 +425,64 @@ if (executado) {
   const nomesArq = pega("--nomes");
 
   if (!arquivo) {
-    console.error("uso: node supabase/importar-bpa.mjs <PA…dbc> [--cnes 1234567] [--nomes lista.csv]");
+    console.error("uso: node supabase/importar-bpa.mjs <PA…dbc> [--cnes N] [--nomes arq] [--largura-nome N]");
     process.exit(1);
   }
 
+  // 🔴 O NOME PASSA PELA MESMA DESCONFIANÇA QUE O RESTO.
+  // Nome errado é PIOR que nome nenhum: sem nome o código não entra; com
+  // nome errado ele entra, e alguém escolhe o procedimento pelo rótulo
+  // trocado. Por isso a ferramenta mostra o que entendeu e PARA no erro.
+  let nomes = new Map();
+  if (nomesArq) {
+    const larguraArg = pega("--largura-nome");
+    const r = lerNomes(fs.readFileSync(nomesArq), { largura: larguraArg ? Number(larguraArg) : null });
+    console.log(`\n${path.basename(nomesArq)}: ${r.formato === "fixo" ? "tabela de largura fixa" : "CSV codigo;nome"}`);
+    if (r.amostra.length) {
+      console.log("  amostra:");
+      for (const a of r.amostra) console.log(`    ${a}`);
+    }
+
+    // 🔴 LARGURA FIXA SEM CONFIRMAÇÃO NÃO PASSA.
+    // O palpite é só ponto de partida: nome de procedimento contém dígito,
+    // e qualquer derivação automática corta no lugar errado em algum caso.
+    // Quem olha a amostra e confirma é a pessoa.
+    if (r.precisaConfirmar) {
+      console.error(`\n⚠️ Este arquivo é de largura fixa e eu NÃO vou adivinhar onde o nome termina.`);
+      console.error(`   Adivinhar layout do DATASUS não dá erro — dá nome truncado com cara de certo.`);
+      console.error(`\n   Meu palpite é ${r.largura} caracteres, e a amostra acima foi cortada com ele.`);
+      console.error(`   Se os nomes acima estão INTEIROS, rode de novo confirmando:`);
+      console.error(`\n     node supabase/importar-bpa.mjs ${path.basename(arquivo)} --nomes ${path.basename(nomesArq)} --largura-nome ${r.largura}`);
+      console.error(`\n   Se estão cortados ou com lixo no fim, ajuste o número até a amostra sair limpa.`);
+      process.exit(5);
+    }
+
+    if (r.erros.length) {
+      console.error(`\n🔴 Não vou usar este arquivo de nomes:`);
+      for (const e of r.erros) console.error(`   ${e}`);
+      console.error(`\nNome errado entra no catálogo e alguém escolhe por ele. É melhor ficar sem\nnome do que com o errado.`);
+      process.exit(4);
+    }
+    console.log(`  ${r.nomes.size.toLocaleString("pt-BR")} nome(s) lidos`);
+    nomes = r.nomes;
+  }
+
   const buf = fs.readFileSync(arquivo);
-  const header = lerHeaderDbf(buf);
+  // Arquivo pequeno demais estoura dentro do leitor de DBF com stack trace
+  // — mensagem de programador para quem só errou de arquivo. 32 bytes é o
+  // cabeçalho mínimo antes da primeira descrição de campo.
+  if (buf.length < 64) {
+    console.error(`🔴 ${path.basename(arquivo)} tem ${buf.length} byte(s) — pequeno demais para ser um .dbc do DATASUS.`);
+    process.exit(3);
+  }
+  let header;
+  try {
+    header = lerHeaderDbf(buf);
+  } catch (e) {
+    console.error(`🔴 Não consegui ler o cabeçalho de ${path.basename(arquivo)} — é mesmo um .dbc do DATASUS?`);
+    console.error(`   (${e.message})`);
+    process.exit(3);
+  }
   console.log(`${path.basename(arquivo)}: ${header.nRegistros.toLocaleString("pt-BR")} linhas · ${header.campos.length} campos`);
 
   // 🔴 CONFERIR ANTES DE CONTAR. Campo com nome errado devolve "" em
@@ -331,7 +516,6 @@ if (executado) {
 
   const { linhas, lidos, semQtd, competencias } = agregarBpa({ header, dados }, { cnes });
   const competencia = competencias[0] || null;
-  const nomes = nomesArq ? lerNomes(fs.readFileSync(nomesArq, "utf8")) : new Map();
   const seed = fs.readFileSync(path.join(dir, "migracao-sigtap.sql"), "utf8");
   const existentes = codigosExistentes(seed);
 
