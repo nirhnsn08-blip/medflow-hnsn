@@ -47,6 +47,7 @@ import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
 import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
 import { abasVisiveis, podeAbrirAba } from "./farmacia/abas.js";
+import { comGrupos } from "./ui/sub-nav.js";
 // Lote vencido não vai para paciente — mas SAI por descarte, senão fica
 // preso na prateleira. Ver o cabeçalho de validade.js.
 import { podeSair, lotesParaEscolha, situacaoDoLote } from "./farmacia/validade.js";
@@ -11075,21 +11076,46 @@ function LeitosAssistenteView({ leitos, solic, saidas, turnover, operacionais })
 // Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA, Protocolos, Capacitações e Comunicação (2d).
 // Assistente AI: último item da 2d.
 // ═══════════════════════════════════════════════════════════
+// 🔴 ORDENADO POR QUEM USA, e não por assunto.
+//
+// "Registrar incidente" era o 4º item, atrás de "Visão geral", "Panorama" e
+// "Notificações". E registrar incidente é o ato mais praticado do sistema
+// inteiro: 13 dos 17 perfis têm escrita neste módulo — o dobro do segundo
+// colocado. Quem chegava para notificar uma queda passava por três painéis
+// do NÚCLEO antes de achar o formulário.
+//
+// Subnotificação não precisa de mais motivo que esse. E subnotificação
+// parece segurança, que é o pior jeito de errar num indicador de qualidade.
+//
+// A divisão abaixo é por PESSOA:
+//   • "Notificar" é de quem presta o cuidado — quase todo mundo;
+//   • "Trabalho do núcleo" é de quem investiga — "Notificações" é a fila de
+//     triagem DELE, não do notificante (por isso saiu do topo);
+//   • "Governança" é do coordenador do núcleo;
+//   • "Acompanhar" é leitura, e leitura vem por último em toda barra.
+//
+// "Visão geral" fica solta no topo, sem grupo: é onde o módulo abre, e o
+// texto normativo (RDC 36/2013) é o que orienta quem chega pela primeira
+// vez. Cabeçalho acima de um item só seria ruído.
 const NSP_NAV = [
   { key: "visao",        label: "Visão geral",         icon: "shield" },
-  { key: "dashboard",    label: "Panorama de incidentes", icon: "dashboard" },
-  { key: "notificacoes", label: "Notificações",        icon: "activity" },
-  { key: "registrar",    label: "Registrar incidente", icon: "record" },
-  { key: "consultar",    label: "Consultar incidente", icon: "list" },
-  { key: "causas",       label: "Análise de causas",   icon: "clipboard" },
-  { key: "plano",        label: "Plano de ação",       icon: "clipboard" },
-  { key: "indicadores",  label: "Indicadores",         icon: "chart" },
-  { key: "protocolos",   label: "Protocolos",          icon: "shield" },
-  { key: "metas",        label: "Metas de segurança",  icon: "record" },
-  { key: "capacitacoes", label: "Capacitações",        icon: "users" },
-  { key: "comunicacao",  label: "Comunicação",         icon: "chat" },
-  { key: "relatorios",   label: "Relatórios",          icon: "printer" },
-  { key: "assistente",   label: "Assistente AI",       icon: "chat" },
+
+  { key: "registrar",    label: "Registrar incidente", icon: "record", grupo: "Notificar" },
+  { key: "consultar",    label: "Consultar incidente", icon: "list",   grupo: "Notificar" },
+
+  { key: "notificacoes", label: "Fila de triagem",     icon: "activity",  grupo: "Trabalho do núcleo" },
+  { key: "causas",       label: "Análise de causas",   icon: "clipboard", grupo: "Trabalho do núcleo" },
+  { key: "plano",        label: "Plano de ação",       icon: "clipboard", grupo: "Trabalho do núcleo" },
+
+  { key: "protocolos",   label: "Protocolos",          icon: "shield", grupo: "Governança" },
+  { key: "metas",        label: "Metas de segurança",  icon: "record", grupo: "Governança" },
+  { key: "capacitacoes", label: "Capacitações",        icon: "users",  grupo: "Governança" },
+  { key: "comunicacao",  label: "Comunicação",         icon: "chat",   grupo: "Governança" },
+
+  { key: "dashboard",    label: "Panorama de incidentes", icon: "dashboard", grupo: "Acompanhar" },
+  { key: "indicadores",  label: "Indicadores",         icon: "chart",   grupo: "Acompanhar" },
+  { key: "relatorios",   label: "Relatórios",          icon: "printer", grupo: "Acompanhar" },
+  { key: "assistente",   label: "Assistente AI",       icon: "chat",    grupo: "Acompanhar" },
 ];
 const NSP_COR = { verde: "#34d399", amarelo: "#f5b301", laranja: "#fb923c", vermelho: "#f43f5e", azul: "#38bdf8" };
 const nspCorClasse = c => NSP_COR[(NSP_CLASSES.find(x => x.v === c) || {}).nivel] || "#8891a5";
@@ -11440,7 +11466,11 @@ function NSPPage({ currentUser, canEdit }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
           <Icon name="shield" size={16} /><span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>SEGURANÇA DO PACIENTE</span>
         </div>
-        {NSP_NAV.map(it => { const active = sub === it.key; return (
+        {comGrupos(NSP_NAV).map((it, i) => {
+          if (it.grupoTitulo) return (
+            <div key={it.grupoTitulo} style={{ padding: "14px 16px 4px", fontSize: 9.5, fontWeight: 700, letterSpacing: ".13em", textTransform: "uppercase", color: "var(--text-muted)" }}>{it.grupoTitulo}</div>
+          );
+          const active = sub === it.key; return (
           <button key={it.key} onClick={() => setSub(it.key)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: ".5rem 16px", border: "none", borderLeft: `3px solid ${active ? VX.turquesa : "transparent"}`, background: active ? "var(--surface)" : "transparent", color: active ? VX.turquesa : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: active ? 700 : 500, fontFamily: "Inter, sans-serif" }}>
             <Icon name={it.icon} size={15} />{it.label}
           </button>
