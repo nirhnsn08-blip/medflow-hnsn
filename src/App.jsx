@@ -12,6 +12,7 @@ import {
   farmFmtQtd, normTxt, parseAlergias, checarAlergia,
   analisarPrescricaoClinica, scoreItemClinico, scorePrescricao,
 } from "./clinico/alertas.js";
+import { sugerirGerme, camposDoGerme } from "./clinico/germes.js";
 // Alergia como atributo do paciente (fonte única pep_alergias, com o campo
 // legado do atendimento fundido durante a transição).
 import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js";
@@ -2185,15 +2186,10 @@ async function deleteScihGermeRemote(nome) {
   if (!USE_SUPABASE) return;
   await sbFetch(`scih_germes?nome=eq.${encodeURIComponent(nome)}`, { method: "DELETE" });
 }
-// Acha o germe da base a partir do que foi digitado (nome exato → contém)
-function sugerirGerme(digitado, germes) {
-  if (!digitado || !germes || !germes.length) return null;
-  const c = digitado.trim().toLowerCase();
-  if (c.length < 3) return null;
-  let m = germes.find(g => (g.nome || "").toLowerCase() === c);
-  if (!m) m = germes.find(g => { const gn = (g.nome || "").toLowerCase(); return gn && (c.includes(gn) || gn.includes(c)); });
-  return m || null;
-}
+// `sugerirGerme` mora em `src/clinico/germes.js` — lá é testável, e a
+// comparação passou a tirar acento (aqui usava só `toLowerCase`, e
+// "Virus sincicial respiratorio" não achava "Vírus sincicial
+// respiratório", que é como o seed grava).
 
 // ═══════════════════════════════════════════════════════════
 // FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex FEFO)
@@ -10098,16 +10094,13 @@ function ScihPage({ currentUser, canEdit }) {
   const [f, setF] = useState(vazio);
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
-  // ao digitar o germe, sugere o isolamento e marca multirresistente (só se ainda vazio)
-  const onGerme = v => setF(p => {
-    const next = { ...p, germe: v };
-    const g = sugerirGerme(v, germes);
-    if (g) {
-      if (g.isolamento && !p.isolamento) next.isolamento = g.isolamento;
-      if (g.tipo === "multirresistente" && !p.multirresistente) next.multirresistente = true;
-    }
-    return next;
-  });
+  // Ao digitar o germe, a base sugere o isolamento e marca multirresistente.
+  // As duas decisões — só preencher o que está VAZIO, e o multirresistente
+  // só LIGAR, nunca desligar — moram em `camposDoGerme`, testadas.
+  const onGerme = v => setF(p => ({
+    ...p, germe: v,
+    ...camposDoGerme(sugerirGerme(v, germes), p),
+  }));
 
   function refresh() {
     if (!USE_SUPABASE) { setLeitos(loadLeitos()); return; }
