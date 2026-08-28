@@ -524,7 +524,7 @@ hospital transmite hoje e ciclo de homologação.
 | **Escalabilidade** | 1 banco PostgreSQL por hospital (isolamento físico). ⚠️ Ver [Limitações](#10-limitações-conhecidas) |
 | **Segurança** | RLS em todas as tabelas; leitura segregada por módulo do perfil; JWT; `service_role` fora do front. ⚠️ Sem filtro por linha |
 | **Auditabilidade** | Append-only clínico; autoria congelada; log de acesso ao prontuário |
-| **Manutenibilidade** | 1.007 testes; CI bloqueante; contrato código↔banco automatizado. ⚠️ `App.jsx` com ~15 mil linhas é dívida ativa |
+| **Manutenibilidade** | 1.007 testes; CI bloqueante; contrato código↔banco automatizado. ⚠️ `App.jsx` com 18,3 mil linhas e 100 componentes é dívida ativa |
 | **Compatibilidade** | Navegador moderno (Chrome, Edge, Firefox, Safari). Sem app nativo |
 | **Backup** | PITR do Supabase (dados) + `reconstruir-banco.sql` (estrutura) |
 | **LGPD** | Isolamento por hospital; minimização na listagem; log de acesso. ⚠️ Ver Limitações |
@@ -652,7 +652,7 @@ qualquer forma, e que determinam o esforço real de uma implantação.
 | 1b | **Escrita ainda decidida por papel de sistema**, não por módulo — um `adm_silver` de qualquer cargo grava onde a tela deixar | **Médio** | As funções (`pode_editar`) já estão no banco; falta reescrever as políticas de `insert/update/delete` |
 | 2 | **Sem geração de remessa de faturamento** (BPA/AIH/TISS) | **Alto** para hospital SUS que dependa disso | Modelo de dados pronto; falta o layout do hospital + homologação |
 | 3 | **Sem interoperabilidade** (HL7/FHIR/RNDS) | **Alto** para rede ou hospital com laboratório integrado | Não iniciado |
-| 4 | **`App.jsx` com ~15 mil linhas** | **Médio** — atrasa desenvolvimento paralelo e impede code-splitting por rota | Modularização em andamento; 7 domínios já extraídos |
+| 4 | **`App.jsx` com 18,3 mil linhas e 100 componentes** | **Médio** — atrasa desenvolvimento paralelo, impede code-splitting por rota e deixa 100 componentes **fora do teste de renderização** (`src/telas.test.jsx` exclui o `App.jsx`: ele exige sessão e Supabase) | 7 domínios já extraídos. `npm run medir` mede o que falta: por domínio, quanto sai de graça e quanto é compartilhado. Menor acoplamento hoje é o **NSP** (1.169 linhas, só 53 compartilhadas) |
 | 5 | **Migração de banco aplicada manualmente** | **Médio** — vira bloqueante a partir do ~6º hospital | Automatização por Supabase CLI planejada |
 | 6 | **Sincronização automática `localStorage` → banco** | **Médio** — dois aparelhos offline gravando podem duplicar registro; não há resolução de conflito | Recomendação: offline apenas para leitura; escrita clínica online-only |
 | 7 | **Sem app nativo / offline real** | **Baixo-médio** | Web responsivo apenas |

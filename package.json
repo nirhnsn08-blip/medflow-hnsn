@@ -9,7 +9,8 @@
     "test:watch": "vitest",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "medir": "node scripts/medir-app.mjs"
   },
   "dependencies": {
     "react": "^18.2.0",
