@@ -14,8 +14,8 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  viaEsperada, opcoesDeProcedimento, filtrarProcedimentos,
-  avisoDeCatalogo, rotuloDaOpcao,
+  viaDaEscolha, opcoesDeProcedimento, filtrarProcedimentos,
+  avisoDeCatalogo, rotuloDaOpcao, VIAS_SUS,
 } from "./escolha-procedimento.js";
 
 // Espelha o que está no banco: tudo AIH, grupos 03 e 04.
@@ -27,12 +27,38 @@ const SIGTAP = [
 const SUS = { id: 1, tipo: "sus" };
 const UNIMED = { id: 2, tipo: "convenio" };
 
-describe("a via sai do desfecho", () => {
-  it("internação é AIH; o resto do PS é BPA", () => {
-    expect(viaEsperada("internacao")).toBe("aih");
-    expect(viaEsperada("alta")).toBe("bpa");
-    expect(viaEsperada("obito")).toBe("bpa");
-    expect(viaEsperada("")).toBe("bpa");
+describe("🔴 a via vem de `resolverVia`, não de uma segunda regra", () => {
+  // A primeira versão deste arquivo tinha um `viaEsperada(desfecho)`
+  // próprio. Era uma segunda implementação, pior, de uma regra que já
+  // existia em montar-conta.js — e repetia um defeito que aquele arquivo
+  // já havia consertado: olhar SÓ o desfecho.
+
+  it("no PS: internação é AIH, o resto é BPA", () => {
+    expect(viaDaEscolha({ convenio: SUS, desfecho: "internacao" })).toBe("aih");
+    expect(viaDaEscolha({ convenio: SUS, desfecho: "alta" })).toBe("bpa");
+    expect(viaDaEscolha({ convenio: SUS, desfecho: "obito" })).toBe("bpa");
+  });
+
+  it("🔴 internação ELETIVA é AIH mesmo SEM desfecho", () => {
+    // Era exatamente isto que a regra própria errava: "a internação
+    // eletiva era montada como BPA e fechada como AIH".
+    expect(viaDaEscolha({ convenio: SUS, atendimento: { tipo_atendimento: "eletivo" } })).toBe("aih");
+  });
+
+  it("⚠️ na RECEPÇÃO não há desfecho — e a via sai assim mesmo", () => {
+    // A chegada acontece antes de qualquer desenlace. O que existe é
+    // convênio e tipo de atendimento.
+    expect(viaDaEscolha({ convenio: SUS, atendimento: { tipo_atendimento: "ambulatorial" } })).toBe("bpa");
+  });
+
+  it("convênio e particular não são vias do SUS", () => {
+    expect(viaDaEscolha({ convenio: UNIMED })).toBe("tiss");
+    expect(viaDaEscolha({ convenio: { tipo: "particular" } })).toBe("direta");
+    expect(VIAS_SUS).toEqual(["aih", "bpa", "apac"]);
+  });
+
+  it("sem convênio escolhido, `null` — que é 'ainda não dá para saber'", () => {
+    expect(viaDaEscolha({ desfecho: "alta" })).toBeNull();
   });
 });
 
@@ -81,8 +107,16 @@ describe("🔴 a via filtra — senão a conta volta rejeitada", () => {
   it("via_sus em branco no catálogo do hospital conta como BPA", () => {
     // É o que a própria tela de Tabelas diz: "em branco: sai por BPA".
     const hosp = [{ codigo: "PROP-01", nome: "Consulta", via_sus: "" }];
-    expect(opcoesDeProcedimento({ procedimentos: hosp, desfecho: "alta" })).toHaveLength(1);
-    expect(opcoesDeProcedimento({ procedimentos: hosp, desfecho: "internacao" })).toEqual([]);
+    expect(opcoesDeProcedimento({ procedimentos: hosp, convenio: SUS, desfecho: "alta" })).toHaveLength(1);
+    expect(opcoesDeProcedimento({ procedimentos: hosp, convenio: SUS, desfecho: "internacao" })).toEqual([]);
+  });
+
+  it("⚠️ sem convênio escolhido, NÃO filtra — oferece tudo, com a fonte à vista", () => {
+    // Filtrar por um palpite esconderia justamente o que a pessoa precisa
+    // ver para decidir.
+    const hosp = [{ codigo: "PROP-01", nome: "Consulta", via_sus: "" }];
+    const o = opcoesDeProcedimento({ procedimentos: hosp, sigtap: SIGTAP, desfecho: "alta" });
+    expect(o).toHaveLength(4);   // 1 do hospital (BPA) + os 3 de AIH
   });
 });
 
@@ -115,10 +149,15 @@ describe("🔴 o aviso distingue 'não tenho' de 'não serve'", () => {
     expect(a).not.toMatch(/Há catálogo carregado/);
   });
 
-  it("convênio não-SUS sem catálogo próprio explica o porquê", () => {
+  it("convênio sem catálogo próprio explica que o SIGTAP não serve", () => {
     const a = avisoDeCatalogo({ opcoes: [], procedimentos: [], sigtap: SIGTAP, desfecho: "internacao", convenio: UNIMED });
-    expect(a).toMatch(/não é SUS/);
-    expect(a).toMatch(/não reconhece código do SUS/);
+    expect(a).toMatch(/TISS \(convênio\)/);
+    expect(a).toMatch(/não é por tabela do SUS/);
+  });
+
+  it("e o particular diz 'particular', não 'TISS'", () => {
+    const a = avisoDeCatalogo({ opcoes: [], procedimentos: [], sigtap: SIGTAP, convenio: { tipo: "particular" } });
+    expect(a).toMatch(/sai por particular/);
   });
 
   it("e CALA quando há o que oferecer", () => {

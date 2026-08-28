@@ -36,18 +36,50 @@
 // via" de "não há catálogo" — não saber ≠ estar errado.
 // ═══════════════════════════════════════════════════════════
 
+import { resolverVia } from "./montar-conta.js";
+
 const texto = v => String(v ?? "").trim();
 
 /**
  * A via pela qual este episódio vai ser cobrado.
  *
- * Internação sai por AIH; o resto do que o pronto-socorro faz sai por BPA
- * (produção ambulatorial). APAC é alta complexidade e não se deduz do
- * desfecho — quem sabe é o procedimento, então ela não entra aqui.
+ * 🔴 ISTO CHAMA `resolverVia`, E A PRIMEIRA VERSÃO NÃO CHAMAVA.
+ * Eu tinha escrito aqui um `viaEsperada(desfecho)` que devolvia "aih" para
+ * internação e "bpa" para todo o resto. Era uma segunda implementação,
+ * pior, de uma regra que já existia em `montar-conta.js` — e repetia um
+ * defeito que aquele arquivo já tinha consertado e documentado:
+ *
+ *   "Antes esta linha olhava só o `desfecho`, e o fechamento olhava só o
+ *    `tipo_atendimento`: a internação eletiva era montada como BPA e
+ *    fechada como AIH."
+ *
+ * Duas regras de via divergindo é o pior tipo de divergência: a tela
+ * oferece procedimento de uma via e a conta fecha por outra, e ninguém
+ * descobre até a produção voltar rejeitada.
+ *
+ * ⚠️ E É `resolverVia` QUEM SABE A RECEPÇÃO. Lá não existe desfecho — o
+ * atendimento é aberto antes de qualquer desenlace. O que existe é
+ * convênio e `tipo_atendimento`, que é exatamente do que ela vive.
+ *
+ * `procCatalogo` e `sigtapProc` não são passados de propósito: estamos
+ * ESCOLHENDO o procedimento, então ainda não há um. `resolverVia` cai no
+ * palpite pelo grupo do código (03/04 → AIH) e, na falta, em BPA.
+ *
+ * Devolve `null` quando não há convênio escolhido — e `null` aqui quer
+ * dizer "ainda não dá para saber", nunca "nenhuma".
  */
-export function viaEsperada(desfecho) {
-  return texto(desfecho) === "internacao" ? "aih" : "bpa";
+export function viaDaEscolha({ atendimento = {}, convenio, desfecho } = {}) {
+  return resolverVia({
+    convenio,
+    atendimento: { ...atendimento, desfecho: desfecho ?? atendimento?.desfecho },
+  });
 }
+
+/**
+ * Vias que o SIGTAP cobre. `tiss` e `direta` são convênio e particular:
+ * lá a cobrança não é por tabela do SUS.
+ */
+export const VIAS_SUS = ["aih", "bpa", "apac"];
 
 /** Via de uma linha do catálogo do hospital. Em branco = BPA, como a tela de Tabelas diz. */
 const viaDoCatalogo = p => texto(p?.via_sus).toLowerCase() || "bpa";
@@ -64,35 +96,42 @@ const viaDoCatalogo = p => texto(p?.via_sus).toLowerCase() || "bpa";
  * precedência que `montar-conta.js` já usa para o preço. Duas fontes
  * discordando sobre o mesmo código seria pior que uma fonte só.
  */
-export function opcoesDeProcedimento({ procedimentos = [], sigtap = [], desfecho, convenio } = {}) {
-  const via = viaEsperada(desfecho);
+export function opcoesDeProcedimento({ procedimentos = [], sigtap = [], desfecho, convenio, atendimento } = {}) {
+  const via = viaDaEscolha({ atendimento, convenio, desfecho });
 
-  // ⚠️ SIGTAP é a tabela do SUS. Num convênio ou particular, a cobrança é
-  // por TUSS ou tabela própria, e oferecer código do SUS ali produziria
-  // uma conta que o convênio não reconhece. Sem convênio escolhido ainda,
-  // não se sabe — e aí se oferece tudo, com a fonte à vista.
-  const tipo = texto(convenio?.tipo).toLowerCase();
-  const cabeSigtap = !tipo || tipo === "sus";
+  // Sem convênio escolhido ainda, `resolverVia` devolve `null`: não dá para
+  // saber, então se oferece TUDO, com a fonte à vista. Filtrar por um palpite
+  // esconderia da pessoa justamente o que ela precisa ver para decidir.
+  const filtraPorVia = via != null;
 
   const doHospital = (Array.isArray(procedimentos) ? procedimentos : [])
-    .filter(p => texto(p?.codigo) && viaDoCatalogo(p) === via)
+    .filter(p => texto(p?.codigo) && (!filtraPorVia || !VIAS_SUS.includes(via) || viaDoCatalogo(p) === via))
     .map(p => ({
       codigo: texto(p.codigo),
       nome: texto(p.nome),
-      via,
+      via: via || viaDoCatalogo(p),
       fonte: "hospital",
       tabela: texto(p.tabela) || null,
     }));
 
   const vistos = new Set(doHospital.map(o => o.codigo));
 
-  const doSigtap = !cabeSigtap ? [] : (Array.isArray(sigtap) ? sigtap : [])
-    .filter(s => texto(s?.codigo) && texto(s?.via).toLowerCase() === via)
+  // ⚠️ SIGTAP é a tabela do SUS. Em `tiss` (convênio) ou `direta`
+  // (particular) a cobrança não é por ela, e oferecer código do SUS ali
+  // produziria conta que o convênio não reconhece.
+  //
+  // Isso sai DE GRAÇA do filtro de via logo abaixo: nenhuma linha do SIGTAP
+  // tem via `tiss` nem `direta`, então nenhuma casa. Havia aqui um
+  // `cabeSigtap` explícito, e uma mutação mostrou que ele era redundante —
+  // desligá-lo não quebrava teste nenhum. Guarda que nunca dispara é peso
+  // morto que o próximo leitor tem de entender antes de poder mexer.
+  const doSigtap = (Array.isArray(sigtap) ? sigtap : [])
+    .filter(s => texto(s?.codigo) && (!filtraPorVia || texto(s?.via).toLowerCase() === via))
     .filter(s => !vistos.has(texto(s.codigo)))
     .map(s => ({
       codigo: texto(s.codigo),
       nome: texto(s.nome),
-      via,
+      via: texto(s.via).toLowerCase(),
       fonte: "sigtap",
       competencia: texto(s.competencia) || null,
     }));
@@ -130,25 +169,31 @@ export function filtrarProcedimentos(opcoes = [], busca) {
  * Devolve `null` quando há o que oferecer: aviso que aparece sempre não é
  * lido.
  */
-export function avisoDeCatalogo({ opcoes = [], procedimentos = [], sigtap = [], desfecho, convenio } = {}) {
+const ROTULO_VIA = {
+  aih: "AIH (internação)",
+  bpa: "BPA (produção ambulatorial)",
+  apac: "APAC (alta complexidade)",
+  tiss: "TISS (convênio)",
+  direta: "particular",
+};
+
+export function avisoDeCatalogo({ opcoes = [], procedimentos = [], sigtap = [], desfecho, convenio, atendimento } = {}) {
   if (opcoes.length) return null;
 
-  const via = viaEsperada(desfecho);
-  const rotulo = via === "aih" ? "AIH (internação)" : "BPA (produção ambulatorial)";
+  const via = viaDaEscolha({ atendimento, convenio, desfecho });
   const temAlgumCatalogo = (procedimentos?.length || 0) > 0 || (sigtap?.length || 0) > 0;
 
   if (!temAlgumCatalogo) {
     return `Nenhum procedimento cadastrado. Cadastre em ATENDIMENTO › Tabelas, ou carregue a tabela SIGTAP da competência.`;
   }
 
-  const tipo = texto(convenio?.tipo).toLowerCase();
-  if (tipo && tipo !== "sus" && (procedimentos?.length || 0) === 0) {
-    return `Este convênio não é SUS, e o hospital ainda não tem procedimentos próprios (TUSS ou tabela própria) cadastrados. ` +
-           `A tabela SIGTAP não serve aqui — o convênio não reconhece código do SUS.`;
+  if (via && !VIAS_SUS.includes(via) && (procedimentos?.length || 0) === 0) {
+    return `Este atendimento sai por ${ROTULO_VIA[via] || via}, e o hospital ainda não tem procedimentos próprios ` +
+           `(TUSS ou tabela própria) cadastrados. A tabela SIGTAP não serve aqui — a cobrança não é por tabela do SUS.`;
   }
 
-  return `Há catálogo carregado, mas nenhum procedimento de ${rotulo} — que é a via deste atendimento. ` +
-         `Escolher um código de outra via faria a conta voltar rejeitada. ` +
+  return `Há catálogo carregado, mas nenhum procedimento de ${ROTULO_VIA[via] || via || "nenhuma via conhecida"} — ` +
+         `que é a via deste atendimento. Escolher um código de outra via faria a conta voltar rejeitada. ` +
          `Cadastre o procedimento em ATENDIMENTO › Tabelas ou carregue a competência do SIGTAP que cobre esta via.`;
 }
 

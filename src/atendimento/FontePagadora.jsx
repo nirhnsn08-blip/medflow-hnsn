@@ -20,6 +20,8 @@
 // banco, sem erro nenhum na tela.
 // ═══════════════════════════════════════════════════════════
 
+import { useState } from "react";
+import { opcoesDeProcedimento, filtrarProcedimentos, avisoDeCatalogo } from "./escolha-procedimento.js";
 import { exigenciasDoConvenio, tipoDoConvenio } from "./ficha.js";
 
 const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
@@ -59,6 +61,92 @@ export function CampoCatalogo({ label, dica, lista, valor, onChange, largura, ca
         ))}
       </select>
       {dica && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>{dica}</div>}
+    </div>
+  );
+}
+
+/**
+ * O campo de PROCEDIMENTO — irmão do `CampoCatalogo`, e separado dele de
+ * propósito.
+ *
+ * 🔴 POR QUE NÃO DÁ PARA SER UM `CampoCatalogo` COMUM.
+ * Os outros domínios têm meia dúzia de opções e uma lista só. O
+ * procedimento tem DUAS fontes — o catálogo do hospital (`at_procedimentos`)
+ * e a tabela SIGTAP já carregada — e a segunda tem centenas de linhas. Era
+ * ela que a Recepção não enxergava: o campo lia só `at_procedimentos`, que
+ * no banco do hospital está vazia, e dizia "nenhum cadastrado ainda"
+ * enquanto o SIGTAP tinha o catálogo inteiro do outro lado da parede.
+ *
+ * ⚠️ E A VIA IMPORTA AQUI COMO IMPORTA NO PS. Um código de AIH numa
+ * consulta ambulatorial volta rejeitado. A diferença é que na Recepção NÃO
+ * EXISTE DESFECHO — a chegada acontece antes de qualquer desenlace —, então
+ * a via sai do convênio e do tipo de atendimento, por `resolverVia`.
+ *
+ * ⚠️ LISTA VAZIA NÃO É UMA COISA SÓ. "Ninguém cadastrou" e "há catálogo,
+ * mas nenhum serve para esta via" pedem ações opostas: a primeira manda
+ * cadastrar, a segunda avisaria para cadastrar o que já existe. O aviso vem
+ * pronto de `avisoDeCatalogo`.
+ */
+export function CampoProcedimento({ label = "Procedimento", catalogos = {}, ficha = {}, valor, onChange, largura }) {
+  const [busca, setBusca] = useState("");
+  const convenio = (catalogos.convenios || []).find(c => String(c.id) === String(ficha.convenio_id)) || null;
+  const contexto = {
+    procedimentos: catalogos.procedimentos || [],
+    sigtap: catalogos.sigtap || [],
+    convenio,
+    atendimento: ficha,
+  };
+  const opcoes = opcoesDeProcedimento(contexto);
+  const escolhido = opcoes.find(o => o.codigo === valor) || null;
+  const aviso = avisoDeCatalogo({ ...contexto, opcoes });
+  // Poucas opções cabem num `<select>`; centenas, não — rolar lista longa
+  // com o paciente no balcão é o mesmo que não ter lista.
+  const muitas = opcoes.length > 12;
+  const filtradas = filtrarProcedimentos(opcoes, busca).slice(0, 30);
+
+  const caixa = extra => ({ ...inp, fontSize: 11.5, lineHeight: 1.35, paddingTop: 7, paddingBottom: 7, ...extra });
+
+  return (
+    <div style={largura ? { width: largura } : undefined}>
+      <label style={lbl}>{label}</label>
+
+      {escolhido ? (
+        <div style={{ ...inp, display: "flex", alignItems: "center", gap: 8, paddingTop: 6, paddingBottom: 6 }}>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 11.5 }}>
+            <strong style={{ fontFamily: "JetBrains Mono, monospace" }}>{escolhido.codigo}</strong> — {escolhido.nome}
+            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              {escolhido.fonte === "sigtap"
+                ? `tabela SIGTAP${escolhido.competencia ? ` · ${escolhido.competencia}` : ""}`
+                : "catálogo do hospital"}{escolhido.via ? ` · via ${escolhido.via.toUpperCase()}` : ""}
+            </div>
+          </div>
+          <button onClick={() => { onChange(""); setBusca(""); }} type="button"
+            style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border-2)", borderRadius: 5, padding: "3px 9px", fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}>Trocar</button>
+        </div>
+      ) : aviso ? (
+        <div style={caixa({ color: "#d97706" })}>{aviso}</div>
+      ) : muitas ? (
+        <>
+          <input value={busca} onChange={e => setBusca(e.target.value)}
+            placeholder={`Buscar entre ${opcoes.length} procedimentos…`} style={inp} />
+          {busca && (
+            <div style={{ maxHeight: 150, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 6, marginTop: 5 }}>
+              {filtradas.length === 0 && <div style={{ fontSize: 11, color: "var(--text-muted)", padding: "7px 10px" }}>Nada encontrado.</div>}
+              {filtradas.map(o => (
+                <button key={o.codigo} type="button" onClick={() => onChange(o.codigo)}
+                  style={{ display: "block", width: "100%", textAlign: "left", background: "transparent", border: "none", borderBottom: "1px solid var(--border)", padding: "6px 10px", cursor: "pointer", color: "var(--text-2)", fontSize: 11.5, fontFamily: "inherit" }}>
+                  <strong style={{ fontFamily: "JetBrains Mono, monospace" }}>{o.codigo}</strong> — {o.nome}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <select value={valor ?? ""} onChange={e => onChange(e.target.value)} style={inp}>
+          <option value="">—</option>
+          {opcoes.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome}</option>)}
+        </select>
+      )}
     </div>
   );
 }

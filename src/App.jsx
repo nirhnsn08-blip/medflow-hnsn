@@ -105,7 +105,7 @@ import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
 import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
 import { carregarPaciente, carregarCatalogos } from "./atendimento/dados.js";
 import { avisoDeConta, dadosDeConta, geraConta, convenioSugerido, valoresIniciais } from "./atendimento/faturavel.js";
-import { opcoesDeProcedimento, filtrarProcedimentos, avisoDeCatalogo, viaEsperada } from "./atendimento/escolha-procedimento.js";
+import { opcoesDeProcedimento, filtrarProcedimentos, avisoDeCatalogo, viaDaEscolha } from "./atendimento/escolha-procedimento.js";
 // "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
 // como `status !== "finalizado"` em três pontos daqui — e o status
 // 'cancelado', criado depois, vazaria por todos eles: o Paciente 360
@@ -6704,12 +6704,16 @@ function PsDesfechoModal({ paciente, setores, leitos = [], catalogos = {}, exame
   // A via sai do desfecho — internação é AIH, o resto do PS é BPA — e é ela
   // que impede oferecer um código de internação para quem teve alta.
   const convObj = convenios.find(c => String(c.id) === String(convenioId)) || null;
+  // `viaDaEscolha` chama `resolverVia` — a mesma regra que o motor de conta
+  // usa para fechar. Duas regras de via divergindo faria a tela oferecer
+  // procedimento de uma via e a conta fechar por outra.
+  const viaProc = viaDaEscolha({ atendimento: paciente, convenio: convObj, desfecho });
   const opcoesProc = opcoesDeProcedimento({
-    procedimentos, sigtap: catalogos.sigtap || [], desfecho, convenio: convObj,
+    procedimentos, sigtap: catalogos.sigtap || [], desfecho, convenio: convObj, atendimento: paciente,
   });
   const opcoesFiltradas = filtrarProcedimentos(opcoesProc, buscaProc).slice(0, 40);
   const semCatalogo = avisoDeCatalogo({
-    opcoes: opcoesProc, procedimentos, sigtap: catalogos.sigtap || [], desfecho, convenio: convObj,
+    opcoes: opcoesProc, procedimentos, sigtap: catalogos.sigtap || [], desfecho, convenio: convObj, atendimento: paciente,
   });
   const procEscolhido = opcoesProc.find(o => o.codigo === procedimentoCod) || null;
 
@@ -6863,7 +6867,7 @@ function PsDesfechoModal({ paciente, setores, leitos = [], catalogos = {}, exame
                 <div style={{ fontSize: 11.5, color: "#d97706", background: "#d9770614", border: "1px solid #d9770633", borderRadius: 6, padding: "8px 11px", lineHeight: 1.5 }}>{semCatalogo}</div>
               ) : (
                 <>
-                  <input value={buscaProc} onChange={e => setBuscaProc(e.target.value)} placeholder={`Buscar entre ${opcoesProc.length} procedimentos de ${viaEsperada(desfecho).toUpperCase()}…`} style={inp} />
+                  <input value={buscaProc} onChange={e => setBuscaProc(e.target.value)} placeholder={`Buscar entre ${opcoesProc.length} procedimentos${viaProc ? ` de ${viaProc.toUpperCase()}` : ""}…`} style={inp} />
                   <div style={{ maxHeight: 168, overflowY: "auto", border: buscaProc ? "1px solid var(--border)" : "none", borderRadius: 6, marginTop: buscaProc ? 6 : 0 }}>
                     {buscaProc && opcoesFiltradas.length === 0 && <div style={{ fontSize: 11.5, color: "var(--text-muted)", padding: "8px 11px" }}>Nada encontrado para “{buscaProc}”.</div>}
                     {buscaProc && opcoesFiltradas.map(o => (
