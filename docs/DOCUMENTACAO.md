@@ -657,7 +657,8 @@ qualquer forma, e que determinam o esforço real de uma implantação.
 | 6 | **Sincronização automática `localStorage` → banco** | **Médio** — dois aparelhos offline gravando podem duplicar registro; não há resolução de conflito | Recomendação: offline apenas para leitura; escrita clínica online-only |
 | 7 | **Sem app nativo / offline real** | **Baixo-médio** | Web responsivo apenas |
 | 8 | **Sem SLA contratado** | **Médio** para hospital que exija contrato formal | A definir por contrato |
-| 9 | **Catálogos comerciais vazios** no banco principal (convênios, procedimentos) | **Baixo** — trabalho de implantação, não de software | Telas prontas; carga é atividade do analista comercial |
+| 9 | **Catálogos comerciais vazios** no banco principal (convênios, planos) | **Baixo** — trabalho de implantação, não de software | Telas prontas; carga é atividade do analista comercial |
+| 9b | **SIGTAP só com a metade de internação** (219 procedimentos, todos `via='aih'`; nenhum de BPA) | **Médio na entrada em operação** — a alta de PS e a consulta ambulatorial ficam sem código oficial para escolher, e a tela avisa isso corretamente em vez de ficar muda | Ferramenta pronta e testada (`supabase/importar-bpa.mjs`); falta o arquivo da competência do DATASUS. Passo a passo em `docs/SIGTAP-BPA-COMO-APLICAR.md` |
 
 ---
 
