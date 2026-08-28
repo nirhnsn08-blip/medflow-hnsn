@@ -179,7 +179,11 @@ describe("modulosDormentes", () => {
       { perms: TUDO });
     const nomes = modulosDormentes(itens);
     expect(nomes).toContain("Protocolos Clínicos");
-    expect(nomes).toContain("Visão Geral");
+    // O rótulo vem do catálogo, e o catálogo mudou: `overview` passou de
+    // "Visão Geral" para "Centro de Monitoramento", que é o título que a
+    // própria tela já usava. Este teste pegar a mudança é ele funcionando —
+    // é a prova de que o checklist NÃO tem o nome cravado em duplicata.
+    expect(nomes).toContain("Centro de Monitoramento");
     expect(nomes).toContain("Bloco Cirúrgico");
     expect(nomes).not.toContain("Estoque & Compras");
   });
