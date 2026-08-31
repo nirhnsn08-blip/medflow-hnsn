@@ -34,7 +34,8 @@ import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
 import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
          modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
 import { GRUPOS } from "./acesso/modulos.js";
-import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon } from "./ui/base.jsx";
+import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon,
+         btnContorno, VxWordmark, customTooltip } from "./ui/base.jsx";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 import { validarCbo, formatarCbo, cbosDoCatalogo } from "./acesso/cbo.js";
 import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
@@ -313,13 +314,6 @@ function VxLogo({ size = 30 }) {
   );
 }
 // Wordmark VALENTRAX com o X em degradê azul
-function VxWordmark({ size = 14, color = "inherit", spacing = ".1em" }) {
-  return (
-    <span style={{ fontWeight: 800, fontSize: size, letterSpacing: spacing, color }}>
-      VALENTRA<span style={{ background: `linear-gradient(135deg, ${VX.azul}, ${VX.royal})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>X</span>
-    </span>
-  );
-}
 // Ícones de linha (profissionais, sem emoji) — traço 1.8, herdam a cor do texto
 const K = "hnsn_v5";
 
@@ -756,20 +750,6 @@ function SemaforoMeta({ pct, diasRestantes }) {
   );
 }
 
-const customTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
-      <div style={{ color: "var(--text-3)", marginBottom: 4 }}>{label}</div>
-      {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color || "var(--text)", display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ width: 8, height: 8, background: p.color, borderRadius: 2, display: "inline-block" }} />
-          {p.name}: <strong>{fmt(p.value)}</strong>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 // ═══════════════════════════════════════════════════════════
 // BANNER DE ALERTAS (topo do app)
@@ -1326,8 +1306,8 @@ function Overview({ db, currentUser, canEdit, perms, onNav }) {
                   {s.visto_em && <span title={s.visto_por ? `em regulação por ${s.visto_por}` : "em regulação"} style={{ fontSize: 10.5, fontWeight: 700, color: "#34d399", border: "1px solid #34d39955", borderRadius: 99, padding: "0 7px" }}>em regulação</span>}
                   <span style={{ fontSize: 12, color: urg.cor, fontWeight: 700, marginLeft: "auto", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(esperaMin)}</span>
                   {canEdit && <>
-                    <button onClick={() => resolverSolic(s, "atendido")} style={btnLeito("#34d399")}>✓ Atendido</button>
-                    <button onClick={() => resolverSolic(s, "cancelado")} style={btnLeito("var(--text-muted)")}>✕</button>
+                    <button onClick={() => resolverSolic(s, "atendido")} style={btnContorno("#34d399")}>✓ Atendido</button>
+                    <button onClick={() => resolverSolic(s, "cancelado")} style={btnContorno("var(--text-muted)")}>✕</button>
                   </>}
                 </div>
               );
@@ -2876,8 +2856,8 @@ function PsProtocolosModal({ currentUser, canEdit, isMaster, onClose }) {
                   {p.referencia && <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6 }}>Fonte: {p.referencia}</div>}
                   {canEdit && (
                     <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                      <button onClick={() => setEdit(p)} style={btnLeito("#3b82f6")}>Editar</button>
-                      {isMaster && <button onClick={() => excluir(p)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                      <button onClick={() => setEdit(p)} style={btnContorno("#3b82f6")}>Editar</button>
+                      {isMaster && <button onClick={() => excluir(p)} style={btnContorno("#f43f5e")}>Excluir</button>}
                     </div>
                   )}
                 </details>
@@ -2971,9 +2951,9 @@ function PsSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
                   <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)" }}>{s.area}</span>
                   <span style={{ fontSize: 10.5, color: st.cor, border: `1px solid ${st.cor}55`, borderRadius: 99, padding: "0 7px", fontWeight: 700 }}>{st.label}</span>
                   <button onClick={() => onSave({ id: s.id, conta_censo: !psContaCenso(s) })} title="Alterna se a vaga entra nos leitos do hospital ou é retaguarda só do PS"
-                    style={btnLeito(psContaCenso(s) ? "#0d9488" : "#d97706")}>{psContaCenso(s) ? "No censo" : "Retaguarda"}</button>
-                  <button onClick={() => onSave({ id: s.id, ativo: !(s.ativo !== false) })} style={btnLeito(s.ativo !== false ? "#8d99ab" : "#34d399")}>{s.ativo !== false ? "Desativar" : "Ativar"}</button>
-                  {isMaster && <button onClick={() => onDelete(s)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                    style={btnContorno(psContaCenso(s) ? "#0d9488" : "#d97706")}>{psContaCenso(s) ? "No censo" : "Retaguarda"}</button>
+                  <button onClick={() => onSave({ id: s.id, ativo: !(s.ativo !== false) })} style={btnContorno(s.ativo !== false ? "#8d99ab" : "#34d399")}>{s.ativo !== false ? "Desativar" : "Ativar"}</button>
+                  {isMaster && <button onClick={() => onDelete(s)} style={btnContorno("#f43f5e")}>Excluir</button>}
                 </div>
               );
             })}
@@ -3738,7 +3718,7 @@ function PacientePage({ currentUser, canEdit }) {
               expor a identidade de vários pacientes numa tela que fica
               aberta no balcão. */}
           {sugestoes.map(s => (
-            <button key={s.prontuario} onClick={() => abrir(s.prontuario)} style={btnLeito("#22d3ee")}>
+            <button key={s.prontuario} onClick={() => abrir(s.prontuario)} style={btnContorno("#22d3ee")}>
               {comoExibir(s) || s.iniciais} · reg. {s.prontuario}
               {s.data_nascimento ? ` · ${fmtDataBR(s.data_nascimento)}` : ""}
             </button>
@@ -3770,7 +3750,7 @@ function PacientePage({ currentUser, canEdit }) {
                   O botão avisa quando ainda falta algo essencial. */}
               {canEdit && !cadForm && (
                 <button onClick={() => setCadForm(true)}
-                  style={btnLeito(conferenciaCadastro.completo ? "var(--text-muted)" : "#d97706")}>
+                  style={btnContorno(conferenciaCadastro.completo ? "var(--text-muted)" : "#d97706")}>
                   {!dados.cadastro ? "Cadastrar paciente"
                     : conferenciaCadastro.completo ? "Editar cadastro"
                     : `Completar cadastro (${conferenciaCadastro.percentual}%)`}
@@ -4247,25 +4227,25 @@ function BlocoPage({ currentUser, canEdit }) {
       {canEdit && c.status !== "cancelada" && c.status !== "concluida" && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {c.status === "agendada" && <>
-            <button onClick={() => marcar(c, { status: "checkin", checkin_em: nowISO() }, "check-in")} style={btnLeito("#3b82f6")}>Check-in do paciente</button>
-            <button onClick={() => setAgendando(c)} style={btnLeito("var(--text-3)")}>Editar</button>
-            <button onClick={() => setCancelando(c)} style={btnLeito("#f43f5e")}>Cancelar cirurgia</button>
+            <button onClick={() => marcar(c, { status: "checkin", checkin_em: nowISO() }, "check-in")} style={btnContorno("#3b82f6")}>Check-in do paciente</button>
+            <button onClick={() => setAgendando(c)} style={btnContorno("var(--text-3)")}>Editar</button>
+            <button onClick={() => setCancelando(c)} style={btnContorno("#f43f5e")}>Cancelar cirurgia</button>
           </>}
           {c.status === "checkin" && <>
-            {!c.chk_sign_in && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_in" })} style={btnLeito("#3b82f6")}>Cirurgia segura: Sign In</button>}
-            <button onClick={() => { if (!c.chk_sign_in && !confirm("O checklist Sign In ainda não foi concluído. Entrar em sala mesmo assim?")) return; marcar(c, { status: "em_cirurgia", entrada_sala_em: nowISO() }, "entrada na sala"); }} style={btnLeito("#22d3ee")}>Entrada na sala</button>
-            <button onClick={() => setCancelando(c)} style={btnLeito("#f43f5e")}>Cancelar</button>
+            {!c.chk_sign_in && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_in" })} style={btnContorno("#3b82f6")}>Cirurgia segura: Sign In</button>}
+            <button onClick={() => { if (!c.chk_sign_in && !confirm("O checklist Sign In ainda não foi concluído. Entrar em sala mesmo assim?")) return; marcar(c, { status: "em_cirurgia", entrada_sala_em: nowISO() }, "entrada na sala"); }} style={btnContorno("#22d3ee")}>Entrada na sala</button>
+            <button onClick={() => setCancelando(c)} style={btnContorno("#f43f5e")}>Cancelar</button>
           </>}
           {c.status === "em_cirurgia" && <>
-            {!c.inicio_anestesia_em && <button onClick={() => marcar(c, { inicio_anestesia_em: nowISO() }, "inicio anestesia")} style={btnLeito("var(--text-3)")}>Início da anestesia</button>}
-            {!c.chk_time_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "time_out" })} style={btnLeito("#d97706")}>Cirurgia segura: Time Out</button>}
-            {!c.inicio_cirurgia_em && <button onClick={() => { if (!c.chk_time_out && !confirm("O checklist Time Out ainda não foi concluído. Registrar a incisão mesmo assim?")) return; marcar(c, { inicio_cirurgia_em: nowISO() }, "inicio cirurgia"); }} style={btnLeito("#22d3ee")}>Início da cirurgia</button>}
-            {c.inicio_cirurgia_em && !c.fim_cirurgia_em && <button onClick={() => marcar(c, { fim_cirurgia_em: nowISO() }, "fim cirurgia")} style={btnLeito("#22d3ee")}>Fim da cirurgia</button>}
-            {c.fim_cirurgia_em && !c.chk_sign_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_out" })} style={btnLeito("#34d399")}>Cirurgia segura: Sign Out</button>}
-            {c.fim_cirurgia_em && <button onClick={() => { if (!c.chk_sign_out && !confirm("O checklist Sign Out ainda não foi concluído. Enviar para a RPA mesmo assim?")) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnLeito("#d97706")}>Enviar para RPA</button>}
+            {!c.inicio_anestesia_em && <button onClick={() => marcar(c, { inicio_anestesia_em: nowISO() }, "inicio anestesia")} style={btnContorno("var(--text-3)")}>Início da anestesia</button>}
+            {!c.chk_time_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "time_out" })} style={btnContorno("#d97706")}>Cirurgia segura: Time Out</button>}
+            {!c.inicio_cirurgia_em && <button onClick={() => { if (!c.chk_time_out && !confirm("O checklist Time Out ainda não foi concluído. Registrar a incisão mesmo assim?")) return; marcar(c, { inicio_cirurgia_em: nowISO() }, "inicio cirurgia"); }} style={btnContorno("#22d3ee")}>Início da cirurgia</button>}
+            {c.inicio_cirurgia_em && !c.fim_cirurgia_em && <button onClick={() => marcar(c, { fim_cirurgia_em: nowISO() }, "fim cirurgia")} style={btnContorno("#22d3ee")}>Fim da cirurgia</button>}
+            {c.fim_cirurgia_em && !c.chk_sign_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_out" })} style={btnContorno("#34d399")}>Cirurgia segura: Sign Out</button>}
+            {c.fim_cirurgia_em && <button onClick={() => { if (!c.chk_sign_out && !confirm("O checklist Sign Out ainda não foi concluído. Enviar para a RPA mesmo assim?")) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnContorno("#d97706")}>Enviar para RPA</button>}
           </>}
           {c.status === "recuperacao" && (
-            <button onClick={() => marcar(c, { status: "concluida", rpa_saida_em: nowISO() }, "alta da RPA")} style={btnLeito("#34d399")}>Alta da RPA — concluir</button>
+            <button onClick={() => marcar(c, { status: "concluida", rpa_saida_em: nowISO() }, "alta da RPA")} style={btnContorno("#34d399")}>Alta da RPA — concluir</button>
           )}
         </div>
       )}
@@ -4296,7 +4276,7 @@ function BlocoPage({ currentUser, canEdit }) {
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Dia do mapa</label>
         <input type="date" value={data} onChange={e => setData(e.target.value)} style={inp} />
-        {data !== todayStr() && <button onClick={() => setData(todayStr())} style={btnLeito("#22d3ee")}>Hoje</button>}
+        {data !== todayStr() && <button onClick={() => setData(todayStr())} style={btnContorno("#22d3ee")}>Hoje</button>}
       </div>
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: "1.25rem" }}>
@@ -4624,8 +4604,8 @@ function CcSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
           {salas.map(s => (
             <div key={s.nome} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
               <strong style={{ flex: 1 }}>{s.nome}</strong>
-              <button onClick={() => onSave({ ...s, ativa: s.ativa === false })} style={btnLeito(s.ativa === false ? "#34d399" : "#d97706")}>{s.ativa === false ? "Reativar" : "Desativar"}</button>
-              {isMaster && <button onClick={() => { if (confirm(`Remover a sala ${s.nome}?`)) onDelete(s.nome); }} style={btnLeito("#f43f5e")}>Excluir</button>}
+              <button onClick={() => onSave({ ...s, ativa: s.ativa === false })} style={btnContorno(s.ativa === false ? "#34d399" : "#d97706")}>{s.ativa === false ? "Reativar" : "Desativar"}</button>
+              {isMaster && <button onClick={() => { if (confirm(`Remover a sala ${s.nome}?`)) onDelete(s.nome); }} style={btnContorno("#f43f5e")}>Excluir</button>}
             </div>
           ))}
         </div>
@@ -5682,8 +5662,8 @@ function PSPage({ currentUser, canEdit }) {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 80 }}>{p.queixa || "—"}</span>
-                      {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir</button>}
-                      {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+                      {canEdit && <button onClick={() => setAtendendo(p)} style={btnContorno("#3b82f6")}>Abrir</button>}
+                      {canEdit && <button onClick={() => setDesfechando(p)} style={btnContorno("#22d3ee")}>Desfecho</button>}
                     </div>
                     {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0) && (
                       <div style={{ display: "flex", gap: 8, fontSize: 10.5, fontWeight: 700, marginTop: 3 }}>
@@ -5732,10 +5712,10 @@ function PSPage({ currentUser, canEdit }) {
                               <div style={{ fontSize: 9.5, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 92 }}>{pac ? pac.iniciais : st.label}</div>
                               {canEdit && (
                                 <div style={{ display: "flex", gap: 3, marginTop: 4, flexWrap: "wrap" }}>
-                                  {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnLeito("#22d3ee"), padding: "0 6px", fontSize: 9.5 }}>Alocar</button>}
-                                  {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnLeito("#d97706"), padding: "0 6px", fontSize: 9.5 }}>Liberar</button>}
-                                  {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 6px", fontSize: 9.5 }}>Pronta</button>}
-                                  {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 6px", fontSize: 9.5 }}>Liberar</button>}
+                                  {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnContorno("#22d3ee"), padding: "0 6px", fontSize: 9.5 }}>Alocar</button>}
+                                  {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnContorno("#d97706"), padding: "0 6px", fontSize: 9.5 }}>Liberar</button>}
+                                  {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnContorno("#34d399"), padding: "0 6px", fontSize: 9.5 }}>Pronta</button>}
+                                  {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnContorno("#34d399"), padding: "0 6px", fontSize: 9.5 }}>Liberar</button>}
                                 </div>
                               )}
                             </div>
@@ -5861,7 +5841,7 @@ function PSPage({ currentUser, canEdit }) {
                     {p.origem && p.origem !== "Meios próprios" && <span title={p.origem_detalhe ? p.origem + " — " + p.origem_detalhe : p.origem} style={{ fontSize: 9, fontWeight: 800, color: VX.azul, border: "1px solid " + VX.azul + "55", borderRadius: 99, padding: "0 6px" }}>{p.origem.replace(" (aceite)", "")}</span>}
                     <span style={{ fontSize: 11.5, color: "var(--text-3)", flex: 1, minWidth: 80 }}>{p.queixa || "—"}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 700, color: "#fbbf24", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.chegada_em, agora))}</span>
-                    {canEdit && <button onClick={() => setTriando(p)} style={btnLeito("#22d3ee")}>Classificar</button>}
+                    {canEdit && <button onClick={() => setTriando(p)} style={btnContorno("#22d3ee")}>Classificar</button>}
                   </div>
                 ))}
               </div>
@@ -5891,8 +5871,8 @@ function PSPage({ currentUser, canEdit }) {
                     <ClasseBadge c={p.classificacao} />
                     {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
                     <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
-                    {canEdit && <button onClick={() => setReavaliando(p)} style={btnLeito(est ? "#f97316" : "var(--text-3)")}>Reavaliar</button>}
-                    {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnLeito("#34d399")}>Iniciar atendimento</button>}
+                    {canEdit && <button onClick={() => setReavaliando(p)} style={btnContorno(est ? "#f97316" : "var(--text-3)")}>Reavaliar</button>}
+                    {canEdit && <button onClick={() => iniciarAtendimento(p)} style={btnContorno("#34d399")}>Iniciar atendimento</button>}
                     {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{fmtSinaisVitais(p)}</div>}
                   </div>
                 );
@@ -5923,7 +5903,7 @@ function PSPage({ currentUser, canEdit }) {
                       {est && <span style={{ fontSize: 9.5, fontWeight: 800, color: "#f43f5e", border: "1px solid #f43f5e66", borderRadius: 99, padding: "0 7px" }}>PRIORIDADE — TEMPO ESTOURADO</span>}
                       {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
                       <span style={{ marginLeft: "auto" }}><Espera p={p} /></span>
-                      {canEdit && <button onClick={() => setReavaliando(p)} style={btnLeito(est ? "#f97316" : "#22d3ee")}>Reavaliar agora</button>}
+                      {canEdit && <button onClick={() => setReavaliando(p)} style={btnContorno(est ? "#f97316" : "#22d3ee")}>Reavaliar agora</button>}
                       {fmtSinaisVitais(p) && <div style={{ width: "100%", fontSize: 11, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>última aferição: {fmtSinaisVitais(p)}</div>}
                     </div>
                   );
@@ -6129,10 +6109,10 @@ function PSPage({ currentUser, canEdit }) {
               <div style={{ fontSize: 9, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 72 }}>{pac ? pac.iniciais : st.label}</div>
               {canEdit && (
                 <div style={{ display: "flex", gap: 3, marginTop: 3, flexWrap: "wrap" }}>
-                  {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnLeito("#22d3ee"), padding: "0 5px", fontSize: 9 }}>Alocar</button>}
-                  {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnLeito("#d97706"), padding: "0 5px", fontSize: 9 }}>Liberar</button>}
-                  {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 5px", fontSize: 9 }}>Pronta</button>}
-                  {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnLeito("#34d399"), padding: "0 5px", fontSize: 9 }}>Liberar</button>}
+                  {s.status === "disponivel" && <button onClick={() => setAlocando(s)} style={{ ...btnContorno("#22d3ee"), padding: "0 5px", fontSize: 9 }}>Alocar</button>}
+                  {s.status === "ocupado" && <button onClick={() => mudarStatusSala(s, "limpeza")} style={{ ...btnContorno("#d97706"), padding: "0 5px", fontSize: 9 }}>Liberar</button>}
+                  {s.status === "limpeza" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnContorno("#34d399"), padding: "0 5px", fontSize: 9 }}>Pronta</button>}
+                  {s.status === "manutencao" && <button onClick={() => mudarStatusSala(s, "disponivel")} style={{ ...btnContorno("#34d399"), padding: "0 5px", fontSize: 9 }}>Liberar</button>}
                 </div>
               )}
             </div>
@@ -6256,8 +6236,8 @@ function PSPage({ currentUser, canEdit }) {
                       {sala && <span style={{ fontSize: 10.5, fontWeight: 700, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>{sala.identificacao} · {sala.area}</span>}
                       {p.queixa && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{p.queixa}</span>}
                       <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-3)", fontFamily: "JetBrains Mono, monospace" }}>{fmtDur(diffMin(p.atendimento_em, agora))}</span>
-                      {canEdit && <button onClick={() => setAtendendo(p)} style={btnLeito("#3b82f6")}>Abrir atendimento</button>}
-                      {canEdit && <button onClick={() => setDesfechando(p)} style={btnLeito("#22d3ee")}>Desfecho</button>}
+                      {canEdit && <button onClick={() => setAtendendo(p)} style={btnContorno("#3b82f6")}>Abrir atendimento</button>}
+                      {canEdit && <button onClick={() => setDesfechando(p)} style={btnContorno("#22d3ee")}>Desfecho</button>}
                       {(examesPend[p.id]?.aguardando > 0 || examesPend[p.id]?.prontos > 0 || checagemPend[p.id]?.itens?.length > 0) && (
                         <div style={{ width: "100%", display: "flex", gap: 8, fontSize: 11, fontWeight: 700 }}>
                           {examesPend[p.id]?.aguardando > 0 && <span style={{ color: "#d97706" }}>{examesPend[p.id].aguardando} exame(s) aguardando</span>}
@@ -6310,7 +6290,7 @@ function PSPage({ currentUser, canEdit }) {
                         <span style={{ marginLeft: "auto", fontSize: 12, color: atraso ? "#f43f5e" : "var(--text-3)", fontFamily: "JetBrains Mono, monospace", fontWeight: atraso ? 700 : 400 }}>
                           {espera != null ? `entregue há ${fmtDur(espera)}` : "—"}
                         </span>
-                        {canEdit && <button onClick={() => { setAtendendoAba("checagem"); setAtendendo(p); }} style={btnLeito(atraso ? "#f43f5e" : "#d97706")}>Checar medicação</button>}
+                        {canEdit && <button onClick={() => { setAtendendoAba("checagem"); setAtendendo(p); }} style={btnContorno(atraso ? "#f43f5e" : "#d97706")}>Checar medicação</button>}
                         <div style={{ width: "100%", fontSize: 11.5, color: "var(--text-2)", display: "flex", gap: 8, flexWrap: "wrap" }}>
                           {info.itens.map(it => (
                             <span key={it.id} style={{ border: "1px solid var(--border)", borderRadius: 99, padding: "1px 9px" }}>
@@ -7178,8 +7158,8 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
                           <strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via || ""}</span>
                         </span>
                         <span style={{ fontSize: 10.5, color: dispSt.c, fontWeight: 700, whiteSpace: "nowrap" }}>{dispSt.t}</span>
-                        {!aberto && <button onClick={() => abrirChecagem(it)} style={btnLeito(pendente ? "#d97706" : "#22d3ee")}>Checar</button>}
-                        {aberto && <button onClick={() => setChecando(null)} style={btnLeito("#8d99ab")}>Fechar</button>}
+                        {!aberto && <button onClick={() => abrirChecagem(it)} style={btnContorno(pendente ? "#d97706" : "#22d3ee")}>Checar</button>}
+                        {aberto && <button onClick={() => setChecando(null)} style={btnContorno("#8d99ab")}>Fechar</button>}
                       </div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}>
                         <span style={{ color: dadas > 0 ? "#34d399" : "var(--text-muted)", fontWeight: dadas > 0 ? 700 : 500 }}>
@@ -7289,14 +7269,14 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
                       <div style={{ marginTop: 8 }}>
                         <textarea value={resultadoDe.texto} onChange={e => setResultadoDe(p => ({ ...p, texto: e.target.value }))} rows={3} placeholder="Cole ou descreva o resultado do exame." style={{ ...inp, resize: "vertical", lineHeight: 1.5, marginBottom: 6 }} />
                         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button onClick={() => setResultadoDe(null)} style={btnLeito("var(--text-muted)")}>Cancelar</button>
-                          <button onClick={lancarResultado} style={btnLeito("#3b82f6")}>Salvar resultado</button>
+                          <button onClick={() => setResultadoDe(null)} style={btnContorno("var(--text-muted)")}>Cancelar</button>
+                          <button onClick={lancarResultado} style={btnContorno("#3b82f6")}>Salvar resultado</button>
                         </div>
                       </div>
                     ) : (
                       <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                        {r.status === "solicitado" && <button onClick={() => setResultadoDe({ id: r.id, texto: "" })} style={btnLeito("#3b82f6")}>Lançar resultado</button>}
-                        {r.status === "resultado_disponivel" && <button onClick={() => marcarVisto(r)} style={btnLeito("#34d399")}>Marcar como visto</button>}
+                        {r.status === "solicitado" && <button onClick={() => setResultadoDe({ id: r.id, texto: "" })} style={btnContorno("#3b82f6")}>Lançar resultado</button>}
+                        {r.status === "resultado_disponivel" && <button onClick={() => marcarVisto(r)} style={btnContorno("#34d399")}>Marcar como visto</button>}
                       </div>
                     )}
                   </div>
@@ -7891,12 +7871,12 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{lc ? <span style={{ color: vi.status === "vencido" ? "#f43f5e" : vi.status === "vencendo" ? "#d97706" : "var(--text-2)", fontWeight: vi.status === "ok" ? 400 : 700 }}>{fmtDataBR(lc.validade)}{vi.status === "vencido" ? " (vencido)" : vi.status === "vencendo" ? ` (${vi.dias}d)` : ""}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                     <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
                       {canEdit && <>
-                        <button onClick={() => setMovMed({ med: m, tipo: "entrada" })} style={btnLeito("#34d399")}>Entrada</button>{" "}
-                        <button onClick={() => setMovMed({ med: m, tipo: "saida" })} style={btnLeito("#d97706")}>Saída</button>{" "}
+                        <button onClick={() => setMovMed({ med: m, tipo: "entrada" })} style={btnContorno("#34d399")}>Entrada</button>{" "}
+                        <button onClick={() => setMovMed({ med: m, tipo: "saida" })} style={btnContorno("#d97706")}>Saída</button>{" "}
                       </>}
-                      <button onClick={() => setKardex(m)} style={btnLeito("#8d99ab")}>Kardex</button>{" "}
-                      {canEdit && <button onClick={() => setShowMed(m)} style={btnLeito("#3b82f6")}>Editar</button>}
-                      {isMaster && <> <button onClick={() => excluirMed(m)} style={btnLeito("#f43f5e")}>Excluir</button></>}
+                      <button onClick={() => setKardex(m)} style={btnContorno("#8d99ab")}>Kardex</button>{" "}
+                      {canEdit && <button onClick={() => setShowMed(m)} style={btnContorno("#3b82f6")}>Editar</button>}
+                      {isMaster && <> <button onClick={() => excluirMed(m)} style={btnContorno("#f43f5e")}>Excluir</button></>}
                     </td>
                   </tr>
                 );
@@ -8451,7 +8431,7 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
                     <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.dose ? `${it.dose} · ` : ""}{it.via || ""}{q ? ` · prescrito ${farmFmtQtd(q)} ${it.unidade || ""}` : ""}</div>
                   </div>
                   <span style={{ fontSize: 11, color: st.c, fontWeight: 700 }}>{st.t}</span>
-                  {podeDispensar && <button onClick={() => aberto ? setSelItem(null) : abrir(it)} style={btnLeito("#22d3ee")}>{aberto ? "Fechar" : "Dispensar"}</button>}
+                  {podeDispensar && <button onClick={() => aberto ? setSelItem(null) : abrir(it)} style={btnContorno("#22d3ee")}>{aberto ? "Fechar" : "Dispensar"}</button>}
                   {semVinculo && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>item livre — baixa avulsa</span>}
                 </div>
                 {aberto && (
@@ -9003,7 +8983,7 @@ function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onCl
               <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
                 <span style={{ fontSize: 9.5, fontWeight: 800, color: gravCor(r.gravidade), border: `1px solid ${gravCor(r.gravidade)}66`, borderRadius: 99, padding: "0 6px", textTransform: "uppercase", whiteSpace: "nowrap" }}>{r.gravidade}</span>
                 <span style={{ flex: 1 }}><strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}</span>
-                {isMaster && <button onClick={() => delInter(r.id)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                {isMaster && <button onClick={() => delInter(r.id)} style={btnContorno("#f43f5e")}>Excluir</button>}
               </div>
             ))}
           </div>
@@ -9023,7 +9003,7 @@ function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onCl
             {lstY.map(r => (
               <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
                 <span style={{ flex: 1 }}><strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}</span>
-                {isMaster && <button onClick={() => delY(r.id)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                {isMaster && <button onClick={() => delY(r.id)} style={btnContorno("#f43f5e")}>Excluir</button>}
               </div>
             ))}
           </div>
@@ -9131,17 +9111,17 @@ function FarmPreparoView({ currentUser, canEdit }) {
         )}
         {canEdit && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {c.status === "aguardando" && <button onClick={() => receber(c)} style={btnLeito("#d97706")}>Receber</button>}
+            {c.status === "aguardando" && <button onClick={() => receber(c)} style={btnContorno("#d97706")}>Receber</button>}
             {c.status === "preparo" && <>
-              <button onClick={() => setDisp(c.at)} style={btnLeito("#22d3ee")}>Separar</button>
+              <button onClick={() => setDisp(c.at)} style={btnContorno("#22d3ee")}>Separar</button>
               {/* Botão desabilitado sem explicação visível é o mesmo defeito
                   que o resto do sistema evita — e `title` em botão
                   desabilitado não aparece em todo navegador. */}
               <button onClick={() => marcarPronto(c)} disabled={!c.separacao?.ok}
-                style={{ ...btnLeito("#3b82f6"), opacity: c.separacao?.ok ? 1 : .45,
+                style={{ ...btnContorno("#3b82f6"), opacity: c.separacao?.ok ? 1 : .45,
                          cursor: c.separacao?.ok ? "pointer" : "not-allowed" }}>Marcar pronto</button>
             </>}
-            {c.status === "pronto" && <button onClick={() => confirmarRetirada(c)} style={btnLeito("#34d399")}>Confirmar retirada</button>}
+            {c.status === "pronto" && <button onClick={() => confirmarRetirada(c)} style={btnContorno("#34d399")}>Confirmar retirada</button>}
           </div>
         )}
       </div>
@@ -9215,7 +9195,7 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
             {prontos.map(p => (
               <span key={p.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 99, padding: "3px 6px 3px 11px", fontSize: 12 }}>
                 {p.at?.iniciais || "?"}{p.at?.prontuario ? ` · ${p.at.prontuario}` : ""}
-                {canEdit && <button onClick={() => confirmar(p)} style={{ ...btnLeito("#34d399"), padding: "2px 8px" }}>Retirar</button>}
+                {canEdit && <button onClick={() => confirmar(p)} style={{ ...btnContorno("#34d399"), padding: "2px 8px" }}>Retirar</button>}
               </span>
             ))}
           </div>
@@ -9274,8 +9254,8 @@ function PsIntervencaoBanner({ currentUser, canEdit }) {
             <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>Farmácia: {x.iv.farmaceutico || "?"} · {x.iv.created_at ? new Date(x.iv.created_at).toLocaleString("pt-BR") : ""}</div>
             {canEdit && (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                <button onClick={() => responder(x, "aceita")} style={btnLeito("#34d399")}>Aceitar conduta</button>
-                <button onClick={() => responder(x, "nao_aceita")} style={btnLeito("#f43f5e")}>Não aceitar</button>
+                <button onClick={() => responder(x, "aceita")} style={btnContorno("#34d399")}>Aceitar conduta</button>
+                <button onClick={() => responder(x, "nao_aceita")} style={btnContorno("#f43f5e")}>Não aceitar</button>
               </div>
             )}
           </div>
@@ -9490,10 +9470,10 @@ function FarmNaoPadronizadosView({ currentUser, canEdit }) {
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3 }}>{r.origem ? `trazido por ${r.origem} · ` : ""}{r.lote ? `lote ${r.lote} · ` : ""}{r.validade ? `val ${fmtDataBR(r.validade)} · ` : ""}recebido {r.created_at ? new Date(r.created_at).toLocaleDateString("pt-BR") : ""}{r.observacao ? ` · ${r.observacao}` : ""}</div>
               {canEdit && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                  <button onClick={() => toggleConferido(r)} style={btnLeito(r.conferido ? "#8d99ab" : "#34d399")}>{r.conferido ? "Desmarcar conferido" : "Marcar conferido"}</button>
-                  {r.status === "recebido" && <button onClick={() => mudarStatus(r, "em_uso")} style={btnLeito("#3b82f6")}>Em uso</button>}
-                  {(r.status === "recebido" || r.status === "em_uso") && <><button onClick={() => mudarStatus(r, "devolvido")} style={btnLeito("#34d399")}>Devolver</button><button onClick={() => mudarStatus(r, "descartado")} style={btnLeito("#8d99ab")}>Descartar</button></>}
-                  {isMaster && <button onClick={() => excluir(r)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                  <button onClick={() => toggleConferido(r)} style={btnContorno(r.conferido ? "#8d99ab" : "#34d399")}>{r.conferido ? "Desmarcar conferido" : "Marcar conferido"}</button>
+                  {r.status === "recebido" && <button onClick={() => mudarStatus(r, "em_uso")} style={btnContorno("#3b82f6")}>Em uso</button>}
+                  {(r.status === "recebido" || r.status === "em_uso") && <><button onClick={() => mudarStatus(r, "devolvido")} style={btnContorno("#34d399")}>Devolver</button><button onClick={() => mudarStatus(r, "descartado")} style={btnContorno("#8d99ab")}>Descartar</button></>}
+                  {isMaster && <button onClick={() => excluir(r)} style={btnContorno("#f43f5e")}>Excluir</button>}
                 </div>
               )}
             </div>
@@ -9593,7 +9573,7 @@ function FarmIntervencaoView({ currentUser, canEdit }) {
                           <div style={{ fontSize: 12.5, fontWeight: 700 }}><span style={{ fontSize: 9.5, fontWeight: 800, color: FARM_GRAV[a.gravidade].cor, marginRight: 6, textTransform: "uppercase" }}>{FARM_GRAV[a.gravidade].label}</span>{a.titulo}</div>
                           <div style={{ fontSize: 11.5, color: "var(--text-2)" }}>{a.detalhe}</div>
                         </div>
-                        {canEdit && (jah ? <span style={{ fontSize: 10.5, color: "#34d399", fontWeight: 700, whiteSpace: "nowrap" }}>✓ intervenção</span> : <button onClick={() => intervirDoAlerta(c.at, a)} style={btnLeito("#22d3ee")}>Intervir</button>)}
+                        {canEdit && (jah ? <span style={{ fontSize: 10.5, color: "#34d399", fontWeight: 700, whiteSpace: "nowrap" }}>✓ intervenção</span> : <button onClick={() => intervirDoAlerta(c.at, a)} style={btnContorno("#22d3ee")}>Intervir</button>)}
                       </div>
                     ); })}
                   </div>
@@ -9631,12 +9611,12 @@ function FarmIntervencaoView({ currentUser, canEdit }) {
               {canEdit && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                   {iv.status === "pendente" && <>
-                    <button onClick={() => mudarStatus(iv, "aceita")} style={btnLeito("#34d399")}>Aceita</button>
-                    <button onClick={() => mudarStatus(iv, "nao_aceita")} style={btnLeito("#f43f5e")}>Não aceita</button>
+                    <button onClick={() => mudarStatus(iv, "aceita")} style={btnContorno("#34d399")}>Aceita</button>
+                    <button onClick={() => mudarStatus(iv, "nao_aceita")} style={btnContorno("#f43f5e")}>Não aceita</button>
                   </>}
-                  {iv.status !== "resolvida" && iv.status !== "cancelada" && <button onClick={() => mudarStatus(iv, "resolvida")} style={btnLeito("#3b82f6")}>Resolvida</button>}
-                  {iv.status !== "cancelada" && <button onClick={() => mudarStatus(iv, "cancelada")} style={btnLeito("#8d99ab")}>Cancelar</button>}
-                  {isMaster && <button onClick={() => excluir(iv)} style={btnLeito("#f43f5e")}>Excluir</button>}
+                  {iv.status !== "resolvida" && iv.status !== "cancelada" && <button onClick={() => mudarStatus(iv, "resolvida")} style={btnContorno("#3b82f6")}>Resolvida</button>}
+                  {iv.status !== "cancelada" && <button onClick={() => mudarStatus(iv, "cancelada")} style={btnContorno("#8d99ab")}>Cancelar</button>}
+                  {isMaster && <button onClick={() => excluir(iv)} style={btnContorno("#f43f5e")}>Excluir</button>}
                 </div>
               )}
             </div>
@@ -10145,8 +10125,8 @@ function ScihPage({ currentUser, canEdit }) {
                   {c.isolamento && <IsoBadge tipo={c.isolamento} />}
                   {c.multirresistente && <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>MULTIRRESISTENTE</span>}
                   {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                    <button onClick={() => encerrar(c)} style={btnLeito("#34d399")}>✓ Encerrar</button>
-                    {currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={btnLeito("#fb7185")}>Excluir</button>}
+                    <button onClick={() => encerrar(c)} style={btnContorno("#34d399")}>✓ Encerrar</button>
+                    {currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={btnContorno("#fb7185")}>Excluir</button>}
                   </span>}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.7 }}>
@@ -10172,7 +10152,7 @@ function ScihPage({ currentUser, canEdit }) {
                 {c.leito && <span>leito {c.leito}</span>}
                 {c.isolamento && <IsoBadge tipo={c.isolamento} />}
                 {c.germe && <span>· {c.germe}</span>}
-                {canEdit && currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={{ ...btnLeito("#fb7185"), marginLeft: "auto" }}>Excluir</button>}
+                {canEdit && currentUser?.role === "adm_master" && <button onClick={() => excluir(c)} style={{ ...btnContorno("#fb7185"), marginLeft: "auto" }}>Excluir</button>}
               </div>
             ))}
           </div>
@@ -10249,8 +10229,8 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
                   : <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>SENSÍVEL</span>}
                 {g.isolamento && ISOLAMENTOS[g.isolamento] && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ISOLAMENTOS[g.isolamento].bg, color: ISOLAMENTOS[g.isolamento].cor, border: `1px solid ${ISOLAMENTOS[g.isolamento].cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>{ISOLAMENTOS[g.isolamento].label}</span>}
                 {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                  <button onClick={() => setF({ nome: g.nome, tipo: g.tipo || "multirresistente", isolamento: g.isolamento || "", embasamento: g.embasamento || "", observacao: g.observacao || "" })} style={btnLeito("#22d3ee")}>Editar</button>
-                  {isMaster && <button onClick={() => { if (confirm(`Remover o germe ${g.nome}?`)) onDelete(g.nome); }} style={btnLeito("#fb7185")}>Excluir</button>}
+                  <button onClick={() => setF({ nome: g.nome, tipo: g.tipo || "multirresistente", isolamento: g.isolamento || "", embasamento: g.embasamento || "", observacao: g.observacao || "" })} style={btnContorno("#22d3ee")}>Editar</button>
+                  {isMaster && <button onClick={() => { if (confirm(`Remover o germe ${g.nome}?`)) onDelete(g.nome); }} style={btnContorno("#fb7185")}>Excluir</button>}
                 </span>}
               </div>
               {g.embasamento && <div style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{g.embasamento}</div>}
@@ -11881,31 +11861,31 @@ function LeitosPage({ currentUser, canEdit }) {
                 {canEdit && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 13 }}>
                     {l.status === "livre" && <>
-                      <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>Internar</button>
-                      <button onClick={() => reservar(l)} style={btnLeito("#818cf8")}>Reservar</button>
-                      <button onClick={() => interditar(l)} style={btnLeito("#fbbf24")}>Interditar</button>
-                      <button onClick={() => indisponibilizar(l, "manutencao", "Manutenção")} style={btnLeito("#f97316")}>Manutenção</button>
-                      <button onClick={() => indisponibilizar(l, "bloqueado", "Bloqueio externo")} style={btnLeito("#8d99ab")}>Bloquear ext.</button>
-                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>Excluir</button>
+                      <button onClick={() => setModal(l)} style={btnContorno("#22d3ee")}>Internar</button>
+                      <button onClick={() => reservar(l)} style={btnContorno("#818cf8")}>Reservar</button>
+                      <button onClick={() => interditar(l)} style={btnContorno("#fbbf24")}>Interditar</button>
+                      <button onClick={() => indisponibilizar(l, "manutencao", "Manutenção")} style={btnContorno("#f97316")}>Manutenção</button>
+                      <button onClick={() => indisponibilizar(l, "bloqueado", "Bloqueio externo")} style={btnContorno("#8d99ab")}>Bloquear ext.</button>
+                      <button onClick={() => removerLeito(l)} style={btnContorno("var(--text-muted)")}>Excluir</button>
                     </>}
                     {l.status === "reservado" && <>
-                      <button onClick={() => setModal(l)} style={btnLeito("#22d3ee")}>{l.iniciais ? "✓ Chegou — internar" : "Internar"}</button>
-                      <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
+                      <button onClick={() => setModal(l)} style={btnContorno("#22d3ee")}>{l.iniciais ? "✓ Chegou — internar" : "Internar"}</button>
+                      <button onClick={() => liberar(l)} style={btnContorno("#34d399")}>Liberar</button>
                     </>}
                     {l.status === "ocupado" && <>
-                      <button onClick={() => darAlta(l)} style={btnLeito("#34d399")}>Dar alta</button>
-                      <button onClick={() => transferirExterna(l)} style={btnLeito("#38bdf8")}>Transferir</button>
-                      <button onClick={() => encerrarLeito(l, "obito")} style={btnLeito("#f43f5e")}>Óbito</button>
-                      <button onClick={() => setModal(l)} style={btnLeito("var(--text-3)")}>Editar</button>
+                      <button onClick={() => darAlta(l)} style={btnContorno("#34d399")}>Dar alta</button>
+                      <button onClick={() => transferirExterna(l)} style={btnContorno("#38bdf8")}>Transferir</button>
+                      <button onClick={() => encerrarLeito(l, "obito")} style={btnContorno("#f43f5e")}>Óbito</button>
+                      <button onClick={() => setModal(l)} style={btnContorno("var(--text-3)")}>Editar</button>
                     </>}
                     {l.status === "higienizacao" && <>
-                      <button onClick={() => marcarPronto(l)} style={btnLeito("#34d399")}>✓ Pronto</button>
-                      <button onClick={() => setTempos(l)} style={btnLeito("var(--text-3)")}>Ajustar</button>
-                      <button onClick={() => interditar(l)} style={btnLeito("#fb7185")}>Interditar</button>
+                      <button onClick={() => marcarPronto(l)} style={btnContorno("#34d399")}>✓ Pronto</button>
+                      <button onClick={() => setTempos(l)} style={btnContorno("var(--text-3)")}>Ajustar</button>
+                      <button onClick={() => interditar(l)} style={btnContorno("#fb7185")}>Interditar</button>
                     </>}
                     {(l.status === "interditado" || l.status === "manutencao" || l.status === "bloqueado") && <>
-                      <button onClick={() => liberar(l)} style={btnLeito("#34d399")}>Liberar</button>
-                      <button onClick={() => removerLeito(l)} style={btnLeito("var(--text-muted)")}>Excluir</button>
+                      <button onClick={() => liberar(l)} style={btnContorno("#34d399")}>Liberar</button>
+                      <button onClick={() => removerLeito(l)} style={btnContorno("var(--text-muted)")}>Excluir</button>
                     </>}
                   </div>
                 )}
@@ -12307,9 +12287,9 @@ function LeitosPage({ currentUser, canEdit }) {
                     {s.visto_em ? (
                       <span onClick={() => canEdit && marcarRegulando(s)} title={canEdit ? "Em regulação — clique para soltar o caso" : undefined} style={{ fontSize: 11, fontWeight: 700, color: "#34d399", background: "#34d39918", border: "1px solid #34d39955", borderRadius: 99, padding: "3px 10px", cursor: canEdit ? "pointer" : "default", whiteSpace: "nowrap" }}>em regulação{s.visto_por ? ` · ${s.visto_por}` : ""}</span>
                     ) : canEdit ? (
-                      <button onClick={() => marcarRegulando(s)} style={btnLeito(VX.azul)}>Estou regulando</button>
+                      <button onClick={() => marcarRegulando(s)} style={btnContorno(VX.azul)}>Estou regulando</button>
                     ) : null}
-                    {canEdit && <button onClick={() => cancelarSolic(s)} style={btnLeito("var(--text-muted)")}>Remover</button>}
+                    {canEdit && <button onClick={() => cancelarSolic(s)} style={btnContorno("var(--text-muted)")}>Remover</button>}
                   </div>
                 );
               })}
@@ -12494,9 +12474,6 @@ function LeitosPage({ currentUser, canEdit }) {
       </div>
     </div>
   );
-}
-function btnLeito(cor) {
-  return { background: "transparent", border: `1px solid ${cor}55`, color: cor, borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 };
 }
 
 // Ajuste dos horários do fluxo do leito (disponibilizado / pronto)
@@ -13069,12 +13046,12 @@ function SuprimentosPage({ currentUser, canEdit }) {
                     <td style={{ padding: "9px 12px", fontSize: 12 }}>{lc ? <span style={{ color: vi.status === "vencido" ? "#f43f5e" : vi.status === "vencendo" ? "#d97706" : "var(--text-2)", fontWeight: vi.status === "ok" ? 400 : 700 }}>{fmtDataBR(lc.validade)}{vi.status === "vencido" ? " (vencido)" : vi.status === "vencendo" ? ` (${vi.dias}d)` : ""}</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
                     <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
                       {canEdit && <>
-                        <button onClick={() => setMovItem({ item: i, tipo: "entrada" })} style={btnLeito("#34d399")}>Entrada</button>{" "}
-                        <button onClick={() => setMovItem({ item: i, tipo: "saida" })} style={btnLeito("#d97706")}>Saída</button>{" "}
+                        <button onClick={() => setMovItem({ item: i, tipo: "entrada" })} style={btnContorno("#34d399")}>Entrada</button>{" "}
+                        <button onClick={() => setMovItem({ item: i, tipo: "saida" })} style={btnContorno("#d97706")}>Saída</button>{" "}
                       </>}
-                      <button onClick={() => setKardex(i)} style={btnLeito("#8d99ab")}>Kardex</button>{" "}
-                      {canEdit && <button onClick={() => setShowItem(i)} style={btnLeito("#3b82f6")}>Editar</button>}
-                      {isMaster && <> <button onClick={() => excluirItem(i)} style={btnLeito("#f43f5e")}>Excluir</button></>}
+                      <button onClick={() => setKardex(i)} style={btnContorno("#8d99ab")}>Kardex</button>{" "}
+                      {canEdit && <button onClick={() => setShowItem(i)} style={btnContorno("#3b82f6")}>Editar</button>}
+                      {isMaster && <> <button onClick={() => excluirItem(i)} style={btnContorno("#f43f5e")}>Excluir</button></>}
                     </td>
                   </tr>
                 );
@@ -13121,8 +13098,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
                       <td style={{ padding: "9px 12px", color: "var(--text-2)", fontSize: 12 }}>{f.categorias || "—"}</td>
                       <td style={{ padding: "9px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: f.lead_time_dias != null && f.lead_time_dias !== "" ? "var(--text-2)" : "var(--text-muted)" }}>{f.lead_time_dias != null && f.lead_time_dias !== "" ? `${f.lead_time_dias} d` : `${SUP_LEAD_PADRAO} d (padrão)`}</td>
                       <td style={{ padding: "9px 12px", textAlign: "right", whiteSpace: "nowrap" }}>
-                        {canEdit && <button onClick={() => setShowForn(f)} style={btnLeito("#3b82f6")}>Editar</button>}
-                        {isMaster && <> <button onClick={() => excluirForn(f)} style={btnLeito("#f43f5e")}>Excluir</button></>}
+                        {canEdit && <button onClick={() => setShowForn(f)} style={btnContorno("#3b82f6")}>Editar</button>}
+                        {isMaster && <> <button onClick={() => excluirForn(f)} style={btnContorno("#f43f5e")}>Excluir</button></>}
                       </td>
                     </tr>
                   );
@@ -13284,10 +13261,10 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
         </div>
         {canEdit && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {r.status === "aguardando" && <button disabled={busy} onClick={() => receber(r)} style={btnLeito("#d97706")}>Receber / separar</button>}
-            {r.status === "separacao" && <button disabled={busy} onClick={() => separar(r)} style={btnLeito("#3b82f6")}>{busy ? "…" : "Concluir separação (baixa)"}</button>}
-            {r.status === "pronto" && <button disabled={busy} onClick={() => entregar(r)} style={btnLeito("#34d399")}>Confirmar entrega</button>}
-            {!["entregue", "cancelado"].includes(r.status) && <button disabled={busy} onClick={() => cancelar(r)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+            {r.status === "aguardando" && <button disabled={busy} onClick={() => receber(r)} style={btnContorno("#d97706")}>Receber / separar</button>}
+            {r.status === "separacao" && <button disabled={busy} onClick={() => separar(r)} style={btnContorno("#3b82f6")}>{busy ? "…" : "Concluir separação (baixa)"}</button>}
+            {r.status === "pronto" && <button disabled={busy} onClick={() => entregar(r)} style={btnContorno("#34d399")}>Confirmar entrega</button>}
+            {!["entregue", "cancelado"].includes(r.status) && <button disabled={busy} onClick={() => cancelar(r)} style={btnContorno("#f43f5e")}>Cancelar</button>}
           </div>
         )}
       </div>
@@ -13530,8 +13507,8 @@ function SupCotacoesView({ currentUser, canEdit, isMaster, materiais, forns, cot
                 </div>
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)", margin: "6px 0" }}>{(c.itens || []).length} item(ns) · {fids.length} fornecedor(es) · {cotados}/{(c.itens || []).length} cotados{melhorTotal ? ` · melhor total ${fmtReais(melhorTotal)}` : ""}</div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <button onClick={() => setAbrir(c)} style={btnLeito(VX.azul)}>{c.status === "aberta" ? "Cotar / comparar" : "Ver"}</button>
-                  {canEdit && c.status === "aberta" && <button onClick={() => cancelar(c)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+                  <button onClick={() => setAbrir(c)} style={btnContorno(VX.azul)}>{c.status === "aberta" ? "Cotar / comparar" : "Ver"}</button>
+                  {canEdit && c.status === "aberta" && <button onClick={() => cancelar(c)} style={btnContorno("#f43f5e")}>Cancelar</button>}
                 </div>
               </div>
             );
@@ -13890,11 +13867,11 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
         {p.status === "negado" && <div style={{ fontSize: 11.5, color: "#f43f5e", background: "#f43f5e14", border: "1px solid #f43f5e44", borderRadius: 6, padding: "6px 9px", marginBottom: 7 }}><strong>Negado{p.decidido_por ? ` por ${p.decidido_por}` : ""}:</strong> {p.negado_motivo || "sem motivo informado"}</div>}
         {canEdit && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {p.status === "aberto" && <button disabled={busy} onClick={() => enviarParaAprovacao(p)} style={btnLeito("#d97706")}>Enviar para aprovação</button>}
-            {p.status === "aprovado" && <button disabled={busy} onClick={() => enviar(p)} style={btnLeito("#3b82f6")}>Enviar ao fornecedor</button>}
-            {p.status === "negado" && <button disabled={busy} onClick={() => revisar(p)} style={btnLeito("#d97706")}>Revisar</button>}
-            {["enviado", "parcial"].includes(p.status) && <button disabled={busy} onClick={() => setReceb(p)} style={btnLeito("#34d399")}>{busy ? "…" : "Receber (entrada)"}</button>}
-            {!["recebido", "cancelado"].includes(p.status) && <button disabled={busy} onClick={() => cancelar(p)} style={btnLeito("#f43f5e")}>Cancelar</button>}
+            {p.status === "aberto" && <button disabled={busy} onClick={() => enviarParaAprovacao(p)} style={btnContorno("#d97706")}>Enviar para aprovação</button>}
+            {p.status === "aprovado" && <button disabled={busy} onClick={() => enviar(p)} style={btnContorno("#3b82f6")}>Enviar ao fornecedor</button>}
+            {p.status === "negado" && <button disabled={busy} onClick={() => revisar(p)} style={btnContorno("#d97706")}>Revisar</button>}
+            {["enviado", "parcial"].includes(p.status) && <button disabled={busy} onClick={() => setReceb(p)} style={btnContorno("#34d399")}>{busy ? "…" : "Receber (entrada)"}</button>}
+            {!["recebido", "cancelado"].includes(p.status) && <button disabled={busy} onClick={() => cancelar(p)} style={btnContorno("#f43f5e")}>Cancelar</button>}
           </div>
         )}
       </div>
@@ -14000,8 +13977,8 @@ function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, alcada = n
           const v = vereditoDe(p);
           if (v.pode) return (
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button disabled={busy} onClick={() => aprovar(p)} style={btnLeito("#34d399")}>Aprovar</button>
-              <button disabled={busy} onClick={() => negar(p)} style={btnLeito("#f43f5e")}>Negar</button>
+              <button disabled={busy} onClick={() => aprovar(p)} style={btnContorno("#34d399")}>Aprovar</button>
+              <button disabled={busy} onClick={() => negar(p)} style={btnContorno("#f43f5e")}>Negar</button>
             </div>
           );
           // Só mostra o motivo a quem estaria apto pelo cargo. Para os
@@ -15373,7 +15350,7 @@ function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, inv
                     <td style={{ padding: "8px 12px", fontWeight: 600 }}>{i.nome}</td>
                     <td style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-2)" }}>{u ? `${new Date(u.created_at).toLocaleDateString("pt-BR")} · há ${d}d${Number(u.diferenca) !== 0 ? ` (dif ${u.diferenca > 0 ? "+" : ""}${farmFmtQtd(u.diferenca)})` : " ✓"}` : "nunca contado"}</td>
                     <td style={{ padding: "8px 12px" }}><span style={{ fontSize: 12, color: pend ? "#d97706" : "#34d399", fontWeight: pend ? 700 : 400 }}>{pend ? "na fila" : "em dia"}</span></td>
-                    <td style={{ padding: "8px 12px", textAlign: "right" }}>{canEdit && <button onClick={() => setContar(i)} style={btnLeito(VX.turquesa)}>Contar</button>}</td>
+                    <td style={{ padding: "8px 12px", textAlign: "right" }}>{canEdit && <button onClick={() => setContar(i)} style={btnContorno(VX.turquesa)}>Contar</button>}</td>
                   </tr>
                 );
               })}
