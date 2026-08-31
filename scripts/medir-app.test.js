@@ -32,19 +32,30 @@ describe("🔴 as checagens internas do medidor passam no App.jsx de hoje", () =
 });
 
 describe("🔴 a regressão do regex literal, medida em vez de descrita", () => {
-  it("`loadIncidentes` enxerga o `sbFetch` que está no corpo dela", () => {
-    // Este é o caso exato que denunciou a fase invertida. Enquanto o
-    // limpador estava furado, o relatório aqui vinha com ZERO compartilhado.
-    const saida = rodar("loadIncidentes");
-    expect(saida).toMatch(/sbFetch/);
+  // ⚠️ A ÂNCORA TEM DE SOBREVIVER À PRÓXIMA EXTRAÇÃO.
+  // A primeira versão deste teste ancorava em `loadIncidentes` — o caso exato
+  // que denunciou a fase invertida. Só que ele era um dos símbolos que a
+  // extração do NSP tirava do App.jsx, e o teste quebrou no commit seguinte,
+  // sem nada de errado no medidor. Um teste que morre quando o trabalho
+  // acontece treina a gente a ignorar teste vermelho.
+  //
+  // O `sbFetch` é a âncora certa: ele é a máquina de sessão, é o último a
+  // sair do App.jsx, e é justamente quem sumia do grafo quando a fase
+  // invertia.
+
+  it("o `sbFetch` enxerga a máquina de sessão que está no corpo dele", () => {
+    // Com o limpador furado, `sbFetch` não aparecia nem como nó.
+    const saida = rodar("sbFetch");
+    expect(saida).toMatch(/renovarSessao/);
     expect(saida).not.toMatch(/COMPARTILHADO \(0,/);
   });
 
-  it("o `sbFetch` é usado por muito mais gente do que uma dezena", () => {
-    // Com a fase invertida o número saía 131; o real passa de 160. Um limite
-    // frouxo pega o colapso do grafo sem quebrar a cada linha nova.
-    const m = /sbFetch\s+usado por (\d+)/.exec(rodar("loadIncidentes"));
-    expect(m, "o sbFetch sumiu do relatório").not.toBeNull();
+  it("e é usado por muito mais gente do que uma dezena", () => {
+    // Com a fase invertida saía 131; o real passa de 150 e cai devagar, a
+    // cada módulo extraído. O limite frouxo pega o COLAPSO do grafo sem
+    // quebrar a cada extração.
+    const m = /(\d+)\s+\d+\s+sbFetch/.exec(rodar());
+    expect(m, "o sbFetch sumiu dos HUBS").not.toBeNull();
     expect(Number(m[1])).toBeGreaterThan(100);
   });
 });

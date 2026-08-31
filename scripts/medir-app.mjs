@@ -31,10 +31,18 @@ const ALVO = "src/App.jsx";
 const bruto = fs.readFileSync(ALVO, "utf8");
 const linhas = bruto.split("\n");
 
-/** Acha o nome declarado em coluna 0, se a linha declarar algum. */
+/**
+ * Acha o nome declarado em coluna 0, se a linha declarar algum.
+ *
+ * ⚠️ `class` entrou tarde. Sem ela o `LimiteErro` — a fronteira de erro do
+ * roteador — era invisível para o medidor, e como ele mora FISICAMENTE no
+ * meio da região do NSP, o tamanho do `NspRelatorioView` vinha inflado com o
+ * corpo dele. A extração do NSP quase levou a fronteira de erro junto.
+ */
 function declaracaoNa(l) {
   const m = /^(?:export default |export )?function ([A-Za-z_$][\w$]*)/.exec(l)
     || /^async function ([A-Za-z_$][\w$]*)/.exec(l)
+    || /^(?:export default |export )?class ([A-Za-z_$][\w$]*)/.exec(l)
     || /^(?:export )?(?:const|let) ([A-Za-z_$][\w$]*)\s*=/.exec(l);
   return m ? m[1] : null;
 }
