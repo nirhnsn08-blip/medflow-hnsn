@@ -75,6 +75,10 @@ import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.j
 // Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
 import { montarMapaRisco } from "./clinico/mapa-risco.js";
 import { montarChecagemSae } from "./clinico/sae.js";
+import { LEITOS_KEY, loadLeitos, saveLeitos, loadLeitosFromSupabase, upsertLeitoRemote, deleteLeitoRemote,
+         SETORES_KEY, loadSetoresLocal, saveSetoresLocal, loadSetoresFromSupabase, upsertSetorRemote, deleteSetorRemote,
+         loadSolicitacoes, addSolicitacaoRemote, updateSolicitacaoRemote,
+         registrarSaidaRemote, loadSaidas, registrarTurnoverRemote, loadTurnover } from "./leitos/dados.js";
 import NSPPage, { NotificacaoRapida } from "./clinico/SegurancaPaciente.jsx";
 import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
@@ -1112,33 +1116,6 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 // ═══════════════════════════════════════════════════════════
 // SETORES + SOLICITAÇÕES (monitoramento de leitos)
 // ═══════════════════════════════════════════════════════════
-const SETORES_KEY = "hnsn_setores_v1";
-const loadSetoresLocal = () => { try { return JSON.parse(localStorage.getItem(SETORES_KEY) || "[]"); } catch { return []; } };
-const saveSetoresLocal = arr => localStorage.setItem(SETORES_KEY, JSON.stringify(arr));
-async function loadSetoresFromSupabase() {
-  const rows = await sbFetch("setores?select=*&order=ordem");
-  return Array.isArray(rows) ? rows : null;
-}
-async function upsertSetorRemote(setor, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("setores?on_conflict=nome", { method: "POST", headers: { "Prefer": "resolution=merge-duplicates" }, body: JSON.stringify({ ...setor, usuario: user?.name || null }) });
-}
-async function deleteSetorRemote(nome) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`setores?nome=eq.${encodeURIComponent(nome)}`, { method: "DELETE" });
-}
-async function loadSolicitacoes() {
-  const rows = await sbFetch("solicitacoes?status=eq.aguardando&select=*&order=hora_pedido");
-  return Array.isArray(rows) ? rows : [];
-}
-async function addSolicitacaoRemote(sol, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("solicitacoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...sol, usuario: user?.name || null }) });
-}
-async function updateSolicitacaoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`solicitacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
-}
 // Ocupação de um setor = SÓ os leitos ocupados (a fila de espera não conta —
 // paciente aguardando ainda não está num leito). A fila vira um selo separado.
 function ocupacaoSetor(leitos, solicitacoes, setor) {
@@ -1170,10 +1147,13 @@ function Overview({ db, currentUser, canEdit, perms, onNav }) {
 
   function refresh() {
     if (!USE_SUPABASE) { setLeitos(loadLeitos()); setSetores(loadSetoresLocal()); return; }
-    loadLeitosFromSupabase().then(r => r && setLeitos(r));
-    loadSetoresFromSupabase().then(r => r && setSetores(r));
-    loadSolicitacoes().then(setSolic);
-    loadSaidas().then(setSaidas);
+    loadLeitosFromSupabase(SB()).then(r => r && setLeitos(r));
+    loadSetoresFromSupabase(SB()).then(r => r && setSetores(r));
+    // `r &&`: agora estes dois distinguem falha (null) de "não há
+    // nenhum" ([]). Sem a guarda, uma leitura que falhou apagaria a fila
+    // de internação da tela e mostraria "0 aguardando".
+    loadSolicitacoes(SB()).then(r => r && setSolic(r));
+    loadSaidas(SB()).then(r => r && setSaidas(r));
   }
   useEffect(() => {
     refresh();
@@ -1198,13 +1178,13 @@ function Overview({ db, currentUser, canEdit, perms, onNav }) {
 
   async function addSolic() {
     if (!novo.iniciais.trim() || !novo.setor_destino) { alert("Informe as iniciais do paciente e o setor de destino."); return; }
-    await addSolicitacaoRemote({ iniciais: novo.iniciais.trim(), setor_origem: novo.setor_origem || null, setor_destino: novo.setor_destino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
+    await addSolicitacaoRemote(SB(), { iniciais: novo.iniciais.trim(), setor_origem: novo.setor_origem || null, setor_destino: novo.setor_destino, hora_pedido: nowISO(), status: "aguardando" }, currentUser);
     addAuditLog(currentUser, "solicitar leito", `${novo.setor_origem || "?"} → ${novo.setor_destino}`, {});
     setNovo({ iniciais: "", setor_origem: "", setor_destino: "" });
     setTimeout(refresh, 400);
   }
   async function resolverSolic(s, status) {
-    await updateSolicitacaoRemote(s.id, { status, resolvido_em: nowISO() });
+    await updateSolicitacaoRemote(SB(), s.id, { status, resolvido_em: nowISO() });
     addAuditLog(currentUser, status === "atendido" ? "leito atendido" : "solicitação cancelada", s.setor_destino, {});
     setTimeout(refresh, 300);
   }
@@ -1727,14 +1707,6 @@ function ImportPage({ onImport, currentUser }) {
 // ═══════════════════════════════════════════════════════════
 // GIRO DE LEITOS
 // ═══════════════════════════════════════════════════════════
-const LEITOS_KEY = "hnsn_leitos_v1";
-const loadLeitos = () => { try { return JSON.parse(localStorage.getItem(LEITOS_KEY) || "[]"); } catch { return []; } };
-const saveLeitos = arr => localStorage.setItem(LEITOS_KEY, JSON.stringify(arr));
-
-async function loadLeitosFromSupabase() {
-  const rows = await sbFetch("leitos?select=*");
-  return Array.isArray(rows) ? rows : null;
-}
 // Escalas + LPP ativas dos leitos ocupados, para o mapa de risco de enfermagem.
 async function loadRiscoEnfermagem(prontuarios) {
   if (!USE_SUPABASE || !prontuarios.length) return { escalas: [], lpp: [] };
@@ -1761,22 +1733,6 @@ async function loadChecagemSae(prontuarios) {
   return { prescricoes: A(prescricoes), itens: A(itens), checagens: A(checagens) };
 }
 
-async function upsertLeitoRemote(leito, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("leitos?on_conflict=identificacao", {
-    method: "POST",
-    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify({ ...leito, usuario: user?.name || null }),
-  });
-}
-async function deleteLeitoRemote(identificacao) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`leitos?identificacao=eq.${encodeURIComponent(identificacao)}`, { method: "DELETE" });
-}
-async function registrarSaidaRemote(saida, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("leitos_saidas", { method: "POST", body: JSON.stringify({ ...saida, usuario: user?.name || null }) });
-}
 
 // ── Referências de CID (tempo estimado de internação por diagnóstico) ──
 const CIDREF_KEY = "hnsn_cidref_v1";
@@ -1800,18 +1756,6 @@ async function deleteCidRefRemote(cid) {
 }
 // Acha a referência para um CID digitado: código exato → prefixo → descrição
 // ── Fase 2: histórico de turnover + utilidades de tempo ──
-async function registrarTurnoverRemote(turn, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("leitos_turnover", { method: "POST", body: JSON.stringify({ ...turn, usuario: user?.name || null }) });
-}
-async function loadSaidas() {
-  const rows = await sbFetch("leitos_saidas?select=*");
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadTurnover() {
-  const rows = await sbFetch("leitos_turnover?select=*");
-  return Array.isArray(rows) ? rows : [];
-}
 const STATUS_LEITO = {
   livre:        { label: "Livre",             cor: "#34d399", bg: "#0a3d2a" },
   ocupado:      { label: "Ocupado",           cor: "#22d3ee", bg: "#0e2f3d" },
@@ -5173,8 +5117,8 @@ function PSPage({ currentUser, canEdit }) {
     });
     loadPsFinalizadosHoje().then(setFinalizados);
     loadPsSalas().then(setSalas);
-    loadSetoresFromSupabase().then(r => r && setSetores(r));
-    loadLeitosFromSupabase().then(r => r && setLeitos(r));
+    loadSetoresFromSupabase(SB()).then(r => r && setSetores(r));
+    loadLeitosFromSupabase(SB()).then(r => r && setLeitos(r));
     // óbitos ocorridos APÓS internação, hoje (fonte: leitos_saidas)
     const hoje = todayStr();
     sbFetch(`leitos_saidas?desfecho=eq.obito&data_alta=eq.${hoje}&select=id`).then(r => setObitosInternacao(Array.isArray(r) ? r.length : 0));
@@ -5303,7 +5247,7 @@ function PSPage({ currentUser, canEdit }) {
         // Reserva automática: o leito fica RESERVADO para o paciente até ele subir.
         // No Mapa de leitos, "✓ Chegou" completa a internação (CID/dias) e fecha o
         // ciclo Pronto → Entrada com o tempo real. (disp_em/pronto_em preservados.)
-        await upsertLeitoRemote({
+        await upsertLeitoRemote(SB(), {
           identificacao: leito.identificacao, status: "reservado",
           iniciais: p.iniciais, prontuario: p.prontuario || null, motivo: p.queixa || null,
           cid: null, dias_previstos: null, data_internacao: null, entrada_em: null,
@@ -5315,7 +5259,7 @@ function PSPage({ currentUser, canEdit }) {
         // Sem leito agora → fila de espera (NIR puxa dali). Sempre entra na
         // fila, mesmo sem setor definido, para nenhuma internação sem leito
         // ficar fora do aviso do NIR.
-        await addSolicitacaoRemote({ iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino || null, hora_pedido: nowISO(), status: "aguardando", ps_atendimento_id: p.id }, currentUser);
+        await addSolicitacaoRemote(SB(), { iniciais: p.iniciais, setor_origem: "Pronto-Socorro", setor_destino: setorDestino || null, hora_pedido: nowISO(), status: "aguardando", ps_atendimento_id: p.id }, currentUser);
       }
     }
     addAuditLog(currentUser, "PS: desfecho", `${p.iniciais} → ${desfecho}${medico ? " · Dr(a). " + medico : ""}${leito ? " · leito " + leito.identificacao : setorDestino ? " (" + setorDestino + ")" : ""}`, {});
@@ -9927,7 +9871,7 @@ function ScihPage({ currentUser, canEdit }) {
 
   function refresh() {
     if (!USE_SUPABASE) { setLeitos(loadLeitos()); return; }
-    loadLeitosFromSupabase().then(r => r && setLeitos(r));
+    loadLeitosFromSupabase(SB()).then(r => r && setLeitos(r));
     loadScihCasos().then(setCasos);
     loadScihGermes().then(setGermes);
   }
@@ -10968,7 +10912,7 @@ function ProtocolosPage({ currentUser, canEdit }) {
   useEffect(() => {
     if (!USE_SUPABASE) return;
     recarregar();
-    loadSetoresFromSupabase().then(rows => { if (rows) setSetoresNomes(rows.map(r => r.nome).filter(Boolean)); });
+    loadSetoresFromSupabase(SB()).then(rows => { if (rows) setSetoresNomes(rows.map(r => r.nome).filter(Boolean)); });
   }, []);
   useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 30000); return () => clearInterval(t); }, []);
 
@@ -11393,12 +11337,12 @@ function LeitosPage({ currentUser, canEdit }) {
     if (!USE_SUPABASE) return;
     let cancel = false;
     const sync = () => {
-      loadLeitosFromSupabase().then(rows => { if (!cancel && rows) { setLeitos(rows); saveLeitos(rows); } });
+      loadLeitosFromSupabase(SB()).then(rows => { if (!cancel && rows) { setLeitos(rows); saveLeitos(rows); } });
       loadCidRefFromSupabase().then(rows => { if (!cancel && rows) { setCidRef(rows); saveCidRefLocal(rows); } });
-      loadSetoresFromSupabase().then(rows => { if (!cancel && rows) { setSetores(rows); saveSetoresLocal(rows); } });
-      loadSolicitacoes().then(rows => { if (!cancel && Array.isArray(rows)) setSolic(rows); });
-      loadSaidas().then(rows => { if (!cancel && Array.isArray(rows)) setSaidas(rows); });
-      loadTurnover().then(rows => { if (!cancel && Array.isArray(rows)) setTurnover(rows); });
+      loadSetoresFromSupabase(SB()).then(rows => { if (!cancel && rows) { setSetores(rows); saveSetoresLocal(rows); } });
+      loadSolicitacoes(SB()).then(rows => { if (!cancel && Array.isArray(rows)) setSolic(rows); });
+      loadSaidas(SB()).then(rows => { if (!cancel && Array.isArray(rows)) setSaidas(rows); });
+      loadTurnover(SB()).then(rows => { if (!cancel && Array.isArray(rows)) setTurnover(rows); });
     };
     sync();
     const onFocus = () => sync();
@@ -11421,13 +11365,13 @@ function LeitosPage({ currentUser, canEdit }) {
   async function salvarSetor(setor) {
     const arr = loadSetoresLocal().filter(s => s.nome !== setor.nome); arr.push(setor);
     saveSetoresLocal(arr); setSetores(arr);
-    await upsertSetorRemote(setor, currentUser);
+    await upsertSetorRemote(SB(), setor, currentUser);
     addAuditLog(currentUser, "salvar setor", setor.nome, {});
   }
   async function removerSetor(nome) {
     const arr = loadSetoresLocal().filter(s => s.nome !== nome);
     saveSetoresLocal(arr); setSetores(arr);
-    await deleteSetorRemote(nome);
+    await deleteSetorRemote(SB(), nome);
   }
   async function setSetorLeito(leito, setorNome) {
     await salvarLeito({ identificacao: leito.identificacao, setor: setorNome || null });
@@ -11443,7 +11387,7 @@ function LeitosPage({ currentUser, canEdit }) {
     const i = arr.findIndex(l => l.identificacao === leito.identificacao);
     if (i >= 0) arr[i] = { ...arr[i], ...leito }; else arr.push(leito);
     persist(arr);
-    await upsertLeitoRemote(arr[i >= 0 ? i : arr.length - 1], currentUser);
+    await upsertLeitoRemote(SB(), arr[i >= 0 ? i : arr.length - 1], currentUser);
   }
   async function addLeito() {
     const id = novoLeito.trim();
@@ -11480,7 +11424,7 @@ function LeitosPage({ currentUser, canEdit }) {
     }
     // Se o leito passou por higienização antes desta internação, fecha o ciclo de turnover.
     if (!editando && leito.disp_em) {
-      await registrarTurnoverRemote({ leito: leito.identificacao, solic_em: dados.solic_em || null, disp_em: leito.disp_em, pronto_em: leito.pronto_em || null, entrada_em: now }, currentUser);
+      await registrarTurnoverRemote(SB(), { leito: leito.identificacao, solic_em: dados.solic_em || null, disp_em: leito.disp_em, pronto_em: leito.pronto_em || null, entrada_em: now }, currentUser);
     }
     await salvarLeito({
       identificacao: leito.identificacao, status: "ocupado", interdicao_motivo: null,
@@ -11530,7 +11474,7 @@ function LeitosPage({ currentUser, canEdit }) {
       : `Dar alta do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`)) return;
     const now = nowISO();
     const dias = leito.data_internacao ? Math.max(0, Math.round((new Date(todayStr() + "T00:00:00") - new Date(leito.data_internacao + "T00:00:00")) / 86400000)) : null;
-    await registrarSaidaRemote({
+    await registrarSaidaRemote(SB(), {
       leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
       motivo: leito.motivo, data_internacao: leito.data_internacao, data_alta: todayStr(),
       disp_em: now, dias_permanencia: dias, desfecho, setor: leito.setor || null,
@@ -11559,7 +11503,7 @@ function LeitosPage({ currentUser, canEdit }) {
     if (!confirm(`Confirmar transferência externa do paciente do leito ${leito.identificacao}? O leito vai para HIGIENIZAÇÃO.`)) return;
     const now = nowISO();
     const dias = leito.data_internacao ? Math.max(0, Math.round((new Date(todayStr() + "T00:00:00") - new Date(leito.data_internacao + "T00:00:00")) / 86400000)) : null;
-    await registrarSaidaRemote({
+    await registrarSaidaRemote(SB(), {
       leito: leito.identificacao, iniciais: leito.iniciais, prontuario: leito.prontuario, cid: leito.cid,
       motivo: destino.trim() ? "Transf.: " + destino.trim() : (leito.motivo || null),
       data_internacao: leito.data_internacao, data_alta: todayStr(),
@@ -11602,7 +11546,7 @@ function LeitosPage({ currentUser, canEdit }) {
   async function removerLeito(leito) {
     if (!confirm(`Remover o leito ${leito.identificacao} do cadastro?`)) return;
     persist(loadLeitos().filter(l => l.identificacao !== leito.identificacao));
-    await deleteLeitoRemote(leito.identificacao);
+    await deleteLeitoRemote(SB(), leito.identificacao);
     addAuditLog(currentUser, "remover leito", leito.identificacao, {});
   }
 
@@ -11671,7 +11615,7 @@ function LeitosPage({ currentUser, canEdit }) {
 
   async function cancelarSolic(s) {
     if (!confirm(`Remover ${s.iniciais || "paciente"} da fila de internação?`)) return;
-    await updateSolicitacaoRemote(s.id, { status: "cancelada", resolvido_em: nowISO() });
+    await updateSolicitacaoRemote(SB(), s.id, { status: "cancelada", resolvido_em: nowISO() });
     setSolic(prev => prev.filter(x => x.id !== s.id));
     addAuditLog(currentUser, "cancelar solicitação de leito", s.iniciais || "", {});
   }
@@ -11683,12 +11627,12 @@ function LeitosPage({ currentUser, canEdit }) {
       ? { visto_em: null, visto_por: null }
       : { visto_em: nowISO(), visto_por: currentUser?.name || null };
     setSolic(prev => prev.map(x => x.id === s.id ? { ...x, ...campos } : x));
-    await updateSolicitacaoRemote(s.id, campos);
+    await updateSolicitacaoRemote(SB(), s.id, campos);
     addAuditLog(currentUser, s.visto_em ? "soltar regulação de leito" : "assumir regulação de leito", s.iniciais || "", {});
   }
   async function setMotivoEspera(s, motivo) {
     setSolic(prev => prev.map(x => x.id === s.id ? { ...x, motivo_espera: motivo || null } : x));
-    await updateSolicitacaoRemote(s.id, { motivo_espera: motivo || null });
+    await updateSolicitacaoRemote(SB(), s.id, { motivo_espera: motivo || null });
   }
   // Gargalos da fila (contagem por motivo de espera)
   const gargalos = Object.entries(MOTIVO_ESPERA).map(([k, v]) => ({ k, v, n: solic.filter(s => s.motivo_espera === k).length })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
@@ -12487,7 +12431,7 @@ function IndicadoresModal({ leitos, onClose }) {
   const [ano, setAno] = useState(now.getFullYear());
   const [saidas, setSaidas] = useState(null);
   const [turnover, setTurnover] = useState(null);
-  useEffect(() => { loadSaidas().then(setSaidas); loadTurnover().then(setTurnover); }, []);
+  useEffect(() => { loadSaidas(SB()).then(r => r && setSaidas(r)); loadTurnover(SB()).then(r => r && setTurnover(r)); }, []);
 
   const inMesISO  = iso  => { if (!iso) return false; const d = new Date(iso); return d.getMonth() === mes && d.getFullYear() === ano; };
   const inMesData = dstr => { if (!dstr) return false; const d = new Date(dstr + "T00:00:00"); return d.getMonth() === mes && d.getFullYear() === ano; };
@@ -12590,7 +12534,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
     // O catálogo de setores alimenta a saída manual — sem ele, o destino é
     // texto livre e o consumo por setor se fragmenta por grafia.
-    loadSetoresFromSupabase().then(r => r && setSetoresCat(r));
+    loadSetoresFromSupabase(SB()).then(r => r && setSetoresCat(r));
     carregarAlcada(sbFetch).then(setAlcada);
   }
   const leadMap = supLeadTimeMap(entradasForn, forns);   // item_id → prazo de entrega (dias)
@@ -13116,7 +13060,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
   useEffect(() => {
     if (!USE_SUPABASE) return;
     carregar();
-    loadSetoresFromSupabase().then(r => r && setSetores(r));
+    loadSetoresFromSupabase(SB()).then(r => r && setSetores(r));
     const poll = setInterval(carregar, 15000);
     const tick = setInterval(() => setTick(t => t + 1), 30000);
     return () => { clearInterval(poll); clearInterval(tick); };
