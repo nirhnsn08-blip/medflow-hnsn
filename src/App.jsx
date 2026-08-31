@@ -3122,7 +3122,10 @@ function PacientePage({ currentUser, canEdit }) {
   useEffect(() => {
     let vivo = true;
     Promise.all([loadFarmMedicamentos(SB()), loadFarmInteracoes(SB()), loadFarmIncompatY(SB())])
-      .then(([m, i, y]) => { if (!vivo) return; setMeds(m || []); setFarmInteracoes(i || []); setFarmIncompatY(y || []); })
+      // ⚠️ `i` e `y` seguem como estão: `null` significa que a base não pôde
+      // ser lida, e é o que faz a análise avisar em vez de sair limpa.
+      // Coagir para `[]` aqui apagaria o aviso justamente onde se prescreve.
+      .then(([m, i, y]) => { if (!vivo) return; setMeds(m || []); setFarmInteracoes(i); setFarmIncompatY(y); })
       .catch(() => {});
     return () => { vivo = false; };
   }, []);
@@ -8355,7 +8358,7 @@ function FarmAnaliseView({ currentUser, canEdit }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: "var(--text-muted)", flex: 1, minWidth: 240 }}>{comAlerta.length} paciente(s) com alertas · {totalAlertas} alerta(s). Apoio à decisão — os alertas assistem o farmacêutico e não substituem o julgamento clínico; a base é sujeita a validação da equipe.</div>
-        <button onClick={() => setShowBase(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de interações ({interacoes.length + incompatY.length})</button>
+        <button onClick={() => setShowBase(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de interações ({(interacoes || []).length + (incompatY || []).length})</button>
       </div>
       {showBase && <FarmInteracoesModal interacoes={interacoes} incompatY={incompatY} currentUser={currentUser} canEdit={canEdit} onClose={() => { setShowBase(false); refresh(); }} />}
       {linhas.length === 0 ? (
@@ -8426,7 +8429,10 @@ function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onCl
   const [fi, setFi] = useState({ substancia_a: "", substancia_b: "", gravidade: "moderada", descricao: "", conduta: "" });
   const [fy, setFy] = useState({ substancia_a: "", substancia_b: "", descricao: "" });
   const isMaster = currentUser?.role === "adm_master";
-  const reload = () => { loadFarmInteracoes(SB()).then(setLstI); loadFarmIncompatY(SB()).then(setLstY); };
+  // `r &&`: leitura que falhou devolve null. Este modal EDITA a base, entao
+  // trabalha com lista -- manter a que esta na tela e melhor que apaga-la, e o
+  // aviso de falha fica na tela que lista, atras do modal.
+  const reload = () => { loadFarmInteracoes(SB()).then(r => r && setLstI(r)); loadFarmIncompatY(SB()).then(r => r && setLstY(r)); };
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 9px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 12.5, outline: "none", width: "100%", boxSizing: "border-box" };
   const gravCor = g => g === "grave" ? "#f43f5e" : g === "leve" ? "#3b82f6" : "#d97706";
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
@@ -9243,7 +9249,7 @@ function FarmInteracoesView({ currentUser, canEdit }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Base de interações medicamentosas e incompatibilidade em Y — usada pela análise clínica. {interacoes.length} interações · {incompatY.length} incompatibilidades.</div>
+        <div style={{ fontSize: 13, color: "var(--text-muted)" }}>Base de interações medicamentosas e incompatibilidade em Y — usada pela análise clínica. {interacoes === null || incompatY === null ? "Base não lida." : `${interacoes.length} interações · ${incompatY.length} incompatibilidades.`}</div>
         {canEdit && <button onClick={() => setShowBase(true)} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Gerenciar base</button>}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
