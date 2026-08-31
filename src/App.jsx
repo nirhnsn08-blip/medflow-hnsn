@@ -13,6 +13,7 @@ import {
   analisarPrescricaoClinica, scoreItemClinico, scorePrescricao,
 } from "./clinico/alertas.js";
 import { sugerirGerme, camposDoGerme } from "./clinico/germes.js";
+import { ISOLAMENTOS, precaucaoDe } from "./clinico/isolamento.js";
 // Alergia como atributo do paciente (fonte única pep_alergias, com o campo
 // legado do atendimento fundido durante a transição).
 import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js";
@@ -1883,31 +1884,6 @@ const LEITOS_NAV = [
 // ═══════════════════════════════════════════════════════════
 // SCIH — Serviço de Controle de Infecção Hospitalar (Fase A)
 // ═══════════════════════════════════════════════════════════
-// Tipos de precaução/isolamento (base Anvisa "Medidas de Prevenção de IRAS" + CDC).
-// Orientações gerais — sempre seguir o protocolo institucional e a CCIH.
-const ISOLAMENTOS = {
-  contato: {
-    label: "Contato", icon: "🧤", cor: "#fbbf24", bg: "#3d2e06",
-    curto: "Transmissão por contato direto ou indireto (mãos, superfícies, equipamentos).",
-    quando: "Bactérias multirresistentes (MRSA, VRE, KPC e demais enterobactérias com carbapenemase, Acinetobacter MR), Clostridioides difficile, escabiose, diarreias infecciosas, vírus sincicial respiratório.",
-    epi: "Luvas e avental ao entrar / ter contato; higiene das mãos antes e depois; equipamentos dedicados ao paciente.",
-    quarto: "Quarto privativo (ou coorte do mesmo agente).",
-  },
-  goticulas: {
-    label: "Gotículas", icon: "😷", cor: "#38bdf8", bg: "#132c47",
-    curto: "Gotículas respiratórias maiores que 5 µm; alcançam curtas distâncias (~1 a 2 m).",
-    quando: "Doença meningocócica, coqueluche, influenza, difteria, caxumba, rubéola, H. influenzae invasiva.",
-    epi: "Máscara cirúrgica ao entrar / aproximar (< 1 m); higiene das mãos. Paciente usa máscara cirúrgica no transporte.",
-    quarto: "Quarto privativo (ou coorte); manter ≥ 1 m entre leitos.",
-  },
-  aereo: {
-    label: "Aéreo (aerossóis)", icon: "🌬️", cor: "#f43f5e", bg: "#3d0f18",
-    curto: "Núcleos de partículas menores que 5 µm que ficam suspensos no ar e percorrem longas distâncias.",
-    quando: "Tuberculose pulmonar/laríngea, sarampo, varicela, herpes-zóster disseminado; procedimentos geradores de aerossol.",
-    epi: "Máscara N95 / PFF2 ao entrar; higiene das mãos. Paciente usa máscara cirúrgica no transporte.",
-    quarto: "Quarto privativo com pressão negativa e porta fechada (ou renovação/exaustão de ar adequada).",
-  },
-};
 
 async function loadScihCasos() {
   const rows = await sbFetch("scih_casos?select=*&order=created_at.desc");
@@ -3521,7 +3497,7 @@ function montarTimeline(d) {
   });
   d.scih.forEach(c => {
     if (c.data_coleta) push(c.data_coleta + "T12:00:00", "SCIH", "#d97706", "Cultura coletada", null);
-    if (c.data_resultado) push(c.data_resultado + "T12:00:01", "SCIH", "#d97706", `Resultado de cultura: ${c.germe || "—"}${c.multirresistente ? " (multirresistente)" : ""}`, c.isolamento && ISOLAMENTOS[c.isolamento] ? "Isolamento " + ISOLAMENTOS[c.isolamento].label : null);
+    if (c.data_resultado) push(c.data_resultado + "T12:00:01", "SCIH", "#d97706", `Resultado de cultura: ${c.germe || "—"}${c.multirresistente ? " (multirresistente)" : ""}`, precaucaoDe(c.isolamento) ? "Isolamento " + ISOLAMENTOS[c.isolamento].label : null);
     else if (!c.data_coleta) push(c.criado_em, "SCIH", "#d97706", "Caso de vigilância SCIH aberto", c.germe || null);
   });
   d.evolucoes.forEach(e => {
@@ -3546,7 +3522,7 @@ function sentinelaPaciente(d) {
     if (s.restam != null && s.restam < 0) alertas.push({ cor: "#f43f5e", texto: `Internação ${Math.abs(s.restam)}d além da previsão de alta (leito ${l.identificacao})` });
   });
   d.scih.filter(c => c.status !== "encerrado").forEach(c => {
-    alertas.push({ cor: "#d97706", texto: `Vigilância SCIH ativa${c.germe ? ": " + c.germe : ""}${c.isolamento && ISOLAMENTOS[c.isolamento] ? " · isolamento " + ISOLAMENTOS[c.isolamento].label : ""}` });
+    alertas.push({ cor: "#d97706", texto: `Vigilância SCIH ativa${c.germe ? ": " + c.germe : ""}${precaucaoDe(c.isolamento) ? " · isolamento " + ISOLAMENTOS[c.isolamento].label : ""}` });
     if (c.data_coleta && !c.data_resultado) {
       const dias = diasDesde(c.data_coleta);
       if (dias != null && dias >= 3) alertas.push({ cor: "#fbbf24", texto: `Cultura coletada há ${dias}d sem resultado registrado` });
@@ -3587,7 +3563,7 @@ function resumoLocalPaciente(prontuario, dados, timeline, alertas) {
   // SCIH
   const scihAtivo = dados.scih.filter(c => c.status !== "encerrado");
   scihAtivo.forEach(c => {
-    frases.push(`Vigilância SCIH ativa${c.germe ? `: ${c.germe}${c.multirresistente ? " (multirresistente)" : ""}` : ""}${c.isolamento && ISOLAMENTOS[c.isolamento] ? `, isolamento de ${ISOLAMENTOS[c.isolamento].label.toLowerCase()}` : ""}${c.antibiotico ? `, em uso de ${c.antibiotico}` : ""}.`);
+    frases.push(`Vigilância SCIH ativa${c.germe ? `: ${c.germe}${c.multirresistente ? " (multirresistente)" : ""}` : ""}${precaucaoDe(c.isolamento) ? `, isolamento de ${ISOLAMENTOS[c.isolamento].label.toLowerCase()}` : ""}${c.antibiotico ? `, em uso de ${c.antibiotico}` : ""}.`);
   });
 
   // Última evolução
@@ -9967,7 +9943,7 @@ function ScihPage({ currentUser, canEdit }) {
   const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
 
   const leitosOrd = [...leitos].sort((a, b) => a.identificacao.localeCompare(b.identificacao, "pt-BR", { numeric: true }));
-  const leitosIsolados = leitosOrd.filter(l => l.isolamento && ISOLAMENTOS[l.isolamento]);
+  const leitosIsolados = leitosOrd.filter(l => precaucaoDe(l.isolamento));
   const ativos = casos.filter(c => c.status !== "encerrado");
   const encerrados = casos.filter(c => c.status === "encerrado");
 
@@ -10014,7 +9990,7 @@ function ScihPage({ currentUser, canEdit }) {
   }
   const gSug = sugerirGerme(f.germe, germes);
 
-  const IsoBadge = ({ tipo }) => { const v = ISOLAMENTOS[tipo]; if (!v) return null; return (
+  const IsoBadge = ({ tipo }) => { const v = precaucaoDe(tipo); if (!v) return null; return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: v.bg, color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 11, fontWeight: 800 }}>{v.label}</span>
   ); };
 
@@ -10093,7 +10069,7 @@ function ScihPage({ currentUser, canEdit }) {
               <div><label style={lbl}>Data da coleta da cultura</label><input type="date" value={f.data_coleta} onChange={e => set("data_coleta", e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Data do resultado</label><input type="date" value={f.data_resultado} onChange={e => set("data_resultado", e.target.value)} style={inp} /></div>
               <div><label style={lbl}>Germe (o que cresceu)</label><input value={f.germe} onChange={e => onGerme(e.target.value)} placeholder="Ex.: Klebsiella pneumoniae" style={inp} />
-                {gSug && <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, lineHeight: 1.4 }}>Sugestão: {gSug.nome}{gSug.tipo === "multirresistente" ? " (multirresistente)" : ""}{gSug.isolamento && ISOLAMENTOS[gSug.isolamento] ? ` · isolamento ${ISOLAMENTOS[gSug.isolamento].label}` : ""}</div>}
+                {gSug && <div style={{ fontSize: 11, color: "#22d3ee", marginTop: 4, lineHeight: 1.4 }}>Sugestão: {gSug.nome}{gSug.tipo === "multirresistente" ? " (multirresistente)" : ""}{precaucaoDe(gSug.isolamento) ? ` · isolamento ${ISOLAMENTOS[gSug.isolamento].label}` : ""}</div>}
               </div>
               <div><label style={lbl}>Antibiótico utilizado</label><input value={f.antibiotico} onChange={e => set("antibiotico", e.target.value)} placeholder="Ex.: Meropenem" style={inp} /></div>
               <div><label style={lbl}>Dias de antibiótico</label><input type="number" min="0" value={f.dias_antibiotico} onChange={e => set("dias_antibiotico", e.target.value)} placeholder="Ex.: 7" style={inp} /></div>
@@ -10223,7 +10199,7 @@ function GermesModal({ germes, canEdit, isMaster, onClose, onSave, onDelete }) {
                 {g.tipo === "multirresistente"
                   ? <span style={{ background: "#3d0f18", color: "#fb7185", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>MULTIRRESISTENTE</span>
                   : <span style={{ background: "#0a3d2a", color: "#34d399", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>SENSÍVEL</span>}
-                {g.isolamento && ISOLAMENTOS[g.isolamento] && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ISOLAMENTOS[g.isolamento].bg, color: ISOLAMENTOS[g.isolamento].cor, border: `1px solid ${ISOLAMENTOS[g.isolamento].cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>{ISOLAMENTOS[g.isolamento].label}</span>}
+                {precaucaoDe(g.isolamento) && <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: ISOLAMENTOS[g.isolamento].bg, color: ISOLAMENTOS[g.isolamento].cor, border: `1px solid ${ISOLAMENTOS[g.isolamento].cor}55`, borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 800 }}>{ISOLAMENTOS[g.isolamento].label}</span>}
                 {canEdit && <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                   <button onClick={() => setF({ nome: g.nome, tipo: g.tipo || "multirresistente", isolamento: g.isolamento || "", embasamento: g.embasamento || "", observacao: g.observacao || "" })} style={btnContorno("#22d3ee")}>Editar</button>
                   {isMaster && <button onClick={() => { if (confirm(`Remover o germe ${g.nome}?`)) onDelete(g.nome); }} style={btnContorno("#fb7185")}>Excluir</button>}
@@ -11799,7 +11775,7 @@ function LeitosPage({ currentUser, canEdit }) {
                     <span style={{ background: st.bg, color: st.cor, border: `1px solid ${st.cor}44`, borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{st.label}</span>
                   </div>
 
-                  {l.isolamento && ISOLAMENTOS[l.isolamento] && (
+                  {precaucaoDe(l.isolamento) && (
                     <div title={ISOLAMENTOS[l.isolamento].curto} style={{ display: "inline-flex", alignItems: "center", gap: 5, background: ISOLAMENTOS[l.isolamento].bg, color: ISOLAMENTOS[l.isolamento].cor, border: `1px solid ${ISOLAMENTOS[l.isolamento].cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 10.5, fontWeight: 800, marginTop: 9 }}>
                       Isolamento {ISOLAMENTOS[l.isolamento].label}
                     </div>
@@ -11811,7 +11787,7 @@ function LeitosPage({ currentUser, canEdit }) {
                         <option value="">sem setor</option>
                         {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
                       </select>
-                      <select value={l.isolamento || ""} onChange={e => setIsolamentoLeito(l, e.target.value)} title="Marcar leito como isolamento" style={{ ...selCorp, color: l.isolamento && ISOLAMENTOS[l.isolamento] ? ISOLAMENTOS[l.isolamento].cor : "var(--text-muted)" }}>
+                      <select value={l.isolamento || ""} onChange={e => setIsolamentoLeito(l, e.target.value)} title="Marcar leito como isolamento" style={{ ...selCorp, color: precaucaoDe(l.isolamento) ? ISOLAMENTOS[l.isolamento].cor : "var(--text-muted)" }}>
                         <option value="">sem isolamento</option>
                         {Object.entries(ISOLAMENTOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                       </select>
