@@ -1951,6 +1951,8 @@ const FARM_ALERTA_TIPOS = {
   dose_maxima: "Dose máxima", duplicidade: "Duplicidade", tempo_tratamento: "Tempo de tratamento",
   sonda: "Sonda / não triturar", idoso: "Inapropriado idoso (Beers)", pediatrico: "Inapropriado criança",
   ajuste_renal: "Ajuste renal", ajuste_hepatico: "Ajuste hepático",
+  // Não é achado clínico: é a conferência que NÃO pôde ser feita.
+  base_indisponivel: "Base não conferida",
 };
 const freqDia = label => { const f = PS_FREQUENCIAS.find(x => x.label === label); return f ? f.dia : null; };
 
@@ -8416,8 +8418,11 @@ function FarmAnaliseView({ currentUser, canEdit }) {
 // Editor da base de pares: interações medicamentosas + incompatibilidade em Y
 function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onClose }) {
   const [sub, setSub] = useState("inter");
-  const [lstI, setLstI] = useState(interacoes);
-  const [lstY, setLstY] = useState(incompatY);
+  // A prop pode chegar `null` (a base não pôde ser lida). Aqui o modal
+  // edita a base, então trabalha com lista — e o aviso de leitura falha
+  // fica na tela que lista, não neste formulário.
+  const [lstI, setLstI] = useState(interacoes || []);
+  const [lstY, setLstY] = useState(incompatY || []);
   const [fi, setFi] = useState({ substancia_a: "", substancia_b: "", gravidade: "moderada", descricao: "", conduta: "" });
   const [fy, setFy] = useState({ substancia_a: "", substancia_b: "", descricao: "" });
   const isMaster = currentUser?.role === "adm_master";
@@ -9243,10 +9248,13 @@ function FarmInteracoesView({ currentUser, canEdit }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 14 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}>Interações ({interacoes.length})</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}>Interações ({(interacoes || []).length})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 420, overflowY: "auto" }}>
-            {interacoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma interação cadastrada.</div>}
-            {interacoes.map(r => (
+            {/* 🔴 null e [] dizem coisas diferentes: "não deu para ler" não pode
+                 aparecer como "não há nenhuma cadastrada". */}
+            {interacoes === null && <div style={{ fontSize: 12.5, color: "#f43f5e", fontWeight: 600 }}>Não foi possível ler a base de interações. A análise de prescrição NÃO está conferindo interações agora.</div>}
+            {interacoes && interacoes.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma interação cadastrada.</div>}
+            {(interacoes || []).map(r => (
               <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
                 <span style={{ fontSize: 9.5, fontWeight: 800, color: gravCor(r.gravidade), border: `1px solid ${gravCor(r.gravidade)}66`, borderRadius: 99, padding: "0 6px", textTransform: "uppercase", whiteSpace: "nowrap" }}>{r.gravidade}</span>
                 <span style={{ flex: 1 }}><strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}</span>
@@ -9255,10 +9263,11 @@ function FarmInteracoesView({ currentUser, canEdit }) {
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}>Incompatibilidade em Y ({incompatY.length})</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", marginBottom: 8 }}>Incompatibilidade em Y ({(incompatY || []).length})</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 420, overflowY: "auto" }}>
-            {incompatY.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma cadastrada.</div>}
-            {incompatY.map(r => (
+            {incompatY === null && <div style={{ fontSize: 12.5, color: "#f43f5e", fontWeight: 600 }}>Não foi possível ler a base de incompatibilidade em Y.</div>}
+            {incompatY && incompatY.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhuma cadastrada.</div>}
+            {(incompatY || []).map(r => (
               <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "7px 11px", fontSize: 12.5 }}>
                 <strong>{r.substancia_a} × {r.substancia_b}</strong>{r.descricao ? <span style={{ color: "var(--text-muted)" }}> — {r.descricao}</span> : ""}
               </div>

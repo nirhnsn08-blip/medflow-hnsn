@@ -124,7 +124,23 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
   });
 
   // 8) Interações medicamentosas (pares)
-  if (interacoes && interacoes.length) {
+  //
+  // 🔴 `null` NÃO É LISTA VAZIA, e a diferença é a razão de este bloco
+  // existir. Antes, a carga da base devolvia `[]` tanto quando não havia
+  // interação cadastrada quanto quando a LEITURA FALHOU. Com `[]` o laço
+  // abaixo não acha par nenhum e a prescrição sai limpa — um libera-geral
+  // falso, na conferência que mais importa.
+  //
+  // ⚠️ O alerta só sai se houvesse o que conferir: com menos de dois
+  // medicamentos não existe par possível, e avisar ali seria ruído em toda
+  // prescrição de item único. Alarme que toca à toa é alarme que se aprende
+  // a ignorar — e este precisa ser lido.
+  if (interacoes === null) {
+    if (comMed.length >= 2) {
+      push("base_indisponivel", "alta", "Interações NÃO conferidas",
+        `Não foi possível ler a base de interações. Os ${comMed.length} medicamentos desta prescrição NÃO foram checados entre si — confira manualmente antes de dispensar.`, []);
+    }
+  } else if (interacoes && interacoes.length) {
     for (let x = 0; x < comMed.length; x++) for (let y = x + 1; y < comMed.length; y++) {
       const a = medById[comMed[x].medicamento_id], b = medById[comMed[y].medicamento_id];
       for (const it of interacoes) {
@@ -138,8 +154,14 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
     }
   }
   // 9) Incompatibilidade em Y (ambos por via IV)
-  if (incompatY && incompatY.length) {
-    const iv = comMed.filter(i => (i.via || "").toUpperCase() === "IV");
+  // Mesma regra do bloco 8: só avisa se havia par IV para conferir.
+  const iv = comMed.filter(i => (i.via || "").toUpperCase() === "IV");
+  if (incompatY === null) {
+    if (iv.length >= 2) {
+      push("base_indisponivel", "alta", "Incompatibilidade em Y NÃO conferida",
+        `Não foi possível ler a base de incompatibilidade em Y. Os ${iv.length} medicamentos IV desta prescrição NÃO foram checados — não infundir na mesma linha sem conferir.`, []);
+    }
+  } else if (incompatY && incompatY.length) {
     for (let x = 0; x < iv.length; x++) for (let y = x + 1; y < iv.length; y++) {
       const a = medById[iv[x].medicamento_id], b = medById[iv[y].medicamento_id];
       for (const it of incompatY) {

@@ -81,13 +81,23 @@ export async function addFarmMovimentoRemote(sbCru, mov, user) {
   if (!sbCru) return { ok: false, erro: "Supabase indisponível." };
   return sbCru("farm_movimentos", { ...mov, usuario: user?.name || null });
 }
+// 🔴 AS DUAS BASES ABAIXO DEVOLVEM `null` NA FALHA, E ISSO NÃO É DETALHE.
+// São a base de interação medicamentosa e a de incompatibilidade em Y. O
+// motor de alertas recebe a lista e, com lista VAZIA, não encontra nenhum
+// par — ou seja, uma leitura que falhou virava "prescrição sem interações".
+// Um libera-geral falso, na conferência que mais importa.
+//
+// Devolvendo `null`, o motor distingue "não há interação" de "não conferi"
+// e emite o alerta `base_indisponivel`. Ver src/clinico/alertas.js.
 export async function loadFarmInteracoes(sb) {
+  if (!sb) return null;
   const rows = await sb("farm_interacoes?select=*&order=gravidade");
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(rows) ? rows : null;
 }
 export async function loadFarmIncompatY(sb) {
+  if (!sb) return null;
   const rows = await sb("farm_incompat_y?select=*&order=substancia_a");
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(rows) ? rows : null;
 }
 export async function upsertFarmInteracaoRemote(sb, row, user) {
   if (!sb) return null;
