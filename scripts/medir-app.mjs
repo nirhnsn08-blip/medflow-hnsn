@@ -15,20 +15,13 @@
 // tamanho da página — é o quanto ela COMPARTILHA com as outras. Isso não se
 // enxerga lendo; se conta.
 //
-// 🔴 A ARMADILHA QUE ESTE ARQUIVO EXISTE PARA NÃO REPETIR
-// A primeira versão desta medição contava a palavra dentro de COMENTÁRIO
-// como uso. Esta casa comenta muito e cita componente pelo nome — uma linha
-//
-//     // inscreve aqui — o App usa isto para voltar ao login
-//
-// criava a aresta `clearSession → App`, e como o `App` renderiza todas as
-// páginas, o grafo inteiro virava conectado: TODA página aparecia
-// "arrastando" 17.831 das 18.297 linhas. Número plausível, inútil e errado.
-//
-// Por isso a análise roda sobre o arquivo com comentários e strings
-// APAGADOS, e a primeira coisa que o programa faz é PROVAR que aquela
-// aresta falsa sumiu. Se ela voltar, ele para — medição que falha para
-// menos, em silêncio, é pior que medição nenhuma.
+// 🔴 AS ARMADILHAS QUE ESTE ARQUIVO EXISTE PARA NÃO REPETIR
+// Todas são o mesmo defeito: medição que erra PARA MENOS, em silêncio, e
+// devolve um número plausível. Cada uma delas virou uma checagem que roda
+// antes do relatório e derruba o programa em vez de imprimir bonito.
+//   1. comentário contado como uso  → guarda `clearSession → App`
+//   2. limpeza fora de fase         → guarda "toda declaração visível"
+//   3. compartilhamento sem propagar → tratado em `domínio()`
 // ============================================================
 
 import fs from "node:fs";
@@ -38,13 +31,46 @@ const ALVO = "src/App.jsx";
 const bruto = fs.readFileSync(ALVO, "utf8");
 const linhas = bruto.split("\n");
 
+/** Acha o nome declarado em coluna 0, se a linha declarar algum. */
+function declaracaoNa(l) {
+  const m = /^(?:export default |export )?function ([A-Za-z_$][\w$]*)/.exec(l)
+    || /^async function ([A-Za-z_$][\w$]*)/.exec(l)
+    || /^(?:export )?(?:const|let) ([A-Za-z_$][\w$]*)\s*=/.exec(l);
+  return m ? m[1] : null;
+}
+
 /**
  * Apaga comentários e literais de string, PRESERVANDO as quebras de linha —
  * os números de linha têm de continuar batendo com o arquivo real.
+ *
+ * 🔴 O REGEX LITERAL, QUE JÁ INVERTEU ESTA MEDIÇÃO INTEIRA
+ * A primeira versão não conhecia `/.../`. No `App.jsx` existe, na linha 1702,
+ *
+ *     line.split(",").map(c => c.trim().replace(/"/g, ""))
+ *
+ * e a aspa DENTRO do regex foi lida como abertura de string. Dali em diante o
+ * limpador ficou FORA DE FASE: passou a apagar o código e a preservar o
+ * conteúdo das strings. 55 declarações de topo sumiram do grafo — `sbFetch`,
+ * o Giro de Leitos inteiro, os loaders do NSP — e o relatório respondia que
+ * `loadIncidentes` não dependia de nada, tendo `sbFetch` no corpo.
+ *
+ * A contagem de linhas continuava batendo (a fase não muda o número de
+ * quebras), então a checagem que existia passava. Quem pega isso é a
+ * invariante logo abaixo.
  */
 function limpar(txt) {
   let out = "", i = 0;
   const n = txt.length;
+
+  // Um `/` abre regex ou é divisão? Decide pelo último caractere que conta
+  // antes dele — o mesmo critério que um tokenizador de verdade usa.
+  const ANTES_DE_REGEX = "(,=:[!&|?{};+-*%~^<>";
+  const PALAVRA_ANTES = /(?:^|[^\w$])(return|typeof|instanceof|in|of|new|delete|void|case|do|else|yield|await)\s*$/;
+  const significativoAtras = () => {
+    for (let k = out.length - 1; k >= 0; k--) if (!/\s/.test(out[k])) return out[k];
+    return "";
+  };
+
   while (i < n) {
     const c = txt[i], d = txt[i + 1];
     if (c === "/" && d === "/") { while (i < n && txt[i] !== "\n") i++; continue; }
@@ -52,6 +78,35 @@ function limpar(txt) {
       i += 2;
       while (i < n && !(txt[i] === "*" && txt[i + 1] === "/")) { if (txt[i] === "\n") out += "\n"; i++; }
       i += 2; continue;
+    }
+    if (c === "/") {
+      const ant = significativoAtras();
+      // ⚠️ JSX usa as duas formas que mais parecem regex: `</div>` e `<Icon />`.
+      // Em `</`, o anterior é `<`; em `/>`, o seguinte é `>`. Sem estas duas
+      // exceções o limpador comia 2.772 linhas do arquivo.
+      const ehJsx = ant === "<" || d === ">";
+      if (!ehJsx && (ant === "" || ANTES_DE_REGEX.includes(ant) || PALAVRA_ANTES.test(out))) {
+        const voltar = i;
+        i++;
+        let classe = false, fechou = false;       // dentro de `[...]` a barra não fecha
+        while (i < n && txt[i] !== "\n") {
+          if (txt[i] === "\\") i++;
+          else if (txt[i] === "[") classe = true;
+          else if (txt[i] === "]") classe = false;
+          else if (txt[i] === "/" && !classe) { fechou = true; break; }
+          i++;
+        }
+        if (fechou) {
+          i++;
+          while (i < n && /[a-z]/.test(txt[i])) i++;  // as flags (g, i, u, s…)
+          continue;
+        }
+        // Não fechou na mesma linha: regex não atravessa linha, então era
+        // divisão. Volta e trata como caractere comum — engolir a quebra aqui
+        // deslocaria todos os números de linha.
+        i = voltar;
+      }
+      out += c; i++; continue;                    // era divisão
     }
     if (c === '"' || c === "'" || c === "`") {
       const asp = c; i++;
@@ -74,14 +129,31 @@ if (limpo.length !== linhas.length) {
   process.exit(2);
 }
 
+// ── A INVARIANTE DA FASE ──
+// Uma declaração em coluna 0 é código, por definição. Se depois da limpeza
+// ela sumiu, o limpador se perdeu dentro de alguma string ou regex — e o
+// grafo já está incompleto, sem nenhum sintoma no relatório.
+const sumidas = [];
+linhas.forEach((l, i) => {
+  const nome = declaracaoNa(l);
+  if (nome && !new RegExp(String.fromCharCode(92) + "b" + nome + String.fromCharCode(92) + "b").test(limpo[i])) {
+    sumidas.push(`${i + 1}: ${l.slice(0, 70)}`);
+  }
+});
+if (sumidas.length) {
+  console.error(`🔴 ${sumidas.length} declarações de topo sumiram na limpeza — ela está FORA DE FASE.`);
+  console.error("   Isso acontece quando um literal não é reconhecido (regex, template aninhado)");
+  console.error("   e o limpador passa a apagar o código em vez do texto. O grafo fica furado");
+  console.error("   e o relatório não avisa: as dependências simplesmente não aparecem.\n");
+  console.error(sumidas.slice(0, 8).join("\n"));
+  if (sumidas.length > 8) console.error(`   … e mais ${sumidas.length - 8}.`);
+  console.error("\n   A primeira da lista é onde procurar: o defeito está ACIMA dela.");
+  process.exit(4);
+}
+
 // ── quem o arquivo declara em coluna 0 (não vem de import) ──
 const defs = new Map();
-linhas.forEach((l, i) => {
-  const m = /^(?:export default |export )?function ([A-Za-z_$][\w$]*)/.exec(l)
-    || /^async function ([A-Za-z_$][\w$]*)/.exec(l)
-    || /^(?:export )?(?:const|let) ([A-Za-z_$][\w$]*)\s*=/.exec(l);
-  if (m) defs.set(m[1], i + 1);
-});
+linhas.forEach((l, i) => { const nome = declaracaoNa(l); if (nome) defs.set(nome, i + 1); });
 const tops = [...defs.entries()].map(([nome, linha]) => ({ nome, linha })).sort((a, b) => a.linha - b.linha);
 tops.forEach((t, i) => { t.fim = (tops[i + 1]?.linha ?? linhas.length + 1) - 1; t.tam = t.fim - t.linha + 1; });
 const porNome = new Map(tops.map(t => [t.nome, t]));
@@ -100,9 +172,13 @@ for (const t of tops) {
   arestas.set(t.nome, [...defs.keys()].filter(n => n !== t.nome && new RegExp(B + n + B).test(corpo)));
 }
 
-// ── A PROVA. Sem ela, o resto do relatório não vale nada. ──
-const arestaFalsa = (arestas.get("clearSession") || []).includes("App");
-if (arestaFalsa) {
+// ── A PROVA DO COMENTÁRIO. Sem ela, o resto do relatório não vale nada. ──
+// Esta casa comenta muito e cita componente pelo nome. Uma linha como
+//     // inscreve aqui — o App usa isto para voltar ao login
+// criava a aresta `clearSession → App`, e como o `App` renderiza todas as
+// páginas, o grafo inteiro virava conectado: TODA página aparecia arrastando
+// 17.831 das 18.297 linhas.
+if ((arestas.get("clearSession") || []).includes("App")) {
   console.error("🔴 A aresta `clearSession → App` voltou a aparecer.");
   console.error("   Ela só existe dentro de um COMENTÁRIO. Se ela está aqui, a limpeza");
   console.error("   parou de funcionar — e o grafo inteiro vira conectado, fazendo toda");
