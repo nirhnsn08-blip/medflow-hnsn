@@ -56,6 +56,7 @@ import { podeSair, lotesParaEscolha, situacaoDoLote } from "./farmacia/validade.
 import { podeAprovarPedido, descreverAlcada, validarLimite } from "./suprimentos/aprovacao.js";
 import { carregarAlcada, salvarAlcada } from "./suprimentos/parametros.js";
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
+import { registrarAuditoria } from "./auditoria/dados.js";
 import {
   MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
   podeEstornar, movimentoDeEstorno, idsJaEstornados,
@@ -368,17 +369,12 @@ async function saveRecord(date, specId, data, user) {
 // ═══════════════════════════════════════════════════════════
 // AUDITORIA
 // ═══════════════════════════════════════════════════════════
-const AUDIT_KEY = "hnsn_audit_v1";
-function loadAudit() { try { return JSON.parse(localStorage.getItem(AUDIT_KEY) || "[]"); } catch { return []; } }
-function addAuditLog(user, acao, alvo, dados) {
-  const log = loadAudit();
-  log.unshift({ ts: new Date().toISOString(), user: user?.name || "?", acao, alvo, dados: JSON.stringify(dados).slice(0, 120) });
-  if (log.length > 200) log.splice(200);
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(log));
-  if (USE_SUPABASE) {
-    sbFetch("auditoria", { method: "POST", body: JSON.stringify({ ts: new Date().toISOString(), usuario: user?.name, acao, alvo }) });
-  }
-}
+// A trilha mudou-se para src/auditoria/dados.js, junto da leitura. Fica
+// aqui só o adaptador que injeta o `sb`: são 107 pontos de chamada, e
+// reescrever todos esconderia a mudança de verdade no meio do ruído. Os
+// módulos já extraídos importam `registrarAuditoria` direto, com o `sb`
+// que eles próprios recebem.
+const addAuditLog = (user, acao, alvo, dados) => registrarAuditoria(SB(), user, acao, alvo, dados);
 
 // ═══════════════════════════════════════════════════════════
 // AGGREGATE

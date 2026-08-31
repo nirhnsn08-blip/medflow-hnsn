@@ -71,3 +71,73 @@ export async function carregarTrilha(sb, opcoes = {}) {
   // errada de que aquilo é tudo.
   return { linhas: r, temMais: r.length >= limite };
 }
+
+// ═══════════════════════════════════════════════════════════
+// A ESCRITA DA TRILHA
+//
+// Saiu do App.jsx, onde era o `addAuditLog` — usado por 29 declarações, o
+// terceiro nó mais compartilhado do arquivo depois do `sbFetch` e do
+// `USE_SUPABASE`. Enquanto morasse lá, nenhum módulo extraído conseguiria
+// registrar ato nenhum sem importar de volta o monólito.
+//
+// Grava nos DOIS lugares, de propósito:
+//   • na tabela `auditoria` — a trilha institucional, a mesma para todos;
+//   • no `localStorage` — as últimas 200 do navegador, que é o que ainda
+//     existe quando o banco está fora.
+//
+// ⚠️ `usuario_id` NÃO É ENVIADO, e isso é a correção, não um esquecimento.
+// A coluna tem `default auth.uid()`: quem carimba a autoria é o banco. O
+// campo `usuario` é texto vindo do cliente e serve para ler, não para
+// provar — pela API, qualquer autenticado gravaria com o nome de outra
+// pessoa. Ver supabase/migracao-auditoria-atribuivel.sql.
+//
+// ⚠️ NÃO SE ESPERA A GRAVAÇÃO. É de propósito: auditar é efeito colateral
+// do ato, e o ato não pode ficar mais lento por causa da trilha. A falha
+// não fica escondida — o `sb` nunca rejeita, devolve `null` e registra a
+// queda no aviso global de falha do Supabase.
+// ═══════════════════════════════════════════════════════════
+
+export const AUDIT_KEY = "hnsn_audit_v1";
+
+/** Quantas ficam no navegador. Acima disso, a mais antiga sai. */
+export const LIMITE_LOCAL = 200;
+
+/** As últimas ações guardadas neste navegador. Lista vazia se não der para ler. */
+export function lerTrilhaLocal() {
+  try { const v = JSON.parse(localStorage.getItem(AUDIT_KEY) || "[]"); return Array.isArray(v) ? v : []; }
+  catch { return []; }
+}
+
+/**
+ * Registra uma ação na trilha.
+ *
+ * 🔴 NADA AQUI PODE DERRUBAR O ATO AUDITADO.
+ * Esta função é chamada DEPOIS que a pessoa salvou o leito, deu a alta,
+ * dispensou o medicamento. Se ela estourar, o erro sobe para um chamador
+ * que não tem try/catch — e o usuário vê o ato falhar quando ele já deu
+ * certo. Duas coisas aqui podem estourar e nenhuma delas tem a ver com
+ * auditoria: `JSON.stringify` numa estrutura circular (um evento do React
+ * passado sem querer em `dados`) e o `localStorage` cheio ou bloqueado.
+ */
+export function registrarAuditoria(sb, user, acao, alvo, dados) {
+  // Um instante só para as duas cópias: com duas chamadas a `Date`, a linha
+  // do navegador e a do banco saíam com horários diferentes, e conferir uma
+  // contra a outra virava trabalho de adivinhação.
+  const ts = new Date().toISOString();
+  const texto = resumir(dados);
+
+  try {
+    const log = lerTrilhaLocal();
+    log.unshift({ ts, user: user?.name || "?", acao, alvo, dados: texto });
+    if (log.length > LIMITE_LOCAL) log.splice(LIMITE_LOCAL);
+    localStorage.setItem(AUDIT_KEY, JSON.stringify(log));
+  } catch { /* navegador sem espaço ou em modo restrito: a trilha do banco continua */ }
+
+  if (sb) sb("auditoria", { method: "POST", body: JSON.stringify({ ts, usuario: user?.name, acao, alvo }) });
+}
+
+/** O `dados` vira texto curto — e um objeto impossível de serializar não vira exceção. */
+function resumir(dados) {
+  try { return JSON.stringify(dados).slice(0, 120); }
+  catch { return "[não serializável]"; }
+}
