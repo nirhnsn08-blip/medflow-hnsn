@@ -129,3 +129,35 @@ export function lotesParaEscolha(lotes = [], { motivo, agora = new Date() } = {}
 
   return { lotes: ordenados, sugerido, temVencido: vencidos.length > 0, nVencidos: vencidos.length };
 }
+
+/**
+ * O estado da validade COM a contagem de dias, no formato que a tela usa.
+ *
+ * 🔴 SUBSTITUI O `farmValidadeInfo`, QUE ERA UMA SEGUNDA CÓPIA DESTA REGRA
+ * morando no App.jsx. As duas concordavam em 805 datas reais conferidas uma
+ * a uma — e divergiam no que importa: validade ILEGÍVEL.
+ *
+ *   "2026-9-3"      (mês/dia sem zero)      → a cópia dizia "ok"
+ *   "30/09/2026"    (formato brasileiro)    → a cópia dizia "ok"
+ *   "nao e data"    (lixo)                  → a cópia dizia "ok"
+ *
+ * Ela fazia `new Date(validade + "T00:00:00")`, e data inválida vira `NaN`.
+ * `Math.round(NaN)` não é `< 0` nem `<= 30`, então caía no `else`: verde,
+ * sem contagem, sem aviso. Um lote com data de validade que ninguém
+ * consegue ler aparecia como um lote em ordem.
+ *
+ * É a mesma classe do NaN que já mordeu o NEWS nesta casa: número que não
+ * existe passando por comparação e saindo pelo caminho tranquilo.
+ *
+ * ⚠️ `dias` é contado com `Date` montada de NÚMEROS (ano, mês, dia), nunca
+ * de string — `new Date("2026-09-30")` seria lido como UTC e voltaria um
+ * dia no fuso do Brasil.
+ */
+export function infoDeValidade(validade, agora = new Date()) {
+  const { estado } = situacaoDoLote(validade, agora);
+  if (estado === "sem_data") return { status: "sem_data", dias: null };
+  const [a, m, d] = texto(validade).slice(0, 10).split("-").map(Number);
+  const alvo = new Date(a, m - 1, d);
+  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  return { status: estado, dias: Math.round((alvo - hoje) / 86400000) };
+}

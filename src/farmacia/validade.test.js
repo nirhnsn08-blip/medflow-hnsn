@@ -133,3 +133,78 @@ describe("quem vai para o paciente", () => {
     expect(vaiParaPaciente(null)).toBe(false);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// infoDeValidade — a cópia que morava no App.jsx
+//
+// 🔴 O DEFEITO QUE ELA TINHA ERA VERDE.
+// `farmValidadeInfo` fazia `new Date(validade + "T00:00:00")`. Data que o
+// JavaScript não lê vira `Invalid Date`, a subtração vira `NaN`, e
+// `Math.round(NaN)` não é `< 0` nem `<= 30` — caía no `else` e devolvia
+// "ok". Lote com validade ilegível aparecia como lote em ordem.
+//
+// Mesma classe do NaN que já mordeu o NEWS nesta casa: número que não
+// existe atravessando comparação e saindo pelo caminho tranquilo.
+// ═══════════════════════════════════════════════════════════
+
+import { infoDeValidade } from "./validade.js";
+
+describe("infoDeValidade", () => {
+  const HOJE = new Date(2026, 7, 31);           // 31/08/2026, hora local
+  const dia = n => {
+    const d = new Date(2026, 7, 31 + n);
+    const p = x => String(x).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  };
+
+  it("🔴 validade ILEGÍVEL não é 'ok' — é 'sem_data'", () => {
+    // Os dois primeiros são digitação e importação plausíveis, não lixo
+    // improvável: mês e dia sem zero, e formato brasileiro.
+    for (const ruim of ["2026-9-3", "30/09/2026", "nao e data", "", null, undefined]) {
+      const r = infoDeValidade(ruim, HOJE);
+      expect(r.status, JSON.stringify(ruim)).toBe("sem_data");
+      expect(r.dias, JSON.stringify(ruim)).toBeNull();
+    }
+  });
+
+  it("⚠️ mas data COM HORA é legível — lê-se a parte da data", () => {
+    // `2026-09-30T10:00:00Z` é o que o PostgREST devolve numa coluna
+    // `timestamp`. A cópia do App.jsx dizia "ok" aqui também, pelo mesmo
+    // NaN — e este caso não é lixo, é uma coluna de tipo diferente.
+    const r = infoDeValidade("2026-09-30T10:00:00Z", HOJE);
+    expect(r.status).toBe("vencendo");
+    expect(r.dias).toBe(30);
+  });
+
+  it("⚠️ e `dias` nunca volta NaN", () => {
+    // `NaN` sobrevive a toda comparação e some na tela como espaço vazio.
+    for (const v of ["2026-9-3", "nao e data", dia(0), dia(-1), dia(400)]) {
+      const d = infoDeValidade(v, HOJE).dias;
+      expect(Number.isNaN(d), `${v} devolveu NaN`).toBe(false);
+    }
+  });
+
+  it("vencido, vencendo e ok, com a contagem certa", () => {
+    expect(infoDeValidade(dia(-1), HOJE)).toEqual({ status: "vencido", dias: -1 });
+    expect(infoDeValidade(dia(15), HOJE)).toEqual({ status: "vencendo", dias: 15 });
+    expect(infoDeValidade(dia(31), HOJE)).toEqual({ status: "ok", dias: 31 });
+  });
+
+  it("🔴 vence HOJE ainda vale — e conta zero dia", () => {
+    // O medicamento é bom até o fim do dia impresso. Marcar como vencido
+    // manda descartar um lote que ainda serve.
+    expect(infoDeValidade(dia(0), HOJE)).toEqual({ status: "vencendo", dias: 0 });
+  });
+
+  it("a borda dos 30 dias é inclusiva, e bate com DIAS_VENCENDO", () => {
+    expect(infoDeValidade(dia(DIAS_VENCENDO), HOJE).status).toBe("vencendo");
+    expect(infoDeValidade(dia(DIAS_VENCENDO + 1), HOJE).status).toBe("ok");
+  });
+
+  it("⚠️ concorda com situacaoDoLote em todo dia do ano — é a MESMA regra", () => {
+    // Se as duas divergirem, voltou a haver duas regras.
+    for (let n = -400; n <= 400; n++) {
+      expect(infoDeValidade(dia(n), HOJE).status, dia(n)).toBe(situacaoDoLote(dia(n), HOJE).estado);
+    }
+  });
+});

@@ -63,7 +63,8 @@ import {
 import { comGrupos } from "./ui/sub-nav.js";
 // Lote vencido não vai para paciente — mas SAI por descarte, senão fica
 // preso na prateleira. Ver o cabeçalho de validade.js.
-import { podeSair, lotesParaEscolha, situacaoDoLote } from "./farmacia/validade.js";
+import { podeSair, lotesParaEscolha, situacaoDoLote, infoDeValidade, DIAS_VENCENDO } from "./farmacia/validade.js";
+import { saldoDoMedicamento } from "./farmacia/estoque.js";
 import { podeAprovarPedido, descreverAlcada, validarLimite } from "./suprimentos/aprovacao.js";
 import { carregarAlcada, salvarAlcada } from "./suprimentos/parametros.js";
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
@@ -1839,7 +1840,6 @@ const FARM_CLASSES = [
   "Outros",
 ];
 const FARM_MOTIVOS_SAIDA = ["Dispensação", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
-const FARM_VENC_DIAS = 30; // janela de "vencendo em breve" (dias)
 
 // Saídas desde uma data (para previsão de demanda)
 // Previsão de demanda: janela de histórico (dias) e horizonte da previsão (dias)
@@ -1848,15 +1848,12 @@ const FARM_PREV_HORIZONTE = 7;
 // Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
 // e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
 // Saldo total de um medicamento = soma dos lotes
-function farmSaldoTotal(medId, lotes) {
-  return lotes.filter(l => l.medicamento_id === medId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
-}
 // Regra ÚNICA de situação de estoque. Os três estados são mutuamente exclusivos,
 // então "precisa repor" = zerado ∪ baixo nunca conta o mesmo item duas vezes.
 // Saldo zero SEMPRE alerta, mesmo sem estoque mínimo cadastrado (ruptura é o evento
 // mais grave e não pode depender de um campo opcional cujo default é 0).
 function farmStatusEstoque(m, lotes) {
-  const saldo = farmSaldoTotal(m.id, lotes);
+  const saldo = saldoDoMedicamento(m.id, lotes);
   const min = Number(m.estoque_minimo || 0);
   if (saldo <= 0) return { key: "zerado", cor: "#f43f5e", label: "Sem estoque", saldo, min };
   if (min > 0 && saldo <= min) return { key: "baixo", cor: "#d97706", label: "Abaixo do mínimo", saldo, min };
@@ -1888,15 +1885,6 @@ const INTERV_STATUS = {
   cancelada:  { label: "Cancelada",  cor: "#8d99ab" },
 };
 // Situação de validade de um lote em relação a hoje
-function farmValidadeInfo(validade) {
-  if (!validade) return { status: "sem", dias: null };
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const v = new Date(validade + "T00:00:00");
-  const dias = Math.round((v - hoje) / 86400000);
-  if (dias < 0) return { status: "vencido", dias };
-  if (dias <= FARM_VENC_DIAS) return { status: "vencendo", dias };
-  return { status: "ok", dias };
-}
 
 // ── Farmácia clínica (motor de alertas, Fase 1) ──
 // FARM_GRAV vem de ./clinico/alertas.js (a ordenação dos alertas usa `ordem`;
@@ -6233,7 +6221,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
   const [verSimilares, setVerSimilares] = useState(null);   // medicamento sem estoque
   const estoqueSinal = med => {
     if (!med) return null;
-    const saldo = farmSaldoTotal(med.id, presLotes);
+    const saldo = saldoDoMedicamento(med.id, presLotes);
     const min = Number(med.estoque_minimo || 0);
     if (saldo <= 0) return { key: "zerado", label: "SEM ESTOQUE", cor: "#f43f5e" };
     if (min > 0 && saldo <= min) return { key: "baixo", label: "estoque baixo", cor: "#d97706" };
@@ -6243,7 +6231,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
   const similaresComEstoque = med => {
     if (!med) return [];
     const pa = normTxt(med.principio_ativo);
-    const temSaldo = m => farmSaldoTotal(m.id, presLotes) > 0;
+    const temSaldo = m => saldoDoMedicamento(m.id, presLotes) > 0;
     const ativos = catalogo.filter(m => m.ativo !== false && m.id !== med.id && temSaldo(m));
     const mesmoPA = pa ? ativos.filter(m => normTxt(m.principio_ativo) === pa) : [];
     const mesmaClasse = ativos.filter(m => (m.classe || "") === (med.classe || "") && !mesmoPA.some(x => x.id === m.id));
@@ -7179,7 +7167,7 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
   const alertasBaixo = meds.filter(m => m.ativo !== false && farmPrecisaRepor(m, lotes))
     .sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
   const alertasZerados = alertasBaixo.filter(m => farmStatusEstoque(m, lotes).key === "zerado").length;
-  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(infoDeValidade(l.validade).status));
 
   // Previsão de demanda (consumo dos últimos FARM_PREV_JANELA dias)
   const consumoMap = {};
@@ -7187,7 +7175,7 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
   const consumoDia = m => (consumoMap[m.id] || 0) / FARM_PREV_JANELA;
   const previsao = m => {
     const media = consumoDia(m);
-    const saldo = farmSaldoTotal(m.id, lotes);
+    const saldo = saldoDoMedicamento(m.id, lotes);
     const cobertura = media > 0 ? saldo / media : null;      // dias de estoque
     const demanda7 = media * FARM_PREV_HORIZONTE;
     const sugestao = Math.max(0, Math.ceil(demanda7 + Number(m.estoque_minimo || 0) - saldo));
@@ -7285,8 +7273,8 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${lotesAlerta.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
           <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Validade</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: lotesAlerta.length ? "#f43f5e" : "var(--text)" }}>{lotesAlerta.length}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${FARM_VENC_DIAS} dias` : "nenhum lote vencendo"}</div>
-          {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const m = meds.find(x => x.id === l.medicamento_id); const vi = farmValidadeInfo(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {m?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${DIAS_VENCENDO} dias` : "nenhum lote vencendo"}</div>
+          {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const m = meds.find(x => x.id === l.medicamento_id); const vi = infoDeValidade(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {m?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
         </div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${emRisco.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
           <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Previsão de ruptura ({FARM_PREV_HORIZONTE}d)</div>
@@ -7355,7 +7343,7 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
                 {grupos[classe].map(m => {
                 const st = statusMed(m);
                 const lc = loteCritico(m);
-                const vi = lc ? farmValidadeInfo(lc.validade) : null;
+                const vi = lc ? infoDeValidade(lc.validade) : null;
                 const inativo = m.ativo === false;
                 return (
                   <tr key={m.id} style={{ borderTop: "1px solid var(--border)", opacity: inativo ? 0.55 : 1 }}>
@@ -7617,7 +7605,7 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
             <div style={{ marginBottom: 10 }}>
               <label style={farmLbl}>Lote{escolha.temVencido ? " — vencido não é sugerido" : " (FEFO — vence primeiro no topo)"}</label>
               <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
-                {lotesComSaldo.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+                {lotesComSaldo.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
               </select>
             </div>
             {loteSel && situacaoDoLote(loteSel.validade).vencido && (
@@ -7951,7 +7939,7 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
                               Mostrar no select um valor diferente do que a baixa usa
                               faria o farmacêutico ver um lote e o estoque sair de outro. */}
                           <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
-                            {selItem._lotes.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+                            {selItem._lotes.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
                           </select>
                         </div>
                         <div style={{ flex: "0 1 100px" }}>
@@ -8031,7 +8019,7 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
               <label style={farmLbl}>Lote (FEFO)</label>
               {lotesMed.length === 0 ? <div style={{ ...farmInp, color: "#f43f5e" }}>Sem estoque</div> : (
                 <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
-                  {lotesMed.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+                  {lotesMed.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
                 </select>
               )}
             </div>
@@ -8119,12 +8107,12 @@ function FarmIndicadoresView() {
 
   // Snapshot: rupturas e validade (independem do período)
   const ativos = meds.filter(m => m.ativo !== false);
-  const saldo = m => farmSaldoTotal(m.id, lotes);
+  const saldo = m => saldoDoMedicamento(m.id, lotes);
   const rupturas = ativos.filter(m => farmStatusEstoque(m, lotes).key === "zerado");
   const abaixoMin = ativos.filter(m => farmStatusEstoque(m, lotes).key === "baixo");
   const lotesEstoque = lotes.filter(l => Number(l.quantidade) > 0);
-  const vencidosEstoque = lotesEstoque.filter(l => farmValidadeInfo(l.validade).status === "vencido");
-  const venc30 = lotesEstoque.filter(l => farmValidadeInfo(l.validade).status === "vencendo");
+  const vencidosEstoque = lotesEstoque.filter(l => infoDeValidade(l.validade).status === "vencido");
+  const venc30 = lotesEstoque.filter(l => infoDeValidade(l.validade).status === "vencendo");
 
   const qtdDispensada = dispensacoes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
   const qtdEntradas = entradas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
@@ -8796,7 +8784,7 @@ function FarmControladosView() {
       if (new Date(x.created_at) < new Date(inicioMes)) saldoIni = running;
       else if (new Date(x.created_at) < new Date(fimMes)) { if (x.tipo === "entrada") ent += Number(x.quantidade || 0); else sai += Number(x.quantidade || 0); linhas.push({ ...x, saldo: running, med: m }); }
     });
-    return { med: m, saldoIni, ent, sai, saldoFim: saldoIni + ent - sai, saldoAtual: farmSaldoTotal(m.id, lotes), linhas };
+    return { med: m, saldoIni, ent, sai, saldoFim: saldoIni + ent - sai, saldoAtual: saldoDoMedicamento(m.id, lotes), linhas };
   });
   const linhasLivro = balanco.flatMap(b => b.linhas).sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
   const comBalanco = balanco.filter(b => b.linhas.length || b.saldoIni || b.saldoAtual);
@@ -9213,7 +9201,7 @@ function FarmDashboardView({ currentUser, canEdit, onNav }) {
   const rupturas = ativos.filter(m => farmStatusEstoque(m, lotes).key === "zerado").length;
   const abaixoMin = ativos.filter(m => farmStatusEstoque(m, lotes).key === "baixo").length;
   const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
-  const venc = lotesEst.filter(l => ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status)).length;
+  const venc = lotesEst.filter(l => ["vencido", "vencendo"].includes(infoDeValidade(l.validade).status)).length;
 
   const Card = ({ label, valor, cor, sub, nav }) => (
     <button onClick={() => nav && onNav && onNav(nav)} style={{ textAlign: "left", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "14px 16px", cursor: nav ? "pointer" : "default" }}>
@@ -9329,13 +9317,13 @@ function FarmAssistenteView() {
   const iA = intervs.filter(i => i.status === "aceita").length, iN = intervs.filter(i => i.status === "nao_aceita").length;
   const intervTaxa = (iA + iN) ? (iA / (iA + iN)) * 100 : null;
   const ativos = meds.filter(m => m.ativo !== false);
-  const saldo = m => farmSaldoTotal(m.id, lotes);
+  const saldo = m => saldoDoMedicamento(m.id, lotes);
   const rupturas = ativos.filter(m => farmStatusEstoque(m, lotes).key === "zerado");
   const abaixoMin = ativos.filter(m => farmStatusEstoque(m, lotes).key === "baixo");
   const aRepor = ativos.filter(m => farmPrecisaRepor(m, lotes));
   const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
-  const vencidos = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencido");
-  const vencendo = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencendo");
+  const vencidos = lotesEst.filter(l => infoDeValidade(l.validade).status === "vencido");
+  const vencendo = lotesEst.filter(l => infoDeValidade(l.validade).status === "vencendo");
   const cons30 = {}; saidas30.forEach(s => { if (s.medicamento_id) cons30[s.medicamento_id] = (cons30[s.medicamento_id] || 0) + Number(s.quantidade || 0); });
   const emRisco = ativos.map(m => { const media = (cons30[m.id] || 0) / FARM_PREV_JANELA; const s = saldo(m); return { m, media, cobertura: media > 0 ? s / media : null, sugestao: Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(m.estoque_minimo || 0) - s)) }; }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).sort((a, b) => a.cobertura - b.cobertura);
   const dispMes = movsMes.filter(m => m.tipo === "saida" && (m.motivo || "") === "Dispensação");
@@ -9359,7 +9347,7 @@ function FarmAssistenteView() {
     if (has("ajuda", "o que voce", "o que posso", "pode responder", "comando") || s === "?") return FARM_ASSIST_HELP;
     if (has("bom dia", "boa tarde", "boa noite", "tudo bem", "obrigad", "valeu", "de nada") || s === "oi" || s === "ola") return "Olá! " + FARM_ASSIST_HELP;
     if (has("panorama", "resumo", "visao geral", "situacao", "como esta o setor", "como anda", "status do setor", "como esta a farmacia")) {
-      return `Panorama da farmácia agora:\n• Preparo: ${aguardando} aguardando · ${emPreparo} em preparo · ${prontos} pronto(s) para retirada\n• Clínica: ${comAlerta.length} prescrição(ões) com alerta · ${intervPend} intervenção(ões) pendente(s)\n• Estoque: ${rupturas.length} zerado(s) · ${abaixoMin.length} abaixo do mínimo · ${emRisco.length} em risco de ruptura (${FARM_PREV_HORIZONTE}d)\n• Validade: ${vencidos.length} lote(s) vencido(s) · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS}d`;
+      return `Panorama da farmácia agora:\n• Preparo: ${aguardando} aguardando · ${emPreparo} em preparo · ${prontos} pronto(s) para retirada\n• Clínica: ${comAlerta.length} prescrição(ões) com alerta · ${intervPend} intervenção(ões) pendente(s)\n• Estoque: ${rupturas.length} zerado(s) · ${abaixoMin.length} abaixo do mínimo · ${emRisco.length} em risco de ruptura (${FARM_PREV_HORIZONTE}d)\n• Validade: ${vencidos.length} lote(s) vencido(s) · ${vencendo.length} vencendo em ≤${DIAS_VENCENDO}d`;
     }
     if (has("saldo", "estoque de", "quanto tem", "tem quanto")) {
       const alvo = meds.find(m => normTxt(m.nome).split(/[ ,]/).some(w => w.length >= 4 && s.includes(w))) || meds.find(m => m.principio_ativo && s.includes(normTxt(m.principio_ativo).split(" ")[0]));
@@ -9405,7 +9393,7 @@ function FarmAssistenteView() {
     if (has("alerta", "interacao", "alergia", "risco", "problema")) return `${comAlerta.length} paciente(s) com alertas clínicos na prescrição (veja em Prescrições / Análise clínica).`;
     if (has("minimo", "repor", "reposicao", "comprar")) return `${aRepor.length} medicamento(s) a repor — ${rupturas.length} sem saldo e ${abaixoMin.length} abaixo do mínimo${aRepor.length ? ":\n" + aRepor.slice(0, 8).map(m => `• ${m.nome} — saldo ${farmFmtQtd(saldo(m))}`).join("\n") : "."}`;
     if (has("validade", "vencer", "vencendo", "vencido", "vence")) {
-      const base = `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS} dias.`;
+      const base = `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${DIAS_VENCENDO} dias.`;
       if (has("quais", "lista", "listar", "detalh", "quem", "mostra") && vencendoDet.length)
         return base + "\nVencendo em breve:\n" + vencendoDet.slice(0, 10).map(l => `• ${l.nome} — lote ${l.lote || "?"} vence ${fmtDataBR(l.validade)} (${farmFmtQtd(l.quantidade)})`).join("\n");
       return base;
@@ -10523,7 +10511,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
 
   // Painéis de alerta
   const alertasBaixo = itensOrd.filter(i => i.ativo !== false && ["baixo", "zerado"].includes(statusItem(i).key));
-  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(infoDeValidade(l.validade).status));
 
   // Previsão de demanda (consumo dos últimos FARM_PREV_JANELA dias)
   const consumoMap = {};
@@ -10769,7 +10757,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
         const ativos = itens.filter(i => i.ativo !== false);
         const rupturas = ativos.filter(i => supSaldoTotal(i.id, lotes) <= 0).length;
         const abaixoMin = ativos.filter(i => { const s = supSaldoTotal(i.id, lotes); return s > 0 && Number(i.estoque_minimo || 0) > 0 && s <= Number(i.estoque_minimo); }).length;
-        const venc = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status)).length;
+        const venc = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(infoDeValidade(l.validade).status)).length;
         const Card = ({ label, valor, cor, sub: s, nav }) => (
           <button onClick={() => nav && setSub(nav)} style={{ textAlign: "left", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "14px 16px", cursor: nav ? "pointer" : "default" }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
@@ -10787,7 +10775,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
               <Card label="Materiais ativos" valor={ativos.length} cor={VX.azul} sub={`${itens.length} cadastrados`} nav="estoque" />
               <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
               <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
-              <Card label="Validade em risco" valor={venc} cor={venc ? "#d97706" : "#34d399"} sub={`vencidos / ≤${FARM_VENC_DIAS} dias`} nav="estoque" />
+              <Card label="Validade em risco" valor={venc} cor={venc ? "#d97706" : "#34d399"} sub={`vencidos / ≤${DIAS_VENCENDO} dias`} nav="estoque" />
               <Card label="Previsão de ruptura" valor={emRisco.length} cor={emRisco.length ? "#f43f5e" : "#34d399"} sub={`acabam em ${FARM_PREV_HORIZONTE} dias no ritmo atual`} nav="estoque" />
               <Card label="Fornecedores ativos" valor={forns.filter(f => f.ativo !== false).length} cor={VX.turquesa} sub={`${forns.length} cadastrados`} nav="fornecedores" />
             </div>
@@ -10823,8 +10811,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${lotesAlerta.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
           <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Validade</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: lotesAlerta.length ? "#f43f5e" : "var(--text)" }}>{lotesAlerta.length}</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${FARM_VENC_DIAS} dias` : "nenhum lote vencendo"}</div>
-          {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const i = itens.find(x => x.id === l.item_id); const vi = farmValidadeInfo(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {i?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{lotesAlerta.length ? `lotes vencidos ou vencendo em ${DIAS_VENCENDO} dias` : "nenhum lote vencendo"}</div>
+          {lotesAlerta.length > 0 && <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 3 }}>{lotesAlerta.slice(0, 4).map(l => { const i = itens.find(x => x.id === l.item_id); const vi = infoDeValidade(l.validade); return <div key={l.id} style={{ fontSize: 11, color: "var(--text-2)" }}><span style={{ color: vi.status === "vencido" ? "#f43f5e" : "#d97706", fontWeight: 700 }}>{vi.status === "vencido" ? "vencido" : `${vi.dias}d`}</span> · {i?.nome || "?"} {l.lote ? `· lote ${l.lote}` : ""}</div>; })}{lotesAlerta.length > 4 && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>+{lotesAlerta.length - 4}</span>}</div>}
         </div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${emRisco.length ? "#f43f5e" : "#34d399"}`, borderRadius: 10, padding: "12px 14px" }}>
           <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>Previsão de ruptura ({FARM_PREV_HORIZONTE}d)</div>
@@ -10892,7 +10880,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
                 {grupos[cat].map(i => {
                 const st = statusItem(i);
                 const lc = loteCritico(i);
-                const vi = lc ? farmValidadeInfo(lc.validade) : null;
+                const vi = lc ? infoDeValidade(lc.validade) : null;
                 const inativo = i.ativo === false;
                 return (
                   <tr key={i.id} style={{ borderTop: "1px solid var(--border)", opacity: inativo ? 0.55 : 1 }}>
@@ -11638,7 +11626,7 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
       const custoNota = Number(alvo.custo_unit) || 0;   // custo do pedido → alimenta o custo médio
       let r;
       if (alvo.tipo === "medicamento") {
-        const saldoAntes = farmSaldoTotal(alvo.item_id, medLotes);
+        const saldoAntes = saldoDoMedicamento(alvo.item_id, medLotes);
         r = await addFarmMovimentoRemote(SB_CRU(), {
           medicamento_id: alvo.item_id, tipo: "entrada", quantidade: q,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
@@ -12151,7 +12139,7 @@ function SupPreditivoView({ itens, lotes, saidasHist, leadMap = {} }) {
   }
   const todas = [
     ...linhas(itens, lotes, saidasHist, saidas7, "item_id", "material", id => supSaldoTotal(id, lotes)),
-    ...linhas(meds, medLotes, medSaidas, medSaidas7, "medicamento_id", "medicamento", id => farmSaldoTotal(id, medLotes)),
+    ...linhas(meds, medLotes, medSaidas, medSaidas7, "medicamento_id", "medicamento", id => saldoDoMedicamento(id, medLotes)),
   ];
   const q = normTxt(busca);
   const view = todas
@@ -12362,7 +12350,7 @@ function SupAcoesView({ itens, lotes, saidasHist, reqs, pedidos, invs, leadMap =
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const vencRisco = lotes.filter(l => {
     if (!(Number(l.quantidade) > 0 && l.validade)) return false;
-    const st = farmValidadeInfo(l.validade).status;
+    const st = infoDeValidade(l.validade).status;
     if (!["vencido", "vencendo"].includes(st)) return false;
     const it = itens.find(x => x.id === l.item_id);
     const dias = Math.max(0, Math.round((new Date(l.validade + "T00:00:00") - hoje) / 86400000));
@@ -12479,10 +12467,10 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
 
   // ── 1. Capital parado no estoque (saldo × custo unitário) ──
   const capMat = ativosMat.reduce((s, i) => s + supSaldoTotal(i.id, lotes) * custoUnit(i), 0);
-  const capMed = ativosMed.reduce((s, m) => s + farmSaldoTotal(m.id, medLotes) * custoUnit(m), 0);
+  const capMed = ativosMed.reduce((s, m) => s + saldoDoMedicamento(m.id, medLotes) * custoUnit(m), 0);
   const capTotal = capMat + capMed;
   const semPreco = ativosMat.filter(i => supSaldoTotal(i.id, lotes) > 0 && !custoUnit(i)).length
-                 + ativosMed.filter(m => farmSaldoTotal(m.id, medLotes) > 0 && !custoUnit(m)).length;
+                 + ativosMed.filter(m => saldoDoMedicamento(m.id, medLotes) > 0 && !custoUnit(m)).length;
 
   // ── Acuracidade do estoque (contagens de inventário dos últimos 90 dias) ──
   const ultimaInv = {}; invs.forEach(v => { if (!ultimaInv[v.item_id]) ultimaInv[v.item_id] = v; });
@@ -12521,7 +12509,7 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
       .sort((a, b) => a.cobertura - b.cobertura);
   }
   const riscoMat = riscos(ativosMat, lotes, supSaidas30, "item_id", id => supSaldoTotal(id, lotes));
-  const riscoMed = riscos(ativosMed, medLotes, farmSaidas30, "medicamento_id", id => farmSaldoTotal(id, medLotes));
+  const riscoMed = riscos(ativosMed, medLotes, farmSaidas30, "medicamento_id", id => saldoDoMedicamento(id, medLotes));
 
   // ── 5. Medicamentos que mais custam por paciente (dispensações do mês) ──
   const dispMes = farmMesAtual.filter(m => m.tipo === "saida" && (m.paciente_prontuario || m.paciente_iniciais));
@@ -12560,7 +12548,7 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
     }).filter(Boolean).sort((a, b) => b.valor - a.valor);
   }
   const excMat = excesso(ativosMat, lotes, supSaidas30, "item_id", id => supSaldoTotal(id, lotes));
-  const excMed = excesso(ativosMed, medLotes, farmSaidas30, "medicamento_id", id => farmSaldoTotal(id, medLotes));
+  const excMed = excesso(ativosMed, medLotes, farmSaidas30, "medicamento_id", id => saldoDoMedicamento(id, medLotes));
   const capLiberavel = [...excMat, ...excMed].reduce((s, x) => s + x.valor, 0);
   const excTop = [...excMat, ...excMed].sort((a, b) => b.valor - a.valor);
 
@@ -12725,7 +12713,7 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
               const qtd = saidas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
               const custo = saidas.reduce((s, m) => s + custoFarm(m), 0);
               const pacientes = new Set(saidas.map(m => m.paciente_prontuario || m.paciente_iniciais).filter(Boolean)).size;
-              return { med, qtd, custo, pacientes, pct: custoSaidasFarmMes > 0 ? (custo / custoSaidasFarmMes) * 100 : 0, saldo: farmSaldoTotal(med.id, medLotes) };
+              return { med, qtd, custo, pacientes, pct: custoSaidasFarmMes > 0 ? (custo / custoSaidasFarmMes) * 100 : 0, saldo: saldoDoMedicamento(med.id, medLotes) };
             }).sort((a, b) => b.custo - a.custo || b.qtd - a.qtd);
             if (!linhas.length) return <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum fármaco monitorado encontrado no catálogo (procuro por: {SUP_FARMACOS_MONITORADOS.join(", ")}).</div>;
             return (<>
@@ -12751,7 +12739,7 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
             const grupoSel = simGrupo || (classesMed.includes("Antibióticos") ? "med:Antibióticos" : (classesMed[0] ? "med:" + classesMed[0] : (catsMat[0] ? "mat:" + catsMat[0] : "")));
             const [tipoG, nomeG] = grupoSel ? grupoSel.split(":") : ["", ""];
             const base = tipoG === "med" ? ativosMed.filter(m => (m.classe || "Outros") === nomeG) : ativosMat.filter(i => (i.categoria || "Outros") === nomeG);
-            const capitalGrupo = base.reduce((s, x) => s + (tipoG === "med" ? farmSaldoTotal(x.id, medLotes) : supSaldoTotal(x.id, lotes)) * custoUnit(x), 0);
+            const capitalGrupo = base.reduce((s, x) => s + (tipoG === "med" ? saldoDoMedicamento(x.id, medLotes) : supSaldoTotal(x.id, lotes)) * custoUnit(x), 0);
             const consumoMesGrupo = tipoG === "med"
               ? farmMesAtual.filter(m => m.tipo === "saida" && base.some(b => b.id === m.medicamento_id)).reduce((s, m) => s + custoFarm(m), 0)
               : supMesAtual.filter(m => m.tipo === "saida" && base.some(b => b.id === m.item_id)).reduce((s, m) => s + custoSup(m), 0);
@@ -12848,7 +12836,7 @@ function SupIndicadoresView({ itens, lotes, forns, pedidos, reqs }) {
   const catTop = Object.entries(porCat).map(([k, v]) => ({ k, v })).sort((a, b) => b.v - a.v);
   const porForn = {}; entradas.forEach(m => { const k = m.fornecedor_id ? (fornById[m.fornecedor_id]?.nome || `#${m.fornecedor_id}`) : "Sem fornecedor"; porForn[k] = (porForn[k] || 0) + custoDe(m); });
   const fornTop = Object.entries(porForn).map(([k, v]) => ({ k, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
-  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(farmValidadeInfo(l.validade).status));
+  const lotesAlerta = lotes.filter(l => Number(l.quantidade) > 0 && ["vencido", "vencendo"].includes(infoDeValidade(l.validade).status));
 
   const fmt = n => Number(n || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
   const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
@@ -12895,7 +12883,7 @@ function SupIndicadoresView({ itens, lotes, forns, pedidos, reqs }) {
         <KPI label="Perdas / vencimento" valor={fmt(perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0))} sub="baixas por perda" cor={perdas.length ? "#f43f5e" : "var(--border)"} />
         <KPI label="Requisições entregues" valor={fmt(reqsMes.length)} sub="setores atendidos no mês" cor={VX.azul} />
         <KPI label="Rupturas agora" valor={fmt(rupturas.length)} sub="itens sem estoque" cor={rupturas.length ? "#f43f5e" : "#34d399"} />
-        <KPI label="Validade em risco" valor={fmt(lotesAlerta.length)} sub={`lotes vencidos / ≤${FARM_VENC_DIAS}d`} cor={lotesAlerta.length ? "#d97706" : "#34d399"} />
+        <KPI label="Validade em risco" valor={fmt(lotesAlerta.length)} sub={`lotes vencidos / ≤${DIAS_VENCENDO}d`} cor={lotesAlerta.length ? "#d97706" : "#34d399"} />
       </div>
 
       {carregando && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Carregando movimentos…</div>}
@@ -13014,8 +13002,8 @@ function SupAssistenteView() {
   const rupturas = ativos.filter(i => saldo(i) <= 0);
   const abaixoMin = ativos.filter(i => { const s = saldo(i); return s > 0 && Number(i.estoque_minimo || 0) > 0 && s <= Number(i.estoque_minimo); });
   const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
-  const vencidos = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencido");
-  const vencendo = lotesEst.filter(l => farmValidadeInfo(l.validade).status === "vencendo");
+  const vencidos = lotesEst.filter(l => infoDeValidade(l.validade).status === "vencido");
+  const vencendo = lotesEst.filter(l => infoDeValidade(l.validade).status === "vencendo");
   const vencendoDet = vencendo.map(l => ({ ...l, nome: itemById[l.item_id]?.nome || l.item_id })).sort((a, b) => (a.validade || "").localeCompare(b.validade || ""));
   const cons30 = {}; saidas30.forEach(s => { if (s.item_id) cons30[s.item_id] = (cons30[s.item_id] || 0) + Number(s.quantidade || 0); });
   const emRisco = ativos.map(i => { const media = (cons30[i.id] || 0) / FARM_PREV_JANELA; const s = saldo(i); return { i, media, cobertura: media > 0 ? s / media : null, sugestao: Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(i.estoque_minimo || 0) - s)) }; }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).sort((a, b) => a.cobertura - b.cobertura);
@@ -13043,7 +13031,7 @@ function SupAssistenteView() {
     if (has("ajuda", "o que voce", "o que posso", "pode responder", "comando") || s === "?") return SUP_ASSIST_HELP;
     if (has("bom dia", "boa tarde", "boa noite", "tudo bem", "obrigad", "valeu", "de nada") || s === "oi" || s === "ola") return "Olá! " + SUP_ASSIST_HELP;
     if (has("panorama", "resumo", "visao geral", "situacao", "como esta", "como anda", "status")) {
-      return `Panorama do almoxarifado agora:\n• Requisições: ${reqsAtivas.filter(r => r.status === "aguardando").length} aguardando · ${reqsAtivas.filter(r => r.status === "separacao").length} em separação · ${reqsAtivas.filter(r => r.status === "pronto").length} pronta(s)\n• Compras: ${pedAtivos.length} pedido(s) em aberto\n• Estoque: ${rupturas.length} zerado(s) · ${abaixoMin.length} abaixo do mínimo · ${emRisco.length} em risco de ruptura (${FARM_PREV_HORIZONTE}d)\n• Validade: ${vencidos.length} lote(s) vencido(s) · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS}d\n• Mês: consumo ${fmtReais(custoConsumoMes)} · compras ${fmtReais(gastoComprasMes)}`;
+      return `Panorama do almoxarifado agora:\n• Requisições: ${reqsAtivas.filter(r => r.status === "aguardando").length} aguardando · ${reqsAtivas.filter(r => r.status === "separacao").length} em separação · ${reqsAtivas.filter(r => r.status === "pronto").length} pronta(s)\n• Compras: ${pedAtivos.length} pedido(s) em aberto\n• Estoque: ${rupturas.length} zerado(s) · ${abaixoMin.length} abaixo do mínimo · ${emRisco.length} em risco de ruptura (${FARM_PREV_HORIZONTE}d)\n• Validade: ${vencidos.length} lote(s) vencido(s) · ${vencendo.length} vencendo em ≤${DIAS_VENCENDO}d\n• Mês: consumo ${fmtReais(custoConsumoMes)} · compras ${fmtReais(gastoComprasMes)}`;
     }
     if (has("faltar", "vai acabar", "ruptura prevista", "previsao", "acabando", "risco")) {
       if (!emRisco.length) return `Nenhum material deve acabar nos próximos ${FARM_PREV_HORIZONTE} dias (pelo consumo dos últimos ${FARM_PREV_JANELA}).`;
@@ -13056,7 +13044,7 @@ function SupAssistenteView() {
       return abaixoMin.length ? `${abaixoMin.length} abaixo do mínimo:\n` + abaixoMin.slice(0, 10).map(i => `• ${i.nome} — saldo ${farmFmtQtd(saldo(i))} (mín. ${farmFmtQtd(i.estoque_minimo)})`).join("\n") : "Nenhum item abaixo do estoque mínimo.";
     }
     if (has("validade", "vencer", "vencendo", "vencido", "vence")) {
-      const base = `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${FARM_VENC_DIAS} dias.`;
+      const base = `Validade: ${vencidos.length} lote(s) vencido(s) em estoque · ${vencendo.length} vencendo em ≤${DIAS_VENCENDO} dias.`;
       if (vencendoDet.length) return base + "\nVencendo em breve:\n" + vencendoDet.slice(0, 10).map(l => `• ${l.nome} — lote ${l.lote || "?"} vence ${fmtDataBR(l.validade)} (${farmFmtQtd(l.quantidade)})`).join("\n");
       return base;
     }
@@ -13642,10 +13630,10 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, setores = [], onC
             <div style={{ marginBottom: 10 }}>
               <label style={farmLbl}>Lote (vence primeiro no topo)</label>
               <select value={f.lote_id} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
-                {lotesComSaldo.map(l => { const vi = farmValidadeInfo(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
+                {lotesComSaldo.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
               </select>
             </div>
-            {loteSel && farmValidadeInfo(loteSel.validade).status === "vencido" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10, fontWeight: 600 }}>⚠ Lote vencido — a baixa deve ser por perda/descarte, não consumo.</div>}
+            {loteSel && infoDeValidade(loteSel.validade).status === "vencido" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10, fontWeight: 600 }}>⚠ Lote vencido — a baixa deve ser por perda/descarte, não consumo.</div>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
               <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
               <div><label style={farmLbl}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={farmInp}>{SUP_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
