@@ -50,6 +50,16 @@ import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
 import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
 import { abasVisiveis, podeAbrirAba } from "./farmacia/abas.js";
+import {
+  loadFarmMedicamentos, loadFarmLotes, loadFarmMovimentos, loadFarmMovimentosPeriodo, loadFarmSaidasDesde,
+  upsertFarmMedicamentoRemote, deleteFarmMedicamentoRemote, addFarmMovimentoRemote, loadFarmInteracoes,
+  loadFarmIncompatY, upsertFarmInteracaoRemote, deleteFarmInteracaoRemote, upsertFarmIncompatRemote,
+  deleteFarmIncompatRemote, loadFarmPreparo, receberPreparoRemote, atualizarPreparoRemote,
+  loadFarmMovimentosByMeds, loadFarmNaoPadronizados, addFarmNaoPadronizadoRemote, updateFarmNaoPadronizadoRemote,
+  deleteFarmNaoPadronizadoRemote, loadFarmIntervencoes, addFarmIntervencaoRemote, updateFarmIntervencaoRemote,
+  deleteFarmIntervencaoRemote, loadFarmInventarios, addFarmInventarioRemote, loadFarmSaidasByAtendimentos,
+  loadFarmSaidasByAtendimento,
+} from "./farmacia/dados.js";
 import { comGrupos } from "./ui/sub-nav.js";
 // Lote vencido não vai para paciente — mas SAI por descarte, senão fica
 // preso na prateleira. Ver o cabeçalho de validade.js.
@@ -137,6 +147,46 @@ const USE_SUPABASE = SUPABASE_URL.length > 10 && SUPABASE_KEY.length > 10;
 // quando não. Assim o módulo pergunta `if (!sb)` e não importa flag global
 // nenhuma — o `sbFetch` fica aqui com a máquina de sessão que ele usa.
 const SB = () => (USE_SUPABASE ? sbFetch : null);
+
+/**
+ * O poste CRU: grava e devolve `{ ok, erro }` em vez de engolir a falha.
+ *
+ * 🔴 Existe por causa de UMA escrita: o movimento de estoque da Farmácia.
+ * O `sbFetch` devolve `null` em qualquer erro e manda o detalhe para o
+ * aviso global — o que serve para as outras 130 chamadas, que não têm o que
+ * fazer com a mensagem. Não serve para dispensar medicamento: a recusa vem
+ * de um GATILHO do banco ("saldo insuficiente", "lote vencido") e quem está
+ * na bancada precisa LER o motivo.
+ *
+ * Fica aqui, e não no módulo da Farmácia, porque é aqui que moram a URL, a
+ * chave e o token. O módulo recebe esta função e não sabe o que é credencial.
+ *
+ * ⚠️ Não passa pela renovação de sessão do `sbFetch`: token vencido aqui
+ * falha em vez de renovar. Era assim antes da extração — está anotado para
+ * não parecer decisão nova.
+ */
+async function postarCru(caminho, corpo) {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
+      method: "POST",
+      headers: {
+        "apikey": SUPABASE_KEY,
+        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify(corpo),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      return { ok: false, erro: body?.message || `Erro ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, erro: String(e?.message || e) };
+  }
+}
+const SB_CRU = () => (USE_SUPABASE ? postarCru : null);
 
 // Identidade do hospital — permite usar o MESMO app para vários hospitais,
 // cada um com seu próprio banco (VITE_SUPABASE_*) e seu nome (VITE_HOSPITAL_*).
@@ -1791,71 +1841,12 @@ const FARM_CLASSES = [
 const FARM_MOTIVOS_SAIDA = ["Dispensação", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
 const FARM_VENC_DIAS = 30; // janela de "vencendo em breve" (dias)
 
-async function loadFarmMedicamentos() {
-  const rows = await sbFetch("farm_medicamentos?select=*&order=nome");
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadFarmLotes() {
-  const rows = await sbFetch("farm_lotes?select=*&order=validade.asc.nullslast");
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadFarmMovimentos(medicamentoId, limit = 60) {
-  const q = medicamentoId
-    ? `farm_movimentos?medicamento_id=eq.${medicamentoId}&select=*&order=created_at.desc&limit=${limit}`
-    : `farm_movimentos?select=*&order=created_at.desc&limit=${limit}`;
-  const rows = await sbFetch(q);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadFarmMovimentosPeriodo(fromISO, toISO) {
-  const rows = await sbFetch(`farm_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Saídas desde uma data (para previsão de demanda)
-async function loadFarmSaidasDesde(fromISO) {
-  const rows = await sbFetch(`farm_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=medicamento_id,quantidade&limit=12000`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Previsão de demanda: janela de histórico (dias) e horizonte da previsão (dias)
 const FARM_PREV_JANELA = 30;
 const FARM_PREV_HORIZONTE = 7;
-async function upsertFarmMedicamentoRemote(med, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...med, usuario: user?.name || null, updated_at: nowISO() };
-  if (med.id) {
-    await sbFetch(`farm_medicamentos?id=eq.${med.id}`, { method: "PATCH", body: JSON.stringify(body) });
-    return null;
-  }
-  delete body.id;
-  return await sbFetch("farm_medicamentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function deleteFarmMedicamentoRemote(id) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`farm_medicamentos?id=eq.${id}`, { method: "DELETE" });
-}
 // Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
 // e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
-async function addFarmMovimentoRemote(mov, user) {
-  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/farm_movimentos`, {
-      method: "POST",
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-      },
-      body: JSON.stringify({ ...mov, usuario: user?.name || null }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      return { ok: false, erro: body?.message || `Erro ${res.status}` };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, erro: String(e?.message || e) };
-  }
-}
 // Saldo total de um medicamento = soma dos lotes
 function farmSaldoTotal(medId, lotes) {
   return lotes.filter(l => l.medicamento_id === medId).reduce((s, l) => s + Number(l.quantidade || 0), 0);
@@ -1873,47 +1864,7 @@ function farmStatusEstoque(m, lotes) {
 }
 const farmPrecisaRepor = (m, lotes) => farmStatusEstoque(m, lotes).key !== "ok";
 // Pares clínicos: interações medicamentosas e incompatibilidade em Y (Fase 2)
-async function loadFarmInteracoes() {
-  const rows = await sbFetch("farm_interacoes?select=*&order=gravidade");
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadFarmIncompatY() {
-  const rows = await sbFetch("farm_incompat_y?select=*&order=substancia_a");
-  return Array.isArray(rows) ? rows : [];
-}
-async function upsertFarmInteracaoRemote(row, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...row, usuario: user?.name || null, updated_at: nowISO() };
-  if (row.id) { await sbFetch(`farm_interacoes?id=eq.${row.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
-  delete body.id;
-  return await sbFetch("farm_interacoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function deleteFarmInteracaoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_interacoes?id=eq.${id}`, { method: "DELETE" }); }
-async function upsertFarmIncompatRemote(row, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...row, usuario: user?.name || null, updated_at: nowISO() };
-  if (row.id) { await sbFetch(`farm_incompat_y?id=eq.${row.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
-  delete body.id;
-  return await sbFetch("farm_incompat_y", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function deleteFarmIncompatRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_incompat_y?id=eq.${id}`, { method: "DELETE" }); }
 // Fluxo de preparo (uma linha por prescrição assinada = registro_id)
-async function loadFarmPreparo() {
-  const rows = await sbFetch("farm_preparo?select=*&order=updated_at.desc");
-  return Array.isArray(rows) ? rows : [];
-}
-async function receberPreparoRemote(registroId, atendimentoId, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("farm_preparo?on_conflict=registro_id", {
-    method: "POST",
-    headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify({ registro_id: registroId, atendimento_id: atendimentoId || null, status: "preparo", recebido_em: nowISO(), recebido_por: user?.name || null, usuario: user?.name || null, updated_at: nowISO() }),
-  });
-}
-async function atualizarPreparoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`farm_preparo?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
 // Prescrições assinadas (cabeçalho) de vários atendimentos
 async function loadPsPrescricoesByAtendimentos(ids) {
   if (!ids.length) return [];
@@ -1921,25 +1872,7 @@ async function loadPsPrescricoesByAtendimentos(ids) {
   return Array.isArray(rows) ? rows : [];
 }
 // Movimentos de um conjunto de medicamentos (livro de controlados) — ordem cronológica
-async function loadFarmMovimentosByMeds(ids, limit = 8000) {
-  if (!ids.length) return [];
-  const rows = await sbFetch(`farm_movimentos?medicamento_id=in.(${ids.join(",")})&select=*&order=created_at.asc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Medicamentos NÃO padronizados (trazidos pela família)
-async function loadFarmNaoPadronizados() {
-  const rows = await sbFetch("farm_nao_padronizados?select=*&order=created_at.desc");
-  return Array.isArray(rows) ? rows : [];
-}
-async function addFarmNaoPadronizadoRemote(row, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("farm_nao_padronizados", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...row, usuario: user?.name || null }) });
-}
-async function updateFarmNaoPadronizadoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`farm_nao_padronizados?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
-async function deleteFarmNaoPadronizadoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_nao_padronizados?id=eq.${id}`, { method: "DELETE" }); }
 const NAOPAD_STATUS = {
   recebido:   { label: "Recebido",   cor: "#d97706" },
   em_uso:     { label: "Em uso",     cor: "#3b82f6" },
@@ -1954,19 +1887,6 @@ const INTERV_STATUS = {
   resolvida:  { label: "Resolvida",  cor: "#3b82f6" },
   cancelada:  { label: "Cancelada",  cor: "#8d99ab" },
 };
-async function loadFarmIntervencoes() {
-  const rows = await sbFetch("farm_intervencoes?select=*&order=created_at.desc");
-  return Array.isArray(rows) ? rows : [];
-}
-async function addFarmIntervencaoRemote(row, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("farm_intervencoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...row, farmaceutico: user?.name || null, usuario: user?.name || null }) });
-}
-async function updateFarmIntervencaoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`farm_intervencoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
-async function deleteFarmIntervencaoRemote(id) { if (USE_SUPABASE) await sbFetch(`farm_intervencoes?id=eq.${id}`, { method: "DELETE" }); }
 // Situação de validade de um lote em relação a hoje
 function farmValidadeInfo(validade) {
   if (!validade) return { status: "sem", dias: null };
@@ -2272,19 +2192,6 @@ async function marcarInventarioRemote(id, campos) {
 // Mesma forma dos três acima. A farmácia e o almoxarifado são o mesmo
 // kardex com nomes diferentes, e a diferença que sobra é a coluna que
 // identifica o que se conta: `medicamento_id` em vez de `item_id`.
-async function loadFarmInventarios(limit = 400) {
-  const rows = await sbFetch(`farm_inventarios?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function addFarmInventarioRemote(inv, user) {
-  if (!USE_SUPABASE) return null;
-  const r = await sbFetch("farm_inventarios", {
-    method: "POST",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify({ ...inv, usuario: user?.name || null }),
-  });
-  return Array.isArray(r) ? r[0] : r;
-}
 // Confere o RETORNO, nunca o status: sem a política de UPDATE o PostgREST
 // responde 200 com `[]` — zero linhas alteradas — e o código daria por
 // gravado. É a mesma armadilha que o almoxarifado já pagou uma vez.
@@ -2918,15 +2825,6 @@ async function loadPsAdministracoesByAtendimentos(ids) {
 const psDosesDadas = (itemId, adms) => adms.filter(a => String(a.prescricao_item_id) === String(itemId) && a.status !== "nao_administrado").length;
 
 // Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
-async function loadFarmSaidasByAtendimentos(ids) {
-  if (!ids.length) return [];
-  const rows = await sbFetch(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at,tipo,estorno_de`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadFarmSaidasByAtendimento(atendimentoId) {
-  const rows = await sbFetch(`farm_movimentos?atendimento_id=eq.${atendimentoId}&select=*&order=created_at.desc`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Prioridade de ordenação da fila (menor = mais urgente)
 const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
 
@@ -3233,7 +3131,7 @@ function PacientePage({ currentUser, canEdit }) {
   const [farmIncompatY, setFarmIncompatY] = useState([]);
   useEffect(() => {
     let vivo = true;
-    Promise.all([loadFarmMedicamentos(), loadFarmInteracoes(), loadFarmIncompatY()])
+    Promise.all([loadFarmMedicamentos(SB()), loadFarmInteracoes(SB()), loadFarmIncompatY(SB())])
       .then(([m, i, y]) => { if (!vivo) return; setMeds(m || []); setFarmInteracoes(i || []); setFarmIncompatY(y || []); })
       .catch(() => {});
     return () => { vivo = false; };
@@ -4785,7 +4683,7 @@ function PSPage({ currentUser, canEdit }) {
       // Medicação já dispensada pela farmácia e ainda sem checagem à beira do leito
       Promise.all([
         loadPsPrescricaoItensByAtendimentos(ids),
-        loadFarmSaidasByAtendimentos(ids),
+        loadFarmSaidasByAtendimentos(SB(), ids),
         loadPsAdministracoesByAtendimentos(ids),
       ]).then(([itens, saidasAll, admsAll]) => {
         const m = {};
@@ -6355,9 +6253,9 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
-  const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(paciente.id).then(setSaidas); loadPsAdministracoes(paciente.id).then(setAdms); };
+  const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(SB(), paciente.id).then(setSaidas); loadPsAdministracoes(paciente.id).then(setAdms); };
   useEffect(() => { carregarRegistros(); }, []);
-  useEffect(() => { loadFarmMedicamentos().then(setCatalogo); loadFarmLotes().then(setPresLotes); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); carregarPrescricao(); }, []);
+  useEffect(() => { loadFarmMedicamentos(SB()).then(setCatalogo); loadFarmLotes(SB()).then(setPresLotes); loadFarmInteracoes(SB()).then(setInteracoes); loadFarmIncompatY(SB()).then(setIncompatY); carregarPrescricao(); }, []);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
@@ -7180,10 +7078,10 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmLotes().then(setLotes);
-    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
-    loadFarmInventarios().then(setInvs);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmLotes(SB()).then(setLotes);
+    loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
+    loadFarmInventarios(SB()).then(setInvs);
   }
 
   // Contagem de inventário da farmácia — mesma regra do almoxarifado, e de
@@ -7196,7 +7094,7 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
   // almoxarifado mentir para sempre — a contagem seguinte achava a mesma
   // divergência e "ajustava" de novo.
   async function salvarInventarioFarm(inv, plano = []) {
-    const linha = await addFarmInventarioRemote({ ...inv, ajustado: false }, currentUser);
+    const linha = await addFarmInventarioRemote(SB(), { ...inv, ajustado: false }, currentUser);
     const med = meds.find(x => x.id === inv.medicamento_id);
     addAuditLog(currentUser, "contagem de inventário (farmácia)",
       `${med?.nome || inv.medicamento_id} · sistema ${farmFmtQtd(inv.saldo_sistema)} → contado ${farmFmtQtd(inv.contado)}`, {});
@@ -7212,7 +7110,7 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
     const erros = [];
     let lancados = 0;
     for (const p of plano) {
-      const r = await addFarmMovimentoRemote({
+      const r = await addFarmMovimentoRemote(SB_CRU(), {
         medicamento_id: inv.medicamento_id, lote: p.lote, validade: p.validade || null,
         tipo: p.tipo, quantidade: p.quantidade,
         motivo: MOTIVO_AJUSTE, documento: doc,
@@ -7300,19 +7198,19 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
     .sort((a, b) => a.cobertura - b.cobertura);
 
   async function salvarMed(med) {
-    await upsertFarmMedicamentoRemote(med, currentUser);
+    await upsertFarmMedicamentoRemote(SB(), med, currentUser);
     addAuditLog(currentUser, med.id ? "editar medicamento" : "cadastrar medicamento", med.nome, {});
     setShowMed(null);
     setTimeout(refresh, 350);
   }
   async function excluirMed(m) {
     if (!confirm(`Excluir "${m.nome}" e todo o seu histórico de estoque? Essa ação não pode ser desfeita.`)) return;
-    await deleteFarmMedicamentoRemote(m.id);
+    await deleteFarmMedicamentoRemote(SB(), m.id);
     addAuditLog(currentUser, "excluir medicamento", m.nome, {});
     setTimeout(refresh, 300);
   }
   async function registrarMov(mov) {
-    const r = await addFarmMovimentoRemote(mov, currentUser);
+    const r = await addFarmMovimentoRemote(SB_CRU(), mov, currentUser);
     if (!r.ok) { alert("Não foi possível registrar o movimento.\n" + (r.erro || "")); return false; }
     const med = meds.find(x => x.id === mov.medicamento_id);
     addAuditLog(currentUser, mov.tipo === "entrada" ? "entrada de estoque" : "saída de estoque", `${med?.nome || mov.medicamento_id} · ${farmFmtQtd(mov.quantidade)}`, {});
@@ -7751,7 +7649,7 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
 function FarmKardexModal({ med, currentUser, canEdit, onClose }) {
   const [movs, setMovs] = useState(null);
   const [ocupado, setOcupado] = useState(false);
-  const recarregar = () => loadFarmMovimentos(med.id).then(setMovs);
+  const recarregar = () => loadFarmMovimentos(SB(), med.id).then(setMovs);
   useEffect(() => { recarregar(); }, [med.id]);
   const jaEstornados = idsJaEstornados(movs || []);
 
@@ -7776,7 +7674,7 @@ function FarmKardexModal({ med, currentUser, canEdit, onClose }) {
       `O movimento original permanece no histórico: estorno não apaga nada.`
     )) return;
     setOcupado(true);
-    const r = await addFarmMovimentoRemote(
+    const r = await addFarmMovimentoRemote(SB_CRU(), 
       movimentoDeEstorno(mv, { chave: "medicamento_id", copiar: ["paciente_iniciais", "paciente_prontuario", "setor", "atendimento_id", "prescricao_item_id"] }),
       currentUser);
     setOcupado(false);
@@ -7850,12 +7748,12 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
       setAtends(ats);
       const ids = ats.map(a => a.id);
       setItens(await loadPsPrescricaoItensByAtendimentos(ids));
-      setSaidas(await loadFarmSaidasByAtendimentos(ids));
+      setSaidas(await loadFarmSaidasByAtendimentos(SB(), ids));
     });
-    loadFarmLotes().then(setLotes);
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmInteracoes().then(setInteracoes);
-    loadFarmIncompatY().then(setIncompatY);
+    loadFarmLotes(SB()).then(setLotes);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmInteracoes(SB()).then(setInteracoes);
+    loadFarmIncompatY(SB()).then(setIncompatY);
   }
   useEffect(() => {
     refresh();
@@ -7900,7 +7798,7 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
   function limparFiltros() { setBusca(""); setFSit(""); setFStatus(""); setFScore(""); setFAlerta(""); setFControl(false); }
 
   async function registrarDispensacao(mov) {
-    const r = await addFarmMovimentoRemote(mov, currentUser);
+    const r = await addFarmMovimentoRemote(SB_CRU(), mov, currentUser);
     if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; }
     const med = meds.find(m => m.id === mov.medicamento_id);
     addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"} · ${med?.nome || mov.medicamento_id} · ${farmFmtQtd(mov.quantidade)}`, {});
@@ -8167,19 +8065,19 @@ function FarmIndicadoresView() {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmLotes().then(setLotes);
-    loadFarmPreparo().then(setPrep);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmLotes(SB()).then(setLotes);
+    loadFarmPreparo(SB()).then(setPrep);
     loadPsAtendimentos().then(async ats => {
       const ids = ats.map(a => a.id);
       const pres = await loadPsPrescricoesByAtendimentos(ids);
       const atSet = new Set(ids);
-      const prepRows = await loadFarmPreparo();
+      const prepRows = await loadFarmPreparo(SB());
       const prepReg = {}; prepRows.forEach(p => prepReg[p.registro_id] = p);
       setPresAtivas(pres.filter(r => atSet.has(r.atendimento_id) && !prepReg[r.id]).length);
     });
     setCarregando(true);
-    loadFarmMovimentosPeriodo(fromISO, toISO).then(r => { setMovs(r); setCarregando(false); });
+    loadFarmMovimentosPeriodo(SB(), fromISO, toISO).then(r => { setMovs(r); setCarregando(false); });
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, [mes, ano]);
 
@@ -8437,9 +8335,9 @@ function FarmAnaliseView({ currentUser, canEdit }) {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmInteracoes().then(setInteracoes);
-    loadFarmIncompatY().then(setIncompatY);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmInteracoes(SB()).then(setInteracoes);
+    loadFarmIncompatY(SB()).then(setIncompatY);
     loadPsAtendimentos().then(async ats => {
       setAtends(ats);
       setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id)));
@@ -8535,27 +8433,27 @@ function FarmInteracoesModal({ interacoes, incompatY, currentUser, canEdit, onCl
   const [fi, setFi] = useState({ substancia_a: "", substancia_b: "", gravidade: "moderada", descricao: "", conduta: "" });
   const [fy, setFy] = useState({ substancia_a: "", substancia_b: "", descricao: "" });
   const isMaster = currentUser?.role === "adm_master";
-  const reload = () => { loadFarmInteracoes().then(setLstI); loadFarmIncompatY().then(setLstY); };
+  const reload = () => { loadFarmInteracoes(SB()).then(setLstI); loadFarmIncompatY(SB()).then(setLstY); };
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "7px 9px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 12.5, outline: "none", width: "100%", boxSizing: "border-box" };
   const gravCor = g => g === "grave" ? "#f43f5e" : g === "leve" ? "#3b82f6" : "#d97706";
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "6px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
 
   async function addInter() {
     if (!fi.substancia_a.trim() || !fi.substancia_b.trim()) { alert("Informe as duas substâncias."); return; }
-    await upsertFarmInteracaoRemote({ substancia_a: fi.substancia_a.trim().toLowerCase(), substancia_b: fi.substancia_b.trim().toLowerCase(), gravidade: fi.gravidade, descricao: fi.descricao.trim() || null, conduta: fi.conduta.trim() || null }, currentUser);
+    await upsertFarmInteracaoRemote(SB(), { substancia_a: fi.substancia_a.trim().toLowerCase(), substancia_b: fi.substancia_b.trim().toLowerCase(), gravidade: fi.gravidade, descricao: fi.descricao.trim() || null, conduta: fi.conduta.trim() || null }, currentUser);
     addAuditLog(currentUser, "farmácia: nova interação", `${fi.substancia_a} × ${fi.substancia_b}`, {});
     setFi({ substancia_a: "", substancia_b: "", gravidade: "moderada", descricao: "", conduta: "" });
     setTimeout(reload, 300);
   }
-  async function delInter(id) { if (confirm("Remover esta interação?")) { await deleteFarmInteracaoRemote(id); setTimeout(reload, 200); } }
+  async function delInter(id) { if (confirm("Remover esta interação?")) { await deleteFarmInteracaoRemote(SB(), id); setTimeout(reload, 200); } }
   async function addY() {
     if (!fy.substancia_a.trim() || !fy.substancia_b.trim()) { alert("Informe as duas substâncias."); return; }
-    await upsertFarmIncompatRemote({ substancia_a: fy.substancia_a.trim().toLowerCase(), substancia_b: fy.substancia_b.trim().toLowerCase(), descricao: fy.descricao.trim() || null }, currentUser);
+    await upsertFarmIncompatRemote(SB(), { substancia_a: fy.substancia_a.trim().toLowerCase(), substancia_b: fy.substancia_b.trim().toLowerCase(), descricao: fy.descricao.trim() || null }, currentUser);
     addAuditLog(currentUser, "farmácia: nova incompatibilidade Y", `${fy.substancia_a} × ${fy.substancia_b}`, {});
     setFy({ substancia_a: "", substancia_b: "", descricao: "" });
     setTimeout(reload, 300);
   }
-  async function delY(id) { if (confirm("Remover esta incompatibilidade?")) { await deleteFarmIncompatRemote(id); setTimeout(reload, 200); } }
+  async function delY(id) { if (confirm("Remover esta incompatibilidade?")) { await deleteFarmIncompatRemote(SB(), id); setTimeout(reload, 200); } }
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
@@ -8646,9 +8544,9 @@ function FarmPreparoView({ currentUser, canEdit }) {
     if (!USE_SUPABASE) return;
     const ats = await loadPsAtendimentos(); setAtends(ats);
     const ids = ats.map(a => a.id);
-    const [pres, prep, its, sai] = await Promise.all([loadPsPrescricoesByAtendimentos(ids), loadFarmPreparo(), loadPsPrescricaoItensByAtendimentos(ids), loadFarmSaidasByAtendimentos(ids)]);
+    const [pres, prep, its, sai] = await Promise.all([loadPsPrescricoesByAtendimentos(ids), loadFarmPreparo(SB()), loadPsPrescricaoItensByAtendimentos(ids), loadFarmSaidasByAtendimentos(SB(), ids)]);
     setPrescricoes(pres); setPreparo(prep); setItens(its); setSaidas(sai);
-    loadFarmLotes().then(setLotes); loadFarmMedicamentos().then(setMeds); loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY);
+    loadFarmLotes(SB()).then(setLotes); loadFarmMedicamentos(SB()).then(setMeds); loadFarmInteracoes(SB()).then(setInteracoes); loadFarmIncompatY(SB()).then(setIncompatY);
     // detectar prescrições novas aguardando → bipe + toast
     const prepReg = {}; prep.forEach(p => prepReg[p.registro_id] = p);
     const atSet = new Set(ids);
@@ -8682,7 +8580,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
   ];
   const retirados = cards.filter(c => c.status === "retirado");
 
-  async function receber(c) { await receberPreparoRemote(c.reg.id, c.reg.atendimento_id, currentUser); addAuditLog(currentUser, "farmácia: receber prescrição", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  async function receber(c) { await receberPreparoRemote(SB(), c.reg.id, c.reg.atendimento_id, currentUser); addAuditLog(currentUser, "farmácia: receber prescrição", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
   async function marcarPronto(c) {
     // 🔴 A recusa vive aqui também, não só no `disabled`. O botão some da
     // tela, mas o estado pode estar velho (o kanban recarrega a cada 12s) e
@@ -8691,13 +8589,13 @@ function FarmPreparoView({ currentUser, canEdit }) {
     const v = c.separacao || podeMarcarPronto({ registro: c.reg, itens, saidas });
     if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
     if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nMarcar como pronta assim mesmo?`)) return;
-    await atualizarPreparoRemote(c.prep.id, { status: "pronto", pronto_em: nowISO(), pronto_por: currentUser?.name || null });
+    await atualizarPreparoRemote(SB(), c.prep.id, { status: "pronto", pronto_em: nowISO(), pronto_por: currentUser?.name || null });
     addAuditLog(currentUser, "farmácia: preparo pronto", `${c.at?.iniciais || ""} · ${v.quadro.separados}/${v.quadro.total} separado(s)`, {});
     setTimeout(refresh, 300);
   }
-  async function confirmarRetirada(c) { if (!confirm(`Confirmar retirada da prescrição de ${c.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(c.prep.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: retirada confirmada", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  async function confirmarRetirada(c) { if (!confirm(`Confirmar retirada da prescrição de ${c.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(SB(), c.prep.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: retirada confirmada", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
   function ativarSom() { setSomAtivo(true); setSom(true); farmBeep(false); }
-  async function registrarDispensacao(mov) { const r = await addFarmMovimentoRemote(mov, currentUser); if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; } addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {}); setTimeout(refresh, 300); return true; }
+  async function registrarDispensacao(mov) { const r = await addFarmMovimentoRemote(SB_CRU(), mov, currentUser); if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; } addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {}); setTimeout(refresh, 300); return true; }
 
   const Card = ({ c }) => {
     const st = PREPARO_STATUS[c.status];
@@ -8780,7 +8678,7 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
     if (!USE_SUPABASE) return;
     const ats = await loadPsAtendimentos();
     const atById = {}; ats.forEach(a => atById[a.id] = a);
-    const prep = await loadFarmPreparo();
+    const prep = await loadFarmPreparo(SB());
     const lista = prep.filter(p => p.status === "pronto" && atById[p.atendimento_id]).map(p => ({ ...p, at: atById[p.atendimento_id] }));
     setProntos(lista);
     const ids = new Set(lista.map(p => p.id));
@@ -8788,7 +8686,7 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
     seenRef.current = ids;
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => { refresh(); setTick(t => t + 1); }, 12000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
-  async function confirmar(p) { if (!confirm(`Confirmar retirada da medicação de ${p.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(p.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "PS: retirada de medicação", p.at?.iniciais || "", {}); setTimeout(refresh, 300); }
+  async function confirmar(p) { if (!confirm(`Confirmar retirada da medicação de ${p.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(SB(), p.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "PS: retirada de medicação", p.at?.iniciais || "", {}); setTimeout(refresh, 300); }
   function ativar() { setSomAtivo(true); setSom(true); farmBeep(true); }
   if (prontos.length === 0 && som) return null;
   return (
@@ -8822,7 +8720,7 @@ function PsIntervencaoBanner({ currentUser, canEdit }) {
     const ats = await loadPsAtendimentos();
     const atById = {}, porProntuario = {};
     ats.forEach(a => { atById[a.id] = a; if (a.prontuario) porProntuario[normTxt(String(a.prontuario))] = a; });
-    const ivs = await loadFarmIntervencoes();
+    const ivs = await loadFarmIntervencoes(SB());
     const lista = ivs.filter(i => i.status === "pendente").map(i => {
       let at = i.atendimento_id ? atById[i.atendimento_id] : null;
       if (!at && i.paciente_prontuario) at = porProntuario[normTxt(String(i.paciente_prontuario))];
@@ -8837,7 +8735,7 @@ function PsIntervencaoBanner({ currentUser, canEdit }) {
   async function responder(x, status) {
     let campos = { status };
     if (status === "nao_aceita") { const d = prompt("Motivo da não aceitação (opcional):", ""); if (d === null) return; campos.desfecho = d || null; }
-    await updateFarmIntervencaoRemote(x.iv.id, campos);
+    await updateFarmIntervencaoRemote(SB(), x.iv.id, campos);
     addAuditLog(currentUser, "PS: resposta à intervenção — " + status, x.at?.iniciais || "", {});
     setTimeout(refresh, 300);
   }
@@ -8882,8 +8780,8 @@ function FarmControladosView() {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(async ms => { setMeds(ms); setMovs(await loadFarmMovimentosByMeds(ms.filter(m => m.controlado).map(m => m.id))); });
-    loadFarmLotes().then(setLotes);
+    loadFarmMedicamentos(SB()).then(async ms => { setMeds(ms); setMovs(await loadFarmMovimentosByMeds(SB(), ms.filter(m => m.controlado).map(m => m.id))); });
+    loadFarmLotes(SB()).then(setLotes);
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
 
@@ -9005,20 +8903,20 @@ function FarmNaoPadronizadosView({ currentUser, canEdit }) {
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
 
-  function refresh() { if (USE_SUPABASE) loadFarmNaoPadronizados().then(setLista); }
+  function refresh() { if (USE_SUPABASE) loadFarmNaoPadronizados(SB()).then(setLista); }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
 
   async function salvar() {
     if (!f.paciente_iniciais.trim()) { alert("Informe as iniciais do paciente."); return; }
     if (!f.medicamento.trim()) { alert("Informe o medicamento."); return; }
     setBusy(true);
-    await addFarmNaoPadronizadoRemote({ paciente_iniciais: f.paciente_iniciais.trim(), paciente_prontuario: f.paciente_prontuario.trim() || null, setor: f.setor.trim() || null, medicamento: f.medicamento.trim(), apresentacao: f.apresentacao.trim() || null, quantidade: f.quantidade === "" ? null : Number(f.quantidade), unidade: f.unidade.trim() || null, lote: f.lote.trim() || null, validade: f.validade || null, origem: f.origem.trim() || null, observacao: f.observacao.trim() || null, status: "recebido", conferido: false }, currentUser);
+    await addFarmNaoPadronizadoRemote(SB(), { paciente_iniciais: f.paciente_iniciais.trim(), paciente_prontuario: f.paciente_prontuario.trim() || null, setor: f.setor.trim() || null, medicamento: f.medicamento.trim(), apresentacao: f.apresentacao.trim() || null, quantidade: f.quantidade === "" ? null : Number(f.quantidade), unidade: f.unidade.trim() || null, lote: f.lote.trim() || null, validade: f.validade || null, origem: f.origem.trim() || null, observacao: f.observacao.trim() || null, status: "recebido", conferido: false }, currentUser);
     addAuditLog(currentUser, "farmácia: receber medicamento não padronizado", `${f.paciente_iniciais} · ${f.medicamento}`, {});
     setF(vazio); setBusy(false); setTimeout(refresh, 350);
   }
-  async function mudarStatus(r, status) { await updateFarmNaoPadronizadoRemote(r.id, { status }); addAuditLog(currentUser, "farmácia: não padronizado " + status, `${r.paciente_iniciais} · ${r.medicamento}`, {}); setTimeout(refresh, 250); }
-  async function toggleConferido(r) { await updateFarmNaoPadronizadoRemote(r.id, { conferido: !r.conferido }); setTimeout(refresh, 250); }
-  async function excluir(r) { if (!confirm(`Excluir o registro de ${r.medicamento} (${r.paciente_iniciais})?`)) return; await deleteFarmNaoPadronizadoRemote(r.id); setTimeout(refresh, 250); }
+  async function mudarStatus(r, status) { await updateFarmNaoPadronizadoRemote(SB(), r.id, { status }); addAuditLog(currentUser, "farmácia: não padronizado " + status, `${r.paciente_iniciais} · ${r.medicamento}`, {}); setTimeout(refresh, 250); }
+  async function toggleConferido(r) { await updateFarmNaoPadronizadoRemote(SB(), r.id, { conferido: !r.conferido }); setTimeout(refresh, 250); }
+  async function excluir(r) { if (!confirm(`Excluir o registro de ${r.medicamento} (${r.paciente_iniciais})?`)) return; await deleteFarmNaoPadronizadoRemote(SB(), r.id); setTimeout(refresh, 250); }
 
   const q = busca.trim().toLowerCase();
   const filtrada = lista.filter(r => (!q || `${r.paciente_iniciais} ${r.paciente_prontuario || ""} ${r.medicamento}`.toLowerCase().includes(q)) && (!fStatus || r.status === fStatus));
@@ -9105,10 +9003,10 @@ function FarmIntervencaoView({ currentUser, canEdit }) {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmInteracoes().then(setInteracoes);
-    loadFarmIncompatY().then(setIncompatY);
-    loadFarmIntervencoes().then(setIntervs);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmInteracoes(SB()).then(setInteracoes);
+    loadFarmIncompatY(SB()).then(setIncompatY);
+    loadFarmIntervencoes(SB()).then(setIntervs);
     loadPsAtendimentos().then(async ats => { setAtends(ats); setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id))); });
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => setTick(t => t + 1), 60000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
@@ -9128,9 +9026,9 @@ function FarmIntervencaoView({ currentUser, canEdit }) {
   const taxa = (aceitas + naoAceitas) ? (aceitas / (aceitas + naoAceitas)) * 100 : null;
   const intervsFiltradas = intervs.filter(i => !fStatus || i.status === fStatus);
 
-  async function salvar(row) { await addFarmIntervencaoRemote(row, currentUser); addAuditLog(currentUser, "intervenção farmacêutica", `${row.paciente_iniciais || "?"} · ${row.medicamento_nome || row.tipo || ""}`, {}); setNova(null); setTimeout(refresh, 350); }
-  async function mudarStatus(iv, status) { let desfecho = iv.desfecho; if (status === "nao_aceita" || status === "resolvida") { const d = prompt(status === "nao_aceita" ? "Motivo da não aceitação (opcional):" : "Observação do desfecho (opcional):", iv.desfecho || ""); if (d !== null) desfecho = d; } await updateFarmIntervencaoRemote(iv.id, { status, desfecho: desfecho || null }); addAuditLog(currentUser, "intervenção: " + status, iv.paciente_iniciais || "", {}); setTimeout(refresh, 250); }
-  async function excluir(iv) { if (!confirm("Excluir esta intervenção?")) return; await deleteFarmIntervencaoRemote(iv.id); setTimeout(refresh, 250); }
+  async function salvar(row) { await addFarmIntervencaoRemote(SB(), row, currentUser); addAuditLog(currentUser, "intervenção farmacêutica", `${row.paciente_iniciais || "?"} · ${row.medicamento_nome || row.tipo || ""}`, {}); setNova(null); setTimeout(refresh, 350); }
+  async function mudarStatus(iv, status) { let desfecho = iv.desfecho; if (status === "nao_aceita" || status === "resolvida") { const d = prompt(status === "nao_aceita" ? "Motivo da não aceitação (opcional):" : "Observação do desfecho (opcional):", iv.desfecho || ""); if (d !== null) desfecho = d; } await updateFarmIntervencaoRemote(SB(), iv.id, { status, desfecho: desfecho || null }); addAuditLog(currentUser, "intervenção: " + status, iv.paciente_iniciais || "", {}); setTimeout(refresh, 250); }
+  async function excluir(iv) { if (!confirm("Excluir esta intervenção?")) return; await deleteFarmIntervencaoRemote(SB(), iv.id); setTimeout(refresh, 250); }
   const intervirDoAlerta = (at, alerta) => setNova({ atendimento_id: at.id, paciente_iniciais: at.iniciais, paciente_prontuario: at.prontuario || "", medicamento_nome: (alerta.itens && alerta.itens[0]) || "", tipo: alerta.tipo, gravidade: alerta.gravidade, problema: `${alerta.titulo}: ${alerta.detalhe}`, conduta: "" });
 
   const KPI = ({ label, valor, cor, sub }) => (
@@ -9291,13 +9189,13 @@ function FarmDashboardView({ currentUser, canEdit, onNav }) {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmLotes().then(setLotes);
-    loadFarmIntervencoes().then(setIntervs);
-    loadFarmPreparo().then(setPrep);
+    loadFarmLotes(SB()).then(setLotes);
+    loadFarmIntervencoes(SB()).then(setIntervs);
+    loadFarmPreparo(SB()).then(setPrep);
     Promise.all([
-      loadFarmMedicamentos().then(setMeds),
-      loadFarmInteracoes().then(setInteracoes),
-      loadFarmIncompatY().then(setIncompatY),
+      loadFarmMedicamentos(SB()).then(setMeds),
+      loadFarmInteracoes(SB()).then(setInteracoes),
+      loadFarmIncompatY(SB()).then(setIncompatY),
       loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); }),
     ]).finally(() => setCarregando(false));
   }
@@ -9347,7 +9245,7 @@ function FarmInteracoesView({ currentUser, canEdit }) {
   const [incompatY, setIncompatY] = useState([]);
   const [showBase, setShowBase] = useState(false);
   const gravCor = g => g === "grave" ? "#f43f5e" : g === "leve" ? "#3b82f6" : "#d97706";
-  function refresh() { if (USE_SUPABASE) { loadFarmInteracoes().then(setInteracoes); loadFarmIncompatY().then(setIncompatY); } }
+  function refresh() { if (USE_SUPABASE) { loadFarmInteracoes(SB()).then(setInteracoes); loadFarmIncompatY(SB()).then(setIncompatY); } }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
   return (
     <div>
@@ -9405,16 +9303,16 @@ function FarmAssistenteView() {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmLotes().then(setLotes);
-    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidas30);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmLotes(SB()).then(setLotes);
+    loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidas30);
     const ini = new Date(); ini.setDate(1); ini.setHours(0, 0, 0, 0);
     const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
-    loadFarmMovimentosPeriodo(ini.toISOString(), fim.toISOString()).then(setMovsMes);
-    loadFarmIntervencoes().then(setIntervs);
-    loadFarmInteracoes().then(setInteracoes);
-    loadFarmIncompatY().then(setIncompatY);
-    loadFarmPreparo().then(setPrep);
+    loadFarmMovimentosPeriodo(SB(), ini.toISOString(), fim.toISOString()).then(setMovsMes);
+    loadFarmIntervencoes(SB()).then(setIntervs);
+    loadFarmInteracoes(SB()).then(setInteracoes);
+    loadFarmIncompatY(SB()).then(setIncompatY);
+    loadFarmPreparo(SB()).then(setPrep);
     loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); });
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
@@ -11380,7 +11278,7 @@ function SupCotacoesView({ currentUser, canEdit, isMaster, materiais, forns, cot
   const [abrir, setAbrir] = useState(null);      // cotação em comparação
   const [busyId, setBusyId] = useState(null);
 
-  useEffect(() => { if (USE_SUPABASE) loadFarmMedicamentos().then(setMeds); }, []);
+  useEffect(() => { if (USE_SUPABASE) loadFarmMedicamentos(SB()).then(setMeds); }, []);
   const fornById = {}; forns.forEach(f => fornById[f.id] = f);
 
   // menor preço de cada item e total por fornecedor
@@ -11652,9 +11550,9 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
 
   useEffect(() => {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmLotes().then(setMedLotes);
-    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmLotes(SB()).then(setMedLotes);
+    loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
   }, []);
 
   // Sugestões de compra por PONTO DE PEDIDO: dispara quando a cobertura cai abaixo
@@ -11741,7 +11639,7 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
       let r;
       if (alvo.tipo === "medicamento") {
         const saldoAntes = farmSaldoTotal(alvo.item_id, medLotes);
-        r = await addFarmMovimentoRemote({
+        r = await addFarmMovimentoRemote(SB_CRU(), {
           medicamento_id: alvo.item_id, tipo: "entrada", quantidade: q,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
@@ -12227,11 +12125,11 @@ function SupPreditivoView({ itens, lotes, saidasHist, leadMap = {} }) {
 
   useEffect(() => {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmLotes().then(setMedLotes);
-    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmLotes(SB()).then(setMedLotes);
+    loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
     loadSupSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setSaidas7);
-    loadFarmSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setMedSaidas7);
+    loadFarmSaidasDesde(SB(), new Date(Date.now() - 7 * 86400000).toISOString()).then(setMedSaidas7);
   }, []);
 
   function linhas(base, lotesBase, saidas, saidas7d, idKey, tipo, saldoFn) {
@@ -12344,9 +12242,9 @@ function SupVencimentosView({ itens, lotes, saidasHist }) {
   const [medSaidas, setMedSaidas] = useState([]);
   useEffect(() => {
     if (!USE_SUPABASE) return;
-    loadFarmMedicamentos().then(setMeds);
-    loadFarmLotes().then(setMedLotes);
-    loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
+    loadFarmMedicamentos(SB()).then(setMeds);
+    loadFarmLotes(SB()).then(setMedLotes);
+    loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
   }, []);
 
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -12558,13 +12456,13 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
     const fimAtual = new Date(iniAtual.getFullYear(), iniAtual.getMonth() + 1, 1);
     const iniAnt = new Date(iniAtual.getFullYear(), iniAtual.getMonth() - 1, 1);
     Promise.all([
-      loadFarmMedicamentos(), loadFarmLotes(),
+      loadFarmMedicamentos(SB()), loadFarmLotes(SB()),
       loadSupMovimentosPeriodo(iniAtual.toISOString(), fimAtual.toISOString()),
       loadSupMovimentosPeriodo(iniAnt.toISOString(), iniAtual.toISOString()),
-      loadFarmMovimentosPeriodo(iniAtual.toISOString(), fimAtual.toISOString()),
-      loadFarmMovimentosPeriodo(iniAnt.toISOString(), iniAtual.toISOString()),
+      loadFarmMovimentosPeriodo(SB(), iniAtual.toISOString(), fimAtual.toISOString()),
+      loadFarmMovimentosPeriodo(SB(), iniAnt.toISOString(), iniAtual.toISOString()),
       loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
-      loadFarmSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
+      loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
     ]).then(([m, ml, sa, sp, fa, fp, ss, fs]) => {
       setMeds(m); setMedLotes(ml);
       setSupMesAtual(sa); setSupMesAnt(sp);
