@@ -16,6 +16,8 @@
 // aqui, está no lugar errado.
 // ═══════════════════════════════════════════════════════════
 
+import { fmt } from "../util/formato.js";
+
 // A paleta da marca. Usada por quase toda tela do sistema.
 export const VX = { turquesa: "#2dd4bf", azul: "#38bdf8", royal: "#1d4ed8", prata: "#8d99ab", marinho: "#101c30", marinho2: "#14233a", borda: "#23395a" };
 
@@ -65,3 +67,40 @@ export function Icon({ name, size = 15 }) {
     </svg>
   );
 }
+
+// ── O botão de contorno da casa ──
+// ⚠️ CHAMAVA-SE `btnLeito`, e não é do Giro de Leitos: das 25 declarações
+// que o usam, o Bloco Cirúrgico sozinho usa 14, e ainda aparece no
+// Pronto-Socorro, no Paciente 360 e na visão geral. Nome errado em peça
+// compartilhada custa caro — quem precisa de um botão de contorno fora de
+// Leitos não reconhece este, e escreve o dele.
+export function btnContorno(cor) {
+  return { background: "transparent", border: `1px solid ${cor}55`, color: cor, borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontSize: 12, fontWeight: 600 };
+}
+
+// A marca escrita, com o X em degradê. Usada no topo, no login e nos
+// impressos.
+export function VxWordmark({ size = 14, color = "inherit", spacing = ".1em" }) {
+  return (
+    <span style={{ fontWeight: 800, fontSize: size, letterSpacing: spacing, color }}>
+      VALENTRA<span style={{ background: `linear-gradient(135deg, ${VX.azul}, ${VX.royal})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>X</span>
+    </span>
+  );
+}
+
+// O balão dos gráficos (recharts). Recebe o formato da casa em vez do
+// padrão da biblioteca, para número grande não aparecer sem separador.
+export const customTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 12px", fontSize: 12 }}>
+      <div style={{ color: "var(--text-3)", marginBottom: 4 }}>{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} style={{ color: p.color || "var(--text)", display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ width: 8, height: 8, background: p.color, borderRadius: 2, display: "inline-block" }} />
+          {p.name}: <strong>{fmt(p.value)}</strong>
+        </div>
+      ))}
+    </div>
+  );
+};
