@@ -265,3 +265,80 @@ describe("score da prescrição", () => {
     expect(scorePrescricao([bom, ruim], a)).toBe(3);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 BASE NÃO CONFERIDA — o libera-geral falso
+//
+// As bases de interação e de incompatibilidade em Y chegavam como `[]`
+// tanto quando não havia nada cadastrado quanto quando a LEITURA FALHOU.
+// Com `[]`, o laço de pares não acha nada e a prescrição sai limpa: uma
+// falha de rede virava "sem interações", na conferência que mais importa.
+//
+// Agora a carga devolve `null` na falha e o motor avisa. O silêncio deixou
+// de ser a resposta.
+// ═══════════════════════════════════════════════════════════
+
+describe("base indisponível", () => {
+  const MED = {
+    1: { id: 1, nome: "Varfarina", principio_ativo: "varfarina" },
+    2: { id: 2, nome: "AAS", principio_ativo: "acido acetilsalicilico" },
+    3: { id: 3, nome: "Ceftriaxona", principio_ativo: "ceftriaxona" },
+  };
+  const item = (id, via) => ({ medicamento_id: id, medicamento_nome: MED[id].nome, via });
+  const doisOrais = [item(1), item(2)];
+  const doisIV = [item(1, "IV"), item(2, "IV")];
+  const tipos = a => a.map(x => x.tipo);
+
+  it("🔴 base de interações em null vira ALERTA, não silêncio", () => {
+    const a = analisarPrescricaoClinica(doisOrais, {}, MED, null, []);
+    const av = a.filter(x => x.tipo === "base_indisponivel");
+    expect(av).toHaveLength(1);
+    expect(av[0].gravidade).toBe("alta");
+    expect(av[0].detalhe).toContain("NÃO foram checados");
+  });
+
+  it("🔴 base de incompatibilidade em Y em null também", () => {
+    const a = analisarPrescricaoClinica(doisIV, {}, MED, [], null);
+    const av = a.filter(x => x.tipo === "base_indisponivel");
+    expect(av).toHaveLength(1);
+    expect(av[0].titulo).toContain("Incompatibilidade em Y");
+  });
+
+  it("as duas falhando dão dois avisos distintos", () => {
+    const a = analisarPrescricaoClinica(doisIV, {}, MED, null, null);
+    expect(a.filter(x => x.tipo === "base_indisponivel")).toHaveLength(2);
+  });
+
+  it("⚠️ base VAZIA continua calada — não há o que conferir, e não falhou", () => {
+    // Esta é a diferença toda: `[]` é resposta, `null` é ausência dela.
+    expect(tipos(analisarPrescricaoClinica(doisOrais, {}, MED, [], []))).not.toContain("base_indisponivel");
+  });
+
+  it("🔴 e NÃO avisa quando não havia par possível — alarme à toa se aprende a ignorar", () => {
+    // Um medicamento só não interage com ninguém. Avisar aqui poria o aviso
+    // em toda prescrição de item único, e ele deixaria de ser lido
+    // justamente onde importa.
+    expect(tipos(analisarPrescricaoClinica([item(1)], {}, MED, null, null))).not.toContain("base_indisponivel");
+    expect(tipos(analisarPrescricaoClinica([], {}, MED, null, null))).not.toContain("base_indisponivel");
+  });
+
+  it("⚠️ o aviso de Y só sai com dois IV — via oral não infunde em linha", () => {
+    const umIV = [item(1, "IV"), item(2, "VO")];
+    const a = analisarPrescricaoClinica(umIV, {}, MED, [], null);
+    expect(tipos(a)).not.toContain("base_indisponivel");
+  });
+
+  it("o aviso entra no topo, junto com o que é grave", () => {
+    // A lista sai ordenada por gravidade. "Não conferi" é alta: quem lê a
+    // primeira linha precisa ver que a conferência não aconteceu.
+    const a = analisarPrescricaoClinica(doisOrais, {}, MED, null, []);
+    expect(a[0].gravidade).toBe("alta");
+  });
+
+  it("não atrapalha as outras regras — elas continuam rodando", () => {
+    // A base indisponível não pode desligar duplicidade, alergia, dose.
+    const dup = [item(1), { medicamento_id: 1, medicamento_nome: "Varfarina", via: "VO" }];
+    const a = analisarPrescricaoClinica(dup, {}, MED, null, null);
+    expect(tipos(a)).toContain("duplicidade");
+  });
+});
