@@ -50,19 +50,19 @@ describe("🔴 a regressão do regex literal, medida em vez de descrita", () => 
     expect(saida).not.toMatch(/COMPARTILHADO \(0,/);
   });
 
-  it("e continua listado entre os HUBS, com uso de sobra", () => {
-    // ⚠️ O NÚMERO NÃO PODE SER O ALVO, e a primeira versão deste teste
-    // errou nisso: fixei `> 100` porque o real era 170. Cada módulo
-    // extraído devolve chamadas ao `sb` por prop, então o número CAI de
-    // propósito — 170 → 152 → 138 → 103 → 78. O teste ficou vermelho pelo
-    // trabalho dando certo, que é o jeito mais rápido de ensinar a ignorar
-    // teste vermelho.
+  it("e continua LISTADO entre os HUBS", () => {
+    // ⚠️ ERREI ESTE TESTE DUAS VEZES, DO MESMO JEITO.
+    // Primeiro fixei `> 100`, depois `> 20` — e as duas vezes ele ficou
+    // vermelho porque o trabalho deu certo. O número CAI de propósito a
+    // cada módulo extraído: 170 → 152 → 138 → 103 → 78 → 44 → 28 → 18.
+    // Fixar magnitude aqui é medir progresso e chamar de regressão.
     //
-    // O que se guarda é o COLAPSO: com a fase invertida, `sbFetch` não
-    // aparecia no grafo de jeito nenhum. Some da lista de hubs, ou desce a
-    // um punhado de usos, e alguma coisa quebrou na medição.
+    // O que a fase invertida produzia não era um número pequeno: era
+    // AUSÊNCIA — o `sbFetch` não aparecia no grafo de jeito nenhum. É isso
+    // que se guarda: que ele esteja na lista de hubs, com pelo menos um
+    // uso contado.
     const m = /(\d+)\s+\d+\s+sbFetch/.exec(rodar());
-    expect(m, "o sbFetch sumiu dos HUBS").not.toBeNull();
-    expect(Number(m[1])).toBeGreaterThan(20);
+    expect(m, "o sbFetch sumiu dos HUBS — o grafo colapsou").not.toBeNull();
+    expect(Number(m[1])).toBeGreaterThan(0);
   });
 });
