@@ -25,7 +25,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import {
   montarProcedimento, codigoFormatado, viaDoProcedimento,
-  avaliarPermanencia, avaliarGlosa, GRAVIDADES,
+  avaliarPermanencia, avaliarGlosa, GRAVIDADES, valorReferencia,
 } from "./sigtap.js";
 import { montarContaDoProntuario, escolherInternacao, montarWorklist } from "./montar-conta.js";
 import { resumoFaturamento, resumoPorVia, resumoDeContas } from "./resumo-faturamento.js";
@@ -692,6 +692,7 @@ function SigtapView({ rows, carregando }) {
   const [busca, setBusca] = useState("");
   const [selCodigo, setSelCodigo] = useState("");
   const [dias, setDias] = useState("");
+  const [valor, setValor] = useState("");
 
   const procs = useMemo(() => rows.map(r => montarProcedimento({
     codigo: r.codigo, nome: r.nome, via: r.via, mediaPermanencia: r.media_permanencia,
@@ -707,8 +708,10 @@ function SigtapView({ rows, carregando }) {
   }, [procs, busca]);
   const sel = procs.find(p => p.codigo === selCodigo) || null;
   const diasN = /^\d+$/.test(String(dias).trim()) ? Number(dias) : null;
-  const achados = sel ? avaliarGlosa({ proc: sel, permanenciaDias: diasN }) : [];
+  const valorCobrado = centavos(valor); // reais digitados → centavos (null se vazio/inválido)
+  const achados = sel ? avaliarGlosa({ proc: sel, permanenciaDias: diasN, valorCobrado }) : [];
   const perm = sel ? avaliarPermanencia(sel, diasN) : null;
+  const ref = sel ? valorReferencia(sel) : null;
 
   return (
     <div>
@@ -717,7 +720,7 @@ function SigtapView({ rows, carregando }) {
         Tabela de procedimentos do SUS. {procs.length} procedimento(s) que o hospital fatura
         {competencia ? ` · competência ${competencia}` : ""}.
       </p>
-      <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>Referência oficial, somente leitura. Valores, CID e CBO entram com o pacote do DATASUS.</p>
+      <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 12 }}>Referência oficial, somente leitura. Valores (SH+SP) e CID já vieram das AIHs reais do SUS; o CBO entra com o pacote completo do DATASUS.</p>
 
       {carregando ? (
         <p style={{ color: "var(--text-muted)" }}>Carregando…</p>
@@ -728,23 +731,29 @@ function SigtapView({ rows, carregando }) {
       ) : (
         <>
           <section style={{ ...cx.card, marginBottom: 16 }}>
-            <div style={cx.rotulo}>Testar glosa de permanência</div>
+            <div style={cx.rotulo}>Testar glosa (permanência e valor)</div>
             {!sel ? (
               <p style={{ margin: "8px 0 0", color: "var(--text-muted)", fontSize: 13 }}>Clique num procedimento na lista abaixo para simular.</p>
             ) : (
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{codigoFormatado(sel.codigo)} — {sel.nome}</div>
                 <div style={{ margin: "4px 0 12px", fontSize: 12, color: "var(--text-muted)" }}>
-                  Via {VIA_LABEL[viaDoProcedimento(sel)] || "—"} · média de permanência {sel.mediaPermanencia ?? "—"} {sel.mediaPermanencia != null ? "dia(s)" : ""}
+                  Via {VIA_LABEL[viaDoProcedimento(sel)] || "—"} · média de permanência {sel.mediaPermanencia ?? "—"} {sel.mediaPermanencia != null ? "dia(s)" : ""} · referência SIGTAP {ref != null ? reais(ref) : "—"}
                 </div>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                  Dias de internação:
-                  <input type="number" min="0" value={dias} onChange={e => setDias(e.target.value)} style={{ ...cx.input, width: 90 }} placeholder="ex.: 12" />
-                </label>
-                {diasN == null ? null : perm?.media == null ? (
-                  <p style={{ marginTop: 12, color: "var(--text-muted)", fontSize: 13 }}>Sem média cadastrada — nada a comparar.</p>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    Dias de internação:
+                    <input type="number" min="0" value={dias} onChange={e => setDias(e.target.value)} style={{ ...cx.input, width: 90 }} placeholder="ex.: 12" />
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                    Valor cobrado (R$):
+                    <input value={valor} onChange={e => setValor(e.target.value)} style={{ ...cx.input, width: 120 }} placeholder="ex.: 850,00" />
+                  </label>
+                </div>
+                {diasN == null && valorCobrado == null ? (
+                  <p style={{ marginTop: 12, color: "var(--text-muted)", fontSize: 13 }}>Informe os dias e/ou o valor cobrado para simular.</p>
                 ) : achados.length === 0 ? (
-                  <p style={{ marginTop: 12, color: TEAL, fontSize: 13, fontWeight: 600 }}>✓ {perm.texto}</p>
+                  <p style={{ marginTop: 12, color: TEAL, fontSize: 13, fontWeight: 600 }}>✓ Sem glosa pelo que foi informado{perm?.texto ? ` · ${perm.texto}` : ""}.</p>
                 ) : (
                   <ul style={{ marginTop: 12, paddingLeft: 0, listStyle: "none", display: "grid", gap: 6 }}>
                     {achados.map((ac, i) => (
