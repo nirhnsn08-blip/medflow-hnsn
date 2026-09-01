@@ -86,6 +86,19 @@ import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.j
 // Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
 import { montarMapaRisco } from "./clinico/mapa-risco.js";
 import { montarChecagemSae } from "./clinico/sae.js";
+import {
+  PS_FREQUENCIAS, PS_DOSE_UNID, PS_PROTOCOLO, PS_DISCRIMINADORES, PS_AREAS, PS_SALA_STATUS, PS_DESFECHOS,
+  PS_EXAME_CATEGORIAS, PS_EVOL_CATEGORIAS, PS_VIAS, PS_ADM_STATUS, PS_ADM_MOTIVOS, PS_ADM_CATEGORIAS,
+  PS_PRIORIDADE, PS_CONSCIENCIA, MANCHESTER, fmtSinaisVitais,
+} from "./ps/catalogo.js";
+import {
+  loadPsPrescricoesByAtendimentos, loadPsProtocolos, upsertPsProtocoloRemote, deletePsProtocoloRemote,
+  loadPsSalas, upsertPsSalaRemote, deletePsSalaRemote, loadPsAtendimentos, loadPsFinalizadosHoje,
+  loadPsAtendimentosPeriodo, loadPsExamesPeriodo, addPsAtendimentoRemote, updatePsAtendimentoRemote,
+  patchPsAtendimentoDireto, addPsSinalRemote, loadPsSinais, loadPsRegistros, loadPsExamesPendentes,
+  addPsRegistroRemote, updatePsRegistroRemote, loadPsPrescricaoItens, loadPsPrescricaoItensByAtendimentos,
+  addPsPrescricaoItens, loadPsAdministracoes, loadPsAdministracoesByAtendimentos, addPsAdministracao,
+} from "./ps/dados.js";
 import LeitosPage from "./leitos/GiroDeLeitos.jsx";
 import { LEITOS_KEY, loadLeitos, saveLeitos, loadLeitosFromSupabase, upsertLeitoRemote, deleteLeitoRemote,
          SETORES_KEY, loadSetoresLocal, saveSetoresLocal, loadSetoresFromSupabase, upsertSetorRemote, deleteSetorRemote,
@@ -166,10 +179,10 @@ const SB = () => (USE_SUPABASE ? sbFetch : null);
  * falha em vez de renovar. Era assim antes da extração — está anotado para
  * não parecer decisão nova.
  */
-async function postarCru(caminho, corpo) {
+async function postarCru(caminho, corpo, { method = "POST" } = {}) {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
-      method: "POST",
+      method,
       headers: {
         "apikey": SUPABASE_KEY,
         "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
@@ -182,7 +195,10 @@ async function postarCru(caminho, corpo) {
       const body = await res.json().catch(() => null);
       return { ok: false, erro: body?.message || `Erro ${res.status}` };
     }
-    return { ok: true };
+    // `row` para quem precisa da linha gravada (o PATCH direto do PS usa);
+    // quem só quer saber se deu certo ignora e continua lendo `ok`.
+    const rows = await res.json().catch(() => null);
+    return { ok: true, row: Array.isArray(rows) ? rows[0] : null };
   } catch (e) {
     return { ok: false, erro: String(e?.message || e) };
   }
@@ -1863,11 +1879,6 @@ const farmPrecisaRepor = (m, lotes) => farmStatusEstoque(m, lotes).key !== "ok";
 // Pares clínicos: interações medicamentosas e incompatibilidade em Y (Fase 2)
 // Fluxo de preparo (uma linha por prescrição assinada = registro_id)
 // Prescrições assinadas (cabeçalho) de vários atendimentos
-async function loadPsPrescricoesByAtendimentos(ids) {
-  if (!ids.length) return [];
-  const rows = await sbFetch(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.prescricao&select=id,atendimento_id,criado_em,usuario&order=criado_em.desc`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Movimentos de um conjunto de medicamentos (livro de controlados) — ordem cronológica
 // Medicamentos NÃO padronizados (trazidos pela família)
 const NAOPAD_STATUS = {
@@ -1889,11 +1900,6 @@ const INTERV_STATUS = {
 // ── Farmácia clínica (motor de alertas, Fase 1) ──
 // FARM_GRAV vem de ./clinico/alertas.js (a ordenação dos alertas usa `ordem`;
 // a interface usa `cor` e `label`).
-const PS_FREQUENCIAS = [
-  { label: "1x/dia", dia: 1 }, { label: "12/12h (2x)", dia: 2 }, { label: "8/8h (3x)", dia: 3 },
-  { label: "6/6h (4x)", dia: 4 }, { label: "4/4h (6x)", dia: 6 }, { label: "Dose única", dia: 0 },
-  { label: "Se necessário (SN)", dia: null },
-];
 // Fluxo de preparo da farmácia — estados e cores
 const PREPARO_STATUS = {
   aguardando: { label: "Aguardando farmácia", cor: "#8d99ab" },
@@ -1919,7 +1925,6 @@ function farmBeep(dbl) {
 }
 const somAtivo = () => { try { return localStorage.getItem("hnsn_som") === "1"; } catch { return false; } };
 const setSomAtivo = v => { try { localStorage.setItem("hnsn_som", v ? "1" : "0"); } catch {} };
-const PS_DOSE_UNID = ["mg", "mL", "g", "mcg", "UI", "comprimido", "cápsula", "ampola", "gota"];
 // Barra lateral interna da Farmácia (mantém as chaves internas das telas)
 // Ordenado pelo FLUXO do farmacêutico, e os grupos separam natureza de
 // trabalho. A cadeia clínica (2 a 5) já estava certa; o que estava fora de
@@ -2294,13 +2299,6 @@ async function atualizarSupCotacaoRemote(id, campos) {
 // Protocolo de Manchester ADAPTADO do HNSN — nomenclatura e tempos-alvo oficiais
 // da instituição (confirmados pela enfermagem em 2026-07-21).
 // `atend` = tipo de atendimento no vocabulário usado no hospital.
-const MANCHESTER = {
-  vermelho: { label: "Emergência",     atend: "Imediato",        cor: "#ef4444", bg: "#3d0f18", alvoMin: 0,   desc: "Risco de vida. Atendimento IMEDIATO (0 min) — sala de emergência." },
-  laranja:  { label: "Muito urgente",  atend: "Rápido",          cor: "#f97316", bg: "#3d2206", alvoMin: 10,  desc: "Risco significativo. Atendimento urgente RÁPIDO — em até 10 minutos." },
-  amarelo:  { label: "Urgente",        atend: "Breve",           cor: "#eab308", bg: "#3d2e06", alvoMin: 60,  desc: "Condição aguda sem risco imediato. Atendimento BREVE — em até 60 minutos." },
-  verde:    { label: "Pouco urgente",  atend: "Moderado",        cor: "#22c55e", bg: "#0a3d2a", alvoMin: 120, desc: "Condição de menor gravidade. Atendimento MODERADO — em até 120 minutos." },
-  azul:     { label: "Não urgente",    atend: "Não prioritário", cor: "#3b82f6", bg: "#132c47", alvoMin: 240, desc: "Queixa simples/crônica. Atendimento NÃO PRIORITÁRIO — em até 240 minutos ou encaminhamento." },
-};
 // Barra lateral interna do módulo Pronto-Socorro (bloco Triagem)
 const PS_NAV = [
   { key: "painel",      label: "Painel de Triagem",  icon: "dashboard" },
@@ -2313,37 +2311,7 @@ const PS_NAV = [
 // Conteúdo didático do protocolo adaptado — discriminadores e sinais por nível.
 // Base: Manchester Triage Group + faixas usadas pelo apoio à decisão do sistema.
 // Material de referência/treinamento — a classificação final é sempre da triadora.
-const PS_PROTOCOLO = {
-  vermelho: {
-    sinais: ["Parada cardiorrespiratória", "Via aérea comprometida / obstrução", "Inconsciente (AVPU = U)", "Choque: PA sistólica < 80 mmHg", "SpO2 < 85%", "FR < 8 ou > 35 irpm", "FC < 40 ou > 150 bpm", "Convulsão em curso", "Hemorragia exsanguinante"],
-    conduta: "Encaminhar IMEDIATAMENTE à sala de emergência. Não deixar em sala de espera. Comunicar a equipe médica na hora.",
-  },
-  laranja: {
-    sinais: ["Responde só à voz ou à dor (AVPU = V ou D)", "SpO2 86–91%", "FR 8–9 ou 25–35 irpm", "FC 40–49 ou 121–150 bpm", "PA sistólica 80–89 mmHg", "PA sistólica ≥ 220 mmHg (crise hipertensiva)", "Dor intensa (8–10)", "Hemorragia não controlada", "Dor torácica de suspeita cardíaca"],
-    conduta: "Atendimento em até 10 minutos. Manter sob vigilância contínua — pode deteriorar rápido. Reavaliar se houver espera.",
-  },
-  amarelo: {
-    sinais: ["SpO2 92–94%", "FR 21–24 irpm", "FC 50–59 ou 100–120 bpm", "PA sistólica 90–99 mmHg ou ≥ 180 mmHg", "Dor moderada (4–7)", "Temperatura ≥ 39 °C", "Vômitos persistentes", "História de trauma sem sinais de gravidade"],
-    conduta: "Atendimento em até 60 minutos. Reavaliar periodicamente enquanto aguarda — o quadro pode mudar.",
-  },
-  verde: {
-    sinais: ["Sinais vitais dentro da normalidade", "Dor leve (1–3)", "Queixa aguda sem sinais de gravidade", "Ferimentos superficiais", "Sintomas gripais sem desconforto respiratório"],
-    conduta: "Atendimento em até 120 minutos. Orientar sobre o tempo de espera e reavaliar se houver piora relatada.",
-  },
-  azul: {
-    sinais: ["Queixa crônica sem agudização", "Sem dor ou dor mínima", "Procura por receita, atestado ou resultado de exame", "Condição que poderia ser resolvida na atenção básica"],
-    conduta: "Atendimento em até 240 minutos ou encaminhamento à atenção básica/ambulatório, conforme o fluxo da unidade.",
-  },
-};
 // Discriminadores gerais do Manchester — atravessam todos os fluxogramas de queixa
-const PS_DISCRIMINADORES = [
-  { nome: "Risco de vida", desc: "Via aérea, respiração ou circulação comprometidas. Define vermelho independentemente da queixa.", cor: "#ef4444" },
-  { nome: "Dor", desc: "Avaliada de 0 a 10. Dor intensa (8–10) puxa para laranja; moderada (4–7) para amarelo; leve (1–3) para verde.", cor: "#f97316" },
-  { nome: "Hemorragia", desc: "Exsanguinante = vermelho. Não controlada = laranja. Controlada = amarelo/verde conforme volume.", cor: "#e11d48" },
-  { nome: "Nível de consciência", desc: "Escala AVPU. U (inconsciente) = vermelho. V ou D = laranja. A (alerta) segue os demais discriminadores.", cor: "#6366f1" },
-  { nome: "Temperatura", desc: "Febre alta (≥ 39 °C) ou hipotermia elevam a prioridade, sobretudo em extremos de idade.", cor: "#d97706" },
-  { nome: "Agudeza / tempo de evolução", desc: "Início súbito e progressão rápida aumentam a prioridade frente ao mesmo sintoma de curso arrastado.", cor: "#0d9488" },
-];
 
 // Barra lateral interna — bloco EMERGÊNCIA (PS)
 const PS_NAV_EMERG = [
@@ -2362,40 +2330,9 @@ const PS_NAV_EMERG = [
 // a outra não, sem ninguém perceber — e o indicador de procedência sairia
 // diferente conforme a porta usada.
 // Mapa de vagas do PS — ordem fixa das áreas (igual ao padrão do Giro de Leitos)
-const PS_AREAS = ["Sala Vermelha", "Sala Laranja", "Sala AVC", "Isolamento", "Pediatria", "Observação", "Procedimento", "PCR", "Outros"];
 // Retaguarda provisória: alta rotatividade, NÃO entra no censo dos leitos do
 // hospital — conta só no panorama do PS. A fonte da verdade é ps_salas.conta_censo.
 const psContaCenso = s => s.conta_censo !== false;
-async function loadPsProtocolos() {
-  const rows = await sbFetch("ps_protocolos?select=*&order=categoria,titulo");
-  return Array.isArray(rows) ? rows : [];
-}
-async function upsertPsProtocoloRemote(p, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...p, usuario: user?.name || null, updated_at: nowISO() };
-  if (p.id) { await sbFetch(`ps_protocolos?id=eq.${p.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
-  delete body.id;
-  return await sbFetch("ps_protocolos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function deletePsProtocoloRemote(id) { if (USE_SUPABASE) await sbFetch(`ps_protocolos?id=eq.${id}`, { method: "DELETE" }); }
-const PS_SALA_STATUS = {
-  disponivel:  { label: "Disponível",  cor: "#34d399" },
-  ocupado:     { label: "Ocupado",     cor: "#f43f5e" },
-  limpeza:     { label: "Limpeza",     cor: "#d97706" },
-  manutencao:  { label: "Manutenção",  cor: "#8d99ab" },
-};
-async function loadPsSalas() {
-  const rows = await sbFetch("ps_salas?select=*&order=area,ordem,identificacao");
-  return Array.isArray(rows) ? rows : [];
-}
-async function upsertPsSalaRemote(sala, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...sala, usuario: user?.name || null, updated_at: nowISO() };
-  if (sala.id) { await sbFetch(`ps_salas?id=eq.${sala.id}`, { method: "PATCH", body: JSON.stringify(body) }); return null; }
-  delete body.id;
-  return await sbFetch("ps_salas", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function deletePsSalaRemote(id) { if (USE_SUPABASE) await sbFetch(`ps_salas?id=eq.${id}`, { method: "DELETE" }); }
 
 // Assistente local do Pronto-Socorro — responde a partir dos dados da tela
 const PS_ASSIST_HELP = 'Posso responder sobre: panorama do PS, fila e tempos-alvo, quem está fora do alvo, vagas livres por área, retaguarda vs censo, pacientes em atendimento, aguardando leito, transferências e desfechos do dia. Ex.: "panorama", "quem está fora do alvo?", "vagas livres", "sala vermelha", "aguardando leito".';
@@ -2491,7 +2428,7 @@ function PsProtocolosModal({ currentUser, canEdit, isMaster, onClose }) {
   const [edit, setEdit] = useState(null);   // protocolo em edição/novo
   const [busca, setBusca] = useState("");
   const [busy, setBusy] = useState(false);
-  const carregar = () => loadPsProtocolos().then(setLista);
+  const carregar = () => loadPsProtocolos(SB()).then(setLista);
   useEffect(() => { if (USE_SUPABASE) carregar(); }, []);
   const inp2 = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const q = normTxt(busca);
@@ -2499,13 +2436,13 @@ function PsProtocolosModal({ currentUser, canEdit, isMaster, onClose }) {
   async function salvar() {
     if (!edit.titulo?.trim()) { alert("Informe o título do protocolo."); return; }
     setBusy(true);
-    await upsertPsProtocoloRemote({ ...(edit.id ? { id: edit.id } : {}), titulo: edit.titulo.trim(), categoria: edit.categoria?.trim() || null, resumo: edit.resumo?.trim() || null, conteudo: edit.conteudo?.trim() || null, referencia: edit.referencia?.trim() || null, ativo: true }, currentUser);
+    await upsertPsProtocoloRemote(SB(), { ...(edit.id ? { id: edit.id } : {}), titulo: edit.titulo.trim(), categoria: edit.categoria?.trim() || null, resumo: edit.resumo?.trim() || null, conteudo: edit.conteudo?.trim() || null, referencia: edit.referencia?.trim() || null, ativo: true }, currentUser);
     addAuditLog(currentUser, edit.id ? "PS: editar protocolo" : "PS: cadastrar protocolo", edit.titulo, {});
     setBusy(false); setEdit(null); carregar();
   }
   async function excluir(p) {
     if (!confirm(`Excluir o protocolo "${p.titulo}"?`)) return;
-    await deletePsProtocoloRemote(p.id); addAuditLog(currentUser, "PS: excluir protocolo", p.titulo, {}); carregar();
+    await deletePsProtocoloRemote(SB(), p.id); addAuditLog(currentUser, "PS: excluir protocolo", p.titulo, {}); carregar();
   }
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
@@ -2661,13 +2598,6 @@ function PsSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
   );
 }
 
-const PS_DESFECHOS = {
-  alta:          { label: "Alta",          cor: "#34d399" },
-  internacao:    { label: "Internação",    cor: "#22d3ee" },
-  transferencia: { label: "Transferência", cor: "#3b82f6" },
-  evasao:        { label: "Evasão",        cor: "#8d99ab" },
-  obito:         { label: "Óbito",         cor: "#f43f5e" },
-};
 // O PS só enxerga atendimento de EMERGÊNCIA.
 //
 // Desde a agenda do ambulatório, `ps_atendimentos` guarda os dois tipos —
@@ -2677,151 +2607,30 @@ const PS_DESFECHOS = {
 // fica "aguardando triagem" para sempre, porque ninguém vai triar uma
 // consulta agendada.
 //
-// `is.null` entra no filtro de propósito: os atendimentos criados antes
-// da coluna existir não têm tipo, e todos eles são do PS.
-const SO_EMERGENCIA = "or=(tipo_atendimento.eq.emergencia,tipo_atendimento.is.null)";
-async function loadPsAtendimentos() {
-  const rows = await sbFetch(`ps_atendimentos?${FILTRO_ATENDIMENTO_ABERTO}&${SO_EMERGENCIA}&select=*&order=chegada_em`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadPsFinalizadosHoje() {
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const rows = await sbFetch(`ps_atendimentos?status=eq.finalizado&desfecho_em=gte.${hoje.toISOString()}&${SO_EMERGENCIA}&select=*&order=desfecho_em.desc`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Atendimentos do PS de um mês civil (para o relatório mensal). SOMENTE LEITURA.
 // As bordas são meia-noite LOCAL convertidas para instante UTC — mesmo idioma das
 // outras faixas de mês do app. Não usar toISOString() sobre string de data crua.
-async function loadPsAtendimentosPeriodo(ano, mes) {
-  const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
-  const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
-  const rows = await sbFetch(`ps_atendimentos?chegada_em=gte.${ini.toISOString()}&chegada_em=lt.${fim.toISOString()}&${SO_EMERGENCIA}&select=*&order=chegada_em.asc`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Exames do PS de um mês civil (para o BI do relatório mensal). SOMENTE LEITURA.
 // Mesmas bordas de mês local -> UTC dos atendimentos. A categoria (laboratorial/
 // imagem/outro) já vem gravada em ps_registros; aqui só se lê para agrupar.
-async function loadPsExamesPeriodo(ano, mes) {
-  const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
-  const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
-  const rows = await sbFetch(`ps_registros?tipo=eq.exame&criado_em=gte.${ini.toISOString()}&criado_em=lt.${fim.toISOString()}&select=categoria,status,criado_em,resultado_em&order=criado_em.asc`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function addPsAtendimentoRemote(at, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("ps_atendimentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...at, usuario: user?.name || null }) });
-}
-async function updatePsAtendimentoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`ps_atendimentos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
 // PATCH com captura de erro (o sbFetch engole !ok) — usado no contexto clínico
-async function patchPsAtendimentoDireto(id, campos) {
-  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/ps_atendimentos?id=eq.${id}`, {
-      method: "PATCH",
-      headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
-      body: JSON.stringify({ ...campos, updated_at: nowISO() }),
-    });
-    if (!res.ok) { const b = await res.json().catch(() => null); return { ok: false, erro: b?.message || b?.hint || `Erro ${res.status}` }; }
-    const rows = await res.json().catch(() => null);
-    return { ok: true, row: Array.isArray(rows) ? rows[0] : null };
-  } catch (e) { return { ok: false, erro: String(e?.message || e) }; }
-}
-async function addPsSinalRemote(sinal, user) {
-  if (!USE_SUPABASE) return;
-  await sbFetch("ps_sinais", { method: "POST", body: JSON.stringify({ ...sinal, usuario: user?.name || null }) });
-}
-async function loadPsSinais(atendimentoId) {
-  const rows = await sbFetch(`ps_sinais?atendimento_id=eq.${atendimentoId}&select=*&order=aferido_em.desc&limit=5`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Registros do atendimento (evolução médica, prescrição, exames)
-const PS_EXAME_CATEGORIAS = { laboratorial: "Laboratorial", imagem: "Imagem", outro: "Outro" };
 // Quem registrou a evolução no PS. Usa ps_registros.categoria (coluna já existente).
 // Antes tudo era rotulado "Evolução médica", mesmo escrito por enfermeiro/técnico.
-const PS_EVOL_CATEGORIAS = {
-  medica:       { label: "Evolução médica",        curto: "Médica",     cor: "#3b82f6" },
-  enfermagem:   { label: "Evolução de enfermagem", curto: "Enfermagem", cor: "#0d9488" },
-  tecnico:      { label: "Anotação do técnico",    curto: "Técnico",    cor: "#6366f1" },
-  fisioterapia: { label: "Fisioterapia",           curto: "Fisio",      cor: "#d97706" },
-  outro:        { label: "Outro profissional",     curto: "Outro",      cor: "#8d99ab" },
-};
-async function loadPsRegistros(atendimentoId) {
-  const rows = await sbFetch(`ps_registros?atendimento_id=eq.${atendimentoId}&select=*&order=criado_em.desc`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadPsExamesPendentes(ids) {
-  if (!ids.length) return [];
-  const rows = await sbFetch(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.exame&status=neq.visto&select=atendimento_id,status`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function addPsRegistroRemote(reg, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("ps_registros", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
-}
-async function updatePsRegistroRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`ps_registros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
-}
 // Vias de administração da prescrição
-const PS_VIAS = ["VO", "IV", "IM", "SC", "SL", "Inalatória", "Tópica", "Retal", "Ocular", "Nasal", "Sonda"];
 // Itens estruturados da prescrição (Farmácia Fase B)
-async function addPsPrescricaoItens(itens, user) {
-  if (!USE_SUPABASE || !itens.length) return null;
-  const body = itens.map(it => ({ ...it, usuario: user?.name || null }));
-  return await sbFetch("ps_prescricao_itens", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function loadPsPrescricaoItens(atendimentoId) {
-  const rows = await sbFetch(`ps_prescricao_itens?atendimento_id=eq.${atendimentoId}&select=*&order=created_at`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadPsPrescricaoItensByAtendimentos(ids) {
-  if (!ids.length) return [];
-  const rows = await sbFetch(`ps_prescricao_itens?atendimento_id=in.(${ids.join(",")})&select=*&order=created_at`);
-  return Array.isArray(rows) ? rows : [];
-}
 // ===== Checagem de medicação administrada (append-only) =====
 // A dispensação diz que o remédio SAIU DA FARMÁCIA; só a checagem diz que ele
 // ENTROU NO PACIENTE, com hora e quem administrou.
-const PS_ADM_STATUS = {
-  administrado:     { label: "Administrado",     cor: "#34d399" },
-  nao_administrado: { label: "Não administrado", cor: "#f43f5e" },
-};
 // Por que a dose prescrita e dispensada não foi dada — vira indicador de segurança
-const PS_ADM_MOTIVOS = ["Recusa do paciente", "Paciente em jejum", "Acesso venoso perdido", "Paciente ausente (exame/procedimento)", "Suspenso pelo médico", "Sem estoque na unidade", "Intercorrência clínica", "Outro"];
 // Quem administra à beira do leito
-const PS_ADM_CATEGORIAS = {
-  enfermagem: { label: "Enfermeiro(a)",              curto: "Enfermagem", cor: "#0d9488" },
-  tecnico:    { label: "Técnico(a) de enfermagem",   curto: "Técnico",    cor: "#6366f1" },
-  medica:     { label: "Médico(a)",                  curto: "Médica",     cor: "#3b82f6" },
-  outro:      { label: "Outro profissional",         curto: "Outro",      cor: "#8d99ab" },
-};
-async function addPsAdministracao(reg, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("ps_administracoes", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
-}
-async function loadPsAdministracoes(atendimentoId) {
-  const rows = await sbFetch(`ps_administracoes?atendimento_id=eq.${atendimentoId}&select=*&order=administrado_em.desc`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadPsAdministracoesByAtendimentos(ids) {
-  if (!ids.length) return [];
-  const rows = await sbFetch(`ps_administracoes?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,status,administrado_em`);
-  return Array.isArray(rows) ? rows : [];
-}
 // Doses já dadas de um item (só as efetivamente administradas contam)
 const psDosesDadas = (itemId, adms) => adms.filter(a => String(a.prescricao_item_id) === String(itemId) && a.status !== "nao_administrado").length;
 
 // Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
 // Prioridade de ordenação da fila (menor = mais urgente)
-const PS_PRIORIDADE = { vermelho: 0, laranja: 1, amarelo: 2, verde: 3, azul: 4 };
 
 // Nível de consciência (AVPU)
-const PS_CONSCIENCIA = {
-  A: "Alerta", V: "Responde à voz", D: "Responde à dor", U: "Inconsciente",
-};
 // Avalia os sinais vitais (adulto) e sugere a classificação de Manchester.
 // APOIO À DECISÃO: cada alteração vira um "motivo" com o nível que ela dispara;
 // a sugestão final é o pior nível encontrado. A palavra final é da triadora.
@@ -2880,19 +2689,6 @@ function avaliarSinaisVitais(v) {
   return { sugestao: pior || "verde", motivos };
 }
 // Linha compacta dos sinais vitais registrados (fila e Paciente 360)
-function fmtSinaisVitais(p) {
-  const parts = [];
-  if (p.pa_sist && p.pa_diast) parts.push(`PA ${p.pa_sist}x${p.pa_diast}`);
-  else if (p.pa_sist) parts.push(`PAS ${p.pa_sist}`);
-  if (p.fc) parts.push(`FC ${p.fc}`);
-  if (p.fr) parts.push(`FR ${p.fr}`);
-  if (p.spo2) parts.push(`SpO2 ${p.spo2}%`);
-  if (p.temp) parts.push(`T ${p.temp}°C`);
-  if (p.dor) parts.push(`Dor ${p.dor}/10`);
-  if (p.glicemia) parts.push(`HGT ${p.glicemia}`);
-  if (p.consciencia && p.consciencia !== "A") parts.push(PS_CONSCIENCIA[p.consciencia] || p.consciencia);
-  return parts.join(" · ");
-}
 
 // ── Fase C: indicadores mensais do SCIH ──
 async function loadScihIndicadores() {
@@ -4132,8 +3928,8 @@ function PsRelatorioView() {
     if (!USE_SUPABASE) { setRows([]); setExames([]); return; }
     let cancelado = false;
     setCarregando(true);
-    loadPsAtendimentosPeriodo(ano, mes).then(r => { if (!cancelado) { setRows(r); setCarregando(false); } });
-    loadPsExamesPeriodo(ano, mes).then(r => { if (!cancelado) setExames(r); });
+    loadPsAtendimentosPeriodo(SB(), ano, mes).then(r => { if (!cancelado) { setRows(r); setCarregando(false); } });
+    loadPsExamesPeriodo(SB(), ano, mes).then(r => { if (!cancelado) setExames(r); });
     return () => { cancelado = true; };
   }, [mes, ano]);
 
@@ -4665,19 +4461,19 @@ function PSPage({ currentUser, canEdit }) {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadPsAtendimentos().then(r => {
+    loadPsAtendimentos(SB()).then(r => {
       setFila(r);
       const ids = r.filter(p => p.status === "em_atendimento").map(p => p.id);
-      loadPsExamesPendentes(ids).then(list => {
+      loadPsExamesPendentes(SB(), ids).then(list => {
         const m = {};
         list.forEach(x => { m[x.atendimento_id] = m[x.atendimento_id] || { aguardando: 0, prontos: 0 }; if (x.status === "resultado_disponivel") m[x.atendimento_id].prontos++; else m[x.atendimento_id].aguardando++; });
         setExamesPend(m);
       });
       // Medicação já dispensada pela farmácia e ainda sem checagem à beira do leito
       Promise.all([
-        loadPsPrescricaoItensByAtendimentos(ids),
+        loadPsPrescricaoItensByAtendimentos(SB(), ids),
         loadFarmSaidasByAtendimentos(SB(), ids),
-        loadPsAdministracoesByAtendimentos(ids),
+        loadPsAdministracoesByAtendimentos(SB(), ids),
       ]).then(([itens, saidasAll, admsAll]) => {
         const m = {};
         itens.forEach(it => {
@@ -4695,8 +4491,8 @@ function PSPage({ currentUser, canEdit }) {
         setChecagemPend(m);
       });
     });
-    loadPsFinalizadosHoje().then(setFinalizados);
-    loadPsSalas().then(setSalas);
+    loadPsFinalizadosHoje(SB()).then(setFinalizados);
+    loadPsSalas(SB()).then(setSalas);
     loadSetoresFromSupabase(SB()).then(r => r && setSetores(r));
     loadLeitosFromSupabase(SB()).then(r => r && setLeitos(r));
     // óbitos ocorridos APÓS internação, hoje (fonte: leitos_saidas)
@@ -4747,7 +4543,7 @@ function PSPage({ currentUser, canEdit }) {
       return;
     }
 
-    await addPsAtendimentoRemote({
+    await addPsAtendimentoRemote(SB(), {
       iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim(),
       queixa: novo.queixa.trim() || null, origem: novo.origem,
       origem_detalhe: novo.origem_detalhe.trim() || null,
@@ -4772,42 +4568,42 @@ function PSPage({ currentUser, canEdit }) {
     return out;
   }
   async function triar(p, classificacao, vitais, sugerida, comorbidades, extras) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
-    await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
+    await updatePsAtendimentoRemote(SB(), p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    await addPsSinalRemote(SB(), { atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
   }
   async function reavaliar(p, classificacao, vitais, sugerida, comorbidades, extras) {
-    await updatePsAtendimentoRemote(p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
-    await addPsSinalRemote({ atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
+    await updatePsAtendimentoRemote(SB(), p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    await addPsSinalRemote(SB(), { atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
     setReavaliando(null); setTimeout(refresh, 300);
   }
   // ── Mapa de salas do PS ──
   async function salvarSala(s) {
-    await upsertPsSalaRemote(s, currentUser);
+    await upsertPsSalaRemote(SB(), s, currentUser);
     addAuditLog(currentUser, s.id ? "PS: editar sala" : "PS: cadastrar sala", s.identificacao, {});
     setTimeout(refresh, 300);
   }
   async function excluirSala(s) {
     if (!confirm(`Excluir a sala "${s.identificacao}"?`)) return;
-    await deletePsSalaRemote(s.id);
+    await deletePsSalaRemote(SB(), s.id);
     addAuditLog(currentUser, "PS: excluir sala", s.identificacao, {});
     setTimeout(refresh, 300);
   }
   async function ocuparSala(sala, paciente) {
-    await upsertPsSalaRemote({ id: sala.id, status: "ocupado", atendimento_id: paciente.id, ocupado_em: nowISO() }, currentUser);
+    await upsertPsSalaRemote(SB(), { id: sala.id, status: "ocupado", atendimento_id: paciente.id, ocupado_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: alocar sala", `${sala.identificacao} · ${paciente.iniciais}`, {});
     setAlocando(null); setTimeout(refresh, 300);
   }
   // Liberar manda para limpeza (fluxo real: sala usada precisa ser higienizada)
   async function mudarStatusSala(sala, status) {
-    await upsertPsSalaRemote({ id: sala.id, status, atendimento_id: status === "ocupado" ? sala.atendimento_id : null, ocupado_em: status === "ocupado" ? sala.ocupado_em : null }, currentUser);
+    await upsertPsSalaRemote(SB(), { id: sala.id, status, atendimento_id: status === "ocupado" ? sala.atendimento_id : null, ocupado_em: status === "ocupado" ? sala.ocupado_em : null }, currentUser);
     addAuditLog(currentUser, "PS: sala " + status, sala.identificacao, {});
     setTimeout(refresh, 300);
   }
   async function iniciarAtendimento(p) {
-    await updatePsAtendimentoRemote(p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
+    await updatePsAtendimentoRemote(SB(), p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
     addAuditLog(currentUser, "PS: inicio atendimento", p.iniciais, {});
     setTimeout(refresh, 300);
   }
@@ -4817,7 +4613,7 @@ function PSPage({ currentUser, canEdit }) {
     // episódio vira faturável — e o procedimento só se sabe no fim. Sem eles,
     // `carregarProducaoFaturavel` (que filtra procedimento_cod=not.is.null)
     // nunca enxerga este atendimento.
-    await updatePsAtendimentoRemote(p.id, {
+    await updatePsAtendimentoRemote(SB(), p.id, {
       desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null,
       observacao: observacao || null, medico: medico || null, status: "finalizado",
       ...dadosDeConta({ convenioId, procedimentoCod, cid }),
@@ -6245,8 +6041,8 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
-  const carregarRegistros = () => loadPsRegistros(paciente.id).then(setRegistros);
-  const carregarPrescricao = () => { loadPsPrescricaoItens(paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(SB(), paciente.id).then(setSaidas); loadPsAdministracoes(paciente.id).then(setAdms); };
+  const carregarRegistros = () => loadPsRegistros(SB(), paciente.id).then(setRegistros);
+  const carregarPrescricao = () => { loadPsPrescricaoItens(SB(), paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(SB(), paciente.id).then(setSaidas); loadPsAdministracoes(SB(), paciente.id).then(setAdms); };
   useEffect(() => { carregarRegistros(); }, []);
   useEffect(() => { loadFarmMedicamentos(SB()).then(setCatalogo); loadFarmLotes(SB()).then(setPresLotes); loadFarmInteracoes(SB()).then(setInteracoes); loadFarmIncompatY(SB()).then(setIncompatY); carregarPrescricao(); }, []);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
@@ -6265,14 +6061,14 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
     if (!confirm(`Salvar esta ${tipo === "evolucao" ? "evolução" : "prescrição"}? Ela NÃO poderá ser editada nem apagada depois (registro clínico).`)) return;
     setBusy(true);
     if (gravando) { recRef.current?.stop(); setGravando(false); }
-    await addPsRegistroRemote({ atendimento_id: paciente.id, tipo, categoria: tipo === "evolucao" ? evolCat : null, texto: texto.trim(), criado_em: nowISO() }, currentUser);
+    await addPsRegistroRemote(SB(), { atendimento_id: paciente.id, tipo, categoria: tipo === "evolucao" ? evolCat : null, texto: texto.trim(), criado_em: nowISO() }, currentUser);
     addAuditLog(currentUser, `PS: ${tipo === "evolucao" ? (PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução") : "prescrição"}`, paciente.iniciais, {});
     setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
   }
   async function salvarContexto() {
     setCtxBusy(true); setCtxMsg("");
     const payload = { idade: ctx.idade === "" ? null : Number(ctx.idade), peso: ctx.peso === "" ? null : Number(ctx.peso), clearance_renal: ctx.clearance_renal === "" ? null : Number(ctx.clearance_renal), funcao_hepatica: ctx.funcao_hepatica || null, alergias: ctx.alergias?.trim() || null, em_sonda: !!ctx.em_sonda, gestante: !!ctx.gestante, comorbidades: Array.isArray(ctx.comorbidades) ? ctx.comorbidades : [] };
-    const r = await patchPsAtendimentoDireto(paciente.id, payload);
+    const r = await patchPsAtendimentoDireto(SB_CRU(), paciente.id, payload);
     setCtxBusy(false);
     if (!r.ok) { setCtxMsg("erro: " + (r.erro || "falha ao salvar")); return; }
     Object.assign(paciente, payload);           // reflete no episódio aberto
@@ -6305,11 +6101,11 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
     setBusy(true);
     const linhas = presItens.map(it => `• ${it.medicamento_nome}${it.dose ? " — " + it.dose : ""}${it.via ? " (" + it.via + ")" : ""}${it.quantidade ? " — qtd " + farmFmtQtd(it.quantidade) + (it.unidade ? " " + it.unidade : "") : ""}`);
     const texto = (linhas.join("\n") + (presObs.trim() ? `\nObs.: ${presObs.trim()}` : "")).trim();
-    const regRows = await addPsRegistroRemote({ atendimento_id: paciente.id, tipo: "prescricao", texto, criado_em: nowISO() }, currentUser);
+    const regRows = await addPsRegistroRemote(SB(), { atendimento_id: paciente.id, tipo: "prescricao", texto, criado_em: nowISO() }, currentUser);
     const registroId = Array.isArray(regRows) ? regRows[0]?.id : null;
     if (presItens.length) {
       const itens = presItens.map(it => ({ atendimento_id: paciente.id, registro_id: registroId, medicamento_id: it.medicamento_id || null, medicamento_nome: it.medicamento_nome, unidade: it.unidade || null, dose: it.dose || null, dose_valor: it.dose_valor ?? null, dose_unidade: it.dose_unidade || null, frequencia_dia: it.frequencia_dia ?? null, duracao_dias: it.duracao_dias ?? null, via: it.via || null, quantidade: it.quantidade ? Number(it.quantidade) : null }));
-      await addPsPrescricaoItens(itens, currentUser);
+      await addPsPrescricaoItens(SB(), itens, currentUser);
     }
     addAuditLog(currentUser, "PS: prescrição", `${paciente.iniciais} · ${presItens.length} item(ns)`, {});
     setPresItens([]); setPresObs(""); setBusy(false);
@@ -6335,7 +6131,7 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
     const rotulo = chkForm.status === "administrado" ? "administrado" : "NÃO administrado";
     if (!confirm(`Registrar ${it.medicamento_nome} como ${rotulo} em ${horaFmt(quandoIso)}?\n\nÉ um registro clínico: NÃO poderá ser editado nem apagado depois.`)) return;
     setBusy(true);
-    await addPsAdministracao({
+    await addPsAdministracao(SB(), {
       atendimento_id: paciente.id, prescricao_item_id: it.id, medicamento_id: it.medicamento_id || null,
       medicamento_nome: it.medicamento_nome, dose: it.dose || null, via: it.via || null,
       status: chkForm.status, motivo: chkForm.status === "nao_administrado" ? chkForm.motivo : null,
@@ -6343,24 +6139,24 @@ function AtendimentoModal({ paciente, currentUser, onClose, onChanged, abaInicia
     }, currentUser);
     addAuditLog(currentUser, `PS: checagem de medicação (${rotulo})`, `${paciente.iniciais} · ${it.medicamento_nome}`, {});
     setChecando(null); setBusy(false);
-    loadPsAdministracoes(paciente.id).then(setAdms);
+    loadPsAdministracoes(SB(), paciente.id).then(setAdms);
     onChanged?.();
   }
   async function solicitarExame() {
     if (!exForm.nome.trim()) { alert("Informe o nome do exame."); return; }
     setBusy(true);
-    await addPsRegistroRemote({ atendimento_id: paciente.id, tipo: "exame", categoria: exForm.categoria, texto: exForm.nome.trim(), status: "solicitado", criado_em: nowISO() }, currentUser);
+    await addPsRegistroRemote(SB(), { atendimento_id: paciente.id, tipo: "exame", categoria: exForm.categoria, texto: exForm.nome.trim(), status: "solicitado", criado_em: nowISO() }, currentUser);
     addAuditLog(currentUser, "PS: solicitar exame", `${paciente.iniciais} · ${exForm.nome.trim()}`, {});
     setExForm(p => ({ ...p, nome: "" })); setBusy(false); carregarRegistros(); onChanged?.();
   }
   async function lancarResultado() {
     if (!resultadoDe?.texto?.trim()) { alert("Cole ou descreva o resultado."); return; }
-    await updatePsRegistroRemote(resultadoDe.id, { status: "resultado_disponivel", resultado: resultadoDe.texto.trim(), resultado_em: nowISO() });
+    await updatePsRegistroRemote(SB(), resultadoDe.id, { status: "resultado_disponivel", resultado: resultadoDe.texto.trim(), resultado_em: nowISO() });
     addAuditLog(currentUser, "PS: resultado de exame", paciente.iniciais, {});
     setResultadoDe(null); carregarRegistros(); onChanged?.();
   }
   async function marcarVisto(reg) {
-    await updatePsRegistroRemote(reg.id, { status: "visto" });
+    await updatePsRegistroRemote(SB(), reg.id, { status: "visto" });
     addAuditLog(currentUser, "PS: exame visto", `${paciente.iniciais} · ${reg.texto}`, {});
     carregarRegistros(); onChanged?.();
   }
@@ -6815,7 +6611,7 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
         .then(r => { const p = Array.isArray(r) && r[0]; if (p) setIdadeInfo(idadeMesesParaTriagem(p)); })
         .catch(() => {});
     }
-    if (reavaliacao) loadPsSinais(paciente.id).then(setHistorico);
+    if (reavaliacao) loadPsSinais(SB(), paciente.id).then(setHistorico);
   }, []);
   const pediatrico = tipo === "pediatrica" || (idade != null && idade < 13);
   const naoAdulto = tipo !== "adulto";
@@ -7737,10 +7533,10 @@ function FarmDispensacaoView({ currentUser, canEdit }) {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadPsAtendimentos().then(async ats => {
+    loadPsAtendimentos(SB()).then(async ats => {
       setAtends(ats);
       const ids = ats.map(a => a.id);
-      setItens(await loadPsPrescricaoItensByAtendimentos(ids));
+      setItens(await loadPsPrescricaoItensByAtendimentos(SB(), ids));
       setSaidas(await loadFarmSaidasByAtendimentos(SB(), ids));
     });
     loadFarmLotes(SB()).then(setLotes);
@@ -8061,9 +7857,9 @@ function FarmIndicadoresView() {
     loadFarmMedicamentos(SB()).then(setMeds);
     loadFarmLotes(SB()).then(setLotes);
     loadFarmPreparo(SB()).then(setPrep);
-    loadPsAtendimentos().then(async ats => {
+    loadPsAtendimentos(SB()).then(async ats => {
       const ids = ats.map(a => a.id);
-      const pres = await loadPsPrescricoesByAtendimentos(ids);
+      const pres = await loadPsPrescricoesByAtendimentos(SB(), ids);
       const atSet = new Set(ids);
       const prepRows = await loadFarmPreparo(SB());
       const prepReg = {}; prepRows.forEach(p => prepReg[p.registro_id] = p);
@@ -8331,9 +8127,9 @@ function FarmAnaliseView({ currentUser, canEdit }) {
     loadFarmMedicamentos(SB()).then(setMeds);
     loadFarmInteracoes(SB()).then(setInteracoes);
     loadFarmIncompatY(SB()).then(setIncompatY);
-    loadPsAtendimentos().then(async ats => {
+    loadPsAtendimentos(SB()).then(async ats => {
       setAtends(ats);
-      setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id)));
+      setItens(await loadPsPrescricaoItensByAtendimentos(SB(), ats.map(a => a.id)));
     });
   }
   useEffect(() => {
@@ -8541,9 +8337,9 @@ function FarmPreparoView({ currentUser, canEdit }) {
 
   async function refresh() {
     if (!USE_SUPABASE) return;
-    const ats = await loadPsAtendimentos(); setAtends(ats);
+    const ats = await loadPsAtendimentos(SB()); setAtends(ats);
     const ids = ats.map(a => a.id);
-    const [pres, prep, its, sai] = await Promise.all([loadPsPrescricoesByAtendimentos(ids), loadFarmPreparo(SB()), loadPsPrescricaoItensByAtendimentos(ids), loadFarmSaidasByAtendimentos(SB(), ids)]);
+    const [pres, prep, its, sai] = await Promise.all([loadPsPrescricoesByAtendimentos(SB(), ids), loadFarmPreparo(SB()), loadPsPrescricaoItensByAtendimentos(SB(), ids), loadFarmSaidasByAtendimentos(SB(), ids)]);
     setPrescricoes(pres); setPreparo(prep); setItens(its); setSaidas(sai);
     loadFarmLotes(SB()).then(setLotes); loadFarmMedicamentos(SB()).then(setMeds); loadFarmInteracoes(SB()).then(setInteracoes); loadFarmIncompatY(SB()).then(setIncompatY);
     // detectar prescrições novas aguardando → bipe + toast
@@ -8675,7 +8471,7 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
   const seenRef = useRef(null);
   async function refresh() {
     if (!USE_SUPABASE) return;
-    const ats = await loadPsAtendimentos();
+    const ats = await loadPsAtendimentos(SB());
     const atById = {}; ats.forEach(a => atById[a.id] = a);
     const prep = await loadFarmPreparo(SB());
     const lista = prep.filter(p => p.status === "pronto" && atById[p.atendimento_id]).map(p => ({ ...p, at: atById[p.atendimento_id] }));
@@ -8716,7 +8512,7 @@ function PsIntervencaoBanner({ currentUser, canEdit }) {
   const seenRef = useRef(null);
   async function refresh() {
     if (!USE_SUPABASE) return;
-    const ats = await loadPsAtendimentos();
+    const ats = await loadPsAtendimentos(SB());
     const atById = {}, porProntuario = {};
     ats.forEach(a => { atById[a.id] = a; if (a.prontuario) porProntuario[normTxt(String(a.prontuario))] = a; });
     const ivs = await loadFarmIntervencoes(SB());
@@ -9006,7 +8802,7 @@ function FarmIntervencaoView({ currentUser, canEdit }) {
     loadFarmInteracoes(SB()).then(setInteracoes);
     loadFarmIncompatY(SB()).then(setIncompatY);
     loadFarmIntervencoes(SB()).then(setIntervs);
-    loadPsAtendimentos().then(async ats => { setAtends(ats); setItens(await loadPsPrescricaoItensByAtendimentos(ats.map(a => a.id))); });
+    loadPsAtendimentos(SB()).then(async ats => { setAtends(ats); setItens(await loadPsPrescricaoItensByAtendimentos(SB(), ats.map(a => a.id))); });
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => setTick(t => t + 1), 60000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
 
@@ -9195,7 +8991,7 @@ function FarmDashboardView({ currentUser, canEdit, onNav }) {
       loadFarmMedicamentos(SB()).then(setMeds),
       loadFarmInteracoes(SB()).then(setInteracoes),
       loadFarmIncompatY(SB()).then(setIncompatY),
-      loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); }),
+      loadPsAtendimentos(SB()).then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(SB(), ids)); setItens(await loadPsPrescricaoItensByAtendimentos(SB(), ids)); }),
     ]).finally(() => setCarregando(false));
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => setTick(t => t + 1), 60000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
@@ -9316,7 +9112,7 @@ function FarmAssistenteView() {
     loadFarmInteracoes(SB()).then(setInteracoes);
     loadFarmIncompatY(SB()).then(setIncompatY);
     loadFarmPreparo(SB()).then(setPrep);
-    loadPsAtendimentos().then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(ids)); setItens(await loadPsPrescricaoItensByAtendimentos(ids)); });
+    loadPsAtendimentos(SB()).then(async a => { setAts(a); const ids = a.map(x => x.id); setPres(await loadPsPrescricoesByAtendimentos(SB(), ids)); setItens(await loadPsPrescricaoItensByAtendimentos(SB(), ids)); });
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
