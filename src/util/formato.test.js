@@ -64,3 +64,45 @@ describe("taxa — o núcleo do BI", () => {
     expect(taxa("5", "10")).toBe(50);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 OS TRÊS BURACOS DO `taxa`, ACHADOS PELO PAINEL DO SCIH
+//
+// `Number("")` é 0, e isso vazava de duas formas opostas. O pior não era o
+// NaN: era o ZERO. "0% de infecção de sítio cirúrgico" num mês em que
+// ninguém preencheu o campo diz que está seguro — e num painel de infecção
+// é exatamente a leitura que faz alguém não agir.
+// ═══════════════════════════════════════════════════════════
+
+describe("🔴 campo em branco não é zero", () => {
+  it("numerador vazio NÃO vira 0", () => {
+    // Era o pior dos três: `Number("")` é 0, e a taxa saía 0% — resultado
+    // de aparência perfeita para um campo que ninguém preencheu.
+    expect(taxa("", 100)).toBeNull();
+    expect(taxa("", 100, 1000)).toBeNull();
+  });
+
+  it("denominador vazio NÃO vira Infinity", () => {
+    expect(taxa(10, "")).toBeNull();
+  });
+
+  it("texto em qualquer das pontas NÃO vira NaN", () => {
+    // NaN atravessa toda comparação e some na tela como espaço vazio.
+    expect(taxa(10, "abc")).toBeNull();
+    expect(taxa("abc", 100)).toBeNull();
+    expect(taxa("abc", "def")).toBeNull();
+  });
+
+  it("⚠️ mas zero DE VERDADE continua sendo zero", () => {
+    // 0 infecções em 300 cirurgias é um resultado, e um bom. Não pode virar
+    // "não medido" junto com os casos acima.
+    expect(taxa(0, 300)).toBe(0);
+    expect(taxa(0, 300, 1000)).toBe(0);
+    expect(taxa("0", "300")).toBe(0);
+  });
+
+  it("e número em texto continua calculando", () => {
+    // O formulário devolve string; recusar isso quebraria metade do BI.
+    expect(taxa("5", "10")).toBe(50);
+  });
+});

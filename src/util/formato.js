@@ -30,6 +30,20 @@ export const fmtReais = v =>
  * afirmação clínica falsa (ex.: "0% de infecção" num setor sem dados).
  */
 export function taxa(num, den, fator = 100) {
-  if (num == null || den == null || den === 0) return null;
-  return (Number(num) / Number(den)) * fator;
+  // 🔴 TRÊS BURACOS, ACHADOS PELO PAINEL DE INFECÇÃO DO SCIH.
+  // `Number("")` é 0, e isso vazava de duas formas opostas:
+  //   taxa("", 100)  ->  0          campo em branco virava ZERO DE VERDADE
+  //   taxa(10, "")   ->  Infinity   campo em branco no denominador
+  //   taxa(10, "ab") ->  NaN        texto em qualquer das pontas
+  //
+  // O primeiro é o pior: "0% de infecção de sítio cirúrgico" num mês em que
+  // ninguém preencheu o campo diz que está seguro. NaN e Infinity ao menos
+  // aparecem estranhos na tela; zero passa por resultado.
+  //
+  // Qualquer ponta que não seja número finito devolve `null` — "não dá para
+  // calcular", que é diferente de "deu zero".
+  if (num == null || den == null || num === "" || den === "") return null;
+  const n = Number(num), d = Number(den);
+  if (!Number.isFinite(n) || !Number.isFinite(d) || d === 0) return null;
+  return (n / d) * fator;
 }
