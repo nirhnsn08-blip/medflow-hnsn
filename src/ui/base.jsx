@@ -104,3 +104,11 @@ export const customTooltip = ({ active, payload, label }) => {
     </div>
   );
 };
+
+// ── O campo de formulário e o rótulo dele ──
+// ⚠️ CHAMAVAM-SE `farmInp` e `farmLbl`, e de farmácia não têm nada: quem
+// mais usa é o Suprimentos (modais de item, movimento, fornecedor e
+// pedido), seguido do Pronto-Socorro. Mesmo caso do `btnContorno`, que já
+// se chamou `btnLeito`.
+export const campoTexto = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
+export const rotuloCampo = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
