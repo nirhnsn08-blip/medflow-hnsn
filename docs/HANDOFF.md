@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-08-22 · `main` em `1ee00a6` · zero PRs abertos · **nada pendente de SQL**.
+**Atualizado em:** 2026-09-01 · `main` em `107bbf9` · zero PRs abertos · **nada pendente de SQL**.
 
 ## 👥 Quem está com o quê (combinado em 22/08/2026)
 
@@ -14,6 +14,67 @@ um tempo, ou começa num chat novo.
 |---|---|
 | **Atendimento** — recepção, agenda, consultas, tabelas | **Adauam** |
 | **Faturamento** — conta do episódio, SUS, glosa, preço | **Laura** |
+
+---
+
+## 🔴 LAURA, LEIA ISTO ANTES DE COMEÇAR (01/09/2026)
+
+**Eu (Adauam) mexi no Faturamento, que é seu território.** Não estava combinado;
+aconteceu numa sequência de trabalho e prefiro te contar aqui do que você
+descobrir num conflito. **Se algo aí atrapalhou o seu plano, desfaça sem
+cerimônia** — `git revert -m 1 <hash do merge>` e me avise.
+
+### Existe tabela nova nos DOIS bancos
+
+**`at_glosas`** — glosa recebida, prazo de recurso e recuperação. Já rodada e
+conferida no demo E no principal (PR #197). **Não modele de novo por outro
+caminho.** Migrações: `supabase/migracao-faturamento-glosas.sql` e
+`supabase/migracao-glosas-rls.sql`.
+
+### Seu `feat/glosa-valor` foi rebaseado e mergeado (#195)
+
+Estava parado desde 19/08, 219 commits atrás. **O rebase saiu limpo** e eu
+**não** dei force-push no seu branch — ele continua intacto no remoto, ao lado
+do `glosa-valor-rebase` que virou o PR. A sua regra de valor cobrado ×
+referência SIGTAP está no ar, funcionando no simulador da aba Tabela SIGTAP.
+
+### O Faturamento hoje: 5 de 9 abas
+
+| aba | estado |
+|---|---|
+| Visão executiva · Pendentes · Tabela SIGTAP | já eram suas, seguem iguais |
+| **Glosas** | NOVA (#197) — fila por urgência, recurso, recuperação |
+| **Análises** | NOVA (#198) — produção, ticket médio, índice de glosa, rejeição |
+| Receitas · Convênios & contratos · Previsões · Assistente AI | ainda `EM CONSTRUÇÃO` |
+
+**Duas glosas convivem no sistema, e não se misturam:** a *preventiva* (sua
+`avaliarGlosa` em `sigtap.js`, olha a conta antes de sair) e a *recebida*
+(`glosas.js`, o dinheiro que já foi recusado). Se for mexer numa, confira se
+não é a outra.
+
+### Três decisões que eu tomei e você pode reverter
+
+1. **O sistema NÃO calcula o prazo do recurso.** Ele muda por operadora,
+   contrato e portaria; uma data inventada erraria dos dois lados. O campo
+   nasce vazio e a glosa sem prazo vai para o **topo** da fila com selo
+   próprio. Se o hospital tiver um prazo fixo por contrato, dá para
+   preencher por padrão — mas aí é decisão sua, não do código.
+2. **A taxa de recuperação divide pelo ENCERRADO, não pelo glosado.** Com o
+   total glosado, o número cairia toda vez que chegasse glosa nova.
+3. **Indicador sem base mostra "—" e a frase do porquê, nunca 0%.** "Índice
+   de glosa 0%" é a melhor notícia possível, e três coisas opostas produzem
+   zero: não houve glosa · a leitura falhou · não há faturado.
+
+### O que mudou fora do Faturamento, e te afeta
+
+**105 cargas de rede pararam de transformar falha em lista vazia** (PR #194).
+Antes, `sb` devolvia `null` na queda e a carga virava `[]` — a tela dizia
+"nenhum lote vencendo" quando na verdade não deu para ler. Agora usam
+`listaLida()` de `src/util/leitura.js`, e há **duas catracas em
+`src/cargas.test.js`** que quebram se uma carga nova nascer do jeito antigo.
+Ao escrever `dados.js` novo: `return listaLida(rows)`, não `? rows : []`.
+
+---
 
 **A fila de cada um, com âncora de linha, está em
 [DIAGNOSTICO-ATENDIMENTO.md](DIAGNOSTICO-ATENDIMENTO.md)** — levantamento de
@@ -70,11 +131,20 @@ migrações e +2.000 linhas** de um dia para o outro.
 | Gravação do prontuário | `src/prontuario/dados.js` — todo INSERT do PEP passa por aqui |
 | Telas do prontuário | `src/prontuario/*.jsx` |
 | Quem enxerga quais módulos | `src/acesso/*` |
-| Qualquer outro módulo | `src/App.jsx` (~14.400 linhas — combine o território antes) |
+| Faturamento (conta, SIGTAP, glosa, análises) | `src/atendimento/` — ver a tabela do dia 01/09 acima |
+| Qualquer outro módulo | a pasta do domínio em `src/` — **o `App.jsx` não é mais o lugar** |
 
-**Padrão que funcionou e vale repetir** ao tirar código do `App.jsx`: escolher um
-bloco de funções **puras** (sem React, sem DOM, sem rede) → capturar o comportamento
-atual → extrair sem mudar lógica → comparar → então escrever os testes.
+**A extração do `App.jsx` ACABOU em 01/09/2026** (PRs #166–#193): de **18.392 para
+1.392 linhas**, 135 arquivos em 15 pastas por domínio. O que sobrou lá é casco — a
+rede, a sessão e a moldura — e **não deve sair**.
+
+**O padrão de MÓDULO NOVO**, que se firmou ali e vale repetir:
+`catalogo.js` (tabelas do domínio) → `dados.js` (com `sb` como PRIMEIRO parâmetro)
+→ regras puras → `Tela.jsx` (recebe `sb` por prop). A camada compartilhada sai
+ANTES da tela.
+
+**Duas pessoas em módulos diferentes não colidem mais** — era esta a dívida que
+travava o trabalho em paralelo, e ela caiu.
 
 ---
 
@@ -131,7 +201,7 @@ inventar cargo novo.
 
 ## Testes — o que eles protegem
 
-`npm test` roda **1186 testes**. Três merecem atenção especial:
+`npm test` roda **2.486 testes**. Alguns merecem atenção especial:
 
 - **`contrato-banco.test.js`** — confere que toda coluna gravada pelo PEP existe no
   banco. Existe porque duas telas gravavam em colunas inexistentes: o PostgREST
@@ -210,6 +280,15 @@ Motores puros em `src/atendimento/montar-conta.js` +
 funil das internações, **faturamento por via** (AIH/BPA/APAC/TISS/direta) e **R$ de referência
 SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
 
+E em **01/09/2026** fechou-se a **dívida estrutural**: o `App.jsx` deixou de ser um
+monólito de 18.392 linhas e virou **135 arquivos em 15 pastas por domínio** (#166–#193).
+No caminho apareceu — e foi corrigida — a família de defeito que mais custou a este
+sistema: **ausência de dado renderizada como boa notícia**. 105 cargas de rede
+transformavam falha de leitura em lista vazia, e a tela dizia "nenhum lote vencendo"
+onde o certo era "não foi possível ler" (#194). E a **Fase 4 do Faturamento** começou a
+sair do papel: **Glosas** (#197, com tabela `at_glosas` nova nos dois bancos) e
+**Análises** (#198).
+
 **Ainda não há paciente real no sistema.**
 
 ### O que está pendente
@@ -221,7 +300,10 @@ SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
    (`public.pode_ver` + `src/acesso/mapa-tabelas.js`). **Ainda pendente:** filtro por **LINHA**
    (só os pacientes do meu setor — depende de lotação confiável em `profiles.setor`) e **RLS de
    ESCRITA** (insert/update/delete seguem pelo `role`, não pelo módulo).
-3. **Modularizar o `App.jsx`** — dívida estrutural que trava o trabalho em paralelo.
+3. ~~**Modularizar o `App.jsx`**~~ **FEITO em 01/09/2026** (PRs #166–#193): 18.392 →
+   1.392 linhas. ⚠️ Isso **destravou o code-splitting por rota**, que estava parado
+   justamente por depender de mexer no monólito — o bundle segue num pedaço só, com
+   aviso de +700 kB em todo build. É a dívida técnica mais óbvia que sobrou.
 4. **A fila do Atendimento e a do Faturamento** — ver
    [DIAGNOSTICO-ATENDIMENTO.md](DIAGNOSTICO-ATENDIMENTO.md). Os dois primeiros de
    cada uma, para quem só quer o essencial:
@@ -231,7 +313,16 @@ SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
      consulta na prestação de contas sem erro nenhum em tela.
    - **Faturamento:** a conta se **monta num módulo e fecha em outro**; e não existe
      **preço de convênio** em lugar nenhum (nem TUSS/CBHPM), então a tela sugere o
-     valor SUS independente da via.
+     valor SUS independente da via. *(O preço por operadora é justamente o que falta
+     na aba Convênios & contratos — o CRUD de convênio/plano já existe na aba Tabelas
+     do Atendimento; o que não existe é preço nem regra.)*
+
+5. **O CI NÃO barra merge.** `gh pr merge` não consulta o GitHub Actions e a Vercel
+   publica independente. Em 01/09 a `main` ficou vermelha por **três merges seguidos**
+   sem que nada avisasse. **Rode `gh pr checks <n>` antes de todo merge** — e repare
+   que o `vitest` imprime `Tests N passed` e `Errors N` em linhas separadas: dá para
+   ler como sucesso e sair como exit 1. Barrar de verdade exige *branch protection*
+   ligado no GitHub, que ainda não está.
 
 ### O que foi corrigido em 21-22/08/2026 (PRs #107, #108, #109 — em produção)
 
