@@ -31,6 +31,7 @@ import { comoExibir, idadeDetalhada } from "../pacientes/identidade.js";
 import { glosaDaContaSalva, escolherInternacao, janelaInternacao } from "./montar-conta.js";
 import { GRAVIDADES, permanenciaEmDias } from "./sigtap.js";
 import { dataBR } from "./impressos.js";
+import { listaLida } from "../util/leitura.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -93,7 +94,7 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
       const sig = competencia
         ? await sb(`sigtap_procedimentos?competencia=eq.${encodeURIComponent(competencia)}&select=*&order=codigo`).catch(() => null)
         : null;
-      base = { competencia, linhas: Array.isArray(sig) ? sig : [] };
+      base = { competencia, linhas: listaLida(sig) };
       setSigtap(base);
     }
 

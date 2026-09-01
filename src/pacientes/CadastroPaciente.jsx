@@ -49,6 +49,7 @@ import {
   podeUnificar, foiUnificado, avisoDaFichaUnificada, avisoDaFichaDestino, MOTIVO_MIN,
 } from "./unificacao.js";
 import { unificarProntuario, fichasUnificadasEm } from "../atendimento/dados.js";
+import { listaLida } from "../util/leitura.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 12 };
@@ -284,7 +285,7 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
     // sem a prova, e dois irmãos do mesmo parto voltariam a ser acusados de
     // ser a mesma pessoa.
     const r = await sb(`pacientes?or=(${filtros.join(",")})&select=prontuario,nome_completo,nome_social,data_nascimento,nome_mae,cpf,cns,iniciais,dnv,ordem_nascimento,prontuario_mae&limit=25`).catch(() => null);
-    setCandidatos(Array.isArray(r) ? r : []);
+    setCandidatos(listaLida(r));
   }, [sb, f.nome_completo, f.cpf, f.cns]);
 
   useEffect(() => {
@@ -379,7 +380,7 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
       if (doc.cns.length === 15) filtros.push(`cns.eq.${doc.cns}`);
       if (filtros.length) {
         const donos = await sb(`pacientes?or=(${filtros.join(",")})&select=prontuario,nome_completo,nome_social,iniciais,cpf,cns&limit=5`).catch(() => null);
-        const c2 = documentoEmUso({ ...f, prontuario: alvo }, Array.isArray(donos) ? donos : []);
+        const c2 = documentoEmUso({ ...f, prontuario: alvo }, listaLida(donos));
         if (c2) { setMsg("⚠️ " + mensagemDocumentoEmUso(c2)); return; }
       }
       setMsg("⚠️ Nada foi gravado — e o motivo não está na tela. Pode ser permissão do seu perfil ou uma migração pendente neste banco. Chame a TI com o número deste prontuário; NÃO apague campos para tentar de novo.");

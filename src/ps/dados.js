@@ -15,6 +15,7 @@
 
 import { nowISO } from "../util/datas.js";
 import { FILTRO_ATENDIMENTO_ABERTO } from "../atendimento/ciclo.js";
+import { listaLida } from "../util/leitura.js";
 
 // `is.null` entra no filtro de propósito: os atendimentos criados antes da
 // coluna existir não têm tipo, e todos eles são do PS.
@@ -23,12 +24,12 @@ const SO_EMERGENCIA = "or=(tipo_atendimento.eq.emergencia,tipo_atendimento.is.nu
 export async function loadPsPrescricoesByAtendimentos(sb, ids) {
   if (!ids.length) return [];
   const rows = await sb(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.prescricao&select=id,atendimento_id,criado_em,usuario&order=criado_em.desc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsProtocolos(sb) {
   const rows = await sb("ps_protocolos?select=*&order=categoria,titulo");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function upsertPsProtocoloRemote(sb, p, user) {
@@ -43,7 +44,7 @@ export async function deletePsProtocoloRemote(sb, id) { if (sb) await sb(`ps_pro
 
 export async function loadPsSalas(sb) {
   const rows = await sb("ps_salas?select=*&order=area,ordem,identificacao");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function upsertPsSalaRemote(sb, sala, user) {
@@ -58,27 +59,27 @@ export async function deletePsSalaRemote(sb, id) { if (sb) await sb(`ps_salas?id
 
 export async function loadPsAtendimentos(sb) {
   const rows = await sb(`ps_atendimentos?${FILTRO_ATENDIMENTO_ABERTO}&${SO_EMERGENCIA}&select=*&order=chegada_em`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsFinalizadosHoje(sb) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const rows = await sb(`ps_atendimentos?status=eq.finalizado&desfecho_em=gte.${hoje.toISOString()}&${SO_EMERGENCIA}&select=*&order=desfecho_em.desc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsAtendimentosPeriodo(sb, ano, mes) {
   const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
   const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
   const rows = await sb(`ps_atendimentos?chegada_em=gte.${ini.toISOString()}&chegada_em=lt.${fim.toISOString()}&${SO_EMERGENCIA}&select=*&order=chegada_em.asc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsExamesPeriodo(sb, ano, mes) {
   const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
   const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
   const rows = await sb(`ps_registros?tipo=eq.exame&criado_em=gte.${ini.toISOString()}&criado_em=lt.${fim.toISOString()}&select=categoria,status,criado_em,resultado_em&order=criado_em.asc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function addPsAtendimentoRemote(sb, at, user) {
@@ -116,18 +117,18 @@ export async function addPsSinalRemote(sb, sinal, user) {
 
 export async function loadPsSinais(sb, atendimentoId) {
   const rows = await sb(`ps_sinais?atendimento_id=eq.${atendimentoId}&select=*&order=aferido_em.desc&limit=5`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsRegistros(sb, atendimentoId) {
   const rows = await sb(`ps_registros?atendimento_id=eq.${atendimentoId}&select=*&order=criado_em.desc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsExamesPendentes(sb, ids) {
   if (!ids.length) return [];
   const rows = await sb(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.exame&status=neq.visto&select=atendimento_id,status`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function addPsRegistroRemote(sb, reg, user) {
@@ -148,13 +149,13 @@ export async function addPsPrescricaoItens(sb, itens, user) {
 
 export async function loadPsPrescricaoItens(sb, atendimentoId) {
   const rows = await sb(`ps_prescricao_itens?atendimento_id=eq.${atendimentoId}&select=*&order=created_at`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsPrescricaoItensByAtendimentos(sb, ids) {
   if (!ids.length) return [];
   const rows = await sb(`ps_prescricao_itens?atendimento_id=in.(${ids.join(",")})&select=*&order=created_at`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function addPsAdministracao(sb, reg, user) {
@@ -164,11 +165,11 @@ export async function addPsAdministracao(sb, reg, user) {
 
 export async function loadPsAdministracoes(sb, atendimentoId) {
   const rows = await sb(`ps_administracoes?atendimento_id=eq.${atendimentoId}&select=*&order=administrado_em.desc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadPsAdministracoesByAtendimentos(sb, ids) {
   if (!ids.length) return [];
   const rows = await sb(`ps_administracoes?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,status,administrado_em`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }

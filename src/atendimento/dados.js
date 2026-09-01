@@ -30,6 +30,7 @@ import { CAMPOS_DO_EPISODIO } from "./consultas.js";
 import { camposDaProducao } from "./producao.js";
 import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
+import { listaLida } from "../util/leitura.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -110,7 +111,7 @@ export async function irmaosDoMesmoParto(sb, prontuarioMae, data) {
   const r = await sb(
     `pacientes?prontuario_mae=eq.${encodeURIComponent(mae)}&data_nascimento=eq.${dia}` +
     `&select=prontuario,nome_completo,dnv,ordem_nascimento,hora_nascimento&order=ordem_nascimento`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -230,7 +231,7 @@ export async function atendimentosAbertos(sb, prontuario) {
   const p = normalizarProntuario(prontuario);
   if (!p) return [];
   const r = await sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}&${FILTRO_ATENDIMENTO_ABERTO}&select=id,prontuario,iniciais,status,chegada_em,classificacao,tipo_atendimento&order=chegada_em.desc`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -328,12 +329,12 @@ export async function carregarCatalogos(sb) {
     // `sigtap_procedimentos` está em TABELAS_OPCIONAIS: num banco onde a
     // migração ainda não rodou, o sbFetch devolve null. Array vazio faz a
     // escolha oferecer só o catálogo do hospital, em vez de quebrar.
-    sigtap: Array.isArray(sigtap) ? sigtap : [],
-    convenios: Array.isArray(convenios) ? convenios : [],
-    planos: Array.isArray(planos) ? planos : [],
-    procedimentos: Array.isArray(procedimentos) ? procedimentos : [],
+    sigtap: listaLida(sigtap),
+    convenios: listaLida(convenios),
+    planos: listaLida(planos),
+    procedimentos: listaLida(procedimentos),
   };
-  for (const linha of Array.isArray(dominios) ? dominios : []) {
+  for (const linha of listaLida(dominios)) {
     if (out[linha.dominio]) out[linha.dominio].push(linha);
     else out[linha.dominio] = [linha];
   }
@@ -349,7 +350,7 @@ export async function carregarCatalogos(sb) {
  */
 export async function carregarProfissionais(sb) {
   const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,cbo&order=nome");
-  const lista = Array.isArray(r) ? r : [];
+  const lista = listaLida(r);
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
   return lista.filter(p => p.categoria && p.categoria !== "administrativo");
@@ -373,7 +374,7 @@ export async function historicoDoPaciente(sb, prontuario, { limite = 200 } = {})
   if (!p) return [];
   const r = await sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}` +
     `&select=${CAMPOS_DO_EPISODIO.join(",")}&order=chegada_em.desc&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -398,7 +399,7 @@ export async function agendamentosFuturos(sb, prontuario, { de } = {}) {
     // rejeitada, não glosada.
     `&select=id,data,hora,especialidade_cod,origem_marcacao,tipo_atendimento_cod,status,protocolo_regulacao,profissional_username,grade_id` +
     `&order=data,hora`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /** Os atendimentos abertos num período. As bordas vêm de `bordasDoPeriodo`. */
@@ -410,7 +411,7 @@ export async function atendimentosDoPeriodo(sb, { inicio, fim, tipo, status } = 
   ].join("");
   const r = await sb(`ps_atendimentos?chegada_em=gte.${inicio}&chegada_em=lt.${fim}${extra}` +
     `&select=${CAMPOS_DO_EPISODIO.join(",")}&order=chegada_em.desc&limit=500`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /** Um atendimento pelo número — sem dado clínico. */
@@ -501,7 +502,7 @@ export async function listarAmbulatoriaisAbertos(sb, { limite = 200 } = {}) {
     // consulta só, não uma por paciente.
     `&select=id,prontuario,iniciais,status,chegada_em,atendimento_em,especialidade_cod,tipo_atendimento_cod,agendamento_id,medico,queixa,gestante,pacientes(data_nascimento)` +
     `&order=chegada_em&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -575,7 +576,7 @@ const CAMPOS_AGENDAMENTO = [
 /** As grades cadastradas, incluindo as desligadas (a tela precisa religar). */
 export async function carregarGrades(sb) {
   const r = await sb("ag_grades?select=*&order=especialidade_cod,dia_semana,hora_inicio");
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 export async function salvarGrade(sb, grade, user) {
@@ -631,7 +632,7 @@ export async function carregarBloqueios(sb, { de, ate } = {}) {
   if (de) filtros.push(`data_fim=gte.${de}`);
   const q = filtros.length ? filtros.join("&") + "&" : "";
   const r = await sb(`ag_bloqueios?${q}select=*&order=data_inicio`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 export async function salvarBloqueio(sb, b, user) {
@@ -657,7 +658,7 @@ export async function salvarBloqueio(sb, b, user) {
 export async function carregarAgendaDoDia(sb, data) {
   if (!data) return [];
   const r = await sb(`ag_agendamentos?data=eq.${encodeURIComponent(data)}&select=${CAMPOS_AGENDAMENTO}&order=hora,criado_em`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -672,7 +673,7 @@ export async function carregarAgendamentosDoPeriodo(sb, { de, ate, limite = 3000
   if (!de || !ate) return [];
   const r = await sb(`ag_agendamentos?data=gte.${encodeURIComponent(de)}&data=lte.${encodeURIComponent(ate)}` +
     `&select=${CAMPOS_AGENDAMENTO}&order=data,hora&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -992,7 +993,7 @@ export async function carregarItensDaConta(sb, contaId) {
   if (!contaId) return [];
   const r = await sb(`at_conta_itens?conta_id=eq.${encodeURIComponent(contaId)}` +
     `&select=${CAMPOS_ITEM}&order=criado_em`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1007,7 +1008,7 @@ export async function carregarAdministracoes(sb, atendimentoId) {
   const r = await sb(`ps_administracoes?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
     `&select=id,atendimento_id,medicamento_id,medicamento_nome,dose,via,status,administrado_em,categoria,criado_em` +
     `&order=administrado_em`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1029,7 +1030,7 @@ export async function carregarLeitosDoEpisodio(sb, { atendimentoId, prontuario }
   ]);
   return {
     leitoAtivo: Array.isArray(ativo) && ativo.length ? ativo[0] : null,
-    saidas: Array.isArray(saidas) ? saidas : [],
+    saidas: listaLida(saidas),
   };
 }
 
@@ -1046,7 +1047,7 @@ export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
   const internacoes = await sb(`ps_atendimentos?desfecho=eq.internacao` +
     `&select=id,prontuario,iniciais,chegada_em,desfecho,desfecho_em,convenio_id,procedimento_cod,cid` +
     `&order=chegada_em.desc&limit=${limite}`);
-  const lista = Array.isArray(internacoes) ? internacoes : [];
+  const lista = listaLida(internacoes);
   if (!lista.length) return { internacoes: [], contas: [] };
 
   const ids = lista.map((a) => a.id).filter((v) => v != null);
@@ -1054,7 +1055,7 @@ export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
     ? await sb(`at_contas?atendimento_id=in.(${ids.join(",")})&status=neq.cancelada` +
       `&select=id,atendimento_id,status,competencia`)
     : [];
-  return { internacoes: lista, contas: Array.isArray(contas) ? contas : [] };
+  return { internacoes: lista, contas: listaLida(contas) };
 }
 
 /**
@@ -1069,7 +1070,7 @@ export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
 export async function carregarProducaoFaturavel(sb, { limite = 500 } = {}) {
   const r = await sb(`ps_atendimentos?status=eq.finalizado&procedimento_cod=not.is.null` +
     `&select=id,convenio_id,procedimento_cod,desfecho&order=chegada_em.desc&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1221,7 +1222,7 @@ export async function contasDaCompetencia(sb, competencia, { status, limite = 50
   const extra = status ? `&status=eq.${encodeURIComponent(status)}` : "";
   const r = await sb(`at_contas?competencia=eq.${encodeURIComponent(competencia)}${extra}` +
     `&select=${CAMPOS_CONTA}&order=criado_em.desc&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 // ── RESPONSÁVEL DO EPISÓDIO ─────────────────────────────────
@@ -1237,7 +1238,7 @@ export async function carregarResponsaveis(sb, atendimentoId) {
   if (!atendimentoId) return [];
   const r = await sb(`at_responsaveis?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
     `&select=${CAMPOS_RESPONSAVEL}&order=criado_em.desc`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1254,7 +1255,7 @@ export async function responsaveisAnteriores(sb, prontuario, { limite = 10 } = {
   if (!p) return [];
   const r = await sb(`at_responsaveis?prontuario=eq.${encodeURIComponent(p)}&ativo=is.true` +
     `&select=${CAMPOS_RESPONSAVEL}&order=criado_em.desc&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1303,7 +1304,7 @@ export async function carregarProducaoGravada(sb, data) {
   const dia = String(data ?? "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return [];
   const r = await sb(`atendimentos?data=eq.${dia}&select=*`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1401,7 +1402,7 @@ export async function carregarCatalogoCompleto(sb, chave) {
   if (!cat) return [];
   const filtro = cat.dominio ? `dominio=eq.${encodeURIComponent(cat.dominio)}&` : "";
   const r = await sb(`${cat.tabela}?${filtro}select=*&order=nome`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1415,7 +1416,7 @@ export async function carregarCatalogoCompleto(sb, chave) {
  */
 export async function listarAguardandoIdentificacao(sb, { limite = 100 } = {}) {
   const r = await sb(`pacientes?nao_identificado=is.true&identificado_em=is.null&select=${CAMPOS_BUSCA},observacao,criado_em&order=criado_em.desc&limit=${limite}`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**
@@ -1459,7 +1460,7 @@ export async function fichasUnificadasEm(sb, prontuario) {
   const r = await sb(`pacientes?unificado_para=eq.${encodeURIComponent(p)}` +
     `&select=prontuario,nome_completo,iniciais,data_nascimento,unificado_em,unificado_por,unificacao_motivo` +
     `&order=unificado_em.desc&limit=20`);
-  return Array.isArray(r) ? r : [];
+  return listaLida(r);
 }
 
 /**

@@ -14,6 +14,8 @@
 // `sb` é parâmetro. Nulo = sem banco.
 // ═══════════════════════════════════════════════════════════
 
+import { listaLida } from "../util/leitura.js";
+
 export async function loadPaciente360(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
   const [cad, ps, leitoAtual, saidas, scih, evolucoes, alergias] = await Promise.all([
@@ -30,19 +32,19 @@ export async function loadPaciente360(sb, prontuario) {
     // preserva o app em bancos onde a migração do PEP ainda não rodou.
     sb(`pep_alergias?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
   ]);
-  const psRows = Array.isArray(ps) ? ps : [];
+  const psRows = listaLida(ps);
   let registrosPS = [];
   if (psRows.length) {
     const ids = psRows.map(a => a.id).join(",");
     const regs = await sb(`ps_registros?atendimento_id=in.(${ids})&select=*&order=criado_em.desc`).catch(() => []);
-    registrosPS = Array.isArray(regs) ? regs : [];
+    registrosPS = listaLida(regs);
   }
   return {
     cadastro: Array.isArray(cad) && cad[0] ? cad[0] : null,
-    ps: psRows, leitoAtual: Array.isArray(leitoAtual) ? leitoAtual : [],
-    saidas: Array.isArray(saidas) ? saidas : [], scih: Array.isArray(scih) ? scih : [],
-    evolucoes: Array.isArray(evolucoes) ? evolucoes : [],
-    alergias: Array.isArray(alergias) ? alergias : [],
+    ps: psRows, leitoAtual: listaLida(leitoAtual),
+    saidas: listaLida(saidas), scih: listaLida(scih),
+    evolucoes: listaLida(evolucoes),
+    alergias: listaLida(alergias),
     registrosPS,
   };
 }
@@ -62,9 +64,9 @@ export async function buscarPacientes(sb, termo) {
   // vez de devolver vazio e fazer parecer que o paciente não existe.
   if (rows == null) {
     const antigo = await sb(`pacientes?iniciais=ilike.*${encodeURIComponent(t)}*&select=*&limit=12`);
-    return Array.isArray(antigo) ? antigo : [];
+    return listaLida(antigo);
   }
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 // A gravação do paciente passou para `src/pacientes/CadastroPaciente.jsx`:

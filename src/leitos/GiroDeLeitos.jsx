@@ -22,7 +22,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon, btnContorno, VxWordmark, customTooltip } from "../ui/base.jsx";
+import { AvisoLeitura, VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon, btnContorno, VxWordmark, customTooltip } from "../ui/base.jsx";
 import { comGrupos } from "../ui/sub-nav.js";
 import { todayStr, nowISO, diffMin, fmtDur, horaFmt, isoToLocal, localToIso } from "../util/datas.js";
 import { FARM_GRAV, normTxt } from "../clinico/alertas.js";
@@ -34,6 +34,7 @@ import { farol } from "../clinico/nsp.js";
 import { abrirEpisodio, encerrarEpisodio } from "../prontuario/dados.js";
 import { podeAbrirEpisodio, dadosDoEpisodio, desfechoDoLeito, avisoEpisodioNaoAberto } from "../prontuario/internacao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { listaLida } from "../util/leitura.js";
 import { loadLeitos, saveLeitos, loadLeitosFromSupabase, upsertLeitoRemote, deleteLeitoRemote,
          loadSetoresLocal, saveSetoresLocal, loadSetoresFromSupabase, upsertSetorRemote, deleteSetorRemote,
          loadSolicitacoes, updateSolicitacaoRemote,
@@ -50,7 +51,7 @@ async function loadRiscoEnfermagem(sb, prontuarios) {
     sb(`enf_escalas?prontuario=in.(${lista})&select=*&order=aferido_em.desc`),
     sb(`enf_lesao_pressao?prontuario=in.(${lista})&status=eq.ativa&select=*`),
   ]);
-  return { escalas: Array.isArray(escalas) ? escalas : [], lpp: Array.isArray(lpp) ? lpp : [] };
+  return { escalas: listaLida(escalas), lpp: listaLida(lpp) };
 }
 // Fila de trabalho da checagem SAE: prescrições de enfermagem, itens e checagens
 // de HOJE dos leitos ocupados. O agregador puro monta a lista por leito.
@@ -64,7 +65,8 @@ async function loadChecagemSae(sb, prontuarios) {
     sb(`enf_sae_prescricao_itens?prontuario=in.(${lista})&select=*`),
     sb(`enf_sae_checagem?prontuario=in.(${lista})&competencia=eq.${hoje}&select=*`),
   ]);
-  const A = x => (Array.isArray(x) ? x : []);
+  // 🔴 Mesmo atalho que escondia as listas do prontuário do censo.
+  const A = listaLida;
   return { prescricoes: A(prescricoes), itens: A(itens), checagens: A(checagens) };
 }
 
@@ -901,7 +903,7 @@ export default function LeitosPage({ sb, currentUser, canEdit }) {
   async function episodiosAbertosDe(prontuario) {
     if (!prontuario) return [];
     const r = await sb(`pep_episodios?prontuario=eq.${encodeURIComponent(prontuario)}&status=eq.aberto&select=id,prontuario,status,leito`).catch(() => null);
-    return Array.isArray(r) ? r : [];
+    return listaLida(r);
   }
 
   async function internar(leito, dados) {

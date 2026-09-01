@@ -23,29 +23,30 @@
 // ═══════════════════════════════════════════════════════════
 
 import { nowISO } from "../util/datas.js";
+import { listaLida } from "../util/leitura.js";
 
 export async function loadFarmMedicamentos(sb) {
   const rows = await sb("farm_medicamentos?select=*&order=nome");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadFarmLotes(sb) {
   const rows = await sb("farm_lotes?select=*&order=validade.asc.nullslast");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadFarmMovimentos(sb, medicamentoId, limit = 60) {
   const q = medicamentoId
     ? `farm_movimentos?medicamento_id=eq.${medicamentoId}&select=*&order=created_at.desc&limit=${limit}`
     : `farm_movimentos?select=*&order=created_at.desc&limit=${limit}`;
   const rows = await sb(q);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadFarmMovimentosPeriodo(sb, fromISO, toISO) {
   const rows = await sb(`farm_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadFarmSaidasDesde(sb, fromISO) {
   const rows = await sb(`farm_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=medicamento_id,quantidade&limit=12000`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function upsertFarmMedicamentoRemote(sb, med, user) {
   if (!sb) return null;
@@ -117,7 +118,7 @@ export async function upsertFarmIncompatRemote(sb, row, user) {
 export async function deleteFarmIncompatRemote(sb, id) { if (sb) await sb(`farm_incompat_y?id=eq.${id}`, { method: "DELETE" }); }
 export async function loadFarmPreparo(sb) {
   const rows = await sb("farm_preparo?select=*&order=updated_at.desc");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function receberPreparoRemote(sb, registroId, atendimentoId, user) {
   if (!sb) return null;
@@ -134,11 +135,11 @@ export async function atualizarPreparoRemote(sb, id, campos) {
 export async function loadFarmMovimentosByMeds(sb, ids, limit = 8000) {
   if (!ids.length) return [];
   const rows = await sb(`farm_movimentos?medicamento_id=in.(${ids.join(",")})&select=*&order=created_at.asc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadFarmNaoPadronizados(sb) {
   const rows = await sb("farm_nao_padronizados?select=*&order=created_at.desc");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function addFarmNaoPadronizadoRemote(sb, row, user) {
   if (!sb) return null;
@@ -151,7 +152,7 @@ export async function updateFarmNaoPadronizadoRemote(sb, id, campos) {
 export async function deleteFarmNaoPadronizadoRemote(sb, id) { if (sb) await sb(`farm_nao_padronizados?id=eq.${id}`, { method: "DELETE" }); }
 export async function loadFarmIntervencoes(sb) {
   const rows = await sb("farm_intervencoes?select=*&order=created_at.desc");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function addFarmIntervencaoRemote(sb, row, user) {
   if (!sb) return null;
@@ -164,7 +165,7 @@ export async function updateFarmIntervencaoRemote(sb, id, campos) {
 export async function deleteFarmIntervencaoRemote(sb, id) { if (sb) await sb(`farm_intervencoes?id=eq.${id}`, { method: "DELETE" }); }
 export async function loadFarmInventarios(sb, limit = 400) {
   const rows = await sb(`farm_inventarios?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function addFarmInventarioRemote(sb, inv, user) {
   if (!sb) return null;
@@ -178,9 +179,9 @@ export async function addFarmInventarioRemote(sb, inv, user) {
 export async function loadFarmSaidasByAtendimentos(sb, ids) {
   if (!ids.length) return [];
   const rows = await sb(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at,tipo,estorno_de`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadFarmSaidasByAtendimento(sb, atendimentoId) {
   const rows = await sb(`farm_movimentos?atendimento_id=eq.${atendimentoId}&select=*&order=created_at.desc`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }

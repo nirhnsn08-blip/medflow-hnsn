@@ -34,7 +34,7 @@ import { saldoDoMedicamento } from "../farmacia/estoque.js";
 import { dispensadoDoItem } from "../farmacia/preparo.js";
 import { addSolicitacaoRemote, loadLeitosFromSupabase, loadSetoresFromSupabase, upsertLeitoRemote } from "../leitos/dados.js";
 import { idadeMesesParaTriagem } from "../pacientes/identidade.js";
-import { HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, MONTHS_FULL, VX, btnContorno, rotuloCampo } from "../ui/base.jsx";
+import { AvisoLeitura, HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, MONTHS_FULL, VX, btnContorno, rotuloCampo } from "../ui/base.jsx";
 import { avisoSonoro, ligarSom, somLigado } from "../ui/som.js";
 import { diffMin, fmtDataBR, fmtDur, horaFmt, isoToLocal, localToIso, nowISO, todayStr } from "../util/datas.js";
 import { fmt } from "../util/formato.js";
@@ -1280,6 +1280,9 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
         </div>
       </div>
 
+      {/* 🔴 Fila que não foi lida parece PS vazio. "0 aguardando" é a frase
+          que faz o plantão relaxar — e ela não pode ser um erro de rede. */}
+      <AvisoLeitura oQue="a fila do Pronto-Socorro e as salas" listas={[fila, salas]} />
       <PsRetiradaBanner sb={sb} currentUser={currentUser} canEdit={canEdit} />
       <PsIntervencaoBanner sb={sb} currentUser={currentUser} canEdit={canEdit} />
 

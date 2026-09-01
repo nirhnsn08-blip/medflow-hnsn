@@ -17,7 +17,7 @@ import { camposDoGerme, sugerirGerme } from "../clinico/germes.js";
 import { ISOLAMENTOS, precaucaoDe } from "../clinico/isolamento.js";
 import { diasDesde } from "../clinico/leitos.js";
 import { loadLeitos, loadLeitosFromSupabase } from "../leitos/dados.js";
-import { HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, btnContorno } from "../ui/base.jsx";
+import { AvisoLeitura, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, btnContorno } from "../ui/base.jsx";
 import { compDe, compLabel } from "../util/datas.js";
 import { addScihCasoRemote, deleteScihCasoRemote, deleteScihGermeRemote, loadScihCasos, loadScihGermes, loadScihIndicadores, setLeitoIsolamentoRemote, updateScihCasoRemote, upsertScihGermeRemote, upsertScihIndicadorRemote } from "./dados.js";
 import { calcIndic } from "./indicadores.js";
@@ -122,6 +122,10 @@ export default function ScihPage({ sb, currentUser, canEdit }) {
         </div>
         <button onClick={() => setShowGermes(true)} style={{ background: "transparent", color: "var(--text-2)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Base de germes ({germes.length})</button>
       </div>
+
+      {/* 🔴 Caso de infecção que não foi lido some da vigilância — e quem
+          não aparece na lista não recebe precaução de contato. */}
+      <AvisoLeitura oQue="os casos e a base de germes da SCIH" listas={[casos, germes]} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <button onClick={() => setSub("vigilancia")} style={subBtn(sub === "vigilancia")}>Vigilância & Isolamentos</button>

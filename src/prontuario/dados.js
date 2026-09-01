@@ -21,6 +21,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { assinaturaDe } from "../clinico/papeis.js";
+import { listaLida } from "../util/leitura.js";
 
 /**
  * Autoria congelada dentro do registro: nome e conselho de quem assinou,
@@ -57,7 +58,7 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`pep_condicoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
   ]);
 
-  const eps = Array.isArray(episodios) ? episodios : [];
+  const eps = listaLida(episodios);
   const ativo = eps.find(e => (e.status || "aberto") === "aberto" && !e.alta_em) || null;
   // A lista de uso domiciliar é do PACIENTE: existe mesmo sem internação
   // aberta, e é justamente antes de internar que ela precisa estar à mão.
@@ -65,7 +66,7 @@ export async function carregarProntuario(sb, prontuario) {
 
   if (!ativo) {
     return { episodios: eps, episodio: null, alergias: alergias || [], condicoes: condicoes || [],
-             medicamentosUso: Array.isArray(medicamentosUso) ? medicamentosUso : [],
+             medicamentosUso: listaLida(medicamentosUso),
              prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [],
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
              escalas: [], lpp: [], faixasEscalas: [],
@@ -105,7 +106,12 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`enf_sae_checagem?episodio_id=eq.${e}&select=*&order=executado_em.desc`).catch(() => []),
   ]);
 
-  const arr = x => (Array.isArray(x) ? x : []);
+  // 🔴 ERA UM ATALHO LOCAL, e o atalho escondia a origem: para o censo
+  // (scripts/cargas.mjs) `x` parecia parâmetro de uma função qualquer, e
+  // as 21 listas do prontuário escapavam. `alergias` é uma delas — não ler
+  // a lista de alergias e mostrar "sem alergia conhecida" é a pior frase
+  // que esta tela pode dizer.
+  const arr = listaLida;
   return {
     episodios: eps, episodio: ativo,
     alergias: arr(alergias), condicoes: arr(condicoes),

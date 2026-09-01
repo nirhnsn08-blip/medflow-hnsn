@@ -22,12 +22,13 @@
 // ═══════════════════════════════════════════════════════════
 
 import { matrizRisco, exigeRCA, notificacaoCompulsoria } from "./nsp.js";
+import { listaLida } from "../util/leitura.js";
 
 // ── NSP — Núcleo de Segurança do Paciente (Fase 2a) ──
 export async function loadIncidentes(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_incidentes?select=*&order=criado_em.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 // Indicador automático (diferencial): LPP adquirida na unidade (marcador POA da Fase 1a).
 export async function loadLppAdquiridas(sb) {
@@ -68,12 +69,12 @@ export async function atualizarStatusIncidente(sb, inc, novoStatus, texto, user)
 export async function loadRcas(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_rca?select=*&order=criado_em.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadAcoes(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_acoes?select=*&order=criado_em.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function registrarRca(sb, rca, user) {
   if (!sb) return null;
@@ -114,12 +115,12 @@ export async function atualizarAcao(sb, acao, patch) {
 export async function loadMetaFaixas(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_meta_faixas?select=*&order=ordem").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadMetaMedicoes(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_meta_medicoes?select=*&order=competencia.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 // Alvo editável — só ADM Master (a tela restringe). Upsert por chave, como enf_escala_faixas.
 export async function salvarMetaFaixa(sb, faixa, user) {
@@ -149,7 +150,7 @@ export async function registrarMetaMedicao(sb, med, user) {
 export async function loadProtocolos(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_protocolos?select=*&order=criado_em").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 // Cria/edita protocolo — só ADM/canEdit (a tela restringe). Upsert por id, é configuração.
 export async function salvarProtocolo(sb, proto, user) {
@@ -172,7 +173,7 @@ export async function salvarProtocolo(sb, proto, user) {
 export async function loadCapacitacoes(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_capacitacoes?select=*&order=criado_em.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function salvarCapacitacao(sb, cap, user) {
   if (!sb) return;
@@ -195,7 +196,7 @@ export async function salvarCapacitacao(sb, cap, user) {
 export async function loadComunicados(sb) {
   if (!sb) return [];
   const rows = await sb("nsp_comunicados?select=*&order=criado_em.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function salvarComunicado(sb, com, user) {
   if (!sb) return;

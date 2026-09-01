@@ -14,6 +14,7 @@ import { useState, useEffect, useMemo } from "react";
 import { MODULOS, GRUPOS, NIVEIS, NIVEL_LABEL, MODULO_POR_CHAVE } from "./modulos.js";
 import { conferirPerfil, podeSalvarPerfil, quantosUsam, permissoesEfetivas, resumoDeAcesso } from "./permissoes.js";
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "../clinico/papeis.js";
+import { listaLida } from "../util/leitura.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.25rem", marginBottom: "1.25rem" };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -43,7 +44,7 @@ export default function PerfisAcesso({ sb, currentUser, usuarios = [], onMudou }
       return;
     }
     const mapa = {};
-    for (const g of (Array.isArray(gs) ? gs : [])) (mapa[g.perfil_chave] ||= {})[g.modulo] = g.nivel;
+    for (const g of (listaLida(gs))) (mapa[g.perfil_chave] ||= {})[g.modulo] = g.nivel;
     setPerfis(ps); setGrants(mapa);
   }
   useEffect(() => { carregar(); }, []);   // uma vez, na montagem — de propósito
