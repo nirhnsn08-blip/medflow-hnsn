@@ -98,3 +98,11 @@ select 'restritivas de escrita (esperado 3)', count(*)::text
 
 insert into public.migracoes_aplicadas (arquivo)
 values ('migracao-glosas-rls.sql') on conflict do nothing;
+
+-- ⚠️ DEVOLVE A VARIÁVEL. `set` vale até o FIM DA SESSÃO, não até o fim do
+-- arquivo. Sem este reset, toda migração rodada depois nesta mesma aba —
+-- e TODO o `reconstruir-banco.sql`, que emenda 87 scripts numa sessão só —
+-- se registraria em `migracoes_aplicadas` como aplicada por 'adauam', em
+-- vez de por quem realmente rodou. Não quebra esquema; só deixa um nome
+-- errado no registro que existe justamente para dizer quem fez o quê.
+reset valentrax.quem;

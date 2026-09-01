@@ -38,6 +38,7 @@ import {
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
 import { listaLida } from "../util/leitura.js";
 import GlosasView from "./GlosasView.jsx";
+import AnalisesView from "./AnalisesView.jsx";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -89,7 +90,6 @@ const FAT_NAV = [
 
 const EM_CONSTRUCAO = {
   receitas: "Faturado × recebido × glosado, por competência e por convênio (repasse).",
-  analises: "BI do faturamento: produção, índice de glosa, ticket médio, rejeição.",
   previsoes: "Projeção de receita a receber, a partir do faturado e do histórico.",
   convenios: "Convênios, planos e contratos — tabela de preço e regras por operadora.",
   assistente: "Assistente que responde sobre a produção, a glosa e os prazos do faturamento.",
@@ -1296,6 +1296,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
         {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} canEdit={canEdit} currentUser={currentUser} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}
         {sub === "glosas" && <GlosasView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
+        {sub === "analises" && <AnalisesView sb={sb} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
       </div>
     </div>
