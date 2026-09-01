@@ -45,12 +45,26 @@ import {
   supLeadTimeMap, custoMedioPonderado, supPedidoTotal,
 } from "./suprimentos/kardex.js";
 import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
+import {
+  loadSupItens, loadSupLotes, loadSupMovimentos, loadSupMovimentosPeriodo, loadSupSaidasDesde,
+  upsertSupItemRemote, deleteSupItemRemote, addSupMovimentoRemote, loadSupFornecedores, upsertSupFornecedorRemote,
+  deleteSupFornecedorRemote, loadSupEntradasComForn, loadSupInventarios, addSupInventarioRemote,
+  setSupItemCustoRemote, loadSupRequisicoes, addSupRequisicaoRemote, atualizarSupReqRemote,
+  loadSupPedidos, addSupPedidoRemote, atualizarSupPedidoRemote, loadSupCotacoes, addSupCotacaoRemote,
+  atualizarSupCotacaoRemote,
+} from "./suprimentos/dados.js";
+import {
+  SUP_CATEGORIAS, SUP_UNIDADES, SUP_MOTIVOS_SAIDA, SUP_FARMACOS_MONITORADOS, SUP_PED_STATUS,
+  SUP_REQ_STATUS, SUP_EXEC_COBERTURA_ALVO, SUP_INV_INTERVALO,
+} from "./suprimentos/catalogo.js";
+import { custoUnit } from "./farmacia/estoque.js";
 import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
 import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
 import { abasVisiveis, podeAbrirAba } from "./farmacia/abas.js";
-import { FARM_FORMAS, FARM_UNIDADES, FARM_CLASSES, FARM_MOTIVOS_SAIDA, FARM_ALERTA_TIPOS } from "./farmacia/catalogo.js";
+import { FARM_FORMAS, FARM_UNIDADES, FARM_CLASSES, FARM_MOTIVOS_SAIDA, FARM_ALERTA_TIPOS,
+         FARM_PREV_JANELA, FARM_PREV_HORIZONTE } from "./farmacia/catalogo.js";
 import { somLigado, ligarSom, avisoSonoro } from "./ui/som.js";
 import {
   loadFarmMedicamentos, loadFarmLotes, loadFarmMovimentos, loadFarmMovimentosPeriodo, loadFarmSaidasDesde,
@@ -168,7 +182,9 @@ const SB = () => (USE_SUPABASE ? sbFetch : null);
 /**
  * O poste CRU: grava e devolve `{ ok, erro }` em vez de engolir a falha.
  *
- * 🔴 Existe por causa de UMA escrita: o movimento de estoque da Farmácia.
+ * 🔴 Existe por causa das QUATRO escritas que precisam do motivo: o
+ * movimento de estoque da Farmácia, o desfecho do Pronto-Socorro, e no
+ * Almoxarifado o movimento de estoque e a exclusão de item.
  * O `sbFetch` devolve `null` em qualquer erro e manda o detalhe para o
  * aviso global — o que serve para as outras 130 chamadas, que não têm o que
  * fazer com a mensagem. Não serve para dispensar medicamento: a recusa vem
@@ -182,7 +198,7 @@ const SB = () => (USE_SUPABASE ? sbFetch : null);
  * falha em vez de renovar. Era assim antes da extração — está anotado para
  * não parecer decisão nova.
  */
-async function postarCru(caminho, corpo, { method = "POST" } = {}) {
+async function escreverCru(caminho, corpo, { method = "POST" } = {}) {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/${caminho}`, {
       method,
@@ -192,7 +208,9 @@ async function postarCru(caminho, corpo, { method = "POST" } = {}) {
         "Content-Type": "application/json",
         "Prefer": "return=representation",
       },
-      body: JSON.stringify(corpo),
+      // DELETE não leva corpo; mandar `undefined` faria o fetch enviar a
+      // string "undefined" e o PostgREST recusar por JSON inválido.
+      ...(corpo == null ? {} : { body: JSON.stringify(corpo) }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
@@ -206,7 +224,7 @@ async function postarCru(caminho, corpo, { method = "POST" } = {}) {
     return { ok: false, erro: String(e?.message || e) };
   }
 }
-const SB_CRU = () => (USE_SUPABASE ? postarCru : null);
+const SB_CRU = () => (USE_SUPABASE ? escreverCru : null);
 
 // Identidade do hospital — permite usar o MESMO app para vários hospitais,
 // cada um com seu próprio banco (VITE_SUPABASE_*) e seu nome (VITE_HOSPITAL_*).
@@ -1832,10 +1850,6 @@ async function deleteScihGermeRemote(nome) {
 // ═══════════════════════════════════════════════════════════
 // Classes terapêuticas (ordem de exibição no agrupamento)
 
-// Saídas desde uma data (para previsão de demanda)
-// Previsão de demanda: janela de histórico (dias) e horizonte da previsão (dias)
-const FARM_PREV_JANELA = 30;
-const FARM_PREV_HORIZONTE = 7;
 // Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
 // e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
 // Saldo total de um medicamento = soma dos lotes
@@ -1917,21 +1931,6 @@ const FARM_NAV = [
 // SUPRIMENTOS (Estoque & Compras) — Fase A: catálogo de materiais + estoque
 // por lote/validade (kardex imutável) + fornecedores. Mesmo modelo da Farmácia.
 // ═══════════════════════════════════════════════════════════
-const SUP_CATEGORIAS = [
-  "Material médico-hospitalar",
-  "Higiene e limpeza",
-  "EPI",
-  "Escritório e expediente",
-  "Impressos e formulários",
-  "Rouparia e enxoval",
-  "Nutrição e copa",
-  "Manutenção predial",
-  "Informática",
-  "Laboratório",
-  "Outros",
-];
-const SUP_UNIDADES = ["unidade", "caixa", "pacote", "par", "rolo", "frasco", "galão", "litro", "kg", "resma"];
-const SUP_MOTIVOS_SAIDA = ["Consumo do setor", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
 // Ordenado pelo FLUXO do almoxarife. Dois itens estavam no lugar errado:
 // "Painel executivo" é leitura de GESTOR e ficava em 3º, no meio do caminho
@@ -1962,157 +1961,8 @@ const SUP_NAV = [
   { key: "indicadores",  label: "Indicadores",   icon: "chart", grupo: "Acompanhar" },
   { key: "assistente",   label: "Assistente AI", icon: "chat",  grupo: "Acompanhar" },
 ];
-// Fármacos de alto custo / alta vigilância monitorados no Painel Executivo
-// (casam por nome ou princípio ativo; edite a lista conforme o hospital)
-const SUP_FARMACOS_MONITORADOS = ["morfina", "fentanil", "alteplase", "tenecteplase", "contraste", "albumina"];
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
-// Pedido de compra — estados e cores
-const SUP_PED_STATUS = {
-  aberto:               { label: "Em elaboração",         cor: "#8d99ab" },
-  aguardando_aprovacao: { label: "Aguardando aprovação",  cor: "#d97706" },
-  aprovado:             { label: "Aprovado",              cor: "#22d3ee" },
-  negado:               { label: "Negado",                cor: "#f43f5e" },
-  enviado:              { label: "Enviado ao fornecedor", cor: "#3b82f6" },
-  parcial:              { label: "Recebido parcial",      cor: "#d97706" },
-  recebido:             { label: "Recebido",              cor: "#34d399" },
-  cancelado:            { label: "Cancelado",             cor: "#8d99ab" },
-};
-// Fluxo da requisição — estados e cores (mesma régua do preparo da Farmácia)
-const SUP_REQ_STATUS = {
-  aguardando: { label: "Aguardando almoxarifado", cor: "#8d99ab" },
-  separacao:  { label: "Em separação",            cor: "#d97706" },
-  pronto:     { label: "Pronto p/ retirada",      cor: "#3b82f6" },
-  entregue:   { label: "Entregue",                cor: "#34d399" },
-  cancelado:  { label: "Cancelada",               cor: "#f43f5e" },
-};
 
-async function loadSupItens() {
-  const rows = await sbFetch("sup_itens?select=*&order=nome");
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadSupLotes() {
-  const rows = await sbFetch("sup_lotes?select=*&order=validade.asc.nullslast");
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadSupMovimentos(itemId, limit = 60) {
-  const q = itemId
-    ? `sup_movimentos?item_id=eq.${itemId}&select=*&order=created_at.desc&limit=${limit}`
-    : `sup_movimentos?select=*&order=created_at.desc&limit=${limit}`;
-  const rows = await sbFetch(q);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadSupMovimentosPeriodo(fromISO, toISO) {
-  const rows = await sbFetch(`sup_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
-  return Array.isArray(rows) ? rows : [];
-}
-// Saídas desde uma data (para previsão de demanda)
-async function loadSupSaidasDesde(fromISO) {
-  const rows = await sbFetch(`sup_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=item_id,quantidade&limit=12000`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function upsertSupItemRemote(item, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...item, usuario: user?.name || null, updated_at: nowISO() };
-  if (item.id) {
-    await sbFetch(`sup_itens?id=eq.${item.id}`, { method: "PATCH", body: JSON.stringify(body) });
-    return null;
-  }
-  delete body.id;
-  return await sbFetch("sup_itens", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-// Exclusão de material: devolve { ok, erro }. O trigger `sup_item_protege_kardex`
-// RECUSA a exclusão quando há movimento no histórico — e o `sbFetch` engole a
-// mensagem (além de o PostgREST responder 204 mesmo sem apagar linha nenhuma).
-// Sem o fetch direto, a tela mandaria excluir, nada aconteceria, e ninguém
-// saberia por quê. Mesmo padrão de `addSupMovimentoRemote`.
-async function deleteSupItemRemote(id) {
-  if (!USE_SUPABASE) return { ok: true };
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/sup_itens?id=eq.${id}`, {
-      method: "DELETE",
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-      },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      return { ok: false, erro: body?.message || `Erro ${res.status}` };
-    }
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, erro: String(e?.message || e) };
-  }
-}
-// Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
-// e como o sbFetch engole erros, aqui fazemos o fetch direto para capturar a mensagem.
-async function addSupMovimentoRemote(mov, user) {
-  if (!USE_SUPABASE) return { ok: false, erro: "Supabase indisponível." };
-  try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/sup_movimentos`, {
-      method: "POST",
-      headers: {
-        "apikey": SUPABASE_KEY,
-        "Authorization": `Bearer ${AUTH_TOKEN || SUPABASE_KEY}`,
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-      },
-      body: JSON.stringify({ ...mov, usuario: user?.name || null }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      return { ok: false, erro: body?.message || `Erro ${res.status}` };
-    }
-    // Devolve a LINHA criada, não só o "deu certo": o ajuste de inventário
-    // precisa do id do movimento, e quem confere precisa poder provar que
-    // a gravação existiu — `Prefer: return=representation` já era pedido
-    // acima, o corpo é que era jogado fora.
-    const linha = await res.json().catch(() => null);
-    return { ok: true, linha: Array.isArray(linha) ? linha[0] : linha };
-  } catch (e) {
-    return { ok: false, erro: String(e?.message || e) };
-  }
-}
-async function loadSupFornecedores() {
-  const rows = await sbFetch("sup_fornecedores?select=*&order=nome");
-  return Array.isArray(rows) ? rows : [];
-}
-async function upsertSupFornecedorRemote(f, user) {
-  if (!USE_SUPABASE) return null;
-  const body = { ...f, usuario: user?.name || null, updated_at: nowISO() };
-  if (f.id) {
-    await sbFetch(`sup_fornecedores?id=eq.${f.id}`, { method: "PATCH", body: JSON.stringify(body) });
-    return null;
-  }
-  delete body.id;
-  return await sbFetch("sup_fornecedores", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
-}
-async function deleteSupFornecedorRemote(id) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
-}
-// Inventário cíclico — contagens cegas (append-only)
-// Entradas recentes com fornecedor, para saber o prazo de entrega de cada item
-async function loadSupEntradasComForn(fromISO) {
-  const rows = await sbFetch(`sup_movimentos?tipo=eq.entrada&fornecedor_id=not.is.null&created_at=gte.${fromISO}&select=item_id,fornecedor_id,created_at&order=created_at.desc&limit=8000`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function loadSupInventarios(limit = 400) {
-  const rows = await sbFetch(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
-}
-// Devolve a linha criada (precisamos do id para amarrar os movimentos de
-// ajuste à contagem, via `documento = INV-<id>`).
-async function addSupInventarioRemote(inv, user) {
-  if (!USE_SUPABASE) return null;
-  const r = await sbFetch("sup_inventarios", {
-    method: "POST",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify({ ...inv, usuario: user?.name || null }),
-  });
-  return Array.isArray(r) ? r[0] : r;
-}
 // Grava o DESFECHO da contagem (o ajuste entrou? por que não?).
 //
 // Confere o retorno em vez do status, porque o status mente: sem política
@@ -2181,64 +2031,9 @@ function parseNFe(xmlText) {
   if (!itens.length) return { erro: "Nenhum item encontrado no XML." };
   return { fornecedor, nf, itens };
 }
-async function setSupItemCustoRemote(itemId, custo) {
-  if (!USE_SUPABASE || custo == null) return;
-  await sbFetch(`sup_itens?id=eq.${itemId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
-}
 async function setFarmMedCustoRemote(medId, custo) {
   if (!USE_SUPABASE || custo == null) return;
   await sbFetch(`farm_medicamentos?id=eq.${medId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
-}
-// Requisições de materiais (Fase B)
-async function loadSupRequisicoes(limit = 200) {
-  const rows = await sbFetch(`sup_requisicoes?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function addSupRequisicaoRemote(req, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("sup_requisicoes", {
-    method: "POST",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify({ ...req, solicitado_por: user?.name || null, usuario: user?.name || null }),
-  });
-}
-async function atualizarSupReqRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`sup_requisicoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
-// Pedidos de compra (Fase C)
-async function loadSupPedidos(limit = 200) {
-  const rows = await sbFetch(`sup_pedidos?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function addSupPedidoRemote(ped, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("sup_pedidos", {
-    method: "POST",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify({ ...ped, usuario: user?.name || null }),
-  });
-}
-async function atualizarSupPedidoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`sup_pedidos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
-}
-// Cotações de compra (comparar preços entre fornecedores)
-async function loadSupCotacoes(limit = 100) {
-  const rows = await sbFetch(`sup_cotacoes?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
-}
-async function addSupCotacaoRemote(cot, user) {
-  if (!USE_SUPABASE) return null;
-  return await sbFetch("sup_cotacoes", {
-    method: "POST",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify({ ...cot, usuario: user?.name || null }),
-  });
-}
-async function atualizarSupCotacaoRemote(id, campos) {
-  if (!USE_SUPABASE) return;
-  await sbFetch(`sup_cotacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3497,9 +3292,6 @@ function CcSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
 // ═══════════════════════════════════════════════════════════
 // FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex)
 // ═══════════════════════════════════════════════════════════
-// farmFmtQtd vem de ./clinico/alertas.js (o motor de alertas usa a mesma
-// formatação nas mensagens de dose — uma implementação só, sem divergir).
-const custoUnit = med => Number(med?.custo_unitario || 0);
 
 /**
  * ⚠️ `podeControlados` NÃO É SELO NO DADO — é controle de quem lê o LIVRO.
@@ -6837,15 +6629,15 @@ function SuprimentosPage({ currentUser, canEdit }) {
   const [alcada, setAlcada] = useState(null);   // limite em R$; null = desligada
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadSupItens().then(setItens);
-    loadSupLotes().then(setLotes);
-    loadSupFornecedores().then(setForns);
-    loadSupRequisicoes().then(setReqs);
-    loadSupPedidos().then(setPedidos);
-    loadSupCotacoes().then(setCotacoes);
-    loadSupInventarios().then(setInvs);
-    loadSupEntradasComForn(new Date(Date.now() - 180 * 86400000).toISOString()).then(setEntradasForn);
-    loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
+    loadSupItens(SB()).then(setItens);
+    loadSupLotes(SB()).then(setLotes);
+    loadSupFornecedores(SB()).then(setForns);
+    loadSupRequisicoes(SB()).then(setReqs);
+    loadSupPedidos(SB()).then(setPedidos);
+    loadSupCotacoes(SB()).then(setCotacoes);
+    loadSupInventarios(SB()).then(setInvs);
+    loadSupEntradasComForn(SB(), new Date(Date.now() - 180 * 86400000).toISOString()).then(setEntradasForn);
+    loadSupSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidasHist);
     // O catálogo de setores alimenta a saída manual — sem ele, o destino é
     // texto livre e o consumo por setor se fragmenta por grafia.
     loadSetoresFromSupabase(SB()).then(r => r && setSetoresCat(r));
@@ -6908,14 +6700,14 @@ function SuprimentosPage({ currentUser, canEdit }) {
     .sort((a, b) => a.cobertura - b.cobertura);
 
   async function salvarItem(item) {
-    await upsertSupItemRemote(item, currentUser);
+    await upsertSupItemRemote(SB(), item, currentUser);
     addAuditLog(currentUser, item.id ? "editar material" : "cadastrar material", item.nome, {});
     setShowItem(null);
     setTimeout(refresh, 350);
   }
   async function excluirItem(i) {
     if (!confirm(`Excluir "${i.nome}"? Só é possível enquanto o material não tiver nenhum movimento de estoque.`)) return;
-    const r = await deleteSupItemRemote(i.id);
+    const r = await deleteSupItemRemote(SB_CRU(), i.id);
     // O banco recusa a exclusão de material com histórico — o kardex é
     // imutável de verdade agora. Mostrar o motivo em vez de deixar a tela
     // parecer que obedeceu.
@@ -6926,12 +6718,12 @@ function SuprimentosPage({ currentUser, canEdit }) {
   async function registrarMov(mov) {
     const item = itens.find(x => x.id === mov.item_id);
     const saldoAntes = supSaldoTotal(mov.item_id, lotes);
-    const r = await addSupMovimentoRemote(mov, currentUser);
+    const r = await addSupMovimentoRemote(SB_CRU(), mov, currentUser);
     if (!r.ok) { alert("Não foi possível registrar o movimento.\n" + (r.erro || "")); return false; }
     // Entrada com custo → atualiza o custo médio ponderado do material
     if (mov.tipo === "entrada" && mov.custo_unit) {
       const novo = custoMedioPonderado(item?.custo_unitario, saldoAntes, mov.quantidade, mov.custo_unit);
-      if (novo != null) await setSupItemCustoRemote(mov.item_id, novo);
+      if (novo != null) await setSupItemCustoRemote(SB(), mov.item_id, novo);
     }
     addAuditLog(currentUser, mov.tipo === "entrada" ? "entrada de material" : "saída de material", `${item?.nome || mov.item_id} · ${farmFmtQtd(mov.quantidade)}`, {});
     setMovItem(null);
@@ -6946,7 +6738,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       const achado = forns.find(f => (f.cnpj || "").replace(/\D/g, "") === fornecedor.cnpj.replace(/\D/g, ""));
       if (achado) fornId = achado.id;
       else {
-        const criado = await upsertSupFornecedorRemote({ nome: fornecedor.nome || fornecedor.cnpj, cnpj: fornecedor.cnpj, ativo: true }, currentUser);
+        const criado = await upsertSupFornecedorRemote(SB(), { nome: fornecedor.nome || fornecedor.cnpj, cnpj: fornecedor.cnpj, ativo: true }, currentUser);
         fornId = Array.isArray(criado) ? criado[0]?.id : null;
       }
     }
@@ -6955,7 +6747,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       if (ln.alvo === "skip") continue;
       let itemId = ln.alvo === "novo" ? null : Number(ln.alvo);
       if (ln.alvo === "novo") {
-        const novo = await upsertSupItemRemote({ nome: ln.nome, unidade: ln.unidade || "unidade", codigo_barras: ln.ean || null, custo_unitario: ln.custo_unit || null, ativo: true }, currentUser);
+        const novo = await upsertSupItemRemote(SB(), { nome: ln.nome, unidade: ln.unidade || "unidade", codigo_barras: ln.ean || null, custo_unitario: ln.custo_unit || null, ativo: true }, currentUser);
         itemId = Array.isArray(novo) ? novo[0]?.id : null;
         if (!itemId) { erros.push(`${ln.nome}: falha ao criar o material`); continue; }
       }
@@ -6967,7 +6759,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       const qConsumo = comprarParaConsumo(ln.qtd, mat);
       const custoConsumo = custoPorUnidadeConsumo(ln.custo_unit, mat);
       const saldoAntes = supSaldoTotal(itemId, lotes);
-      const r = await addSupMovimentoRemote({
+      const r = await addSupMovimentoRemote(SB_CRU(), {
         item_id: itemId, tipo: "entrada", quantidade: qConsumo,
         lote: ln.lote?.trim() || null, validade: ln.validade || null,
         motivo: "Compra / nota fiscal", documento: nf ? `NF ${nf}` : "NF-e",
@@ -6975,7 +6767,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       }, currentUser);
       if (r.ok) {
         ok++;
-        if (custoConsumo != null) { const c = custoMedioPonderado(mat?.custo_unitario, saldoAntes, qConsumo, custoConsumo); if (c != null) await setSupItemCustoRemote(itemId, c); }
+        if (custoConsumo != null) { const c = custoMedioPonderado(mat?.custo_unitario, saldoAntes, qConsumo, custoConsumo); if (c != null) await setSupItemCustoRemote(SB(), itemId, c); }
       } else erros.push(`${ln.nome}: ${r.erro || "falha"}`);
     }
     addAuditLog(currentUser, "importar NF-e", `${nf ? "NF " + nf : "NF-e"} · ${ok} entrada(s)`, {});
@@ -6995,7 +6787,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
   // lote a lote, e só marca `ajustado` se o kardex realmente aceitou. Se
   // não aceitou, a linha guarda o motivo em `ajuste_erro` em vez de fingir.
   async function salvarInventario(inv, plano = []) {
-    const linha = await addSupInventarioRemote({ ...inv, ajustado: false }, currentUser);
+    const linha = await addSupInventarioRemote(SB(), { ...inv, ajustado: false }, currentUser);
     const it = itens.find(x => x.id === inv.item_id);
     addAuditLog(currentUser, "contagem de inventário", `${it?.nome || inv.item_id} · sistema ${farmFmtQtd(inv.saldo_sistema)} → contado ${farmFmtQtd(inv.contado)}`, {});
 
@@ -7010,7 +6802,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
     const erros = [];
     let lancados = 0;
     for (const p of plano) {
-      const r = await addSupMovimentoRemote({
+      const r = await addSupMovimentoRemote(SB_CRU(), {
         item_id: inv.item_id, lote: p.lote, validade: p.validade || null,
         tipo: p.tipo, quantidade: p.quantidade,
         motivo: MOTIVO_AJUSTE, documento: doc,
@@ -7061,7 +6853,7 @@ function SuprimentosPage({ currentUser, canEdit }) {
       `O movimento original permanece no histórico: estorno não apaga nada.`
     )) return false;
 
-    const r = await addSupMovimentoRemote(movimentoDeEstorno(mv), currentUser);
+    const r = await addSupMovimentoRemote(SB_CRU(), movimentoDeEstorno(mv), currentUser);
     if (!r.ok) { alert("Não foi possível estornar.\n\n" + (r.erro || "")); return false; }
     addAuditLog(currentUser, "estorno de movimento",
       `${it?.nome || mv.item_id} · desfaz #${mv.id} (${mv.tipo} ${farmFmtQtd(mv.quantidade)}${mv.lote ? ` lote ${mv.lote}` : ""})`, {});
@@ -7069,14 +6861,14 @@ function SuprimentosPage({ currentUser, canEdit }) {
     return true;
   }
   async function salvarForn(f) {
-    await upsertSupFornecedorRemote(f, currentUser);
+    await upsertSupFornecedorRemote(SB(), f, currentUser);
     addAuditLog(currentUser, f.id ? "editar fornecedor" : "cadastrar fornecedor", f.nome, {});
     setShowForn(null);
     setTimeout(refresh, 350);
   }
   async function excluirForn(f) {
     if (!confirm(`Excluir o fornecedor "${f.nome}"? As entradas antigas continuam no kardex.`)) return;
-    await deleteSupFornecedorRemote(f.id);
+    await deleteSupFornecedorRemote(SB(), f.id);
     addAuditLog(currentUser, "excluir fornecedor", f.nome, {});
     setTimeout(refresh, 300);
   }
@@ -7364,7 +7156,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
   const isMaster = currentUser?.role === "adm_master";
 
   function carregar() {
-    loadSupRequisicoes().then(rows => {
+    loadSupRequisicoes(SB()).then(rows => {
       const n = rows.filter(r => r.status === "aguardando").length;
       if (prevAguardando.current != null && n > prevAguardando.current && somLigado()) avisoSonoro(true);
       prevAguardando.current = n;
@@ -7391,7 +7183,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
 
   async function mudarStatus(req, campos) {
     setBusyId(req.id);
-    await atualizarSupReqRemote(req.id, campos);
+    await atualizarSupReqRemote(SB(), req.id, campos);
     setBusyId(null);
     carregar();
     onChanged && onChanged();
@@ -7416,7 +7208,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
       for (const l of meusLotes) {
         if (restante <= 0) break;
         const q = Math.min(restante, Number(l.quantidade));
-        const r = await addSupMovimentoRemote({
+        const r = await addSupMovimentoRemote(SB_CRU(), {
           item_id: it.item_id, tipo: "saida", quantidade: q,
           lote: l.lote || null, validade: l.validade || null,
           motivo: "Requisição", documento: `REQ-${req.id}`, setor: req.setor,
@@ -7428,7 +7220,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
       atendidos.push({ ...it, qtd_atendida: atendida });
       if (restante > 0) faltas.push(`${it.nome}: pedido ${farmFmtQtd(pedida)}, atendido ${farmFmtQtd(atendida)}`);
     }
-    await atualizarSupReqRemote(req.id, {
+    await atualizarSupReqRemote(SB(), req.id, {
       itens: atendidos, status: "pronto",
       pronto_em: nowISO(), pronto_por: currentUser?.name || null,
     });
@@ -7449,7 +7241,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
     addAuditLog(currentUser, "cancelar requisição", `REQ-${req.id} · ${req.setor}`, {});
   }
   async function criarRequisicao(nova) {
-    await addSupRequisicaoRemote(nova, currentUser);
+    await addSupRequisicaoRemote(SB(), nova, currentUser);
     addAuditLog(currentUser, "criar requisição", `${nova.setor} · ${nova.itens.length} itens`, {});
     setShowNova(false);
     carregar();
@@ -7665,21 +7457,21 @@ function SupCotacoesView({ currentUser, canEdit, isMaster, materiais, forns, cot
   }
 
   async function criar(cot) {
-    await addSupCotacaoRemote(cot, currentUser);
+    await addSupCotacaoRemote(SB(), cot, currentUser);
     addAuditLog(currentUser, "criar cotação", `${cot.descricao || "cotação"} · ${cot.itens.length} itens`, {});
     setShowNova(false);
     onChanged && onChanged();
   }
   async function salvarPrecos(cot, itens) {
     setBusyId(cot.id);
-    await atualizarSupCotacaoRemote(cot.id, { itens });
+    await atualizarSupCotacaoRemote(SB(), cot.id, { itens });
     setBusyId(null);
     setAbrir(a => a ? { ...a, itens } : a);
     onChanged && onChanged();
   }
   async function cancelar(cot) {
     if (!confirm(`Cancelar a cotação "${cot.descricao || cot.id}"?`)) return;
-    await atualizarSupCotacaoRemote(cot.id, { status: "cancelada" });
+    await atualizarSupCotacaoRemote(SB(), cot.id, { status: "cancelada" });
     addAuditLog(currentUser, "cancelar cotação", `cotação ${cot.id}`, {});
     onChanged && onChanged();
   }
@@ -7700,9 +7492,9 @@ function SupCotacoesView({ currentUser, canEdit, isMaster, materiais, forns, cot
     setBusyId(cot.id);
     for (const fid of ids) {
       const forn = fornById[fid];
-      await addSupPedidoRemote({ fornecedor_id: Number(fid), fornecedor_nome: forn?.nome || null, itens: grupos[fid], observacao: `Da cotação #${cot.id}`, status: "aberto" }, currentUser);
+      await addSupPedidoRemote(SB(), { fornecedor_id: Number(fid), fornecedor_nome: forn?.nome || null, itens: grupos[fid], observacao: `Da cotação #${cot.id}`, status: "aberto" }, currentUser);
     }
-    await atualizarSupCotacaoRemote(cot.id, { status: "fechada" });
+    await atualizarSupCotacaoRemote(SB(), cot.id, { status: "fechada" });
     addAuditLog(currentUser, "gerar pedido da cotação", `cotação ${cot.id} · ${ids.length} pedido(s)`, {});
     setBusyId(null);
     setAbrir(null);
@@ -7957,28 +7749,28 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
   const sugMed = sugestoes(meds, medLotes, medSaidas, "medicamento_id", "medicamento");
 
   async function criarPedido(ped) {
-    await addSupPedidoRemote(ped, currentUser);
+    await addSupPedidoRemote(SB(), ped, currentUser);
     addAuditLog(currentUser, "criar pedido de compra", `${ped.fornecedor_nome || "sem fornecedor"} · ${ped.itens.length} itens`, {});
     setShowNovo(false);
     onChanged && onChanged();
   }
   async function enviarParaAprovacao(p) {
     setBusyId(p.id);
-    await atualizarSupPedidoRemote(p.id, { status: "aguardando_aprovacao", aprovacao_em: nowISO() });
+    await atualizarSupPedidoRemote(SB(), p.id, { status: "aguardando_aprovacao", aprovacao_em: nowISO() });
     addAuditLog(currentUser, "enviar pedido para aprovação", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
   }
   async function enviar(p) {
     setBusyId(p.id);
-    await atualizarSupPedidoRemote(p.id, { status: "enviado", enviado_em: nowISO(), enviado_por: currentUser?.name || null });
+    await atualizarSupPedidoRemote(SB(), p.id, { status: "enviado", enviado_em: nowISO(), enviado_por: currentUser?.name || null });
     addAuditLog(currentUser, "enviar pedido ao fornecedor", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
   }
   async function revisar(p) {
     setBusyId(p.id);
-    await atualizarSupPedidoRemote(p.id, { status: "aberto", aprovacao_em: null, decidido_por: null, decidido_em: null, negado_motivo: null });
+    await atualizarSupPedidoRemote(SB(), p.id, { status: "aberto", aprovacao_em: null, decidido_por: null, decidido_em: null, negado_motivo: null });
     addAuditLog(currentUser, "revisar pedido negado", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
@@ -7986,7 +7778,7 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
   async function cancelar(p) {
     if (!confirm(`Cancelar o pedido PED-${p.id}${p.fornecedor_nome ? ` (${p.fornecedor_nome})` : ""}?`)) return;
     setBusyId(p.id);
-    await atualizarSupPedidoRemote(p.id, { status: "cancelado" });
+    await atualizarSupPedidoRemote(SB(), p.id, { status: "cancelado" });
     addAuditLog(currentUser, "cancelar pedido de compra", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
@@ -8027,7 +7819,7 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
         const qConsumo = comprarParaConsumo(q, mat);
         const custoConsumo = custoPorUnidadeConsumo(custoNota, mat);
         const saldoAntes = supSaldoTotal(alvo.item_id, lotes);
-        r = await addSupMovimentoRemote({
+        r = await addSupMovimentoRemote(SB_CRU(), {
           item_id: alvo.item_id, tipo: "entrada", quantidade: qConsumo,
           lote: ln.lote.trim() || null, validade: ln.validade || null,
           motivo: "Compra / nota fiscal", documento: nf || `PED-${p.id}`,
@@ -8036,14 +7828,14 @@ function SupComprasView({ currentUser, canEdit, isMaster, materiais, lotes, said
         }, currentUser);
         if (r.ok && custoConsumo != null) {
           const novo = custoMedioPonderado(mat?.custo_unitario, saldoAntes, qConsumo, custoConsumo);
-          if (novo != null) await setSupItemCustoRemote(alvo.item_id, novo);
+          if (novo != null) await setSupItemCustoRemote(SB(), alvo.item_id, novo);
         }
       }
       if (r.ok) alvo.qtd_recebida = Number(alvo.qtd_recebida || 0) + q;
       else erros.push(`${alvo.nome}: ${r.erro || "falha na entrada"}`);
     }
     const completo = itensNovos.every(x => Number(x.qtd_recebida || 0) >= Number(x.qtd || 0));
-    await atualizarSupPedidoRemote(p.id, {
+    await atualizarSupPedidoRemote(SB(), p.id, {
       itens: itensNovos,
       status: completo ? "recebido" : "parcial",
       recebido_em: nowISO(), recebido_por: currentUser?.name || null,
@@ -8159,7 +7951,7 @@ function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, alcada = n
 
   async function aprovar(p) {
     setBusyId(p.id);
-    await atualizarSupPedidoRemote(p.id, { status: "aprovado", decidido_por: currentUser?.name || null, decidido_em: nowISO(), negado_motivo: null });
+    await atualizarSupPedidoRemote(SB(), p.id, { status: "aprovado", decidido_por: currentUser?.name || null, decidido_em: nowISO(), negado_motivo: null });
     addAuditLog(currentUser, "aprovar pedido de compra", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
@@ -8169,7 +7961,7 @@ function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, alcada = n
     if (motivo == null) return;                       // cancelou o prompt
     if (!motivo.trim()) { alert("Informe o motivo da negação."); return; }
     setBusyId(p.id);
-    await atualizarSupPedidoRemote(p.id, { status: "negado", decidido_por: currentUser?.name || null, decidido_em: nowISO(), negado_motivo: motivo.trim() });
+    await atualizarSupPedidoRemote(SB(), p.id, { status: "negado", decidido_por: currentUser?.name || null, decidido_em: nowISO(), negado_motivo: motivo.trim() });
     addAuditLog(currentUser, "negar pedido de compra", `PED-${p.id}`, {});
     setBusyId(null);
     onChanged && onChanged();
@@ -8495,7 +8287,7 @@ function SupPreditivoView({ itens, lotes, saidasHist, leadMap = {} }) {
     loadFarmMedicamentos(SB()).then(setMeds);
     loadFarmLotes(SB()).then(setMedLotes);
     loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setMedSaidas);
-    loadSupSaidasDesde(new Date(Date.now() - 7 * 86400000).toISOString()).then(setSaidas7);
+    loadSupSaidasDesde(SB(), new Date(Date.now() - 7 * 86400000).toISOString()).then(setSaidas7);
     loadFarmSaidasDesde(SB(), new Date(Date.now() - 7 * 86400000).toISOString()).then(setMedSaidas7);
   }, []);
 
@@ -8800,10 +8592,6 @@ function SupAcoesView({ itens, lotes, saidasHist, reqs, pedidos, invs, leadMap =
   );
 }
 
-// Painel executivo — visão financeira do estoque (almoxarifado + Farmácia).
-// Critérios transparentes: valores pelo custo unitário cadastrado; "economia" =
-// variação vs mês anterior; "capital liberável" = excesso acima de 30d + mínimo.
-const SUP_EXEC_COBERTURA_ALVO = 30; // dias de cobertura considerados necessários
 function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
   const [simGrupo, setSimGrupo] = useState("");
   const [simPct, setSimPct] = useState(30);
@@ -8824,11 +8612,11 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
     const iniAnt = new Date(iniAtual.getFullYear(), iniAtual.getMonth() - 1, 1);
     Promise.all([
       loadFarmMedicamentos(SB()), loadFarmLotes(SB()),
-      loadSupMovimentosPeriodo(iniAtual.toISOString(), fimAtual.toISOString()),
-      loadSupMovimentosPeriodo(iniAnt.toISOString(), iniAtual.toISOString()),
+      loadSupMovimentosPeriodo(SB(), iniAtual.toISOString(), fimAtual.toISOString()),
+      loadSupMovimentosPeriodo(SB(), iniAnt.toISOString(), iniAtual.toISOString()),
       loadFarmMovimentosPeriodo(SB(), iniAtual.toISOString(), fimAtual.toISOString()),
       loadFarmMovimentosPeriodo(SB(), iniAnt.toISOString(), iniAtual.toISOString()),
-      loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
+      loadSupSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
       loadFarmSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()),
     ]).then(([m, ml, sa, sp, fa, fp, ss, fs]) => {
       setMeds(m); setMedLotes(ml);
@@ -9177,7 +8965,7 @@ function SupIndicadoresView({ itens, lotes, forns, pedidos, reqs }) {
     if (!USE_SUPABASE) return;
     const ini = new Date(ano, mes, 1), fim = new Date(ano, mes + 1, 1);
     setCarregando(true);
-    loadSupMovimentosPeriodo(ini.toISOString(), fim.toISOString()).then(rows => { setMovsMes(rows); setCarregando(false); });
+    loadSupMovimentosPeriodo(SB(), ini.toISOString(), fim.toISOString()).then(rows => { setMovsMes(rows); setCarregando(false); });
   }, [mes, ano]);
 
   const itemById = {}; itens.forEach(i => itemById[i.id] = i);
@@ -9361,15 +9149,15 @@ function SupAssistenteView() {
 
   function refresh() {
     if (!USE_SUPABASE) return;
-    loadSupItens().then(setItens);
-    loadSupLotes().then(setLotes);
-    loadSupFornecedores().then(setForns);
-    loadSupRequisicoes().then(setReqs);
-    loadSupPedidos().then(setPedidos);
-    loadSupSaidasDesde(new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidas30);
+    loadSupItens(SB()).then(setItens);
+    loadSupLotes(SB()).then(setLotes);
+    loadSupFornecedores(SB()).then(setForns);
+    loadSupRequisicoes(SB()).then(setReqs);
+    loadSupPedidos(SB()).then(setPedidos);
+    loadSupSaidasDesde(SB(), new Date(Date.now() - FARM_PREV_JANELA * 86400000).toISOString()).then(setSaidas30);
     const ini = new Date(); ini.setDate(1); ini.setHours(0, 0, 0, 0);
     const fim = new Date(ini.getFullYear(), ini.getMonth() + 1, 1);
-    loadSupMovimentosPeriodo(ini.toISOString(), fim.toISOString()).then(setMovsMes);
+    loadSupMovimentosPeriodo(SB(), ini.toISOString(), fim.toISOString()).then(setMovsMes);
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); return () => window.removeEventListener("focus", onF); }, []);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
@@ -9489,8 +9277,6 @@ function SupAssistenteView() {
   );
 }
 
-// Inventário cíclico — contagem cega rotativa (curva ABC) + acuracidade
-const SUP_INV_INTERVALO = { A: 7, B: 30, C: 90 };   // dias entre contagens por classe
 function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, invs, onSave, chave = "item_id", origem = "suprimentos", rotuloItem = "Material" }) {
   const [contar, setContar] = useState(null);   // item em contagem
   const [busca, setBusca] = useState("");
@@ -10065,7 +9851,7 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, setores = [], onC
 function SupKardexModal({ item, fornecedores, canEdit, onEstornar, onClose }) {
   const [movs, setMovs] = useState(null);
   const [busyId, setBusyId] = useState(null);
-  const recarregar = () => loadSupMovimentos(item.id).then(setMovs);
+  const recarregar = () => loadSupMovimentos(SB(), item.id).then(setMovs);
   useEffect(() => { recarregar(); }, [item.id]);
   const fornNome = id => fornecedores.find(f => f.id === id)?.nome;
   // Quem já foi desfeito sai do próprio kardex: o banco garante a regra

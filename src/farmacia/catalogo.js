@@ -58,3 +58,13 @@ export const FARM_ALERTA_TIPOS = {
   // Não é achado clínico: é a conferência que NÃO pôde ser feita.
   base_indisponivel: "Base não conferida",
 };
+
+// ── A previsão de ruptura ──
+// `JANELA` é quantos dias de consumo passado entram na média; `HORIZONTE`
+// é quantos dias à frente a previsão olha. Encurtar a janela faz um pico
+// isolado virar tendência; alongar o horizonte enche a tela de "vai
+// faltar" para item que ainda tem meses de estoque.
+// Saídas desde uma data (para previsão de demanda)
+// Previsão de demanda: janela de histórico (dias) e horizonte da previsão (dias)
+export const FARM_PREV_JANELA = 30;
+export const FARM_PREV_HORIZONTE = 7;
