@@ -102,6 +102,13 @@ const ORDEM = [
   // As politicas da at_glosas, logo apos a tabela. Redundante num banco novo
   // (o rls-leitura no fim recria pelos mesmos nomes) e necessario nos bancos
   // que ja existem, onde o arquivo de 41 KB nao cabe no editor.
+  //
+  // ⚠️ Ele abre com \`set valentrax.quem = 'adauam'\` — conveniência de quem
+  // roda à mão. Aqui dentro a linha vale até o FIM da sessão, então todas as
+  // migrações abaixo que se anotam sozinhas ficam registradas como aplicadas
+  // por 'adauam' em vez de quem realmente rodou o script. Não quebra nada e
+  // não muda esquema; só deixa um nome errado no registro. Some sozinho se a
+  // linha sair do arquivo de origem.
   "migracao-glosas-rls.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
@@ -217,23 +224,6 @@ const ORDEM = [
   // vazia; sem o seed a tela não sugere isolamento nem marca multirresistente.
   // Idempotente — não sobrescreve o que a CCIH já tiver editado.
   "migracao-scih-germes-seed.sql",
-  // RLS da `at_glosas` (01/09). É um RECORTE do rls-leitura para UMA tabela,
-  // e existe porque o editor do Supabase trunca calado acima de ~26 KB — o
-  // arquivo inteiro não cabe numa colagem. Depende do
-  // `migracao-faturamento-glosas.sql` (cria a tabela) e do
-  // `migracao-perfis-acesso.sql` (cria `pode_ver_algum`/`pode_editar_algum`).
-  //
-  // Redundante num banco novo: o rls-leitura logo abaixo derruba e recria as
-  // MESMAS políticas pelos mesmos nomes. Fica na ORDEM pelo mesmo motivo do
-  // `migracao-perfis-nsp.sql` — é o que os bancos JÁ existentes rodaram, e
-  // tirá-lo faria o registro de migrações divergir entre eles e um banco novo.
-  //
-  // ⚠️ Ele abre com `set valentrax.quem = 'adauam'`, que é conveniência de
-  // quem roda à mão. Dentro deste script concatenado a linha vale até o fim
-  // da sessão, então o rls-leitura abaixo se anota como aplicado por
-  // 'adauam' em vez de quem realmente rodou. Não quebra nada; só registra um
-  // nome errado. Some se a linha sair do arquivo de origem.
-  "migracao-glosas-rls.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
@@ -277,6 +267,19 @@ if (esquecidos.length) {
   console.error("   Acrescente em gerar-reconstrucao.mjs, na posição cronológica certa.\n");
   process.exit(1);
 }
+// Entrada repetida não dá erro em lugar nenhum: o arquivo é inlinado duas
+// vezes e o banco só roda o mesmo SQL de novo. Como as migrações são
+// idempotentes, o resultado até fica certo — e é exatamente por isso que
+// precisa de trava: o único sintoma é a contagem do cabeçalho subir sem
+// ninguém ter acrescentado migração. Aconteceu em 01/09/2026, com duas
+// sessões pondo o `migracao-glosas-rls.sql` em posições diferentes.
+const repetidos = ORDEM.filter((f, i) => ORDEM.indexOf(f) !== i);
+if (repetidos.length) {
+  console.error(`\n❌ Migração repetida na lista ORDEM: ${[...new Set(repetidos)].join(", ")}`);
+  console.error("   Cada arquivo entra UMA vez. Apague a entrada a mais.\n");
+  process.exit(1);
+}
+
 const sumiram = ORDEM.filter(f => !fs.existsSync(path.join(dir, f)));
 if (sumiram.length) {
   console.error(`\n❌ Arquivo listado em ORDEM não existe: ${sumiram.join(", ")}\n`);
