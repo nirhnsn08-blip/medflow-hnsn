@@ -37,6 +37,7 @@ import {
 } from "./dados.js";
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
 import { listaLida } from "../util/leitura.js";
+import GlosasView from "./GlosasView.jsx";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -87,7 +88,6 @@ const FAT_NAV = [
 ];
 
 const EM_CONSTRUCAO = {
-  glosas: "Glosas recebidas → análise do motivo → recurso no prazo → recuperação. O coração do faturamento hospitalar.",
   receitas: "Faturado × recebido × glosado, por competência e por convênio (repasse).",
   analises: "BI do faturamento: produção, índice de glosa, ticket médio, rejeição.",
   previsoes: "Projeção de receita a receber, a partir do faturado e do histórico.",
@@ -1295,6 +1295,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
         {sub === "visao" && <VisaoExecutiva sb={sb} sigtapRows={rows} currentUser={currentUser} canEdit={canEdit} />}
         {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} canEdit={canEdit} currentUser={currentUser} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}
+        {sub === "glosas" && <GlosasView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
       </div>
     </div>

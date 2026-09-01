@@ -86,6 +86,9 @@ const ORDEM = [
   "migracao-nsp-protocolos.sql",
   "migracao-atendimento-responsavel.sql",
   "migracao-atendimento-faturamento.sql",
+  // Glosa recebida e recurso. Depois da conta, porque referencia at_contas
+  // e at_conta_itens.
+  "migracao-faturamento-glosas.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
   // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não
