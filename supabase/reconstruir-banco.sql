@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 75 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 87 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (75 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (87 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/75 — schema.sql
+-- │ 01/87 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,93 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/75 — migracao-farmacia-faseA.sql
+-- │ 02/87 — migracao-registro-de-migracoes.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- REGISTRO DE MIGRAÇÕES — cada uma passa a se anotar ao rodar
+--
+-- 🔴 POR QUE ISTO EXISTE
+-- Duas pessoas mexem no banco e são DOIS bancos (demo e hospital). A lista
+-- de "o que já rodou onde" vivia na conversa, e isso se perde. Já custou
+-- duas vezes: código publicado com a migração NÃO rodada no hospital
+-- (`faturamento-remessa`, achada por sonda depois do merge) e o banco de
+-- TESTE atrás da produção (`nsp-protocolos`, achada por um 404 no console).
+--
+-- A primeira tentativa de resolver foi um conferidor que SONDAVA o esquema
+-- ("existe a coluna? existe o gatilho?"). Funciona para migração de
+-- estrutura, e falhou justamente na de DADO: migração que só insere linha
+-- não deixa marca na estrutura, e a sonda respondia "ok" quando na verdade
+-- não havia o que migrar. Verificação que falha em silêncio devolve um
+-- resultado errado com cara de certo — que é o defeito que este projeto
+-- inteiro persegue.
+--
+-- ⚠️ A CORREÇÃO É INVERTER A PERGUNTA. Em vez de deduzir se rodou olhando
+-- o efeito, cada migração AFIRMA que rodou. Uma linha no fim de cada
+-- arquivo, e o registro passa a ser fato declarado, não inferência.
+--
+-- ⚠️ E ELE GUARDA QUEM RODOU. Com duas pessoas no banco, "quando" sem
+-- "quem" não resolve discussão nenhuma. O SQL Editor roda como `postgres`
+-- para todo mundo, então quem quiser se identificar faz, UMA VEZ por
+-- sessão, antes de rodar qualquer migração:
+--
+--     set valentrax.quem = 'laura';
+--
+-- Sem isso, fica registrado o usuário do banco — perde-se o nome, não o
+-- fato. Nada quebra por esquecer.
+-- ═══════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS public.migracoes_aplicadas (
+  arquivo      text PRIMARY KEY,
+  aplicada_em  timestamptz NOT NULL DEFAULT now(),
+  aplicada_por text NOT NULL DEFAULT coalesce(current_setting('valentrax.quem', true), session_user),
+  observacao   text
+);
+
+COMMENT ON TABLE public.migracoes_aplicadas IS
+  'Uma linha por migração que rodou NESTE banco. Cada arquivo .sql se anota '
+  'na última linha. Não deduza pelo esquema: pergunte aqui.';
+
+-- ⚠️ Ninguém apaga registro de migração. Apagar faria o conferidor pedir
+-- para rodar de novo algo já aplicado — e migração idempotente é a regra,
+-- não a garantia.
+ALTER TABLE public.migracoes_aplicadas ENABLE ROW LEVEL SECURITY;
+
+-- ⚠️ O NOME DA POLÍTICA SEGUE A CONVENÇÃO `<tabela>_leitura`, e isso não é
+-- estética: o `migracao-rls-leitura.sql` derruba e recria as políticas POR
+-- ESSE NOME. Uma política fora do padrão sobreviveria ao drop e conviveria
+-- com a gerada — duas regras na mesma tabela, e ninguém sabendo qual vale.
+--
+-- A leitura é de TODOS os autenticados, declarada em `mapa-tabelas.js`:
+-- aqui só há nome de arquivo, data e quem rodou. Esconder não protegeria
+-- ninguém e faria a conferência depender de quem tem qual perfil.
+DROP POLICY IF EXISTS migracoes_leitura ON public.migracoes_aplicadas;
+DROP POLICY IF EXISTS migracoes_aplicadas_leitura ON public.migracoes_aplicadas;
+CREATE POLICY migracoes_aplicadas_leitura ON public.migracoes_aplicadas
+  FOR SELECT TO authenticated USING (true);
+
+-- ⚠️ ESTE ARQUIVO NÃO ANOTA AS MIGRAÇÕES ANTIGAS.
+-- São 82 no repositório, e deduzir cada uma pelo esquema seria repetir o
+-- erro que motivou tudo isto: sonda que erra em silêncio. Quem anota é o
+-- `anotar-migracoes-existentes.sql`, GERADO a partir da pasta — lista
+-- derivada, não lembrada. Rode ele logo depois deste.
+
+-- este arquivo também se registra
+INSERT INTO public.migracoes_aplicadas (arquivo)
+VALUES ('migracao-registro-de-migracoes.sql')
+ON CONFLICT (arquivo) DO NOTHING;
+
+-- ── RECIBO ──────────────────────────────────────────────────
+SELECT
+  CASE WHEN (SELECT count(*) FROM public.pacientes) >= 40
+       THEN 'DEMO (banco de teste)' ELSE 'PRINCIPAL (hospital)' END AS banco,
+  (SELECT count(*) FROM public.migracoes_aplicadas) AS migracoes_registradas;
+
+SELECT arquivo, to_char(aplicada_em, 'DD/MM/YYYY HH24:MI') AS quando, aplicada_por AS quem
+FROM public.migracoes_aplicadas ORDER BY arquivo;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 03/87 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1240,7 +1326,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/75 — migracao-farmacia-seed.sql
+-- │ 04/87 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1450,7 +1536,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/75 — migracao-farmacia-faseB.sql
+-- │ 05/87 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1491,7 +1577,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/75 — migracao-farmacia-clinica-fase1.sql
+-- │ 06/87 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1616,7 +1702,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/75 — migracao-farmacia-clinica-fase2.sql
+-- │ 07/87 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1738,7 +1824,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/75 — migracao-farmacia-clinica-fase3.sql
+-- │ 08/87 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1806,7 +1892,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/75 — migracao-farmacia-preparo.sql
+-- │ 09/87 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1840,7 +1926,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/75 — migracao-farmacia-custos.sql
+-- │ 10/87 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1853,7 +1939,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/75 — migracao-farmacia-nao-padronizados.sql
+-- │ 11/87 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1892,7 +1978,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/75 — migracao-farmacia-intervencoes.sql
+-- │ 12/87 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -1931,7 +2017,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/75 — migracao-leitos-kanban-metas.sql
+-- │ 13/87 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -1960,7 +2046,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/75 — migracao-leitos-saida-setor.sql
+-- │ 14/87 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -1986,7 +2072,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/75 — migracao-suprimentos-faseA.sql
+-- │ 15/87 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2124,7 +2210,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/75 — migracao-suprimentos-faseB.sql
+-- │ 16/87 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2176,7 +2262,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/75 — migracao-suprimentos-seed.sql
+-- │ 17/87 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2332,7 +2418,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/75 — migracao-suprimentos-faseC.sql
+-- │ 18/87 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2389,7 +2475,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/75 — migracao-suprimentos-inventario.sql
+-- │ 19/87 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2451,7 +2537,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/75 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 20/87 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2468,7 +2554,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/75 — migracao-suprimentos-cotacao.sql
+-- │ 21/87 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2516,7 +2602,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/75 — migracao-ps-salas.sql
+-- │ 22/87 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2565,7 +2651,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/75 — migracao-ps-salas-censo.sql
+-- │ 23/87 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2645,7 +2731,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/75 — migracao-ps-origem-elo.sql
+-- │ 24/87 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2685,7 +2771,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/75 — migracao-ps-checagem-medicacao.sql
+-- │ 25/87 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2738,7 +2824,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/75 — migracao-pep-fase1.sql
+-- │ 26/87 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3536,7 +3622,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/75 — migracao-pep-acessos.sql
+-- │ 27/87 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3602,7 +3688,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/75 — migracao-pep-sinais-spo2.sql
+-- │ 28/87 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3634,7 +3720,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/75 — migracao-pep-categoria-profissional.sql
+-- │ 29/87 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3688,7 +3774,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/75 — migracao-pep-perfis-update.sql
+-- │ 30/87 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3727,7 +3813,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/75 — migracao-pep-fase3.sql
+-- │ 31/87 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4037,7 +4123,7 @@ order by c.relname;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 31/75 — migracao-perfis-acesso.sql
+-- │ 32/87 — migracao-perfis-acesso.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS DE ACESSO — o cargo vira um pacote de permissões
@@ -4340,7 +4426,7 @@ select p.chave, p.nome, count(pp.modulo) as modulos,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 32/75 — migracao-leitos-nir-regulacao.sql
+-- │ 33/87 — migracao-leitos-nir-regulacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"
@@ -4381,7 +4467,7 @@ select 'regulação NIR ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 33/75 — migracao-suprimentos-aprovacao.sql
+-- │ 34/87 — migracao-suprimentos-aprovacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Aprovação de pedidos de compra pela matriz
@@ -4416,7 +4502,7 @@ select 'aprovação de compras ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 34/75 — migracao-ps-comorbidades.sql
+-- │ 35/87 — migracao-ps-comorbidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Comorbidades na triagem
@@ -4442,7 +4528,7 @@ select 'comorbidades ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 35/75 — migracao-ps-triagem-tipo.sql
+-- │ 36/87 — migracao-ps-triagem-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)
@@ -4478,7 +4564,7 @@ select 'triagem_tipo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 36/75 — migracao-ps-faixas-pediatricas.sql
+-- │ 37/87 — migracao-ps-faixas-pediatricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)
@@ -4547,7 +4633,7 @@ select 'ps_faixas_pediatricas ok — ' || count(*) || ' faixas' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 37/75 — migracao-ps-faixas-obstetricas.sql
+-- │ 38/87 — migracao-ps-faixas-obstetricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)
@@ -4613,7 +4699,7 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 38/75 — migracao-enf-escalas-lpp.sql
+-- │ 39/87 — migracao-enf-escalas-lpp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)
@@ -4740,7 +4826,7 @@ select 'enf: escalas/lpp/faixas ok — ' || count(*) || ' cortes semeados' as re
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 39/75 — migracao-enf-sae.sql
+-- │ 40/87 — migracao-enf-sae.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)
@@ -4956,7 +5042,7 @@ select 'enf SAE: catálogo semeado — ' || count(*) || ' itens (' ||
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 40/75 — migracao-pacientes-identificacao.sql
+-- │ 41/87 — migracao-pacientes-identificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário
@@ -5150,7 +5236,7 @@ from public.pacientes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 41/75 — migracao-atendimento-recepcao.sql
+-- │ 42/87 — migracao-atendimento-recepcao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital
@@ -5488,7 +5574,7 @@ select last_value as ultimo_prontuario_emitido from public.prontuario_seq;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 42/75 — migracao-atendimento-fk.sql
+-- │ 43/87 — migracao-atendimento-fk.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)
@@ -5597,7 +5683,7 @@ select exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 43/75 — migracao-nsp-incidentes.sql
+-- │ 44/87 — migracao-nsp-incidentes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes
@@ -5687,7 +5773,7 @@ select 'NSP: nsp_incidentes + nsp_incidente_eventos ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 44/75 — migracao-atendimento-fase2.sql
+-- │ 45/87 — migracao-atendimento-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde
@@ -5994,7 +6080,7 @@ select 'dominios cadastrados pelo hospital', count(*)::text from public.at_domin
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 45/75 — migracao-atendimento-agenda.sql
+-- │ 46/87 — migracao-atendimento-agenda.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia
@@ -6216,7 +6302,7 @@ select 'trava de vaga unica instalada', (exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 46/75 — migracao-nsp-rca-plano.sql
+-- │ 47/87 — migracao-nsp-rca-plano.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)
@@ -6293,7 +6379,7 @@ select 'NSP: nsp_rca + nsp_acoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 47/75 — migracao-atendimento-ciclo.sql
+-- │ 48/87 — migracao-atendimento-ciclo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro
@@ -6380,7 +6466,7 @@ select 'atendimentos cancelados ate agora', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 48/75 — migracao-nsp-metas.sql
+-- │ 49/87 — migracao-nsp-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)
@@ -6455,7 +6541,7 @@ select 'NSP: nsp_meta_faixas (' || (select count(*) from public.nsp_meta_faixas)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 49/75 — migracao-nsp-protocolos.sql
+-- │ 50/87 — migracao-nsp-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Protocolos gerenciados de segurança (Fase 2d)
@@ -6507,9 +6593,13 @@ on conflict (chave) do nothing;
 -- Verificação
 select 'NSP: nsp_protocolos ok — ' || count(*) || ' protocolos' as resultado from public.nsp_protocolos;
 
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-nsp-protocolos.sql') on conflict do nothing;
+
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 50/75 — migracao-atendimento-responsavel.sql
+-- │ 51/87 — migracao-atendimento-responsavel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta
@@ -6677,7 +6767,7 @@ select 'politicas RLS (esperado 2)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 51/75 — migracao-atendimento-faturamento.sql
+-- │ 52/87 — migracao-atendimento-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — a conta do atendimento (fundação)
@@ -6921,7 +7011,300 @@ select 'politicas RLS (esperado 4)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 52/75 — migracao-nsp-capacitacoes.sql
+-- │ 53/87 — migracao-faturamento-glosas.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- FATURAMENTO — A GLOSA RECEBIDA E O RECURSO
+--
+-- Já existe a glosa PREVENTIVA: `avaliarGlosa` (src/atendimento/sigtap.js)
+-- olha a conta ANTES de sair e avisa o que provavelmente será cortado.
+-- Esta migração é o outro lado, o que dói: o dinheiro que o SUS ou a
+-- operadora JÁ recusou, e o recurso que pode trazê-lo de volta.
+--
+-- 🔴 O PRAZO É O PRODUTO INTEIRO.
+-- Glosa sem recurso no prazo não vira prejuízo depois — ela JÁ É prejuízo,
+-- e silencioso: ninguém recebe aviso, nada fica vermelho, o dinheiro
+-- simplesmente não entra. Por isso `recebida_em` é NOT NULL (é o relógio
+-- que começa a correr) e o índice de trabalho é por prazo, não por data de
+-- cadastro.
+--
+-- ⚠️ `prazo_recurso_em` NASCE NULO E NÃO É CALCULADO.
+-- Foi decisão, não esquecimento. O prazo muda por operadora, por contrato e
+-- por portaria; cravar "30 dias" no banco criaria uma data com cara de
+-- oficial que ninguém conferiu — e o erro apareceria como prazo VENCIDO em
+-- glosa que ainda dava tempo, ou pior, como prazo ABERTO em glosa perdida.
+-- Quem sabe o prazo é quem tem o contrato na mão. A tela pede, e diz
+-- "prazo não informado" enquanto não vier; ela não inventa.
+--
+-- DINHEIRO EM numeric(12,2), nunca float — mesma regra da conta.
+--
+-- ⚠️ RODAR NO SQL EDITOR ANTES DO MERGE DO CÓDIGO.
+--    Aditiva e idempotente: cria UMA tabela nova e não toca em nenhuma
+--    existente. DEMO primeiro (ufxqdvxhruaswuzhmxyf), depois o principal.
+--    Rodar `migracao-rls-leitura.sql` DEPOIS, no mesmo banco — tabela nova
+--    sem política nasce com RLS ligada e sem regra, e o sintoma não é erro,
+--    é TELA VAZIA.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ═══════════════════════════════════════════════════════════
+-- A GLOSA
+--
+-- `item_id` é opcional de propósito: a operadora glosa às vezes um item
+-- ("material não autorizado"), às vezes a conta inteira ("guia sem
+-- autorização"). Obrigar o item faria a segunda virar uma linha falsa
+-- apontando para um item qualquer.
+--
+-- `valor_recuperado` nasce nulo, e nulo NÃO é zero: nulo é "o recurso ainda
+-- não terminou"; zero é "recorremos e não voltou nada". A diferença é o que
+-- separa trabalho em andamento de derrota registrada, e é ela que faz a
+-- taxa de recuperação significar alguma coisa.
+-- ═══════════════════════════════════════════════════════════
+create table if not exists public.at_glosas (
+  id                 bigserial primary key,
+  conta_id           bigint not null references public.at_contas (id),
+  -- nulo = a glosa é da conta inteira, não de um item
+  item_id            bigint references public.at_conta_itens (id),
+  prontuario         text,
+  -- competência do faturamento glosado (AAAA-MM), não a do recebimento
+  competencia        text,
+
+  valor_glosado      numeric(12,2) not null,
+  -- código do motivo como veio da operadora/SUS, sem tradução
+  motivo_codigo      text,
+  motivo             text,
+
+  -- 🔴 o relógio começa aqui
+  recebida_em        date not null,
+  -- nulo = ninguém informou ainda; NÃO é calculado (ver cabeçalho)
+  prazo_recurso_em   date,
+
+  -- recebida | em_recurso | recurso_enviado | recuperada | perdida | aceita
+  situacao           text not null default 'recebida',
+  recurso_enviado_em date,
+  recurso_protocolo  text,
+  -- nulo = recurso não terminou; 0 = recorreu e não voltou nada
+  valor_recuperado   numeric(12,2),
+  encerrada_em       date,
+
+  observacao         text,
+  usuario            text,
+  criado_em          timestamptz not null default now(),
+  updated_at         timestamptz default now()
+);
+
+
+-- ═══════════════════════════════════════════════════════════
+-- AS REGRAS QUE VIRAM CONSTRAINT
+--
+-- Todas cabem no banco porque nenhuma depende de contexto de tela — e
+-- validação de tela não sobrevive a um import de planilha, que é
+-- exatamente como glosa costuma chegar (arquivo de retorno da operadora).
+-- ═══════════════════════════════════════════════════════════
+
+-- Glosa de zero não existe: ou não houve glosa, ou alguém errou a digitação.
+alter table public.at_glosas drop constraint if exists at_glosa_valor_positivo;
+alter table public.at_glosas add constraint at_glosa_valor_positivo
+  check (valor_glosado > 0);
+
+-- 🔴 Não se recupera mais do que foi glosado. Sem isto, um erro de digitação
+-- vira receita inventada no relatório — e receita inventada some do caixa
+-- na conferência do contador, meses depois, sem ninguém saber de onde veio.
+alter table public.at_glosas drop constraint if exists at_glosa_recuperado_ate_glosado;
+alter table public.at_glosas add constraint at_glosa_recuperado_ate_glosado
+  check (valor_recuperado is null
+         or (valor_recuperado >= 0 and valor_recuperado <= valor_glosado));
+
+-- Prazo antes do recebimento é data trocada na digitação, e o estrago é
+-- silencioso: a glosa nasceria VENCIDA e sairia da fila de trabalho.
+alter table public.at_glosas drop constraint if exists at_glosa_prazo_depois_do_recebimento;
+alter table public.at_glosas add constraint at_glosa_prazo_depois_do_recebimento
+  check (prazo_recurso_em is null or prazo_recurso_em >= recebida_em);
+
+-- Recurso enviado antes de a glosa chegar, idem.
+alter table public.at_glosas drop constraint if exists at_glosa_recurso_depois_do_recebimento;
+alter table public.at_glosas add constraint at_glosa_recurso_depois_do_recebimento
+  check (recurso_enviado_em is null or recurso_enviado_em >= recebida_em);
+
+-- Situação fora da lista é dado que nenhuma tela sabe desenhar.
+alter table public.at_glosas drop constraint if exists at_glosa_situacao_valida;
+alter table public.at_glosas add constraint at_glosa_situacao_valida
+  check (situacao in ('recebida','em_recurso','recurso_enviado','recuperada','perdida','aceita'));
+
+
+-- ═══════════════════════════════════════════════════════════
+-- OS ÍNDICES
+--
+-- O primeiro é a FILA DE TRABALHO: glosa em aberto, do prazo mais curto
+-- para o mais longo. É a consulta que a tela faz o dia inteiro, e a única
+-- que tem hora para acontecer.
+-- ═══════════════════════════════════════════════════════════
+create index if not exists at_glosas_fila_prazo_idx
+  on public.at_glosas (prazo_recurso_em)
+  where situacao in ('recebida','em_recurso');
+
+create index if not exists at_glosas_conta_idx      on public.at_glosas (conta_id);
+create index if not exists at_glosas_competencia_idx on public.at_glosas (competencia, situacao);
+
+
+-- ═══════════════════════════════════════════════════════════
+-- CONFERÊNCIA — leia a saída, não confie no "Success"
+--
+-- O SQL Editor mostra só o resultado da ÚLTIMA instrução, por isso tudo em
+-- um `union all` só. A contagem de pacientes diz QUAL BANCO é este: as duas
+-- abas se chamam igual e já trocamos de banco sem perceber.
+-- ═══════════════════════════════════════════════════════════
+select 'QUAL BANCO É ESTE?' as item,
+       case when (select count(*) from public.pacientes) >= 40
+            then 'DEMO — ' || (select count(*) from public.pacientes) || ' pacientes'
+            else 'PRINCIPAL — ' || (select count(*) from public.pacientes) || ' pacientes'
+       end as resultado
+
+union all
+select 'tabela at_glosas existe', count(*)::text
+  from information_schema.tables
+ where table_schema = 'public' and table_name = 'at_glosas'
+
+union all
+-- ⚠️ `contype = 'c'` filtra SÓ os CHECK. A primeira versão desta
+-- conferência dizia "esperado 5" e contava 8, porque em LIKE o `_` é
+-- curinga de UM caractere: `at_glosa_%` casa com `at_glosas_pkey` e com
+-- as duas chaves estrangeiras. Conferência que dá alarme falso ensina a
+-- ignorar conferência.
+select 'CHECKs (esperado 5)', count(*)::text
+  from pg_constraint
+ where conrelid = 'public.at_glosas'::regclass and contype = 'c'
+
+union all
+select 'chaves estrangeiras (esperado 2)', count(*)::text
+  from pg_constraint
+ where conrelid = 'public.at_glosas'::regclass and contype = 'f'
+
+union all
+-- 4 = os 3 criados aqui + o índice implícito da chave primária
+select 'indices (esperado 4, com o da pkey)', count(*)::text
+  from pg_indexes
+ where schemaname = 'public' and tablename = 'at_glosas'
+
+union all
+select '⚠️ politicas RLS (0 = FALTA RODAR migracao-rls-leitura.sql)', count(*)::text
+  from pg_policies
+ where schemaname = 'public' and tablename = 'at_glosas';
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-faturamento-glosas.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 54/87 — migracao-glosas-rls.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- RLS DA at_glosas — o passo 2 de 2
+--
+-- 🔴 POR QUE ESTE ARQUIVO EXISTE em vez de "rode o migracao-rls-leitura".
+-- Aquele arquivo tem 41 KB, e o editor do Supabase (Monaco) TRUNCA CALADO
+-- acima de ~26 KB: ele cola até uma linha qualquer e o erro que aparece é
+-- "syntax error at end of input", sem dizer que faltou texto. Já custou uma
+-- sessão. Este recorte faz exatamente o mesmo para UMA tabela.
+--
+-- As três políticas reproduzem, letra por letra, o que o gerador
+-- (`gerar-rls.mjs`) produz para `at_glosas` a partir de
+-- `src/acesso/mapa-tabelas.js`, onde ela está declarada como módulo
+-- "atendimento" e como SENSÍVEL (carrega prontuário e valor).
+--
+-- ⚠️ Rodar o `migracao-rls-leitura.sql` inteiro depois NÃO quebra nada:
+-- ele derruba e recria pelos mesmos nomes.
+--
+-- ⚠️ TABELA NOVA SEM POLÍTICA NASCE COM RLS LIGADA E SEM REGRA, e o
+-- sintoma não é erro — é TELA VAZIA. Foi assim que 18 tabelas da Laura
+-- ficaram com escrita travada ao vivo em agosto.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+alter table public.at_glosas enable row level security;
+
+
+-- ── LEITURA: quem enxerga o módulo Atendimento ──────────────
+drop policy if exists at_glosas_leitura on public.at_glosas;
+create policy at_glosas_leitura on public.at_glosas
+  for select to authenticated
+  using (public.pode_ver_algum('atendimento'));
+
+
+-- ── ESCRITA ABERTA (a base permissiva) ──────────────────────
+-- Tabela nova não tem política de escrita nenhuma, então entra o mesmo
+-- par que o gerador cria: permissiva aberta + restritiva por módulo. É a
+-- restritiva abaixo que aperta de verdade; sem a permissiva, o RLS negaria
+-- tudo (política restritiva sozinha não LIBERA nada).
+drop policy if exists at_glosas_escrita_ins on public.at_glosas;
+drop policy if exists at_glosas_escrita_upd on public.at_glosas;
+drop policy if exists at_glosas_escrita_del on public.at_glosas;
+
+create policy at_glosas_escrita_ins on public.at_glosas
+  for insert to authenticated with check (true);
+create policy at_glosas_escrita_upd on public.at_glosas
+  for update to authenticated using (true) with check (true);
+create policy at_glosas_escrita_del on public.at_glosas
+  for delete to authenticated using (true);
+
+
+-- ── ESCRITA RESTRITIVA: exige o módulo ──────────────────────
+-- `as restrictive` combina com E: só aperta, nunca solta.
+-- ⚠️ Três políticas separadas, e NUNCA `for all` — `for all` incluiria
+-- SELECT, e uma restritiva sobre SELECT tiraria a leitura de quem tem só
+-- leitura no módulo, desfazendo a política de cima.
+drop policy if exists at_glosas_mod_ins on public.at_glosas;
+drop policy if exists at_glosas_mod_upd on public.at_glosas;
+drop policy if exists at_glosas_mod_del on public.at_glosas;
+
+create policy at_glosas_mod_ins on public.at_glosas
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('atendimento'));
+create policy at_glosas_mod_upd on public.at_glosas
+  as restrictive for update to authenticated
+  using (public.pode_editar_algum('atendimento'))
+  with check (public.pode_editar_algum('atendimento'));
+create policy at_glosas_mod_del on public.at_glosas
+  as restrictive for delete to authenticated
+  using (public.pode_editar_algum('atendimento'));
+
+
+-- ═══════════════════════════════════════════════════════════
+-- CONFERÊNCIA — leia a saída
+-- ═══════════════════════════════════════════════════════════
+select 'QUAL BANCO É ESTE?' as item,
+       case when (select count(*) from public.pacientes) >= 40
+            then 'DEMO — ' || (select count(*) from public.pacientes) || ' pacientes'
+            else 'PRINCIPAL — ' || (select count(*) from public.pacientes) || ' pacientes'
+       end as resultado
+
+union all
+select 'RLS ligada na at_glosas', case when relrowsecurity then 'sim' else '🔴 NÃO' end
+  from pg_class where oid = 'public.at_glosas'::regclass
+
+union all
+select 'políticas (esperado 7)', count(*)::text
+  from pg_policies where schemaname = 'public' and tablename = 'at_glosas'
+
+union all
+select 'leitura', count(*)::text
+  from pg_policies where schemaname = 'public' and tablename = 'at_glosas' and cmd = 'SELECT'
+
+union all
+select 'restritivas de escrita (esperado 3)', count(*)::text
+  from pg_policies where schemaname = 'public' and tablename = 'at_glosas' and permissive = 'RESTRICTIVE';
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-glosas-rls.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 55/87 — migracao-nsp-capacitacoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Capacitações em segurança do paciente (Fase 2d)
@@ -6964,7 +7347,7 @@ select 'NSP: nsp_capacitacoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 53/75 — migracao-nsp-comunicados.sql
+-- │ 56/87 — migracao-nsp-comunicados.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Comunicação / mural de segurança (Fase 2d)
@@ -7005,7 +7388,7 @@ select 'NSP: nsp_comunicados ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 54/75 — migracao-protocolos.sql
+-- │ 57/87 — migracao-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)
@@ -7132,7 +7515,7 @@ select 'PROTOCOLOS: prot_catalogo + prot_setor + prot_ativacoes + prot_bundle_it
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 55/75 — migracao-protocolos-iam.sql
+-- │ 58/87 — migracao-protocolos-iam.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)
@@ -7169,7 +7552,7 @@ select 'PROTOCOLOS 3b: template IAM ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 56/75 — migracao-protocolos-avc.sql
+-- │ 59/87 — migracao-protocolos-avc.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)
@@ -7209,7 +7592,7 @@ select 'PROTOCOLOS 3c: template AVC ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 57/75 — migracao-protocolos-tev.sql
+-- │ 60/87 — migracao-protocolos-tev.sql
 -- └────────────────────────────────────────────────────────────
 -- ===========================================================
 -- PROTOCOLOS CLINICOS -- Fase 3d: TEV / profilaxia (seed do template)
@@ -7251,7 +7634,7 @@ select count(*) as tev_templates from public.prot_catalogo where chave = 'tev';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 58/75 — migracao-perfis-nsp.sql
+-- │ 61/87 — migracao-perfis-nsp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS
@@ -7343,7 +7726,7 @@ select pa.chave as perfil,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 59/75 — migracao-sigtap.sql
+-- │ 62/87 — migracao-sigtap.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)
@@ -7626,7 +8009,7 @@ select 'SIGTAP: sigtap_procedimentos ok — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 60/75 — migracao-sigtap-valores.sql
+-- │ 63/87 — migracao-sigtap-valores.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — SIGTAP: valores, permanência e CID REAIS (SIH-SUS)
@@ -7885,7 +8268,7 @@ from public.sigtap_procedimentos where competencia = '2026-08';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 61/75 — migracao-perfis-faturamento.sql
+-- │ 64/87 — migracao-perfis-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GRANTS DO MÓDULO FATURAMENTO — migração avulsa (Tier 1 — Fase 4)
@@ -7916,7 +8299,7 @@ select 'FATURAMENTO: grants do módulo aplicados — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 62/75 — migracao-perfis-auditoria-diretor.sql
+-- │ 65/87 — migracao-perfis-auditoria-diretor.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUDITORIA: DIRETOR TÉCNICO PASSA A SÓ CONSULTAR A TRILHA
@@ -7954,7 +8337,7 @@ select perfil_chave, modulo, nivel,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 63/75 — migracao-suprimentos-integridade.sql
+-- │ 66/87 — migracao-suprimentos-integridade.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — integridade do saldo (travas duras no banco)
@@ -8109,7 +8492,7 @@ select 'trigger anti-exclusao do kardex',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 64/75 — migracao-suprimentos-ajuste-estorno.sql
+-- │ 67/87 — migracao-suprimentos-ajuste-estorno.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — ajuste de inventário rastreável e estorno com vínculo
@@ -8292,7 +8675,7 @@ select 'politica de desfecho da contagem',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 65/75 — migracao-suprimentos-unidade-compra.sql
+-- │ 68/87 — migracao-suprimentos-unidade-compra.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — unidade de compra × unidade de consumo
@@ -8377,7 +8760,7 @@ select 'materiais no total (todos com fator 1 = comportamento de antes)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 66/75 — migracao-auditoria-atribuivel.sql
+-- │ 69/87 — migracao-auditoria-atribuivel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUDITORIA — trilha atribuível e consultável
@@ -8476,7 +8859,7 @@ select 'registros ja atribuidos a uma conta (zero agora, e esperado)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 67/75 — migracao-suprimentos-alcada.sql
+-- │ 70/87 — migracao-suprimentos-alcada.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — alçada de aprovação de compra
@@ -8582,7 +8965,7 @@ select 'alcada configurada (0 = desligada, e o esperado agora)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 68/75 — migracao-pacientes-busca.sql
+-- │ 71/87 — migracao-pacientes-busca.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — BUSCA DE PACIENTE POR NOME (aditiva, sem destruir nada)
@@ -8759,7 +9142,7 @@ select 'linhas com nome_busca preenchido',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 69/75 — migracao-agenda-vaga-por-profissional.sql
+-- │ 72/87 — migracao-agenda-vaga-por-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — A VAGA É DO PROFISSIONAL, NÃO DA ESPECIALIDADE
@@ -8911,7 +9294,7 @@ select 'agendamentos vivos SEM profissional (caem na especialidade)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 70/75 — migracao-agenda-confirmacao.sql
+-- │ 73/87 — migracao-agenda-confirmacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — CONFIRMAÇÃO DA VÉSPERA E MOTIVO DA FALTA
@@ -9053,7 +9436,7 @@ select 'indice antigo por especialidade',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 71/75 — migracao-pacientes-nacionalidade-etnia.sql
+-- │ 74/87 — migracao-pacientes-nacionalidade-etnia.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — PACIENTE ESTRANGEIRO E ETNIA INDÍGENA
@@ -9181,7 +9564,7 @@ select 'nenhum CHECK novo em pacientes',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 72/75 — migracao-agenda-remarcacao.sql
+-- │ 75/87 — migracao-agenda-remarcacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — REMARCAÇÃO COM VÍNCULO
@@ -9327,7 +9710,7 @@ select 'agendamentos ja remarcados',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 73/75 — migracao-pacientes-obito.sql
+-- │ 76/87 — migracao-pacientes-obito.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — O ÓBITO CHEGA AO CADASTRO
@@ -9540,7 +9923,7 @@ select 'destes, quantos tinham consulta MARCADA a partir de hoje',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 74/75 — migracao-pacientes-recem-nascido.sql
+-- │ 77/87 — migracao-pacientes-recem-nascido.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — O RECÉM-NASCIDO ENTRA NO SISTEMA
@@ -9698,7 +10081,946 @@ select 'DNVs repetidas (tem que ser 0)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 75/75 — migracao-rls-leitura.sql
+-- │ 78/87 — migracao-pacientes-municipio-ibge.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- CÓDIGO IBGE DO MUNICÍPIO DE RESIDÊNCIA
+--
+-- POR QUE: a AIH e o BPA não aceitam o município por extenso — exigem o
+-- código de 7 dígitos do IBGE. Quem digita "Navegantes" na recepção não
+-- sabe disso, e o faturista descobre na glosa, meses depois, quando já
+-- não há quem lembrar do endereço daquele paciente.
+--
+-- A resposta do CEP (ViaCEP) já traz o código. Vinha e era jogada fora.
+--
+-- ADITIVA: uma coluna nova, nada é alterado nem apagado. Cadastro que já
+-- existe fica com NULL — e NULL aqui quer dizer "ninguém consultou o CEP
+-- deste endereço ainda", que é diferente de "não tem código".
+--
+-- ⚠️ O CHECK É O QUE IMPORTA. Sem ele, um dia alguém importa planilha com
+-- o código do estado (2 dígitos), com o código antigo de 6, ou com o nome
+-- da cidade no lugar do número — e o valor vai para a AIH sem passar por
+-- tela nenhuma. É o último ponto onde isso ainda dá para barrar.
+-- ═══════════════════════════════════════════════════════════
+
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS end_municipio_ibge text;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pacientes_ibge_7_digitos') THEN
+    ALTER TABLE pacientes ADD CONSTRAINT pacientes_ibge_7_digitos
+      CHECK (end_municipio_ibge IS NULL OR end_municipio_ibge ~ '^[0-9]{7}$');
+  END IF;
+END $$;
+
+COMMENT ON COLUMN pacientes.end_municipio_ibge IS
+  'Código IBGE (7 dígitos) do município de residência, exigido pela AIH e pelo BPA. '
+  'Preenchido pela consulta de CEP, nunca digitado. Só é gravado quando o município '
+  'do formulário é o mesmo que o CEP respondeu; some quando o município ou a UF são '
+  'editados à mão, porque o código guardado era o da cidade de antes.';
+
+-- ── RECIBO ──────────────────────────────────────────────────
+-- Não faz backfill: não há de onde tirar o código sem consultar o CEP de
+-- cada endereço, um a um. Ele entra à medida que os cadastros passam pela
+-- recepção — que é onde alguém está com a pessoa na frente para conferir.
+SELECT
+  (SELECT count(*) FROM information_schema.columns
+     WHERE table_name = 'pacientes' AND column_name = 'end_municipio_ibge') AS coluna_criada,
+  (SELECT count(*) FROM pg_constraint WHERE conname = 'pacientes_ibge_7_digitos') AS check_criado,
+  (SELECT count(*) FROM pacientes WHERE end_municipio IS NOT NULL AND end_municipio <> '') AS com_municipio,
+  (SELECT count(*) FROM pacientes WHERE end_municipio_ibge IS NOT NULL) AS ja_com_codigo,
+  (SELECT count(*) FROM pacientes WHERE end_cep IS NOT NULL AND end_cep <> '') AS com_cep_para_reaproveitar;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-pacientes-municipio-ibge.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 79/87 — migracao-faturamento-remessa.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- REMESSA TRANSMITIDA — quem, quando, e sob qual protocolo
+--
+-- POR QUE: `faturada` era um estado INALCANÇÁVEL. A função que o escreve
+-- existia em `dados.js` desde sempre e nenhuma tela a chamava, então
+-- nenhuma conta jamais saiu de "fechada". Três leitores dependiam disso —
+-- o KPI "já transmitidas ao SUS" entre eles — e todos mostravam zero por
+-- construção. Indicador que não pode mudar ensina quem olha que o número
+-- não quer dizer nada.
+--
+-- E a função gravava SÓ o status. `fecharConta` carimba fechada_em e
+-- fechada_por desde sempre; a transmissão, que é o passo SEM VOLTA, não
+-- carimbava nada — justamente as três coisas que alguém procura quando a
+-- glosa chega meses depois.
+--
+-- ADITIVA: três colunas novas, nada é alterado nem apagado.
+--
+-- ⚠️ O TRIGGER É O QUE IMPORTA. `faturada` não reabre: a partir dela
+-- existe arquivo transmitido, e mexer no que já foi enviado faz a conta e
+-- a remessa contarem histórias diferentes. A tela já recusa, mas tela não
+-- é defesa — um script de correção, um PATCH direto pelo PostgREST ou um
+-- botão futuro passam por cima dela. O banco é o último lugar onde isso
+-- ainda dá para barrar.
+--
+-- Da `faturada` só se sai para `glosada`, que é o caminho legítimo: a
+-- conta foi transmitida e o órgão recusou. Correção depois disso é outro
+-- fluxo, e ele começa na glosa.
+-- ═══════════════════════════════════════════════════════════
+
+ALTER TABLE at_contas ADD COLUMN IF NOT EXISTS faturada_em timestamptz;
+ALTER TABLE at_contas ADD COLUMN IF NOT EXISTS faturada_por text;
+ALTER TABLE at_contas ADD COLUMN IF NOT EXISTS remessa_protocolo text;
+
+COMMENT ON COLUMN at_contas.faturada_em IS
+  'Data em que a remessa foi transmitida ao órgão. Informada por quem transmitiu — '
+  'o sistema não gera o arquivo de remessa (ver faturamento.js), registra o fato.';
+COMMENT ON COLUMN at_contas.remessa_protocolo IS
+  'Protocolo devolvido pelo órgão na transmissão. É por ele que se acha, quando a '
+  'glosa chega, em qual remessa a conta foi.';
+
+-- ── acha as contas de uma remessa quando a glosa chega ──────
+CREATE INDEX IF NOT EXISTS at_contas_remessa_idx
+  ON at_contas (remessa_protocolo) WHERE remessa_protocolo IS NOT NULL;
+
+-- ── A ÚLTIMA LINHA DE DEFESA ────────────────────────────────
+CREATE OR REPLACE FUNCTION faturada_nao_volta() RETURNS trigger AS $$
+BEGIN
+  IF OLD.status = 'faturada' AND NEW.status <> 'faturada' AND NEW.status <> 'glosada' THEN
+    RAISE EXCEPTION
+      'Conta % já foi transmitida (faturada em %). Não se reabre o que já foi enviado — '
+      'a correção depois da transmissão é glosa.', OLD.id, OLD.faturada_em
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS at_contas_faturada_nao_volta ON at_contas;
+CREATE TRIGGER at_contas_faturada_nao_volta
+  BEFORE UPDATE ON at_contas
+  FOR EACH ROW EXECUTE FUNCTION faturada_nao_volta();
+
+-- ── RECIBO ──────────────────────────────────────────────────
+-- Sem backfill: não há como saber, olhando o banco, quais contas já foram
+-- transmitidas de fato — o sistema nunca soube. As fechadas continuam
+-- fechadas, e passam a faturada quando alguém registrar a remessa.
+SELECT
+  (SELECT count(*) FROM information_schema.columns
+     WHERE table_name = 'at_contas'
+       AND column_name IN ('faturada_em','faturada_por','remessa_protocolo')) AS colunas_criadas,
+  (SELECT count(*) FROM pg_trigger WHERE tgname = 'at_contas_faturada_nao_volta') AS trigger_criado,
+  (SELECT count(*) FROM at_contas WHERE status = 'fechada') AS fechadas_esperando_remessa,
+  (SELECT count(*) FROM at_contas WHERE status = 'faturada') AS ja_faturadas,
+  (SELECT count(DISTINCT competencia) FROM at_contas WHERE status = 'fechada') AS competencias_com_pendencia;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-faturamento-remessa.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 80/87 — migracao-pacientes-unificacao.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- UNIFICAÇÃO DE PRONTUÁRIO — ligar duas fichas da mesma pessoa
+--
+-- POR QUE: a mesma pessoa acaba com duas fichas (chegou sem documento e
+-- depois com ele, nome digitado de dois jeitos, veio pela emergência e
+-- depois pelo ambulatório). O histórico fica PARTIDO: a alergia está numa
+-- ficha e a prescrição na outra, e quem atende só vê metade.
+--
+-- ⚠️ ESTA MIGRAÇÃO NÃO MOVE DADO CLÍNICO, e isso é decisão, não descuido.
+-- `prontuario` aparece em 34 tabelas. Repontar todas pela tela seriam 34
+-- requisições sem transação entre elas — uma falha no meio deixaria o
+-- paciente partido num estado que ninguém sabe qual é, pior que a
+-- duplicata original, porque a duplicata pelo menos é visível. Mover exige
+-- uma função no Postgres, numa transação só, e ela é outro passo.
+--
+-- O que entra aqui é o PONTEIRO: a ficha antiga continua existindo e
+-- resolvível para sempre (o número está em pulseira, em papel impresso e
+-- na memória das pessoas) e passa a dizer para onde olhar.
+--
+-- ADITIVA: quatro colunas novas, nada é alterado nem apagado.
+-- ═══════════════════════════════════════════════════════════
+
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS unificado_para text;
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS unificado_em timestamptz;
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS unificado_por text;
+ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS unificacao_motivo text;
+
+COMMENT ON COLUMN pacientes.unificado_para IS
+  'Prontuário que sobreviveu à unificação. NULL = esta ficha não foi unificada. '
+  'O dado clínico NÃO é movido: continua no prontuário de origem.';
+COMMENT ON COLUMN pacientes.unificacao_motivo IS
+  'Por que são a mesma pessoa, escrito por quem unificou. É a única coisa que a '
+  'máquina não tem como saber, e é o que alguém lê numa auditoria.';
+
+-- ── AS DEFESAS ──────────────────────────────────────────────
+
+-- 1. Não aponta para si mesmo. Uma ficha que aponta para ela própria some
+--    de si: toda tela que segue o ponteiro entraria em volta.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pacientes_unificado_nao_e_ele_mesmo') THEN
+    ALTER TABLE pacientes ADD CONSTRAINT pacientes_unificado_nao_e_ele_mesmo
+      CHECK (unificado_para IS NULL OR unificado_para <> prontuario);
+  END IF;
+END $$;
+
+-- 2. O destino tem que EXISTIR. Sem a FK, um erro de digitação manda a
+--    ficha apontar para um número que não é de ninguém — e aí o paciente
+--    desaparece: a ficha antiga diz "olhe ali" e ali não tem nada.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'pacientes_unificado_para_fk') THEN
+    ALTER TABLE pacientes ADD CONSTRAINT pacientes_unificado_para_fk
+      FOREIGN KEY (unificado_para) REFERENCES pacientes (prontuario)
+      ON UPDATE CASCADE ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- 3. ⚠️ CADEIA NÃO SE FORMA — a defesa que mais importa.
+--    A→B e depois B→C deixaria A apontando para uma ficha que também já
+--    mudou de lugar. Quem lê A precisaria seguir dois saltos, e nada
+--    impediria A→B→C→A: uma volta fechada, que na tela não fica lenta,
+--    fica TRAVADA. A tela já recusa; tela não é defesa, porque script de
+--    correção e PATCH direto passam por cima dela.
+CREATE OR REPLACE FUNCTION unificacao_sem_cadeia() RETURNS trigger AS $$
+DECLARE
+  destino_ja_unificado text;
+  quem_aponta_para_mim int;
+BEGIN
+  IF NEW.unificado_para IS NULL THEN RETURN NEW; END IF;
+
+  SELECT unificado_para INTO destino_ja_unificado
+    FROM pacientes WHERE prontuario = NEW.unificado_para;
+
+  IF destino_ja_unificado IS NOT NULL THEN
+    RAISE EXCEPTION
+      'O prontuário % já foi unificado em %. Unifique em %, que é o que está valendo.',
+      NEW.unificado_para, destino_ja_unificado, destino_ja_unificado
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  -- E o contrário: não se unifica uma ficha que já é destino de outra,
+  -- senão a que apontava para ela fica pendurada num salto a mais.
+  SELECT count(*) INTO quem_aponta_para_mim
+    FROM pacientes WHERE unificado_para = NEW.prontuario;
+
+  IF quem_aponta_para_mim > 0 THEN
+    RAISE EXCEPTION
+      'O prontuário % já é o destino de % unificação(ões). Unifique aquelas fichas no novo destino primeiro.',
+      NEW.prontuario, quem_aponta_para_mim
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS pacientes_unificacao_sem_cadeia ON pacientes;
+CREATE TRIGGER pacientes_unificacao_sem_cadeia
+  BEFORE INSERT OR UPDATE OF unificado_para ON pacientes
+  FOR EACH ROW EXECUTE FUNCTION unificacao_sem_cadeia();
+
+-- ── acha rápido as fichas que caíram num prontuário ─────────
+CREATE INDEX IF NOT EXISTS pacientes_unificado_para_idx
+  ON pacientes (unificado_para) WHERE unificado_para IS NOT NULL;
+
+-- ── RECIBO ──────────────────────────────────────────────────
+-- Sem backfill: não há como o banco saber, sozinho, quais fichas são a
+-- mesma pessoa — é exatamente o julgamento que a tela pede por escrito.
+SELECT
+  (SELECT count(*) FROM information_schema.columns
+     WHERE table_name = 'pacientes'
+       AND column_name IN ('unificado_para','unificado_em','unificado_por','unificacao_motivo')) AS colunas_criadas,
+  (SELECT count(*) FROM pg_constraint
+     WHERE conname IN ('pacientes_unificado_nao_e_ele_mesmo','pacientes_unificado_para_fk')) AS defesas_criadas,
+  (SELECT count(*) FROM pg_trigger WHERE tgname = 'pacientes_unificacao_sem_cadeia') AS trigger_criado,
+  (SELECT count(*) FROM pacientes WHERE unificado_para IS NOT NULL) AS ja_unificados,
+  (SELECT count(*) FROM pacientes) AS pacientes_no_acervo;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-pacientes-unificacao.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 81/87 — migracao-farmacia-preparo-exige-baixa.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A PRESCRIÇÃO SÓ FICA "PRONTA" SE SAIU DO ESTOQUE
+--
+-- POR QUE: o kanban da farmácia tinha "Separar" e "Marcar pronto" como
+-- dois botões independentes. `marcarPronto` só trocava o status. Este
+-- caminho era válido e não deixava rastro nenhum:
+--
+--     receber → marcar pronto → confirmar retirada
+--
+-- Ao fim dele a prescrição consta como ENTREGUE AO PACIENTE e não existe
+-- uma linha de saída em `farm_movimentos`. Reproduzido na tela do banco de
+-- teste: a mesma farmácia dizia, em duas abas, coisas opostas sobre o
+-- mesmo paciente — "Retirados hoje (1)" e "2 pendente(s)".
+--
+-- ⚠️ A TELA JÁ RECUSA. Isto aqui é a última linha, porque tela não é
+-- defesa: script de correção, importação e PATCH direto pelo PostgREST
+-- passam por cima dela. Foi assim que o `faturada` ganhou trigger, e é o
+-- mesmo raciocínio.
+--
+-- ⚠️ O QUE O TRIGGER **NÃO** EXIGE: dispensação COMPLETA.
+-- Ruptura de estoque é rotina. Se dois de três itens saíram porque o
+-- terceiro acabou, a sacola existe e o paciente precisa dela — travar aí
+-- empurraria a farmácia a registrar mentira em outro campo. A regra é
+-- "pelo menos uma saída"; a tela é que avisa o que falta e nomeia.
+--
+-- ⚠️ E PRESCRIÇÃO SEM ITEM ESTRUTURADO PASSA. Registro anterior à Fase B
+-- não tem o que separar; travá-lo congelaria uma fila que ninguém
+-- consegue destravar.
+--
+-- ADITIVA: nenhuma coluna nova, nenhum dado alterado. Só um trigger.
+-- ═══════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION preparo_exige_baixa() RETURNS trigger AS $$
+DECLARE
+  n_itens    int;
+  n_saidas   int;
+  v_atend    bigint;
+BEGIN
+  -- só interessa a transição PARA "pronto"
+  IF NEW.status IS DISTINCT FROM 'pronto' THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status = 'pronto' THEN RETURN NEW; END IF;
+
+  SELECT atendimento_id INTO v_atend
+    FROM public.ps_registros WHERE id = NEW.registro_id;
+
+  -- Os itens desta prescrição. O `coalesce` é o mesmo recuo da regra pura:
+  -- item gravado antes de a ligação existir fica com registro_id nulo, e
+  -- sem o recuo o trigger concluiria "não há o que separar" e liberaria —
+  -- exatamente onde a gente testa, porque o seed grava assim.
+  SELECT count(*) INTO n_itens
+    FROM public.ps_prescricao_itens i
+   WHERE i.registro_id = NEW.registro_id
+      OR (i.registro_id IS NULL AND v_atend IS NOT NULL AND i.atendimento_id = v_atend);
+
+  IF n_itens = 0 THEN RETURN NEW; END IF;   -- nada a separar
+
+  SELECT count(*) INTO n_saidas
+    FROM public.farm_movimentos m
+    JOIN public.ps_prescricao_itens i ON i.id = m.prescricao_item_id
+   WHERE m.tipo = 'saida'
+     AND m.quantidade > 0
+     AND (i.registro_id = NEW.registro_id
+          OR (i.registro_id IS NULL AND v_atend IS NOT NULL AND i.atendimento_id = v_atend));
+
+  IF n_saidas = 0 THEN
+    RAISE EXCEPTION
+      'A prescrição % não teve nenhum item separado (% item(ns) prescrito(s), 0 baixa de estoque). '
+      'Marcar como pronta faria o sistema afirmar que o paciente recebeu um medicamento que ninguém '
+      'tirou da prateleira.', NEW.registro_id, n_itens
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS farm_preparo_exige_baixa ON public.farm_preparo;
+CREATE TRIGGER farm_preparo_exige_baixa
+  BEFORE INSERT OR UPDATE OF status ON public.farm_preparo
+  FOR EACH ROW EXECUTE FUNCTION preparo_exige_baixa();
+
+-- ── RECIBO ──────────────────────────────────────────────────
+-- `ja_prontas_sem_baixa` é o passivo: prescrições que JÁ estão pronta ou
+-- retirada e nunca tiveram saída. O trigger não mexe no passado — ele só
+-- impede novas. Este número é o tamanho do estrago que já aconteceu.
+SELECT
+  (SELECT count(*) FROM pg_trigger WHERE tgname = 'farm_preparo_exige_baixa') AS trigger_criado,
+  (SELECT count(*) FROM public.farm_preparo) AS preparos_no_total,
+  (SELECT count(*) FROM public.farm_preparo p
+     WHERE p.status IN ('pronto','retirado')
+       AND NOT EXISTS (
+         SELECT 1 FROM public.farm_movimentos m
+           JOIN public.ps_prescricao_itens i ON i.id = m.prescricao_item_id
+          WHERE m.tipo = 'saida' AND m.quantidade > 0
+            AND (i.registro_id = p.registro_id
+                 OR (i.registro_id IS NULL
+                     AND i.atendimento_id = (SELECT atendimento_id FROM public.ps_registros WHERE id = p.registro_id)))
+       )) AS ja_prontas_sem_baixa;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-farmacia-preparo-exige-baixa.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 82/87 — migracao-farmacia-lote-vencido.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- LOTE VENCIDO NÃO VAI PARA O PACIENTE
+--
+-- POR QUE: dispensar lote vencido não era bloqueado — e era o CAMINHO DE
+-- MENOR RESISTÊNCIA. A ordenação FEFO ("o que vence antes sai antes") põe
+-- o lote mais velho no topo, e o formulário já vinha com o primeiro
+-- escolhido. O lote vencido era, literalmente, a opção PRÉ-SELECIONADA. A
+-- confirmação validava quantidade e saldo e não olhava a data; o único
+-- freio era a palavra "(VENCIDO)" no texto da opção.
+--
+-- ⚠️ O QUE ESTE TRIGGER **NÃO** FAZ: impedir o vencido de sair.
+-- Medicamento vencido PRECISA sair do estoque — por descarte, devolução ao
+-- fornecedor ou ajuste. Uma trava que impeça isso prende o vencido na
+-- prateleira para sempre, some com ele do relatório de perdas e deixa o
+-- saldo mentindo. Seria trocar um risco por dois.
+--
+-- A pergunta não é "pode sair?", é "PARA ONDE está indo?":
+--     motivo = 'Dispensação'  → RECUSA
+--     qualquer outro motivo   → PASSA, e é assim que a prateleira se limpa
+--
+-- ⚠️ VALIDADE AUSENTE NÃO É VALIDADE VENCIDA. Lote sem data é lacuna de
+-- cadastro, não veneno — e a tela ainda ensina a dar entrada sem lote.
+-- Recusar por falta de dado travaria a farmácia inteira.
+--
+-- ⚠️ VENCE HOJE AINDA VALE: o medicamento é bom até o fim do dia impresso.
+-- Por isso `validade < current_date`, e não `<=`.
+--
+-- ADITIVA: nenhuma coluna nova, nenhum dado alterado. Só um trigger.
+-- ═══════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION farm_vencido_nao_dispensa() RETURNS trigger AS $$
+DECLARE
+  v_validade date;
+BEGIN
+  IF NEW.tipo <> 'saida' THEN RETURN NEW; END IF;
+  IF coalesce(NEW.motivo, '') <> 'Dispensação' THEN RETURN NEW; END IF;
+
+  -- A validade do movimento vem preenchida pela tela, mas o lote é a
+  -- fonte da verdade: um PATCH direto pode mandar validade nenhuma.
+  v_validade := NEW.validade;
+  IF v_validade IS NULL THEN
+    SELECT l.validade INTO v_validade
+      FROM public.farm_lotes l
+     WHERE l.medicamento_id = NEW.medicamento_id
+       AND coalesce(l.lote, '') = coalesce(NEW.lote, '')
+     LIMIT 1;
+  END IF;
+
+  IF v_validade IS NOT NULL AND v_validade < current_date THEN
+    RAISE EXCEPTION
+      'Lote vencido em % não pode ser dispensado a paciente. Para tirá-lo do estoque, '
+      'registre a saída com o motivo "Perda / vencimento" — é assim que ele deixa a '
+      'prateleira e entra no relatório de perdas.', v_validade
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS farm_movimentos_vencido_nao_dispensa ON public.farm_movimentos;
+CREATE TRIGGER farm_movimentos_vencido_nao_dispensa
+  BEFORE INSERT ON public.farm_movimentos
+  FOR EACH ROW EXECUTE FUNCTION farm_vencido_nao_dispensa();
+
+-- ── RECIBO ──────────────────────────────────────────────────
+-- `dispensados_vencidos` é o passivo: quantas dispensações já saíram de
+-- lote vencido. O trigger não mexe no passado — só impede novas. Se vier
+-- maior que zero, cada linha é um paciente que recebeu medicamento fora da
+-- validade, e vale saber quem.
+SELECT
+  (SELECT count(*) FROM pg_trigger WHERE tgname = 'farm_movimentos_vencido_nao_dispensa') AS trigger_criado,
+  (SELECT count(*) FROM public.farm_lotes WHERE quantidade > 0 AND validade < current_date) AS lotes_vencidos_com_saldo,
+  (SELECT count(*) FROM public.farm_lotes WHERE quantidade > 0 AND validade IS NULL) AS lotes_sem_validade,
+  (SELECT count(*) FROM public.farm_movimentos
+     WHERE tipo = 'saida' AND motivo = 'Dispensação'
+       AND validade IS NOT NULL AND validade < created_at::date) AS dispensados_vencidos;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-farmacia-lote-vencido.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 83/87 — migracao-pep-episodio-retroativo.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- ABRE O EPISÓDIO DE QUEM JÁ ESTÁ INTERNADO
+--
+-- POR QUE: `abrirEpisodio` existia no código e nenhuma tela a chamava —
+-- `pep_episodios` tem ZERO linhas. Sem episódio ficam vazios, por
+-- construção e sem erro na tela: evolução, prescrição do internado, sinais
+-- vitais, NEWS, escalas de Braden e Morse, LPP, SAE inteira, reconciliação
+-- medicamentosa, sumário de alta, e o Mapa de risco e a Checagem SAE do
+-- Giro de Leitos.
+--
+-- O código agora liga os dois (ocupar leito → abrir episódio). Mas isso só
+-- vale para internações NOVAS. Quem JÁ está no leito continuaria sem
+-- prontuário da internação até receber alta — ou seja, a correção não
+-- ajudaria nenhum dos pacientes internados hoje.
+--
+-- ⚠️ O QUE ESTE SCRIPT AFIRMA, E O QUE NÃO AFIRMA.
+-- Ele cria o CONTINENTE, não o conteúdo: um episódio aberto, com o leito,
+-- o setor, o CID e a data que JÁ ESTÃO no registro do leito. Não inventa
+-- evolução, sinal vital nem diagnóstico — só abre o lugar onde a equipe
+-- passa a poder registrar. `admissao_em` vem de `leitos.data_internacao`,
+-- que é dado real; quando ela falta, usa-se `entrada_em`, e o episódio
+-- fica marcado no motivo para ninguém confundir com registro de origem.
+--
+-- ⚠️ NÃO TOCA EM LEITO SEM PRONTUÁRIO. O episódio é chaveado por
+-- prontuário; sem ele não há o que abrir. Esses leitos aparecem no recibo
+-- como `sem_prontuario` — cada um é um paciente que o sistema não
+-- consegue ligar a cadastro nenhum, e vale resolver na mão.
+--
+-- IDEMPOTENTE: rodar duas vezes não cria episódio repetido.
+-- ═══════════════════════════════════════════════════════════
+
+INSERT INTO public.pep_episodios
+  (prontuario, iniciais, tipo, leito, setor, cid_principal, motivo_internacao,
+   admissao_em, status, usuario)
+SELECT
+  l.prontuario,
+  l.iniciais,
+  'internacao',
+  l.identificacao,
+  l.setor,
+  l.cid,
+  coalesce(nullif(trim(l.motivo), ''), 'internação em curso') ||
+    ' · episódio aberto retroativamente na implantação do prontuário da internação',
+  coalesce(l.data_internacao::timestamptz, l.entrada_em, now()),
+  'aberto',
+  'migracao-retroativa'
+FROM public.leitos l
+WHERE l.status = 'ocupado'
+  AND coalesce(trim(l.prontuario), '') <> ''
+  AND NOT EXISTS (
+    SELECT 1 FROM public.pep_episodios e
+     WHERE e.prontuario = l.prontuario AND e.status = 'aberto'
+  );
+
+-- ── RECIBO ──────────────────────────────────────────────────
+SELECT
+  (SELECT count(*) FROM public.leitos WHERE status = 'ocupado') AS leitos_ocupados,
+  (SELECT count(*) FROM public.leitos
+     WHERE status = 'ocupado' AND coalesce(trim(prontuario), '') = '') AS sem_prontuario,
+  (SELECT count(*) FROM public.pep_episodios WHERE status = 'aberto') AS episodios_abertos,
+  (SELECT count(*) FROM public.pep_episodios
+     WHERE usuario = 'migracao-retroativa') AS abertos_por_este_script,
+  -- deve ser ZERO: leito ocupado, com prontuário, e ainda sem episódio
+  (SELECT count(*) FROM public.leitos l
+     WHERE l.status = 'ocupado'
+       AND coalesce(trim(l.prontuario), '') <> ''
+       AND NOT EXISTS (SELECT 1 FROM public.pep_episodios e
+                        WHERE e.prontuario = l.prontuario AND e.status = 'aberto')) AS ficaram_de_fora;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-pep-episodio-retroativo.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 84/87 — migracao-episodio-id-tipo.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- `episodio_id` DAS TABELAS DE ENFERMAGEM: uuid → bigint
+--
+-- 🔴 COMO ISTO APARECEU
+-- Só depois de ligar o episódio de internação (que nunca era aberto) e
+-- abrir a tela do paciente internado pela primeira vez:
+--
+--     GET enf_sae_historico   → 400
+--     invalid input syntax for type uuid: "2"
+--
+-- `pep_episodios.id` é `bigserial`. As tabelas do PEP acertaram
+-- (`episodio_id bigint references pep_episodios(id)`, em pep-fase1 e
+-- pep-fase3). As de ENFERMAGEM e o `nsp_incidentes` declararam `uuid`.
+--
+-- ⚠️ POR QUE NINGUÉM VIU ISSO ANTES: as duas fases nunca se encontraram.
+-- Sem episódio aberto, nenhuma consulta jamais filtrou por `episodio_id` —
+-- o erro precisava de um episódio existindo para acontecer. É o mesmo
+-- padrão do resto: o defeito não estava escondido, estava INALCANÇÁVEL.
+--
+-- ⚠️ POR QUE A CONVERSÃO É SEGURA: as oito tabelas estão VAZIAS, e a
+-- razão é o próprio diagnóstico — ninguém nunca conseguiu escrever nelas,
+-- porque toda escrita exige o episódio. Conferido nos dois bancos antes de
+-- escrever este arquivo (0 linhas, 0 com episodio_id preenchido).
+--
+-- Se em ALGUM banco houver linha com `episodio_id` preenchido, a conversão
+-- ABORTA em vez de destruir o dado — ver o bloco de guarda abaixo.
+-- ═══════════════════════════════════════════════════════════
+
+-- ── GUARDA: não converte por cima de dado ──────────────────
+DO $$
+DECLARE
+  t text;
+  n bigint;
+  ocupadas text := '';
+BEGIN
+  FOREACH t IN ARRAY ARRAY['enf_escalas','enf_lesao_pressao','enf_sae_historico',
+                           'enf_sae_diagnosticos','enf_sae_prescricoes',
+                           'enf_sae_prescricao_itens','enf_sae_checagem','nsp_incidentes']
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_name = t AND column_name = 'episodio_id' AND data_type = 'uuid') THEN
+      EXECUTE format('SELECT count(*) FROM public.%I WHERE episodio_id IS NOT NULL', t) INTO n;
+      IF n > 0 THEN ocupadas := ocupadas || t || ' (' || n || '), '; END IF;
+    END IF;
+  END LOOP;
+
+  IF ocupadas <> '' THEN
+    RAISE EXCEPTION
+      'ABORTADO: há episodio_id preenchido em %. Converter apagaria esse vínculo. '
+      'Traga o caso para análise antes de rodar.', rtrim(ocupadas, ', ');
+  END IF;
+END $$;
+
+-- ── A CONVERSÃO ─────────────────────────────────────────────
+-- `using null` porque as colunas estão vazias: não há uuid a traduzir para
+-- bigint (não existe tradução possível entre os dois, e é justamente por
+-- isso que a guarda acima aborta se houver dado).
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['enf_escalas','enf_lesao_pressao','enf_sae_historico',
+                           'enf_sae_diagnosticos','enf_sae_prescricoes',
+                           'enf_sae_prescricao_itens','enf_sae_checagem','nsp_incidentes']
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+                WHERE table_name = t AND column_name = 'episodio_id' AND data_type = 'uuid') THEN
+      EXECUTE format('ALTER TABLE public.%I ALTER COLUMN episodio_id TYPE bigint USING NULL', t);
+      EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (episodio_id) '
+                     'REFERENCES public.pep_episodios(id) ON DELETE SET NULL', t, t || '_episodio_fk');
+    END IF;
+  END LOOP;
+END $$;
+
+-- ── RECIBO ──────────────────────────────────────────────────
+-- `ainda_uuid` tem de vir ZERO. `com_fk` mostra quantas ganharam a chave
+-- estrangeira que faltava — sem ela, um episodio_id apontando para episódio
+-- inexistente passaria despercebido.
+SELECT
+  (SELECT count(*) FROM information_schema.columns
+     WHERE column_name = 'episodio_id' AND data_type = 'uuid'
+       AND table_name IN ('enf_escalas','enf_lesao_pressao','enf_sae_historico','enf_sae_diagnosticos',
+                          'enf_sae_prescricoes','enf_sae_prescricao_itens','enf_sae_checagem','nsp_incidentes')) AS ainda_uuid,
+  (SELECT count(*) FROM information_schema.columns
+     WHERE column_name = 'episodio_id' AND data_type = 'bigint'
+       AND table_name IN ('enf_escalas','enf_lesao_pressao','enf_sae_historico','enf_sae_diagnosticos',
+                          'enf_sae_prescricoes','enf_sae_prescricao_itens','enf_sae_checagem','nsp_incidentes')) AS agora_bigint,
+  (SELECT count(*) FROM pg_constraint WHERE conname LIKE '%\_episodio\_fk') AS com_fk,
+  (SELECT count(*) FROM public.pep_episodios WHERE status = 'aberto') AS episodios_abertos;
+
+-- Toda migração termina se anotando (ver docs/MODELO-DE-TRABALHO.md §6).
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-episodio-id-tipo.sql') on conflict do nothing;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 85/87 — migracao-farmacia-estorno-inventario.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- FARMÁCIA — estorno com vínculo e inventário cíclico
+--
+-- A farmácia e o almoxarifado são o MESMO kardex com nomes diferentes:
+-- saldo mantido em `*_lotes`, histórico paralelo em `*_movimentos`,
+-- aplicados por trigger. O almoxarifado ganhou estorno e contagem em
+-- `migracao-suprimentos-ajuste-estorno.sql` e `-inventario.sql`. A
+-- farmácia ficou sem os dois — e é ela que dispensa medicamento
+-- controlado.
+--
+-- O que faltava, exatamente:
+--
+--   1) ESTORNO. Não havia como desfazer uma dispensação errada. A saída
+--      ficava no kardex para sempre, e a correção virava uma entrada
+--      solta, sem vínculo com o que ela desfaz. Numa farmácia isso é pior
+--      que no almoxarifado: o movimento carrega paciente, e uma entrada
+--      anônima quebra o rastro no lugar em que ele é obrigatório.
+--
+--   2) INVENTÁRIO. `sup_inventarios` existe desde
+--      `migracao-suprimentos-inventario.sql`; `farm_inventarios` nunca
+--      existiu. A farmácia não tinha contagem cega, não tinha ajuste
+--      rastreável e não tinha acuracidade — para nenhum medicamento,
+--      controlado inclusive.
+--
+-- Aditiva. Nenhuma coluna muda de tipo, nada é apagado, e a coluna nova
+-- nasce nula — as linhas que já existem seguem válidas.
+--
+-- Idempotente. Rodar no SQL Editor do Supabase ANTES do merge do código.
+-- ═══════════════════════════════════════════════════════════
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 1 — estorno: o movimento oposto aponta para o original
+--
+-- O kardex continua append-only (não há política de update nem de delete
+-- em `farm_movimentos`): estorno NÃO apaga nada, cria a linha contrária
+-- com vínculo. `on delete restrict` de propósito — o original não pode
+-- sumir por baixo do estorno que o referencia.
+-- ───────────────────────────────────────────────────────────
+alter table public.farm_movimentos
+  add column if not exists estorno_de bigint references public.farm_movimentos(id) on delete restrict;
+
+create index if not exists farm_mov_estorno_idx on public.farm_movimentos (estorno_de)
+  where estorno_de is not null;
+
+comment on column public.farm_movimentos.estorno_de is
+  'Id do movimento que esta linha desfaz. Mesmo medicamento, mesmo lote, mesma quantidade, tipo oposto.';
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 2 — um movimento só pode ser estornado UMA vez
+--
+-- Estornar duas vezes o mesmo lançamento é como se inventa estoque: duas
+-- entradas de 10 desfazendo uma saída de 10 deixam +10 do nada. Índice
+-- único, porque validação de tela não sobrevive a script nem a tela nova
+-- escrita daqui a um ano.
+--
+-- Encadear É permitido (estornar um estorno — desfazer a desfeita é
+-- legítimo e fica autodocumentado); o que o índice impede é DOIS estornos
+-- apontando para a MESMA linha.
+-- ───────────────────────────────────────────────────────────
+drop index if exists public.farm_mov_estorno_unico;
+create unique index farm_mov_estorno_unico on public.farm_movimentos (estorno_de)
+  where estorno_de is not null;
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 3 — o estorno tem que ser realmente o oposto
+--
+-- Sem esta trava, `estorno_de` seria só um rótulo: daria para marcar como
+-- estorno um movimento de outro medicamento, de outro lote ou de outra
+-- quantidade, e o kardex passaria a contar uma história falsa com
+-- aparência de rastro. A tela não é barreira — pela API isso entraria liso.
+--
+-- ⚠️ O trigger roda DEPOIS de `farm_movimento_trg` (ordem alfabética do
+-- nome decide, e `farm_movimento_trg` < `farm_valida_estorno_trg`).
+-- É de propósito: é o trigger de saldo quem normaliza `lote` para '',
+-- e a comparação de lote precisa dele já normalizado.
+-- ───────────────────────────────────────────────────────────
+create or replace function public.farm_valida_estorno()
+returns trigger language plpgsql security definer as $$
+declare
+  o record;
+begin
+  if new.estorno_de is null then
+    return new;
+  end if;
+
+  select medicamento_id, lote, tipo, quantidade into o
+    from public.farm_movimentos where id = new.estorno_de;
+
+  if o is null then
+    raise exception 'Estorno aponta para um movimento inexistente (id %).', new.estorno_de;
+  end if;
+  if o.medicamento_id <> new.medicamento_id then
+    raise exception 'Estorno tem que ser do mesmo medicamento do movimento original.';
+  end if;
+  if coalesce(o.lote, '') <> coalesce(new.lote, '') then
+    raise exception 'Estorno tem que ser no mesmo lote do movimento original ("%").', coalesce(o.lote, '');
+  end if;
+  if o.quantidade <> new.quantidade then
+    raise exception 'Estorno tem que ter a mesma quantidade do original (%).', o.quantidade;
+  end if;
+  if o.tipo = new.tipo then
+    raise exception 'Estorno tem que ser do tipo oposto ao original (% -> %).',
+      o.tipo, case when o.tipo = 'entrada' then 'saida' else 'entrada' end;
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists farm_valida_estorno_trg on public.farm_movimentos;
+create trigger farm_valida_estorno_trg before insert on public.farm_movimentos
+  for each row execute function public.farm_valida_estorno();
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 4 — a contagem de inventário da farmácia
+--
+-- Mesma forma de `sup_inventarios`, já com as duas colunas que aquela
+-- tabela só ganhou depois (`autorizado_por`, `ajuste_erro`) — a farmácia
+-- nasce com a lição aprendida em vez de repetir o erro.
+--
+-- `ajuste_erro` é o oposto de mentir: quando o ajuste não entra no kardex,
+-- a linha guarda o motivo em vez de fingir que entrou. `ajustado` significa
+-- exatamente "o movimento foi gravado", nunca "eu tentei gravar".
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.farm_inventarios (
+  id bigserial primary key,
+  medicamento_id bigint not null
+    references public.farm_medicamentos(id) on delete cascade,
+  saldo_sistema numeric not null,
+  contado numeric not null,
+  diferenca numeric not null,          -- contado − sistema
+  ajustado boolean default false,      -- ajuste lançado no kardex?
+  ajuste_erro text,                    -- por que NÃO entrou, quando não entrou
+  autorizado_por text,
+  observacao text,
+  usuario text,
+  created_at timestamptz default now()
+);
+create index if not exists farm_inv_medic_idx
+  on public.farm_inventarios (medicamento_id, created_at desc);
+
+comment on column public.farm_inventarios.ajustado is
+  'O ajuste ENTROU no kardex (retorno conferido). Nunca marcar sem confirmar a gravacao.';
+comment on column public.farm_inventarios.ajuste_erro is
+  'Motivo de o ajuste nao ter entrado. Preenchido quando ajustado = false apesar de haver diferenca.';
+
+alter table public.farm_inventarios enable row level security;
+
+drop policy if exists farm_inv_select on public.farm_inventarios;
+drop policy if exists farm_inv_insert on public.farm_inventarios;
+drop policy if exists farm_inventarios_leitura on public.farm_inventarios;
+create policy farm_inventarios_leitura on public.farm_inventarios
+  for select to authenticated
+  using (true);
+create policy farm_inv_insert on public.farm_inventarios
+  for insert to authenticated
+  with check (public.my_role() in ('adm_master','adm_silver'));
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 5 — a contagem pode registrar o DESFECHO, e só ele
+--
+-- Mesma janela do almoxarifado: só dá para atualizar a linha enquanto ela
+-- ainda não tem desfecho (`ajustado` falso E `ajuste_erro` nulo). Assim que
+-- o desfecho é gravado, o `using` deixa de casar e a linha volta a ser
+-- imutável — inclusive para quem a criou. O que foi CONTADO nunca pode ser
+-- reescrito depois de decidido.
+--
+-- Sem esta política o PostgREST responderia 200 com zero linhas alteradas,
+-- e o código acreditaria — a contagem ficaria para sempre com o desfecho em
+-- branco, que é a mesma cegueira de antes numa roupa nova.
+-- ───────────────────────────────────────────────────────────
+drop policy if exists farm_inv_update_desfecho on public.farm_inventarios;
+create policy farm_inv_update_desfecho on public.farm_inventarios
+  for update to authenticated
+  using (
+    public.my_role() in ('adm_master','adm_silver')
+    and coalesce(ajustado, false) = false
+    and ajuste_erro is null
+  )
+  with check (public.my_role() in ('adm_master','adm_silver'));
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 6 — anota que esta migração rodou NESTE banco
+-- ───────────────────────────────────────────────────────────
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-farmacia-estorno-inventario.sql') on conflict do nothing;
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 7 — conferência final (leitura). É a ÚLTIMA consulta de propósito:
+-- o SQL Editor só mostra o resultado dela. As 6 linhas devem vir com "1".
+-- ───────────────────────────────────────────────────────────
+select 'coluna estorno_de no movimento' as item,
+       (select count(*) from information_schema.columns
+         where table_name = 'farm_movimentos' and column_name = 'estorno_de')::text as presente
+union all
+select 'indice de estorno unico',
+       (select count(*) from pg_indexes where indexname = 'farm_mov_estorno_unico')::text
+union all
+select 'trigger que valida o estorno',
+       (select count(*) from pg_trigger where tgname = 'farm_valida_estorno_trg')::text
+union all
+select 'tabela de contagem da farmacia',
+       (select count(*) from information_schema.tables
+         where table_name = 'farm_inventarios')::text
+union all
+select 'politica de desfecho da contagem',
+       (select count(*) from pg_policies
+         where tablename = 'farm_inventarios' and policyname = 'farm_inv_update_desfecho')::text
+union all
+select 'migracao anotada no registro',
+       (select count(*) from public.migracoes_aplicadas
+         where arquivo = 'migracao-farmacia-estorno-inventario.sql')::text;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 86/87 — migracao-scih-germes-seed.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- SCIH — base de germes inicial
+--
+-- 🔴 POR QUE ISTO EXISTE
+-- `scih_germes` nasceu vazia, e é ela que faz o cadastro de caso do SCIH
+-- SUGERIR o isolamento e MARCAR multirresistente. Com a tabela vazia, a
+-- tela abre, o campo do germe aceita qualquer coisa e nenhuma sugestão
+-- aparece — o enfermeiro digita "Klebsiella" e o sistema não diz nada
+-- sobre precaução de contato. O checklist de implantação da Visão Geral
+-- lista isso como um dos cadastros que destravam módulos.
+--
+-- ⚠️ POR QUE SÓ ESTE, E NÃO SALAS E FORNECEDORES
+-- Os outros dois cadastros que faltam são do HOSPITAL: as salas do bloco
+-- e os fornecedores com quem ele compra. Ninguém de fora sabe quais são, e
+-- inventá-los encheria a tela de dado falso com aparência de cadastro.
+-- Esses dois têm que ser cadastrados pela equipe, pelas telas
+-- (Bloco Cirúrgico → Salas · Estoque & Compras → Fornecedores).
+--
+-- Germe é diferente: é REFERÊNCIA CLÍNICA, a mesma em qualquer hospital.
+--
+-- ⚠️ E É REFERÊNCIA, NÃO VERDADE FINAL.
+-- A própria tela avisa: "sempre validar com a CCIH e o antibiograma do
+-- paciente". Esta lista é ponto de partida editável — a CCIH ajusta o
+-- embasamento, acrescenta o que circula na casa e corrige o que mudar de
+-- recomendação. Por isso o insert NÃO sobrescreve o que já existe: se a
+-- CCIH já editou um germe, rodar de novo não desfaz o trabalho dela.
+--
+-- Idempotente: só insere o que ainda não existe (por nome).
+-- ═══════════════════════════════════════════════════════════
+
+insert into public.scih_germes (nome, tipo, isolamento, embasamento)
+select v.nome, v.tipo, v.isolamento, v.embasamento
+from (values
+  -- ===== Multirresistentes de vigilância =====
+  ('Klebsiella pneumoniae (KPC)', 'multirresistente', 'contato',
+   'Enterobactéria produtora de carbapenemase. Precaução de contato (Anvisa/CDC). Terapia conforme antibiograma.'),
+  ('Staphylococcus aureus resistente à meticilina (MRSA)', 'multirresistente', 'contato',
+   'Precaução de contato (Anvisa/CDC). Quarto privativo ou coorte do mesmo agente.'),
+  ('Acinetobacter baumannii multirresistente', 'multirresistente', 'contato',
+   'Alta persistência em superfícies. Precaução de contato; equipamentos dedicados ao paciente.'),
+  ('Enterococcus resistente à vancomicina (VRE)', 'multirresistente', 'contato',
+   'Precaução de contato (Anvisa/CDC). Coorte permitida para o mesmo agente.'),
+  ('Pseudomonas aeruginosa multirresistente', 'multirresistente', 'contato',
+   'Precaução de contato. Atenção a reservatórios úmidos e a equipamentos respiratórios.'),
+
+  -- ===== Sensíveis que ainda assim exigem precaução =====
+  -- O tipo diz respeito à RESISTÊNCIA, não à gravidade: estes não são
+  -- multirresistentes e mesmo assim isolam, cada um por um motivo próprio.
+  ('Clostridioides difficile', 'sensivel', 'contato',
+   'Precaução de contato. Higiene das mãos com ÁGUA E SABÃO — o álcool em gel não inativa o esporo.'),
+  ('Mycobacterium tuberculosis', 'sensivel', 'aereo',
+   'Precaução para aerossóis: quarto com pressão negativa e máscara N95/PFF2 ao entrar.'),
+  ('Neisseria meningitidis', 'sensivel', 'goticulas',
+   'Precaução por gotículas nas primeiras 24h de antibiótico eficaz. Avaliar quimioprofilaxia dos contatos.'),
+  ('Vírus sincicial respiratório (VSR)', 'sensivel', 'contato',
+   'Precaução de contato (Anvisa/CDC). Sazonal, com surtos em pediatria.'),
+  ('Influenza', 'sensivel', 'goticulas',
+   'Precaução por gotículas. Acrescentar precaução para aerossóis em procedimentos que os gerem.')
+) as v(nome, tipo, isolamento, embasamento)
+where not exists (
+  select 1 from public.scih_germes g where g.nome = v.nome
+);
+
+-- ───────────────────────────────────────────────────────────
+-- Anota que esta migração rodou NESTE banco
+-- ───────────────────────────────────────────────────────────
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-scih-germes-seed.sql') on conflict do nothing;
+
+-- ───────────────────────────────────────────────────────────
+-- Conferência (leitura). É a ÚLTIMA consulta de propósito: o SQL Editor
+-- só mostra o resultado dela.
+--
+-- `sem_tipo` e `sem_isolamento` devem vir ZERO. Germe sem esses dois campos
+-- existe na lista e não serve para nada: a sugestão fica muda, que é a
+-- mesma cegueira de tabela vazia com aparência de tabela cheia.
+-- ───────────────────────────────────────────────────────────
+select
+  count(*)                                            as germes_na_base,
+  count(*) filter (where coalesce(tipo, '') = '')     as sem_tipo,
+  count(*) filter (where isolamento is null)          as sem_isolamento,
+  count(*) filter (where tipo = 'multirresistente')   as multirresistentes,
+  (select count(*) from public.migracoes_aplicadas
+    where arquivo = 'migracao-scih-germes-seed.sql')  as migracao_anotada
+from public.scih_germes;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 87/87 — migracao-rls-leitura.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — RLS: quem LÊ e quem ESCREVE em cada tabela
@@ -9915,7 +11237,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 24 das 94 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 97 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -9950,6 +11272,7 @@ begin
       ('at_contas', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
       ('at_convenios', 'true'),                                                                       -- todos os autenticados
       ('at_dominios', 'true'),                                                                        -- todos os autenticados
+      ('at_glosas', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
       ('at_planos', 'true'),                                                                          -- todos os autenticados
       ('at_procedimentos', 'true'),                                                                   -- todos os autenticados
       ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
@@ -9970,6 +11293,7 @@ begin
       ('farm_incompat_y', 'true'),                                                                    -- todos os autenticados
       ('farm_interacoes', 'true'),                                                                    -- todos os autenticados
       ('farm_intervencoes', 'public.pode_ver_algum(''farmacia'')'),                                   -- farmacia
+      ('farm_inventarios', 'public.pode_ver_algum(''farmacia'')'),                                    -- farmacia
       ('farm_lotes', 'public.pode_ver_algum(''farmacia'')'),                                          -- farmacia
       ('farm_medicamentos', 'true'),                                                                  -- todos os autenticados
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
@@ -9978,6 +11302,7 @@ begin
       ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
+      ('migracoes_aplicadas', 'true'),                                                                -- todos os autenticados
       ('nsp_acoes', 'public.pode_ver_algum(''nsp'')'),                                                -- nsp
       ('nsp_capacitacoes', 'public.pode_ver_algum(''nsp'')'),                                         -- nsp
       ('nsp_comunicados', 'public.pode_ver_algum(''nsp'')'),                                          -- nsp
@@ -10132,6 +11457,7 @@ begin
       ('ag_grades', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
       ('at_conta_itens', 'public.pode_editar_algum(''atendimento'')'),                                -- atendimento
       ('at_contas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
+      ('at_glosas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
       ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
       ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
@@ -10143,6 +11469,7 @@ begin
       ('enf_sae_prescricao_itens', 'public.pode_editar_algum(''paciente'', ''leitos'')'),             -- paciente, leitos
       ('enf_sae_prescricoes', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                  -- paciente, leitos
       ('farm_intervencoes', 'public.pode_editar_algum(''farmacia'')'),                                -- farmacia
+      ('farm_inventarios', 'public.pode_editar_algum(''farmacia'')'),                                 -- farmacia
       ('farm_lotes', 'public.pode_editar_algum(''farmacia'')'),                                       -- farmacia
       ('farm_movimentos', 'public.pode_editar_algum(''farmacia'', ''controlados'', ''ps'')'),         -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_editar_algum(''farmacia'')'),                            -- farmacia
@@ -10242,6 +11569,7 @@ with esperadas_abertas(tabela) as (values
   ('farm_incompat_y'),
   ('farm_interacoes'),
   ('farm_medicamentos'),
+  ('migracoes_aplicadas'),
   ('nsp_meta_faixas'),
   ('nsp_protocolos'),
   ('perfis_acesso'),
@@ -10366,6 +11694,26 @@ select
   (select count(*) from public.profiles)                                          as perfis;
 
 -- Depois rode supabase/auditoria-banco.sql para a conferência completa.
+--
+--
+-- ⚠️ FALTA UM PASSO: ANOTAR O REGISTRO DE MIGRAÇÕES.
+--
+-- Só 13 das 87 migrações acima terminam se anotando em
+-- `migracoes_aplicadas`; as outras 74 são anteriores à regra
+-- (27/08/2026) e nunca foram reescritas.
+--
+-- Neste banco o esquema está COMPLETO por construção — ele acabou de nascer
+-- de todas elas. Mas o registro ficaria quase vazio, e o
+-- `conferir-migracoes.sql` pediria para rodar de novo dezenas de migrações
+-- que já estão aqui dentro. Alarme falso ensina a ignorar o alarme.
+--
+-- Rode UMA VEZ, logo depois deste script:
+--     supabase/anotar-migracoes-existentes.sql
+--
+-- (O aviso no cabeçalho dele — "rode o auditoria antes, isto é suposição, não
+-- fato" — vale para banco que JÁ existia. Aqui é fato: o banco nasceu deste
+-- arquivo.)
+--
 --
 -- Se algum usuário precisar voltar a ser administrador:
 --   update public.profiles set role = 'adm_master' where username = 'SEU_USUARIO';

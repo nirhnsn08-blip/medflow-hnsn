@@ -33,6 +33,16 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 // que a anterior criou. NÃO reordenar sem conferir dependência.
 const ORDEM = [
   "schema.sql",
+  // FORA DA ORDEM CRONOLÓGICA DE PROPÓSITO (nasceu em 27/08/2026).
+  // Ela cria `migracoes_aplicadas`, e desde 27/08 toda migração termina se
+  // anotando nessa tabela — inclusive arquivos que já estavam na ORDEM bem
+  // antes dela (nsp-protocolos, faturamento-glosas, rls-leitura), porque a
+  // linha foi acrescentada a eles DEPOIS, todos de uma vez. Na posição
+  // cronológica, o insert do nsp-protocolos rodaria contra tabela inexistente
+  // e o banco novo morreria no meio da criação. Aqui a tabela existe antes da
+  // primeira anotação. Não depende de nada além de `pacientes` (usada no
+  // recibo), que vem do schema.sql acima.
+  "migracao-registro-de-migracoes.sql",
   "migracao-farmacia-faseA.sql",
   "migracao-farmacia-seed.sql",
   "migracao-farmacia-faseB.sql",
@@ -86,6 +96,20 @@ const ORDEM = [
   "migracao-nsp-protocolos.sql",
   "migracao-atendimento-responsavel.sql",
   "migracao-atendimento-faturamento.sql",
+  // Glosa recebida e recurso. Depois da conta, porque referencia at_contas
+  // e at_conta_itens.
+  "migracao-faturamento-glosas.sql",
+  // As politicas da at_glosas, logo apos a tabela. Redundante num banco novo
+  // (o rls-leitura no fim recria pelos mesmos nomes) e necessario nos bancos
+  // que ja existem, onde o arquivo de 41 KB nao cabe no editor.
+  //
+  // ⚠️ Ele abre com \`set valentrax.quem = 'adauam'\` — conveniência de quem
+  // roda à mão. Aqui dentro a linha vale até o FIM da sessão, então todas as
+  // migrações abaixo que se anotam sozinhas ficam registradas como aplicadas
+  // por 'adauam' em vez de quem realmente rodou o script. Não quebra nada e
+  // não muda esquema; só deixa um nome errado no registro. Some sozinho se a
+  // linha sair do arquivo de origem.
+  "migracao-glosas-rls.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
   // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não
@@ -166,6 +190,40 @@ const ORDEM = [
   // do parto. O indice unico da DNV e o que sustenta a regra que separa
   // gemeos de duplicata — sem ele, dois bebes poderiam virar um prontuario.
   "migracao-pacientes-recem-nascido.sql",
+  // Código IBGE do município de residência (26/08). Uma coluna e um CHECK de
+  // 7 dígitos em `pacientes` — a AIH e o BPA recusam o nome por extenso.
+  "migracao-pacientes-municipio-ibge.sql",
+  // Remessa transmitida (26/08): três colunas em `at_contas` e o trigger que
+  // impede `faturada` de reabrir. Depois de atendimento-faturamento, que cria
+  // a conta, e depois de faturamento-glosas, porque `glosada` é a única saída
+  // da `faturada` que o trigger admite.
+  "migracao-faturamento-remessa.sql",
+  // Unificação de prontuário (26/08): o PONTEIRO entre duas fichas da mesma
+  // pessoa (quatro colunas em `pacientes`) e a trava contra cadeia.
+  "migracao-pacientes-unificacao.sql",
+  // A prescrição só fica "pronta" se saiu do estoque (26/08). Trigger sobre
+  // `farm_preparo`, lendo `farm_movimentos` — as duas já criadas acima.
+  "migracao-farmacia-preparo-exige-baixa.sql",
+  // Lote vencido não vai para o paciente (26/08), mas SAI por descarte. Só um
+  // trigger sobre o movimento da farmácia.
+  "migracao-farmacia-lote-vencido.sql",
+  // Abre o episódio de quem já estava internado (27/08). Lê `leitos` e escreve
+  // em `pep_episodios`. Num banco NOVO não há internação para converter e ele
+  // não faz nada — entra porque tirá-lo da ORDEM faria o próximo hospital
+  // nascer com uma migração a menos no registro.
+  "migracao-pep-episodio-retroativo.sql",
+  // `episodio_id` das tabelas de enfermagem: uuid → bigint (27/08). Corrige o
+  // tipo em oito tabelas de enfermagem e no `nsp_incidentes`, todas criadas
+  // acima — por isso vem depois delas.
+  "migracao-episodio-id-tipo.sql",
+  // Farmácia ganha estorno com vínculo e inventário cíclico (27/08) — as mesmas
+  // regras que o almoxarifado já tinha. Cria `farm_inventarios` e recria o
+  // trigger de saldo, então vem depois de toda a farmácia acima.
+  "migracao-farmacia-estorno-inventario.sql",
+  // SCIH: base de germes inicial (27/08). `scih_germes` vem do schema.sql
+  // vazia; sem o seed a tela não sugere isolamento nem marca multirresistente.
+  // Idempotente — não sobrescreve o que a CCIH já tiver editado.
+  "migracao-scih-germes-seed.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
@@ -175,34 +233,72 @@ const ORDEM = [
 // Trava de segurança: migração nova que ninguém acrescentou em ORDEM
 // ficaria de fora silenciosamente — o mesmo erro que já cegou a auditoria
 // duas vezes. Aqui isso para o gerador.
-// `seed-teste-*` fica de fora de propósito: é DADO fictício de teste, não
-// estrutura. Entrar aqui plantaria 60 pacientes inventados no banco de um
-// hospital novo — exatamente o oposto do que reconstruir-banco.sql serve.
-// Esses arquivos têm trava própria e são rodados à mão, só no banco demo.
-// `conferencia-*` também fica de fora: são consultas de LEITURA, rodadas à
-// mão depois de uma migração para ver se ela pegou. Não criam nem alteram
-// nada, então não têm lugar num script de reconstrução — e entrariam como
-// `select` solto no meio da criação do banco.
+//
+// O QUE CONTA COMO MIGRAÇÃO: `schema.sql` e os arquivos `migracao-*`. É a
+// MESMA regra do `gerar-conferencia.mjs`, e de propósito: duas definições de
+// "migração" no mesmo diretório divergem, e a divergência só aparece como
+// tabela faltando num banco novo — tarde demais.
+//
+// ⚠️ REGRA POSITIVA, NÃO LISTA DE EXCEÇÕES. A versão anterior enumerava os
+// prefixos a IGNORAR, então toda família NOVA de ferramenta caía como
+// "migração esquecida" e travava o gerador sem haver nada de errado nela —
+// foi o que aconteceu com `teste-trigger-*`, `limpeza-demo-*`,
+// `conferir-migracoes` e `anotar-migracoes-existentes`: 17 arquivos, e o
+// gerador parado desde 26/08/2026. Nomear o que ENTRA não tem esse buraco.
+//
+// O que fica de fora, e por quê:
+//   • `seed-teste-*`     DADO fictício. Entrar aqui plantaria 70 pacientes
+//                        inventados no banco de um hospital novo — o oposto
+//                        do que este script serve.
+//   • `auditoria-*`      LEITURA. Rodam à mão depois de uma migração, para
+//     `conferencia-*`    ver se ela pegou. Não criam nem alteram nada, e
+//     `conferir-*`       entrariam como `select` solto no meio da criação.
+//   • `teste-trigger-*`  PROVA de trigger: escrevem e desfazem em linha de
+//                        paciente REAL. Num banco recém-criado não há o que
+//                        provar — eles próprios devolvem "INCONCLUSIVO".
+//   • `limpeza-demo-*`   APAGAM. Ferramenta do banco demo, e só dele.
+//   • `anotar-migracoes- GERADO, e roda UMA VEZ por banco DEPOIS deste
+//     existentes.sql`    script — ver a instrução no fim do arquivo gerado.
 const noDisco = fs.readdirSync(dir)
-  .filter(f => f.endsWith(".sql")
-            && !f.startsWith("auditoria-")
-            && !f.startsWith("seed-teste-")
-            && !f.startsWith("conferencia-")
-            && f !== "reconstruir-banco.sql");
+  .filter(f => f === "schema.sql" || (f.startsWith("migracao-") && f.endsWith(".sql")));
 const esquecidos = noDisco.filter(f => !ORDEM.includes(f));
 if (esquecidos.length) {
   console.error(`\n❌ Migração fora da lista ORDEM: ${esquecidos.join(", ")}`);
   console.error("   Acrescente em gerar-reconstrucao.mjs, na posição cronológica certa.\n");
   process.exit(1);
 }
+// Entrada repetida não dá erro em lugar nenhum: o arquivo é inlinado duas
+// vezes e o banco só roda o mesmo SQL de novo. Como as migrações são
+// idempotentes, o resultado até fica certo — e é exatamente por isso que
+// precisa de trava: o único sintoma é a contagem do cabeçalho subir sem
+// ninguém ter acrescentado migração. Aconteceu em 01/09/2026, com duas
+// sessões pondo o `migracao-glosas-rls.sql` em posições diferentes.
+const repetidos = ORDEM.filter((f, i) => ORDEM.indexOf(f) !== i);
+if (repetidos.length) {
+  console.error(`\n❌ Migração repetida na lista ORDEM: ${[...new Set(repetidos)].join(", ")}`);
+  console.error("   Cada arquivo entra UMA vez. Apague a entrada a mais.\n");
+  process.exit(1);
+}
+
 const sumiram = ORDEM.filter(f => !fs.existsSync(path.join(dir, f)));
 if (sumiram.length) {
   console.error(`\n❌ Arquivo listado em ORDEM não existe: ${sumiram.join(", ")}\n`);
   process.exit(1);
 }
 
+const corpos = ORDEM.map(f => fs.readFileSync(path.join(dir, f), "utf8").trim());
+
+// Quantas migrações se anotam sozinhas em `migracoes_aplicadas`. A regra
+// nasceu em 27/08/2026 e as anteriores não foram reescritas — por isso um
+// banco novo ainda precisa do passo manual avisado no fim do arquivo gerado.
+// Contado, não decorado: a conta se corrige sozinha quando alguém acrescentar
+// a linha a mais um arquivo.
+const seAnotam = corpos.filter(c =>
+  /insert\s+into\s+public\.migracoes_aplicadas/i.test(c)).length;
+const semAnotar = ORDEM.length - seAnotam;
+
 const partes = ORDEM.map((f, i) => {
-  const corpo = fs.readFileSync(path.join(dir, f), "utf8").trim();
+  const corpo = corpos[i];
   return `
 -- ┌────────────────────────────────────────────────────────────
 -- │ ${String(i + 1).padStart(2, "0")}/${ORDEM.length} — ${f}
@@ -347,6 +443,26 @@ select
   (select count(*) from public.profiles)                                          as perfis;
 
 -- Depois rode supabase/auditoria-banco.sql para a conferência completa.
+--
+--
+-- ⚠️ FALTA UM PASSO: ANOTAR O REGISTRO DE MIGRAÇÕES.
+--
+-- Só ${seAnotam} das ${ORDEM.length} migrações acima terminam se anotando em
+-- \`migracoes_aplicadas\`; as outras ${semAnotar} são anteriores à regra
+-- (27/08/2026) e nunca foram reescritas.
+--
+-- Neste banco o esquema está COMPLETO por construção — ele acabou de nascer
+-- de todas elas. Mas o registro ficaria quase vazio, e o
+-- \`conferir-migracoes.sql\` pediria para rodar de novo dezenas de migrações
+-- que já estão aqui dentro. Alarme falso ensina a ignorar o alarme.
+--
+-- Rode UMA VEZ, logo depois deste script:
+--     supabase/anotar-migracoes-existentes.sql
+--
+-- (O aviso no cabeçalho dele — "rode o auditoria antes, isto é suposição, não
+-- fato" — vale para banco que JÁ existia. Aqui é fato: o banco nasceu deste
+-- arquivo.)
+--
 --
 -- Se algum usuário precisar voltar a ser administrador:
 --   update public.profiles set role = 'adm_master' where username = 'SEU_USUARIO';

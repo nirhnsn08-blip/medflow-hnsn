@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 96 tabelas, 1511 colunas.
+-- Cobertura atual: 97 tabelas, 1530 colunas.
 -- ============================================================
 
 with
@@ -25,6 +25,7 @@ tabelas(nome, origem) as (values
   ('at_contas','atendimento-faturamento'),
   ('at_convenios','atendimento-fase2'),
   ('at_dominios','atendimento-fase2'),
+  ('at_glosas','faturamento-glosas'),
   ('at_planos','atendimento-fase2'),
   ('at_procedimentos','atendimento-fase2'),
   ('at_responsaveis','atendimento-responsavel'),
@@ -220,6 +221,25 @@ colunas(tabela, coluna, origem) as (values
   ('at_dominios','sistema','atendimento-fase2'),
   ('at_dominios','updated_at','atendimento-fase2'),
   ('at_dominios','usuario','atendimento-fase2'),
+  ('at_glosas','competencia','faturamento-glosas'),
+  ('at_glosas','conta_id','faturamento-glosas'),
+  ('at_glosas','criado_em','faturamento-glosas'),
+  ('at_glosas','encerrada_em','faturamento-glosas'),
+  ('at_glosas','id','faturamento-glosas'),
+  ('at_glosas','item_id','faturamento-glosas'),
+  ('at_glosas','motivo','faturamento-glosas'),
+  ('at_glosas','motivo_codigo','faturamento-glosas'),
+  ('at_glosas','observacao','faturamento-glosas'),
+  ('at_glosas','prazo_recurso_em','faturamento-glosas'),
+  ('at_glosas','prontuario','faturamento-glosas'),
+  ('at_glosas','recebida_em','faturamento-glosas'),
+  ('at_glosas','recurso_enviado_em','faturamento-glosas'),
+  ('at_glosas','recurso_protocolo','faturamento-glosas'),
+  ('at_glosas','situacao','faturamento-glosas'),
+  ('at_glosas','updated_at','faturamento-glosas'),
+  ('at_glosas','usuario','faturamento-glosas'),
+  ('at_glosas','valor_glosado','faturamento-glosas'),
+  ('at_glosas','valor_recuperado','faturamento-glosas'),
   ('at_planos','acomodacao','atendimento-fase2'),
   ('at_planos','ativo','atendimento-fase2'),
   ('at_planos','codigo','atendimento-fase2'),

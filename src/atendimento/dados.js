@@ -1504,3 +1504,82 @@ export async function unificarProntuario(sb, { origem, destino, motivo }, user) 
   }
   return { ok: true, paciente: r[0] };
 }
+
+// ── GLOSA RECEBIDA ──────────────────────────────────────────
+//
+// A regra de negócio (prazo, fila, taxa de recuperação) mora em
+// `glosas.js`; aqui só entra e sai do banco.
+//
+// 🔴 A ESCRITA CONFERE O RETORNO, não o status. Os CHECK de `at_glosas`
+// recusam valor recuperado maior que o glosado e prazo anterior ao
+// recebimento — e o PostgREST devolve 2xx alterando ZERO linha quando o RLS
+// barra. Sem `return=representation`, "recusado pelo banco" chegaria na
+// tela como "gravado com sucesso".
+
+const CAMPOS_GLOSA = [
+  "id", "conta_id", "item_id", "prontuario", "competencia",
+  "valor_glosado", "motivo_codigo", "motivo",
+  "recebida_em", "prazo_recurso_em",
+  "situacao", "recurso_enviado_em", "recurso_protocolo",
+  "valor_recuperado", "encerrada_em",
+  "observacao", "usuario", "criado_em",
+].join(",");
+
+/**
+ * As glosas de uma competência (ou todas, quando não vier competência).
+ * Ordenadas por prazo — a fila de trabalho é montada em `glosas.js`, mas
+ * vir já quase na ordem certa poupa a tela de reordenar tudo.
+ */
+export async function carregarGlosas(sb, { competencia, limite = 500 } = {}) {
+  const filtro = competencia ? `competencia=eq.${encodeURIComponent(competencia)}&` : "";
+  const r = await sb(`at_glosas?${filtro}select=${CAMPOS_GLOSA}` +
+    `&order=prazo_recurso_em.asc.nullsfirst&limit=${limite}`);
+  return listaLida(r);
+}
+
+/** As glosas de uma conta — para abrir dentro do episódio. */
+export async function glosasDaConta(sb, contaId) {
+  if (!contaId) return [];
+  const r = await sb(`at_glosas?conta_id=eq.${encodeURIComponent(contaId)}` +
+    `&select=${CAMPOS_GLOSA}&order=recebida_em.desc`);
+  return listaLida(r);
+}
+
+const soCampos = g => ({
+  conta_id: g.conta_id, item_id: g.item_id || null, prontuario: g.prontuario || null,
+  competencia: g.competencia || null,
+  valor_glosado: g.valor_glosado,
+  motivo_codigo: g.motivo_codigo || null, motivo: g.motivo || null,
+  recebida_em: g.recebida_em, prazo_recurso_em: g.prazo_recurso_em || null,
+  situacao: g.situacao || "recebida",
+  recurso_enviado_em: g.recurso_enviado_em || null,
+  recurso_protocolo: g.recurso_protocolo || null,
+  // ⚠️ "" vira null, e não 0: campo em branco é "o recurso não terminou",
+  // zero é "recorremos e não voltou nada". Colapsar os dois estragaria a
+  // taxa de recuperação, que é o número que julga o setor.
+  valor_recuperado: g.valor_recuperado === "" || g.valor_recuperado == null ? null : Number(g.valor_recuperado),
+  encerrada_em: g.encerrada_em || null,
+  observacao: g.observacao || null,
+});
+
+/** Grava a glosa (nova ou existente). Devolve `{ ok, glosa?, motivo? }`. */
+export async function salvarGlosa(sb, glosa, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const corpo = { ...soCampos(glosa), usuario: user?.name || null, updated_at: new Date().toISOString() };
+
+  const r = glosa.id
+    ? await sb(`at_glosas?id=eq.${encodeURIComponent(glosa.id)}`, {
+        method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(corpo),
+      }).catch(() => null)
+    : await sb("at_glosas", {
+        method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(corpo),
+      }).catch(() => null);
+
+  if (!Array.isArray(r) || !r.length) {
+    return {
+      ok: false,
+      motivo: "Nada foi gravado. O banco recusa valor recuperado maior que o glosado, valor zero ou negativo, e prazo anterior ao recebimento — confira esses três antes de tentar de novo.",
+    };
+  }
+  return { ok: true, glosa: r[0] };
+}
