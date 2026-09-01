@@ -6,10 +6,11 @@
 // ═══════════════════════════════════════════════════════════
 
 import { nowISO } from "../util/datas.js";
+import { listaLida } from "../util/leitura.js";
 
 export async function loadCcSalas(sb) {
   const rows = await sb("cc_salas?select=*&order=ordem");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function upsertCcSalaRemote(sb, sala, user) {
@@ -27,7 +28,7 @@ export async function deleteCcSalaRemote(sb, nome) {
 
 export async function loadCcCirurgias(sb, data) {
   const rows = await sb(`cc_cirurgias?data=eq.${data}&select=*&order=hora_prevista`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function addCcCirurgiaRemote(sb, c, user) {

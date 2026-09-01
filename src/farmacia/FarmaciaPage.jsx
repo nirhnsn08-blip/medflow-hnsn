@@ -23,7 +23,7 @@ import { FARM_GRAV, FARM_SCORE_COR, analisarPrescricaoClinica, farmFmtQtd, normT
 import { MANCHESTER, PS_DOSE_UNID, PS_PRIORIDADE } from "../ps/catalogo.js";
 import { loadPsAtendimentos, loadPsPrescricaoItensByAtendimentos, loadPsPrescricoesByAtendimentos } from "../ps/dados.js";
 import { MOTIVO_AJUSTE, descreverPlano, documentoDaContagem, idsJaEstornados, movimentoDeEstorno, podeEstornar } from "../suprimentos/inventario.js";
-import { HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, MONTHS_FULL, VX, btnContorno, campoTexto, rotuloCampo } from "../ui/base.jsx";
+import { AvisoLeitura, HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, MONTHS_FULL, VX, btnContorno, campoTexto, rotuloCampo } from "../ui/base.jsx";
 import { avisoSonoro, ligarSom, somLigado } from "../ui/som.js";
 import { comGrupos } from "../ui/sub-nav.js";
 import { fmtDataBR, horaFmt, nowISO, todayStr } from "../util/datas.js";
@@ -325,6 +325,10 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
         </div>
         {sub === "estoque" && canEdit && <button onClick={() => setShowMed({ nome: "", principio_ativo: "", classe: "", forma: "", concentracao: "", unidade: "unidade", estoque_minimo: "", controlado: false, ativo: true, observacao: "" })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo medicamento</button>}
       </div>
+
+      {/* 🔴 Estoque que não foi lido parece estoque zerado — e estoque zerado
+          na farmácia vira "não tem", que vira paciente sem medicamento. */}
+      <AvisoLeitura oQue="o catálogo e os lotes da farmácia" listas={[meds, lotes]} />
 
       {sub === "dashboard" && <FarmDashboardView sb={sb} currentUser={currentUser} canEdit={canEdit} onNav={setSub} />}
       {sub === "interacoes" && <FarmInteracoesView sb={sb} currentUser={currentUser} canEdit={canEdit} />}

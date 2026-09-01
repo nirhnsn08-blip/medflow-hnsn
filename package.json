@@ -10,7 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "medir": "node scripts/medir-app.mjs"
+    "medir": "node scripts/medir-app.mjs",
+    "cargas": "node scripts/cargas.mjs"
   },
   "dependencies": {
     "react": "^18.2.0",

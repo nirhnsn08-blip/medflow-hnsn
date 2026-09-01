@@ -36,6 +36,7 @@ import {
   carregarProducaoFaturavel, contasDaCompetencia, registrarTransmissao,
 } from "./dados.js";
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
+import { listaLida } from "../util/leitura.js";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -1248,7 +1249,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
     (async () => {
       try {
         const r = sb ? await sb("sigtap_procedimentos?select=*&order=codigo") : [];
-        if (vivo) setRows(Array.isArray(r) ? r : []);
+        if (vivo) setRows(listaLida(r));
       } catch { if (vivo) setRows([]); }
       finally { if (vivo) setCarregando(false); }
     })();

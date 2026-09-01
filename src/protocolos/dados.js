@@ -16,28 +16,30 @@
 // `sb` é parâmetro. Nulo = sem banco.
 // ═══════════════════════════════════════════════════════════
 
+import { listaLida } from "../util/leitura.js";
+
 export async function loadProtCatalogo(sb) {
   if (!sb) return [];
   const rows = await sb("prot_catalogo?select=*&order=criado_em").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadProtSetores(sb) {
   if (!sb) return [];
   const rows = await sb("prot_setor?select=*").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadProtAtivacoes(sb) {
   if (!sb) return [];
   const rows = await sb("prot_ativacoes?select=*&order=acionado_em.desc").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function loadProtItens(sb) {
   if (!sb) return [];
   const rows = await sb("prot_bundle_itens?select=*&order=feito_em").catch(() => []);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function registrarAtivacaoProt(sb, a, user) {

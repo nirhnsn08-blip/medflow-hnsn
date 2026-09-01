@@ -17,6 +17,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { fmt } from "../util/formato.js";
+import { algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
 // A paleta da marca. Usada por quase toda tela do sistema.
 export const VX = { turquesa: "#2dd4bf", azul: "#38bdf8", royal: "#1d4ed8", prata: "#8d99ab", marinho: "#101c30", marinho2: "#14233a", borda: "#23395a" };
@@ -58,6 +59,8 @@ const ICON_PATHS = {
   // Porta de entrada — a Recepção. Ícone próprio para não dividir o
   // `record` com o Paciente 360: são módulos diferentes e o menu precisa
   // deixar isso óbvio.
+  // O triangulo de atencao da faixa de "nao deu para ler".
+  alert:     <><path d="M12 3.8L2.5 20h19L12 3.8z"/><path d="M12 10v4"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></>,
   door:      <><path d="M4 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17"/><path d="M2.5 21h19"/><circle cx="13" cy="12.5" r="1"/></>,
 };
 export function Icon({ name, size = 15 }) {
@@ -112,3 +115,28 @@ export const customTooltip = ({ active, payload, label }) => {
 // se chamou `btnLeito`.
 export const campoTexto = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
 export const rotuloCampo = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
+
+// ── A FAIXA DE "NÃO DEU PARA LER" ──────────────────────────
+//
+// 🔴 O CONTRÁRIO DA MENTIRA MAIS COMUM DESTE SISTEMA.
+//
+// A carga já não destrói mais a diferença entre "não há nenhum" e "não
+// consegui ler" (src/util/leitura.js). Esta faixa é onde essa diferença
+// chega em quem está na bancada — porque a lista vazia continua parecendo
+// exatamente igual nos dois casos.
+//
+// ⚠️ NÃO APARECE quando a leitura deu certo e veio vazia. Zero lote
+// vencendo é notícia boa, e transformar notícia boa em faixa vermelha é
+// como se constrói fadiga de alarme: em duas semanas ninguém lê mais.
+//
+// ⚠️ Só serve para a lista que veio DIRETO da carga. Filtrar ou mapear
+// antes perde a marca — a comparação é de identidade.
+export function AvisoLeitura({ oQue, listas }) {
+  if (!algumaFalhou(...(listas || []))) return null;
+  return (
+    <div role="alert" style={{ display: "flex", gap: 8, alignItems: "flex-start", background: "#7f1d1d22", border: "1px solid #ef444455", borderRadius: 6, padding: "8px 12px", margin: "8px 0", fontSize: 12.5, color: "#fca5a5", lineHeight: 1.45 }}>
+      <span style={{ marginTop: 1 }}><Icon name="alert" size={15} /></span>
+      <span>{avisoDeFalha(oQue)}</span>
+    </div>
+  );
+}

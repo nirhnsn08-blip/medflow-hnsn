@@ -25,7 +25,7 @@ import { addFarmMovimentoRemote, loadFarmLotes, loadFarmMedicamentos, loadFarmMo
 import { custoUnit, saldoDoMedicamento } from "../farmacia/estoque.js";
 import { DIAS_VENCENDO, infoDeValidade } from "../farmacia/validade.js";
 import { loadSetoresFromSupabase } from "../leitos/dados.js";
-import { HOSPITAL_NOME, Icon, MONTHS_FULL, VX, btnContorno, campoTexto, rotuloCampo } from "../ui/base.jsx";
+import { AvisoLeitura, HOSPITAL_NOME, Icon, MONTHS_FULL, VX, btnContorno, campoTexto, rotuloCampo } from "../ui/base.jsx";
 import { avisoSonoro, ligarSom, somLigado } from "../ui/som.js";
 import { comGrupos } from "../ui/sub-nav.js";
 import { fmtDataBR, nowISO } from "../util/datas.js";
@@ -450,6 +450,10 @@ export default function SuprimentosPage({ sb, sbCru, currentUser, canEdit }) {
         </div>}
         {sub === "fornecedores" && canEdit && <button onClick={() => setShowForn({ nome: "", cnpj: "", contato: "", telefone: "", email: "", categorias: "", observacao: "", ativo: true })} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>+ Novo fornecedor</button>}
       </div>
+
+      {/* 🔴 Sem os itens e os lotes lidos, o painel mostra 0 ruptura e 0
+          vencendo — exatamente a tela de um almoxarifado em ordem. */}
+      <AvisoLeitura oQue="os materiais e os lotes do almoxarifado" listas={[itens, lotes]} />
 
       {sub === "dashboard" && (() => {
         const ativos = itens.filter(i => i.ativo !== false);

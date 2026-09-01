@@ -16,12 +16,14 @@
 // "gravou" para uma escrita recusada — o retorno é a única prova.
 // ═══════════════════════════════════════════════════════════
 
+import { listaLida } from "../util/leitura.js";
+
 // Lista os perfis/usuários para a tela de Usuários.
 // `select=*` traz também categoria e registro de conselho — sem eles a tela
 // não consegue mostrar nem classificar quem é o quê clinicamente.
 export async function loadProfiles(sb) {
   const rows = await sb("profiles?select=*&order=role");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 // Classifica a categoria profissional e o conselho. Só adm_master consegue —
 // a política de RLS `profiles_update_admin` recusa os demais no banco, não
@@ -49,13 +51,13 @@ export async function salvarCategoriaProfissional(sb, username, dados) {
 // Nenhuma migração nova — a tabela e as políticas já existem nos dois bancos.
 export async function carregarExcecoesUsuario(sb, userId) {
   const rows = await sb(`usuarios_permissoes?user_id=eq.${userId}&select=id,modulo,nivel,motivo,concedido_por,criado_em&order=modulo`).catch(() => null);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function carregarGrantsDoPerfil(sb, chave) {
   if (!chave) return {};
   const rows = await sb(`perfis_permissoes?perfil_chave=eq.${encodeURIComponent(chave)}&select=modulo,nivel`).catch(() => null);
   const g = {};
-  for (const r of (Array.isArray(rows) ? rows : [])) g[r.modulo] = r.nivel;
+  for (const r of (listaLida(rows))) g[r.modulo] = r.nivel;
   return g;
 }
 // Upsert por (user_id, modulo): reconceder o mesmo módulo TROCA o nível em

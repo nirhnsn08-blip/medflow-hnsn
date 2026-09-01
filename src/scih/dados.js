@@ -11,10 +11,11 @@
 // ═══════════════════════════════════════════════════════════
 
 import { nowISO } from "../util/datas.js";
+import { listaLida } from "../util/leitura.js";
 
 export async function loadScihCasos(sb) {
   const rows = await sb("scih_casos?select=*&order=created_at.desc");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function addScihCasoRemote(sb, caso, user) {
@@ -45,7 +46,7 @@ export async function setLeitoIsolamentoRemote(sb, id, iso, user) {
 // ── Fase B: base de germes com embasamento ──
 export async function loadScihGermes(sb) {
   const rows = await sb("scih_germes?select=*");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function upsertScihGermeRemote(sb, germe, user) {
@@ -65,7 +66,7 @@ export async function deleteScihGermeRemote(sb, nome) {
 // ── Fase C: indicadores mensais do SCIH ──
 export async function loadScihIndicadores(sb) {
   const rows = await sb("scih_indicadores?select=*&order=competencia");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 
 export async function upsertScihIndicadorRemote(sb, ind, user) {

@@ -16,6 +16,7 @@
 
 import { conciliar } from "./kardex.js";
 import { nowISO } from "../util/datas.js";
+import { listaLida } from "../util/leitura.js";
 
 /** Linhas por requisição. O PostgREST tem teto próprio; 1000 é conservador. */
 export const PAGINA = 1000;
@@ -105,27 +106,27 @@ export async function conciliarAgora(sb, opcoes = {}) {
 
 export async function loadSupItens(sb) {
   const rows = await sb("sup_itens?select=*&order=nome");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadSupLotes(sb) {
   const rows = await sb("sup_lotes?select=*&order=validade.asc.nullslast");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadSupMovimentos(sb, itemId, limit = 60) {
   const q = itemId
     ? `sup_movimentos?item_id=eq.${itemId}&select=*&order=created_at.desc&limit=${limit}`
     : `sup_movimentos?select=*&order=created_at.desc&limit=${limit}`;
   const rows = await sb(q);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadSupMovimentosPeriodo(sb, fromISO, toISO) {
   const rows = await sb(`sup_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 // Saídas desde uma data (para previsão de demanda)
 export async function loadSupSaidasDesde(sb, fromISO) {
   const rows = await sb(`sup_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=item_id,quantidade&limit=12000`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function upsertSupItemRemote(sb, item, user) {
   if (!sb) return null;
@@ -170,7 +171,7 @@ export async function addSupMovimentoRemote(sbCru, mov, user) {
 }
 export async function loadSupFornecedores(sb) {
   const rows = await sb("sup_fornecedores?select=*&order=nome");
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function upsertSupFornecedorRemote(sb, f, user) {
   if (!sb) return null;
@@ -190,11 +191,11 @@ export async function deleteSupFornecedorRemote(sb, id) {
 // Entradas recentes com fornecedor, para saber o prazo de entrega de cada item
 export async function loadSupEntradasComForn(sb, fromISO) {
   const rows = await sb(`sup_movimentos?tipo=eq.entrada&fornecedor_id=not.is.null&created_at=gte.${fromISO}&select=item_id,fornecedor_id,created_at&order=created_at.desc&limit=8000`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function loadSupInventarios(sb, limit = 400) {
   const rows = await sb(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 // Devolve a linha criada (precisamos do id para amarrar os movimentos de
 // ajuste à contagem, via `documento = INV-<id>`).
@@ -214,7 +215,7 @@ export async function setSupItemCustoRemote(sb, itemId, custo) {
 // Requisições de materiais (Fase B)
 export async function loadSupRequisicoes(sb, limit = 200) {
   const rows = await sb(`sup_requisicoes?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function addSupRequisicaoRemote(sb, req, user) {
   if (!sb) return null;
@@ -231,7 +232,7 @@ export async function atualizarSupReqRemote(sb, id, campos) {
 // Pedidos de compra (Fase C)
 export async function loadSupPedidos(sb, limit = 200) {
   const rows = await sb(`sup_pedidos?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function addSupPedidoRemote(sb, ped, user) {
   if (!sb) return null;
@@ -248,7 +249,7 @@ export async function atualizarSupPedidoRemote(sb, id, campos) {
 // Cotações de compra (comparar preços entre fornecedores)
 export async function loadSupCotacoes(sb, limit = 100) {
   const rows = await sb(`sup_cotacoes?select=*&order=created_at.desc&limit=${limit}`);
-  return Array.isArray(rows) ? rows : [];
+  return listaLida(rows);
 }
 export async function addSupCotacaoRemote(sb, cot, user) {
   if (!sb) return null;
