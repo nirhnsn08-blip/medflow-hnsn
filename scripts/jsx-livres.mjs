@@ -51,7 +51,14 @@ for (const m of txt.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]/gm)) 
   }
 }
 
-const livres = [...usados].filter(n => !definidos.has(n) && n !== "Fragment").sort();
+// 🔴 `Fragment` NÃO É EXCEÇÃO, e eu tinha posto como se fosse.
+// Supus que `<Fragment>` fosse sempre a forma curta `<>…</>`, que o
+// compilador resolve sozinho. Escrito por extenso ele é um import como
+// qualquer outro — e a exclusão abriu um ponto cego DENTRO da guarda feita
+// para fechar um ponto cego. Custou um `ReferenceError: Fragment is not
+// defined` na tela de Usuários, com lint e build verdes, no PR seguinte ao
+// que criou este script.
+const livres = [...usados].filter(n => !definidos.has(n)).sort();
 if (livres.length) {
   console.error(`🔴 ${livres.length} componente(s) usados em JSX e NÃO definidos em ${P}:`);
   for (const n of livres) {
