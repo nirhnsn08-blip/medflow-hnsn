@@ -36,7 +36,7 @@ import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
          modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
 import { GRUPOS } from "./acesso/modulos.js";
 import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon,
-         btnContorno, VxWordmark, customTooltip } from "./ui/base.jsx";
+         btnContorno, VxWordmark, customTooltip, campoTexto, rotuloCampo } from "./ui/base.jsx";
 import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
 import { validarCbo, formatarCbo, cbosDoCatalogo } from "./acesso/cbo.js";
 import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
@@ -50,6 +50,8 @@ import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
 import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
 import { abasVisiveis, podeAbrirAba } from "./farmacia/abas.js";
+import { FARM_FORMAS, FARM_UNIDADES, FARM_CLASSES, FARM_MOTIVOS_SAIDA, FARM_ALERTA_TIPOS } from "./farmacia/catalogo.js";
+import { somLigado, ligarSom, avisoSonoro } from "./ui/som.js";
 import {
   loadFarmMedicamentos, loadFarmLotes, loadFarmMovimentos, loadFarmMovimentosPeriodo, loadFarmSaidasDesde,
   upsertFarmMedicamentoRemote, deleteFarmMedicamentoRemote, addFarmMovimentoRemote, loadFarmInteracoes,
@@ -1827,35 +1829,7 @@ async function deleteScihGermeRemote(nome) {
 // ═══════════════════════════════════════════════════════════
 // FARMÁCIA — Fase A: catálogo + estoque (lote/validade, kardex FEFO)
 // ═══════════════════════════════════════════════════════════
-const FARM_FORMAS   = ["Comprimido", "Cápsula", "Ampola", "Frasco-ampola", "Frasco", "Bolsa/Soro", "Seringa", "Bisnaga/Pomada", "Spray/Aerossol", "Solução oral", "Sachê", "Outro"];
-const FARM_UNIDADES = ["unidade", "comprimido", "cápsula", "ampola", "frasco-ampola", "frasco", "bolsa", "seringa", "mL", "g", "dose"];
 // Classes terapêuticas (ordem de exibição no agrupamento)
-const FARM_CLASSES = [
-  "Analgésicos e antipiréticos",
-  "Anti-inflamatórios (AINEs)",
-  "Opioides",
-  "Anestésicos",
-  "Antibióticos",
-  "Antifúngicos",
-  "Antivirais",
-  "Insulinas",
-  "Antidiabéticos orais",
-  "Cardiovasculares e anti-hipertensivos",
-  "Diuréticos",
-  "Anticoagulantes e antitrombóticos",
-  "Drogas vasoativas",
-  "Respiratório / broncodilatadores",
-  "Corticoides",
-  "Antieméticos",
-  "Antiulcerosos / protetores gástricos",
-  "Sedativos e anticonvulsivantes",
-  "Antipsicóticos e antidepressivos",
-  "Anti-histamínicos / antialérgicos",
-  "Soluções, eletrólitos e soros",
-  "Vitaminas e suplementos",
-  "Outros",
-];
-const FARM_MOTIVOS_SAIDA = ["Dispensação", "Perda / vencimento", "Devolução ao fornecedor", "Ajuste de inventário", "Transferência"];
 
 // Saídas desde uma data (para previsão de demanda)
 // Previsão de demanda: janela de histórico (dias) e horizonte da previsão (dias)
@@ -1909,22 +1883,6 @@ const PREPARO_STATUS = {
   cancelado:  { label: "Cancelado",           cor: "#f43f5e" },
 };
 // Bipe curto (WebAudio, sem arquivo externo — respeita a CSP)
-function farmBeep(dbl) {
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-    const ctx = new AC();
-    const toca = (t0, freq) => {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination); o.type = "sine"; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.32); o.start(t0); o.stop(t0 + 0.34);
-    };
-    toca(ctx.currentTime, 880); if (dbl) toca(ctx.currentTime + 0.18, 1175);
-    setTimeout(() => ctx.close(), 800);
-  } catch (e) {}
-}
-const somAtivo = () => { try { return localStorage.getItem("hnsn_som") === "1"; } catch { return false; } };
-const setSomAtivo = v => { try { localStorage.setItem("hnsn_som", v ? "1" : "0"); } catch {} };
 // Barra lateral interna da Farmácia (mantém as chaves internas das telas)
 // Ordenado pelo FLUXO do farmacêutico, e os grupos separam natureza de
 // trabalho. A cadeia clínica (2 a 5) já estava certa; o que estava fora de
@@ -1951,14 +1909,6 @@ const FARM_NAV = [
   { key: "assistente",  label: "Assistente AI",     icon: "chat",  grupo: "Acompanhar" },
 ];
 // Rótulos dos tipos de alerta (para filtrar prescrições)
-const FARM_ALERTA_TIPOS = {
-  alergia: "Alergia", interacao: "Interação", incompat_y: "Incompatibilidade em Y",
-  dose_maxima: "Dose máxima", duplicidade: "Duplicidade", tempo_tratamento: "Tempo de tratamento",
-  sonda: "Sonda / não triturar", idoso: "Inapropriado idoso (Beers)", pediatrico: "Inapropriado criança",
-  ajuste_renal: "Ajuste renal", ajuste_hepatico: "Ajuste hepático",
-  // Não é achado clínico: é a conferência que NÃO pôde ser feita.
-  base_indisponivel: "Base não conferida",
-};
 const freqDia = label => { const f = PS_FREQUENCIAS.find(x => x.label === label); return f ? f.dia : null; };
 
 // A farmácia clínica (normTxt, alergias, analisarPrescricaoClinica, scores)
@@ -2454,12 +2404,12 @@ function PsProtocolosModal({ currentUser, canEdit, isMaster, onClose }) {
           <div style={{ border: "1px solid var(--border)", borderRadius: 9, padding: "12px 14px" }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{edit.id ? "Editar protocolo" : "Novo protocolo"}</div>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 9, marginBottom: 9 }}>
-              <div><label style={farmLbl}>Título *</label><input value={edit.titulo || ""} onChange={e => setEdit(p => ({ ...p, titulo: e.target.value }))} placeholder="Ex.: Protocolo de Dor Torácica" style={inp2} autoFocus /></div>
-              <div><label style={farmLbl}>Categoria</label><input value={edit.categoria || ""} onChange={e => setEdit(p => ({ ...p, categoria: e.target.value }))} placeholder="Ex.: Cardiologia" style={inp2} /></div>
+              <div><label style={rotuloCampo}>Título *</label><input value={edit.titulo || ""} onChange={e => setEdit(p => ({ ...p, titulo: e.target.value }))} placeholder="Ex.: Protocolo de Dor Torácica" style={inp2} autoFocus /></div>
+              <div><label style={rotuloCampo}>Categoria</label><input value={edit.categoria || ""} onChange={e => setEdit(p => ({ ...p, categoria: e.target.value }))} placeholder="Ex.: Cardiologia" style={inp2} /></div>
             </div>
-            <div style={{ marginBottom: 9 }}><label style={farmLbl}>Resumo</label><input value={edit.resumo || ""} onChange={e => setEdit(p => ({ ...p, resumo: e.target.value }))} placeholder="Uma linha sobre quando aplicar" style={inp2} /></div>
-            <div style={{ marginBottom: 9 }}><label style={farmLbl}>Conteúdo / passos</label><textarea value={edit.conteudo || ""} onChange={e => setEdit(p => ({ ...p, conteudo: e.target.value }))} rows={7} placeholder={"1. …\n2. …\n3. …"} style={{ ...inp2, resize: "vertical", fontFamily: "inherit" }} /></div>
-            <div style={{ marginBottom: 12 }}><label style={farmLbl}>Referência / fonte</label><input value={edit.referencia || ""} onChange={e => setEdit(p => ({ ...p, referencia: e.target.value }))} placeholder="Diretriz, ano, sociedade…" style={inp2} /></div>
+            <div style={{ marginBottom: 9 }}><label style={rotuloCampo}>Resumo</label><input value={edit.resumo || ""} onChange={e => setEdit(p => ({ ...p, resumo: e.target.value }))} placeholder="Uma linha sobre quando aplicar" style={inp2} /></div>
+            <div style={{ marginBottom: 9 }}><label style={rotuloCampo}>Conteúdo / passos</label><textarea value={edit.conteudo || ""} onChange={e => setEdit(p => ({ ...p, conteudo: e.target.value }))} rows={7} placeholder={"1. …\n2. …\n3. …"} style={{ ...inp2, resize: "vertical", fontFamily: "inherit" }} /></div>
+            <div style={{ marginBottom: 12 }}><label style={rotuloCampo}>Referência / fonte</label><input value={edit.referencia || ""} onChange={e => setEdit(p => ({ ...p, referencia: e.target.value }))} placeholder="Diretriz, ano, sociedade…" style={inp2} /></div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button onClick={() => setEdit(null)} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
               <button onClick={salvar} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Salvar"}</button>
@@ -2563,9 +2513,9 @@ function PsSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
 
         <div style={{ border: "1px solid var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 70px auto", gap: 8, alignItems: "end" }}>
-            <div><label style={farmLbl}>Identificação *</label><input value={nova.identificacao} onChange={e => setNova(p => ({ ...p, identificacao: e.target.value }))} placeholder="01" style={inp2} /></div>
-            <div><label style={farmLbl}>Área</label><select value={nova.area} onChange={e => setNova(p => ({ ...p, area: e.target.value }))} style={inp2}>{PS_AREAS.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
-            <div><label style={farmLbl}>Ordem</label><input type="number" value={nova.ordem} onChange={e => setNova(p => ({ ...p, ordem: e.target.value }))} placeholder="0" style={inp2} /></div>
+            <div><label style={rotuloCampo}>Identificação *</label><input value={nova.identificacao} onChange={e => setNova(p => ({ ...p, identificacao: e.target.value }))} placeholder="01" style={inp2} /></div>
+            <div><label style={rotuloCampo}>Área</label><select value={nova.area} onChange={e => setNova(p => ({ ...p, area: e.target.value }))} style={inp2}>{PS_AREAS.map(a => <option key={a} value={a}>{a}</option>)}</select></div>
+            <div><label style={rotuloCampo}>Ordem</label><input type="number" value={nova.ordem} onChange={e => setNova(p => ({ ...p, ordem: e.target.value }))} placeholder="0" style={inp2} /></div>
             <button onClick={add} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
           </div>
         </div>
@@ -6832,8 +6782,6 @@ function TriagemModal({ paciente, onClose, onTriar, reavaliacao = false, faixasP
 // farmFmtQtd vem de ./clinico/alertas.js (o motor de alertas usa a mesma
 // formatação nas mensagens de dose — uma implementação só, sem divergir).
 const custoUnit = med => Number(med?.custo_unitario || 0);
-const farmInp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
-const farmLbl = { fontSize: 11, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 4 };
 
 /**
  * ⚠️ `podeControlados` NÃO É SELO NO DADO — é controle de quem lê o LIVRO.
@@ -7110,8 +7058,8 @@ function FarmaciaPage({ currentUser, canEdit, podeControlados = true }) {
       </>)}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, princípio ativo ou forma…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
-        <select value={classeFiltro} onChange={e => setClasseFiltro(e.target.value)} style={{ ...farmInp, maxWidth: 280 }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, princípio ativo ou forma…" style={{ ...campoTexto, maxWidth: 380, flex: "1 1 240px" }} />
+        <select value={classeFiltro} onChange={e => setClasseFiltro(e.target.value)} style={{ ...campoTexto, maxWidth: 280 }}>
           <option value="">Todas as classes</option>
           {classesPresentes.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -7231,17 +7179,17 @@ function FarmMedModal({ med, onClose, onSave }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 520, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{med.id ? "Editar medicamento" : "Novo medicamento"}</div>
         <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Nome / apresentação *</label>
-          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Dipirona 500 mg comprimido" style={farmInp} autoFocus />
+          <label style={rotuloCampo}>Nome / apresentação *</label>
+          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Dipirona 500 mg comprimido" style={campoTexto} autoFocus />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Princípio ativo</label>
-            <input value={f.principio_ativo || ""} onChange={e => set("principio_ativo", e.target.value)} placeholder="Ex.: Dipirona sódica" style={farmInp} />
+            <label style={rotuloCampo}>Princípio ativo</label>
+            <input value={f.principio_ativo || ""} onChange={e => set("principio_ativo", e.target.value)} placeholder="Ex.: Dipirona sódica" style={campoTexto} />
           </div>
           <div>
-            <label style={farmLbl}>Classe terapêutica</label>
-            <select value={f.classe || ""} onChange={e => set("classe", e.target.value)} style={farmInp}>
+            <label style={rotuloCampo}>Classe terapêutica</label>
+            <select value={f.classe || ""} onChange={e => set("classe", e.target.value)} style={campoTexto}>
               <option value="">—</option>
               {FARM_CLASSES.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
@@ -7249,31 +7197,31 @@ function FarmMedModal({ med, onClose, onSave }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Forma farmacêutica</label>
-            <select value={f.forma || ""} onChange={e => set("forma", e.target.value)} style={farmInp}>
+            <label style={rotuloCampo}>Forma farmacêutica</label>
+            <select value={f.forma || ""} onChange={e => set("forma", e.target.value)} style={campoTexto}>
               <option value="">—</option>
               {FARM_FORMAS.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
           <div>
-            <label style={farmLbl}>Concentração</label>
-            <input value={f.concentracao || ""} onChange={e => set("concentracao", e.target.value)} placeholder="500 mg · 10 mg/mL" style={farmInp} />
+            <label style={rotuloCampo}>Concentração</label>
+            <input value={f.concentracao || ""} onChange={e => set("concentracao", e.target.value)} placeholder="500 mg · 10 mg/mL" style={campoTexto} />
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Unidade de controle</label>
-            <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={farmInp}>
+            <label style={rotuloCampo}>Unidade de controle</label>
+            <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={campoTexto}>
               {FARM_UNIDADES.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
           <div>
-            <label style={farmLbl}>Estoque mínimo</label>
-            <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={farmInp} />
+            <label style={rotuloCampo}>Estoque mínimo</label>
+            <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={campoTexto} />
           </div>
           <div>
-            <label style={farmLbl}>Custo unit. (R$)</label>
-            <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={farmInp} />
+            <label style={rotuloCampo}>Custo unit. (R$)</label>
+            <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={campoTexto} />
           </div>
         </div>
         <div style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 12 }}>
@@ -7285,8 +7233,8 @@ function FarmMedModal({ med, onClose, onSave }) {
           </label>
         </div>
         <div style={{ marginBottom: 12 }}>
-          <label style={farmLbl}>Observação</label>
-          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Cuidados, armazenamento, etc." style={{ ...farmInp, resize: "vertical" }} />
+          <label style={rotuloCampo}>Observação</label>
+          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Cuidados, armazenamento, etc." style={{ ...campoTexto, resize: "vertical" }} />
         </div>
 
         {/* Atributos de farmácia clínica (base dos alertas) */}
@@ -7298,13 +7246,13 @@ function FarmMedModal({ med, onClose, onSave }) {
           {clinAberto && (
             <div style={{ padding: "0 12px 12px" }}>
               <div style={{ marginBottom: 8 }}>
-                <label style={farmLbl}>Grupo terapêutico (p/ duplicidade)</label>
-                <input value={f.grupo_terapeutico || ""} onChange={e => set("grupo_terapeutico", e.target.value)} placeholder="Ex.: AINE, IBP, Opioide" style={farmInp} />
+                <label style={rotuloCampo}>Grupo terapêutico (p/ duplicidade)</label>
+                <input value={f.grupo_terapeutico || ""} onChange={e => set("grupo_terapeutico", e.target.value)} placeholder="Ex.: AINE, IBP, Opioide" style={campoTexto} />
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
-                <div><label style={farmLbl}>Dose máx./dia</label><input type="number" min="0" step="any" value={f.dose_maxima_dia ?? ""} onChange={e => set("dose_maxima_dia", e.target.value)} placeholder="4000" style={farmInp} /></div>
-                <div><label style={farmLbl}>Unid.</label><select value={f.dose_maxima_unid || ""} onChange={e => set("dose_maxima_unid", e.target.value)} style={farmInp}><option value="">—</option>{PS_DOSE_UNID.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
-                <div><label style={farmLbl}>Duração máx. (dias)</label><input type="number" min="0" value={f.duracao_maxima_dias ?? ""} onChange={e => set("duracao_maxima_dias", e.target.value)} placeholder="—" style={farmInp} /></div>
+                <div><label style={rotuloCampo}>Dose máx./dia</label><input type="number" min="0" step="any" value={f.dose_maxima_dia ?? ""} onChange={e => set("dose_maxima_dia", e.target.value)} placeholder="4000" style={campoTexto} /></div>
+                <div><label style={rotuloCampo}>Unid.</label><select value={f.dose_maxima_unid || ""} onChange={e => set("dose_maxima_unid", e.target.value)} style={campoTexto}><option value="">—</option>{PS_DOSE_UNID.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
+                <div><label style={rotuloCampo}>Duração máx. (dias)</label><input type="number" min="0" value={f.duracao_maxima_dias ?? ""} onChange={e => set("duracao_maxima_dias", e.target.value)} placeholder="—" style={campoTexto} /></div>
               </div>
               <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 8 }}>
                 <input type="checkbox" checked={!!f.nao_triturar} onChange={e => set("nao_triturar", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Não triturar / contraindicado por sonda
@@ -7312,19 +7260,19 @@ function FarmMedModal({ med, onClose, onSave }) {
               <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 4 }}>
                 <input type="checkbox" checked={!!f.inapropriado_idoso} onChange={e => set("inapropriado_idoso", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Inapropriado para idoso (Beers)
               </label>
-              {f.inapropriado_idoso && <input value={f.motivo_idoso || ""} onChange={e => set("motivo_idoso", e.target.value)} placeholder="Motivo (Beers)" style={{ ...farmInp, marginBottom: 8 }} />}
+              {f.inapropriado_idoso && <input value={f.motivo_idoso || ""} onChange={e => set("motivo_idoso", e.target.value)} placeholder="Motivo (Beers)" style={{ ...campoTexto, marginBottom: 8 }} />}
               <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 4 }}>
                 <input type="checkbox" checked={!!f.inapropriado_pediatrico} onChange={e => set("inapropriado_pediatrico", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Inapropriado para criança
               </label>
               {f.inapropriado_pediatrico && (
                 <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 8 }}>
-                  <input value={f.motivo_pediatrico || ""} onChange={e => set("motivo_pediatrico", e.target.value)} placeholder="Motivo" style={farmInp} />
-                  <input type="number" min="0" value={f.idade_pediatrica ?? ""} onChange={e => set("idade_pediatrica", e.target.value)} placeholder="< anos (12)" style={farmInp} />
+                  <input value={f.motivo_pediatrico || ""} onChange={e => set("motivo_pediatrico", e.target.value)} placeholder="Motivo" style={campoTexto} />
+                  <input type="number" min="0" value={f.idade_pediatrica ?? ""} onChange={e => set("idade_pediatrica", e.target.value)} placeholder="< anos (12)" style={campoTexto} />
                 </div>
               )}
-              <div style={{ marginBottom: 8 }}><label style={farmLbl}>Ajuste pela função renal (ClCr &lt; 60)</label><input value={f.ajuste_renal || ""} onChange={e => set("ajuste_renal", e.target.value)} placeholder="Ex.: reduzir dose se ClCr < 30; nefrotóxico" style={farmInp} /></div>
-              <div style={{ marginBottom: 8 }}><label style={farmLbl}>Ajuste pela função hepática (moderada/grave)</label><input value={f.ajuste_hepatico || ""} onChange={e => set("ajuste_hepatico", e.target.value)} placeholder="Ex.: reduzir dose na hepatopatia" style={farmInp} /></div>
-              <div><label style={farmLbl}>Observação clínica (ex.: como administrar por sonda)</label><textarea value={f.obs_clinica || ""} onChange={e => set("obs_clinica", e.target.value)} rows={2} placeholder="Ex.: abrir a cápsula, não triturar os grânulos" style={{ ...farmInp, resize: "vertical" }} /></div>
+              <div style={{ marginBottom: 8 }}><label style={rotuloCampo}>Ajuste pela função renal (ClCr &lt; 60)</label><input value={f.ajuste_renal || ""} onChange={e => set("ajuste_renal", e.target.value)} placeholder="Ex.: reduzir dose se ClCr < 30; nefrotóxico" style={campoTexto} /></div>
+              <div style={{ marginBottom: 8 }}><label style={rotuloCampo}>Ajuste pela função hepática (moderada/grave)</label><input value={f.ajuste_hepatico || ""} onChange={e => set("ajuste_hepatico", e.target.value)} placeholder="Ex.: reduzir dose na hepatopatia" style={campoTexto} /></div>
+              <div><label style={rotuloCampo}>Observação clínica (ex.: como administrar por sonda)</label><textarea value={f.obs_clinica || ""} onChange={e => set("obs_clinica", e.target.value)} rows={2} placeholder="Ex.: abrir a cápsula, não triturar os grânulos" style={{ ...campoTexto, resize: "vertical" }} /></div>
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>Estes campos alimentam os alertas de farmácia clínica. Revise com a equipe.</div>
             </div>
           )}
@@ -7391,12 +7339,12 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
 
         {tipo === "entrada" ? (<>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div><label style={farmLbl}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} placeholder="Ex.: AB1234" style={farmInp} /></div>
-            <div><label style={farmLbl}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} placeholder="Ex.: AB1234" style={campoTexto} /></div>
+            <div><label style={rotuloCampo}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={campoTexto} /></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-            <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
-            <div><label style={farmLbl}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={campoTexto} autoFocus /></div>
+            <div><label style={rotuloCampo}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={campoTexto} /></div>
           </div>
           <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16, lineHeight: 1.5 }}>Sem lote/validade? Deixe em branco — entra num lote genérico. Lançar por lote permite rastrear vencimento e recall.</div>
         </>) : (<>
@@ -7404,8 +7352,8 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
             <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
           ) : (<>
             <div style={{ marginBottom: 10 }}>
-              <label style={farmLbl}>Lote{escolha.temVencido ? " — vencido não é sugerido" : " (FEFO — vence primeiro no topo)"}</label>
-              <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+              <label style={rotuloCampo}>Lote{escolha.temVencido ? " — vencido não é sugerido" : " (FEFO — vence primeiro no topo)"}</label>
+              <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={campoTexto}>
                 {lotesComSaldo.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
               </select>
             </div>
@@ -7418,8 +7366,8 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
               </div>
             )}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-              <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
-              <div><label style={farmLbl}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={farmInp}>{FARM_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div><label style={rotuloCampo}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={campoTexto} autoFocus /></div>
+              <div><label style={rotuloCampo}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={campoTexto}>{FARM_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
             </div>
             {loteSel && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16 }}>Saldo do lote: <strong style={{ color: "var(--text-2)" }}>{farmFmtQtd(loteSel.quantidade)} {med.unidade || ""}</strong></div>}
           </>)}
@@ -7733,19 +7681,19 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
                     ) : (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                         <div style={{ flex: "2 1 220px" }}>
-                          <label style={farmLbl}>Lote (FEFO)</label>
+                          <label style={rotuloCampo}>Lote (FEFO)</label>
                           {/* `f.lote_id`, e não um `loteEfetivo` como nos outros dois
                               modais: aqui o `abrir()` JÁ semeia o lote com o primeiro
                               da ordem FEFO, e é `f.lote_id` que o `confirmar()` lê.
                               Mostrar no select um valor diferente do que a baixa usa
                               faria o farmacêutico ver um lote e o estoque sair de outro. */}
-                          <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={farmInp}>
+                          <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={campoTexto}>
                             {selItem._lotes.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
                           </select>
                         </div>
                         <div style={{ flex: "0 1 100px" }}>
-                          <label style={farmLbl}>Qtd</label>
-                          <input type="number" min="0" step="any" value={f.quantidade} onChange={e => setF(p => ({ ...p, quantidade: e.target.value }))} style={farmInp} />
+                          <label style={rotuloCampo}>Qtd</label>
+                          <input type="number" min="0" step="any" value={f.quantidade} onChange={e => setF(p => ({ ...p, quantidade: e.target.value }))} style={campoTexto} />
                         </div>
                         <button onClick={confirmar} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar baixa"}</button>
                       </div>
@@ -7796,16 +7744,16 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 2 }}>Dispensação avulsa</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Dados de saúde — use iniciais e prontuário (LGPD).</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div><label style={farmLbl}>Iniciais *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: M.S.O." style={farmInp} autoFocus /></div>
-          <div><label style={farmLbl}>Prontuário *</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="registro" style={farmInp} /></div>
+          <div><label style={rotuloCampo}>Iniciais *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="Ex.: M.S.O." style={campoTexto} autoFocus /></div>
+          <div><label style={rotuloCampo}>Prontuário *</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="registro" style={campoTexto} /></div>
         </div>
         <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Setor / leito (opcional)</label>
-          <input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Ex.: Enfermaria 2 · leito 12" style={farmInp} />
+          <label style={rotuloCampo}>Setor / leito (opcional)</label>
+          <input value={f.setor} onChange={e => set("setor", e.target.value)} placeholder="Ex.: Enfermaria 2 · leito 12" style={campoTexto} />
         </div>
         <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Medicamento</label>
-          <select value={f.medId} onChange={e => set("medId", e.target.value)} style={farmInp}>
+          <label style={rotuloCampo}>Medicamento</label>
+          <select value={f.medId} onChange={e => set("medId", e.target.value)} style={campoTexto}>
             <option value="">Escolha…</option>
             {FARM_CLASSES.filter(c => meds.some(m => (m.classe || "Outros") === c && m.ativo !== false)).map(c => (
               <optgroup key={c} label={c}>
@@ -7817,14 +7765,14 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
         {f.medId && (
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 8 }}>
             <div>
-              <label style={farmLbl}>Lote (FEFO)</label>
-              {lotesMed.length === 0 ? <div style={{ ...farmInp, color: "#f43f5e" }}>Sem estoque</div> : (
-                <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+              <label style={rotuloCampo}>Lote (FEFO)</label>
+              {lotesMed.length === 0 ? <div style={{ ...campoTexto, color: "#f43f5e" }}>Sem estoque</div> : (
+                <select value={loteEfetivo} onChange={e => set("lote_id", e.target.value)} style={campoTexto}>
                   {lotesMed.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
                 </select>
               )}
             </div>
-            <div><label style={farmLbl}>Qtd</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Qtd</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={campoTexto} /></div>
           </div>
         )}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
@@ -8327,7 +8275,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
   const [interacoes, setInteracoes] = useState([]);
   const [incompatY, setIncompatY] = useState([]);
   const [disp, setDisp] = useState(null);
-  const [som, setSom] = useState(somAtivo());
+  const [som, setSom] = useState(somLigado());
   const [toasts, setToasts] = useState([]);
   const [verRetirados, setVerRetirados] = useState(false);
   const [, setTick] = useState(0);
@@ -8348,7 +8296,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
     const agIds = new Set(pres.filter(r => atSet.has(r.atendimento_id) && !prepReg[r.id]).map(r => r.id));
     if (seenRef.current) {
       const novas = [...agIds].filter(x => !seenRef.current.has(x));
-      if (novas.length) { if (somAtivo()) farmBeep(false); const nomes = novas.map(rid => { const r = pres.find(p => p.id === rid); return ats.find(a => a.id === r?.atendimento_id)?.iniciais || "?"; }); pushToast(`🔔 Nova prescrição para preparar: ${nomes.join(", ")}`); }
+      if (novas.length) { if (somLigado()) avisoSonoro(false); const nomes = novas.map(rid => { const r = pres.find(p => p.id === rid); return ats.find(a => a.id === r?.atendimento_id)?.iniciais || "?"; }); pushToast(`🔔 Nova prescrição para preparar: ${nomes.join(", ")}`); }
     }
     seenRef.current = agIds;
   }
@@ -8389,7 +8337,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
     setTimeout(refresh, 300);
   }
   async function confirmarRetirada(c) { if (!confirm(`Confirmar retirada da prescrição de ${c.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(SB(), c.prep.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "farmácia: retirada confirmada", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
-  function ativarSom() { setSomAtivo(true); setSom(true); farmBeep(false); }
+  function ativarSom() { ligarSom(true); setSom(true); avisoSonoro(false); }
   async function registrarDispensacao(mov) { const r = await addFarmMovimentoRemote(SB_CRU(), mov, currentUser); if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; } addAuditLog(currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {}); setTimeout(refresh, 300); return true; }
 
   const Card = ({ c }) => {
@@ -8466,7 +8414,7 @@ function FarmPreparoView({ currentUser, canEdit }) {
 // Banner no PS: medicações prontas para retirada (com bipe ao ficarem prontas)
 function PsRetiradaBanner({ currentUser, canEdit }) {
   const [prontos, setProntos] = useState([]);
-  const [som, setSom] = useState(somAtivo());
+  const [som, setSom] = useState(somLigado());
   const [, setTick] = useState(0);
   const seenRef = useRef(null);
   async function refresh() {
@@ -8477,12 +8425,12 @@ function PsRetiradaBanner({ currentUser, canEdit }) {
     const lista = prep.filter(p => p.status === "pronto" && atById[p.atendimento_id]).map(p => ({ ...p, at: atById[p.atendimento_id] }));
     setProntos(lista);
     const ids = new Set(lista.map(p => p.id));
-    if (seenRef.current) { const novas = [...ids].filter(x => !seenRef.current.has(x)); if (novas.length && somAtivo()) farmBeep(true); }
+    if (seenRef.current) { const novas = [...ids].filter(x => !seenRef.current.has(x)); if (novas.length && somLigado()) avisoSonoro(true); }
     seenRef.current = ids;
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => { refresh(); setTick(t => t + 1); }, 12000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
   async function confirmar(p) { if (!confirm(`Confirmar retirada da medicação de ${p.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(SB(), p.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); addAuditLog(currentUser, "PS: retirada de medicação", p.at?.iniciais || "", {}); setTimeout(refresh, 300); }
-  function ativar() { setSomAtivo(true); setSom(true); farmBeep(true); }
+  function ativar() { ligarSom(true); setSom(true); avisoSonoro(true); }
   if (prontos.length === 0 && som) return null;
   return (
     <div style={{ background: prontos.length ? "#3b82f614" : "var(--surface)", border: `1px solid ${prontos.length ? "#3b82f666" : "var(--border)"}`, borderLeft: `4px solid ${prontos.length ? "#3b82f6" : "var(--border-2)"}`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -8523,7 +8471,7 @@ function PsIntervencaoBanner({ currentUser, canEdit }) {
     }).filter(Boolean);
     setPend(lista);
     const ids = new Set(lista.map(x => x.iv.id));
-    if (seenRef.current) { const novas = [...ids].filter(x => !seenRef.current.has(x)); if (novas.length && somAtivo()) farmBeep(false); }
+    if (seenRef.current) { const novas = [...ids].filter(x => !seenRef.current.has(x)); if (novas.length && somLigado()) avisoSonoro(false); }
     seenRef.current = ids;
   }
   useEffect(() => { refresh(); const onF = () => refresh(); window.addEventListener("focus", onF); const id = setInterval(() => { refresh(); setTick(t => t + 1); }, 12000); return () => { window.removeEventListener("focus", onF); clearInterval(id); }; }, []);
@@ -10658,8 +10606,8 @@ function SuprimentosPage({ currentUser, canEdit }) {
       </>)}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, categoria ou bipar código de barras…" style={{ ...farmInp, maxWidth: 380, flex: "1 1 240px" }} />
-        <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} style={{ ...farmInp, maxWidth: 280 }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar por nome, categoria ou bipar código de barras…" style={{ ...campoTexto, maxWidth: 380, flex: "1 1 240px" }} />
+        <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} style={{ ...campoTexto, maxWidth: 280 }}>
           <option value="">Todas as categorias</option>
           {catsPresentes.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -10788,7 +10736,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
   const [reqs, setReqs] = useState([]);
   const [setores, setSetores] = useState([]);
   const [showNova, setShowNova] = useState(false);
-  const [somOk, setSomOk] = useState(somAtivo());
+  const [somOk, setSomOk] = useState(somLigado());
   const [busyId, setBusyId] = useState(null);
   const [verHistorico, setVerHistorico] = useState(false);
   const [, setTick] = useState(0);
@@ -10798,7 +10746,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
   function carregar() {
     loadSupRequisicoes().then(rows => {
       const n = rows.filter(r => r.status === "aguardando").length;
-      if (prevAguardando.current != null && n > prevAguardando.current && somAtivo()) farmBeep(true);
+      if (prevAguardando.current != null && n > prevAguardando.current && somLigado()) avisoSonoro(true);
       prevAguardando.current = n;
       setReqs(rows);
     });
@@ -10865,7 +10813,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
       pronto_em: nowISO(), pronto_por: currentUser?.name || null,
     });
     addAuditLog(currentUser, "separar requisição", `REQ-${req.id} · ${req.setor}`, {});
-    if (somAtivo()) farmBeep(false);
+    if (somLigado()) avisoSonoro(false);
     setBusyId(null);
     if (faltas.length) alert("Separação concluída com PENDÊNCIAS (sem saldo):\n\n" + faltas.join("\n"));
     carregar();
@@ -10937,7 +10885,7 @@ function SupRequisicoesView({ currentUser, canEdit, itens, lotes, onChanged }) {
     <div>
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         {canEdit && <button onClick={() => setShowNova(true)} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Nova requisição</button>}
-        <button onClick={() => { const v = !somOk; setSomAtivo(v); setSomOk(v); if (v) farmBeep(false); }} style={{ background: "transparent", border: `1px solid ${somOk ? VX.turquesa : "var(--border)"}`, borderRadius: 6, padding: "8px 14px", color: somOk ? VX.turquesa : "var(--text-3)", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>{somOk ? "Som ativo" : "Ativar som"}</button>
+        <button onClick={() => { const v = !somOk; ligarSom(v); setSomOk(v); if (v) avisoSonoro(false); }} style={{ background: "transparent", border: `1px solid ${somOk ? VX.turquesa : "var(--border)"}`, borderRadius: 6, padding: "8px 14px", color: somOk ? VX.turquesa : "var(--text-3)", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>{somOk ? "Som ativo" : "Ativar som"}</button>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Bipe quando chega requisição nova. Atualiza a cada 15 s.</span>
         <button onClick={() => setVerHistorico(h => !h)} style={{ marginLeft: "auto", background: "transparent", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", color: "var(--text-3)", cursor: "pointer", fontSize: 12.5 }}>{verHistorico ? "Ver ativas" : `Histórico (${historico.length})`}</button>
       </div>
@@ -11007,20 +10955,20 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Nova requisição de materiais</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Setor solicitante *</label>
+            <label style={rotuloCampo}>Setor solicitante *</label>
             {setores.length ? (
-              <select value={setor} onChange={e => setSetor(e.target.value)} style={farmInp}>
+              <select value={setor} onChange={e => setSetor(e.target.value)} style={campoTexto}>
                 {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
                 <option value="">Outro…</option>
               </select>
             ) : (
-              <input value={setor} onChange={e => setSetor(e.target.value)} placeholder="Ex.: Posto 2" style={farmInp} autoFocus />
+              <input value={setor} onChange={e => setSetor(e.target.value)} placeholder="Ex.: Posto 2" style={campoTexto} autoFocus />
             )}
           </div>
           {setores.length > 0 && setor === "" && (
             <div>
-              <label style={farmLbl}>Nome do setor</label>
-              <input value={setor} onChange={e => setSetor(e.target.value)} placeholder="Digite o setor" style={farmInp} autoFocus />
+              <label style={rotuloCampo}>Nome do setor</label>
+              <input value={setor} onChange={e => setSetor(e.target.value)} placeholder="Digite o setor" style={campoTexto} autoFocus />
             </div>
           )}
         </div>
@@ -11029,15 +10977,15 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)", marginBottom: 8 }}>Adicionar material</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 90px auto", gap: 8, alignItems: "end" }}>
             <div>
-              <label style={farmLbl}>Material</label>
-              <select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}>
+              <label style={rotuloCampo}>Material</label>
+              <select value={itemSel} onChange={e => setItemSel(e.target.value)} style={campoTexto}>
                 <option value="">— escolha —</option>
                 {itensDisp.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
               </select>
             </div>
             <div>
-              <label style={farmLbl}>Qtd *</label>
-              <input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} />
+              <label style={rotuloCampo}>Qtd *</label>
+              <input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={campoTexto} />
             </div>
             <button onClick={adicionar} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
           </div>
@@ -11057,8 +11005,8 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={farmLbl}>Observação</label>
-          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Urgência, detalhe do pedido…" style={farmInp} />
+          <label style={rotuloCampo}>Observação</label>
+          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Urgência, detalhe do pedido…" style={campoTexto} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -11217,11 +11165,11 @@ function SupNovaCotacaoModal({ materiais, meds, forns, onClose, onSave }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Nova cotação</div>
         <div style={{ marginBottom: 12 }}>
-          <label style={farmLbl}>Descrição (opcional)</label>
-          <input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex.: Compra mensal de EPI" style={farmInp} autoFocus />
+          <label style={rotuloCampo}>Descrição (opcional)</label>
+          <input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Ex.: Compra mensal de EPI" style={campoTexto} autoFocus />
         </div>
         <div style={{ marginBottom: 12 }}>
-          <label style={farmLbl}>Fornecedores a comparar *</label>
+          <label style={rotuloCampo}>Fornecedores a comparar *</label>
           {forns.length === 0 ? <div style={{ fontSize: 12, color: "#d97706" }}>Cadastre fornecedores primeiro (aba Fornecedores).</div> : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {forns.map(f => <button key={f.id} onClick={() => toggleForn(f.id)} style={{ background: fids.includes(f.id) ? VX.turquesa : "transparent", color: fids.includes(f.id) ? "#062a26" : "var(--text-3)", border: `1px solid ${fids.includes(f.id) ? VX.turquesa : "var(--border)"}`, borderRadius: 99, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{f.nome}</button>)}
@@ -11233,8 +11181,8 @@ function SupNovaCotacaoModal({ materiais, meds, forns, onClose, onSave }) {
             {["material", "medicamento"].map(t => <button key={t} onClick={() => { setTipoSel(t); setItemSel(""); }} style={{ flex: 1, background: tipoSel === t ? VX.turquesa : "transparent", color: tipoSel === t ? "#062a26" : "var(--text-3)", border: `1px solid ${tipoSel === t ? VX.turquesa : "var(--border)"}`, borderRadius: 7, padding: "6px 0", fontWeight: 700, cursor: "pointer", fontSize: 12.5 }}>{t === "material" ? "Material" : "Medicamento"}</button>)}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "end" }}>
-            <div><label style={farmLbl}>Item</label><select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}><option value="">— escolha —</option>{disp.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select></div>
-            <div><label style={farmLbl}>Qtd</label><input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Item</label><select value={itemSel} onChange={e => setItemSel(e.target.value)} style={campoTexto}><option value="">— escolha —</option>{disp.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select></div>
+            <div><label style={rotuloCampo}>Qtd</label><input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={campoTexto} /></div>
             <button onClick={add} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
           </div>
         </div>
@@ -11302,7 +11250,7 @@ function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalv
                     <td key={fid} style={{ padding: "7px 10px", textAlign: "right", background: venc ? "#34d39918" : "transparent" }}>
                       {readonly
                         ? <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: venc ? 800 : 400, color: venc ? "#0d9488" : "var(--text-2)" }}>{Number(it.precos?.[fid]) > 0 ? fmtReais(it.precos[fid]) : "—"}</span>
-                        : <input type="number" min="0" step="any" value={it.precos?.[fid] ?? ""} onChange={e => setPreco(i, fid, e.target.value)} placeholder="—" style={{ ...farmInp, width: 82, padding: "5px 7px", fontSize: 12, textAlign: "right", borderColor: venc ? "#34d399" : "var(--border)" }} />}
+                        : <input type="number" min="0" step="any" value={it.precos?.[fid] ?? ""} onChange={e => setPreco(i, fid, e.target.value)} placeholder="—" style={{ ...campoTexto, width: 82, padding: "5px 7px", fontSize: 12, textAlign: "right", borderColor: venc ? "#34d399" : "var(--border)" }} />}
                     </td>
                   ); })}
                   <td style={{ padding: "7px 10px", textAlign: "right", fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#0d9488" }}>{vencedor[i] ? fmtReais(vencedor[i].preco) : "—"}</td>
@@ -11682,7 +11630,7 @@ function SupAprovacoesView({ currentUser, canEdit, isMaster, pedidos, alcada = n
         {isMaster && editandoAlcada && (
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
             <input value={limiteTxt} onChange={e => setLimiteTxt(e.target.value)} placeholder="em branco = desligada"
-              style={{ ...farmInp, width: 150, padding: "5px 8px", fontSize: 12 }} autoFocus />
+              style={{ ...campoTexto, width: 150, padding: "5px 8px", fontSize: 12 }} autoFocus />
             <button disabled={busyId === "alcada"} onClick={async () => {
               const v = validarLimite(limiteTxt);
               if (!v.ok) { setMsgAlcada({ tom: "erro", texto: v.erro }); return; }
@@ -11777,15 +11725,15 @@ function SupNovoPedidoModal({ forns, materiais, meds, sugMat, sugMed, onClose, o
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Novo pedido de compra</div>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Fornecedor</label>
-            <select value={fornId} onChange={e => setFornId(e.target.value)} style={farmInp}>
+            <label style={rotuloCampo}>Fornecedor</label>
+            <select value={fornId} onChange={e => setFornId(e.target.value)} style={campoTexto}>
               <option value="">— definir depois —</option>
               {forns.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
             </select>
           </div>
           <div>
-            <label style={farmLbl}>Entrega prevista</label>
-            <input type="date" value={prev} onChange={e => setPrev(e.target.value)} style={farmInp} />
+            <label style={rotuloCampo}>Entrega prevista</label>
+            <input type="date" value={prev} onChange={e => setPrev(e.target.value)} style={campoTexto} />
           </div>
         </div>
 
@@ -11804,15 +11752,15 @@ function SupNovoPedidoModal({ forns, materiais, meds, sugMat, sugMed, onClose, o
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 80px auto", gap: 8, alignItems: "end" }}>
             <div>
-              <label style={farmLbl}>{tipoSel === "material" ? "Material" : "Medicamento"}</label>
-              <select value={itemSel} onChange={e => setItemSel(e.target.value)} style={farmInp}>
+              <label style={rotuloCampo}>{tipoSel === "material" ? "Material" : "Medicamento"}</label>
+              <select value={itemSel} onChange={e => setItemSel(e.target.value)} style={campoTexto}>
                 <option value="">— escolha —</option>
                 {disponiveis.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}
               </select>
             </div>
             <div>
-              <label style={farmLbl}>Qtd *</label>
-              <input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={farmInp} />
+              <label style={rotuloCampo}>Qtd *</label>
+              <input type="number" min="0" step="any" value={qtd} onChange={e => setQtd(e.target.value)} placeholder="0" style={campoTexto} />
             </div>
             <button onClick={adicionar} style={{ background: "var(--surface-3)", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Add</button>
           </div>
@@ -11824,8 +11772,8 @@ function SupNovoPedidoModal({ forns, materiais, meds, sugMat, sugMed, onClose, o
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 7, padding: "6px 10px" }}>
                 <span style={{ fontSize: 9.5, color: x.tipo === "medicamento" ? "#6366f1" : "var(--text-muted)", border: `1px solid ${x.tipo === "medicamento" ? "#6366f155" : "var(--border-2)"}`, borderRadius: 99, padding: "0 6px", fontWeight: 700, flexShrink: 0 }}>{x.tipo === "medicamento" ? "MED" : "MAT"}</span>
                 <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-2)", minWidth: 0 }}>{x.nome}{x.unidade ? ` (${x.unidade})` : ""}</span>
-                <input type="number" min="0" step="any" value={x.qtd} onChange={e => mudarLinha(i, "qtd", e.target.value)} title="Quantidade" style={{ ...farmInp, width: 70, padding: "5px 7px", fontSize: 12 }} />
-                <input type="number" min="0" step="any" value={x.custo_unit} onChange={e => mudarLinha(i, "custo_unit", e.target.value)} placeholder="R$ unit." title="Custo unitário (R$)" style={{ ...farmInp, width: 82, padding: "5px 7px", fontSize: 12 }} />
+                <input type="number" min="0" step="any" value={x.qtd} onChange={e => mudarLinha(i, "qtd", e.target.value)} title="Quantidade" style={{ ...campoTexto, width: 70, padding: "5px 7px", fontSize: 12 }} />
+                <input type="number" min="0" step="any" value={x.custo_unit} onChange={e => mudarLinha(i, "custo_unit", e.target.value)} placeholder="R$ unit." title="Custo unitário (R$)" style={{ ...campoTexto, width: 82, padding: "5px 7px", fontSize: 12 }} />
                 <button onClick={() => setLista(l => l.filter((_, j) => j !== i))} style={{ background: "transparent", border: "none", color: "#f43f5e", cursor: "pointer", fontSize: 14, fontWeight: 700 }}>✕</button>
               </div>
             ))}
@@ -11834,8 +11782,8 @@ function SupNovoPedidoModal({ forns, materiais, meds, sugMat, sugMed, onClose, o
         {total > 0 && <div style={{ textAlign: "right", fontSize: 13, fontWeight: 800, color: VX.turquesa, fontFamily: "JetBrains Mono, monospace", marginBottom: 10 }}>Total estimado: {fmtBRL(total)}</div>}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={farmLbl}>Observação</label>
-          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Condições, cotação, urgência…" style={farmInp} />
+          <label style={rotuloCampo}>Observação</label>
+          <input value={obs} onChange={e => setObs(e.target.value)} placeholder="Condições, cotação, urgência…" style={campoTexto} />
         </div>
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -11867,8 +11815,8 @@ function SupRecebModal({ pedido, materiais = [], busy, onClose, onConfirm }) {
           {pedido.fornecedor_nome || "Sem fornecedor"} · informe o que chegou — cada linha vira uma <strong>entrada</strong> no estoque (materiais no almoxarifado, medicamentos na Farmácia). Recebimento parcial é permitido.
         </div>
         <div style={{ marginBottom: 12 }}>
-          <label style={farmLbl}>Nota fiscal / documento</label>
-          <input value={nf} onChange={e => setNf(e.target.value)} placeholder={`Nº NF (se vazio, usa PED-${pedido.id})`} style={{ ...farmInp, maxWidth: 260 }} />
+          <label style={rotuloCampo}>Nota fiscal / documento</label>
+          <input value={nf} onChange={e => setNf(e.target.value)} placeholder={`Nº NF (se vazio, usa PED-${pedido.id})`} style={{ ...campoTexto, maxWidth: 260 }} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
           {its.map((x, i) => {
@@ -11884,9 +11832,9 @@ function SupRecebModal({ pedido, materiais = [], busy, onClose, onConfirm }) {
                 </div>
                 {restante > 0 && (<>
                   <div style={{ display: "grid", gridTemplateColumns: "90px 1fr 1fr", gap: 8 }}>
-                    <div><label style={farmLbl}>Qtd recebida{mat && temConversao(mat) ? ` (${(mat.unidade_compra || "compra").trim()})` : ""}</label><input type="number" min="0" step="any" value={ln.qtd} onChange={e => set(i, "qtd", e.target.value)} style={farmInp} /></div>
-                    <div><label style={farmLbl}>Lote</label><input value={ln.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="opcional" style={farmInp} /></div>
-                    <div><label style={farmLbl}>Validade</label><input type="date" value={ln.validade} onChange={e => set(i, "validade", e.target.value)} style={farmInp} /></div>
+                    <div><label style={rotuloCampo}>Qtd recebida{mat && temConversao(mat) ? ` (${(mat.unidade_compra || "compra").trim()})` : ""}</label><input type="number" min="0" step="any" value={ln.qtd} onChange={e => set(i, "qtd", e.target.value)} style={campoTexto} /></div>
+                    <div><label style={rotuloCampo}>Lote</label><input value={ln.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="opcional" style={campoTexto} /></div>
+                    <div><label style={rotuloCampo}>Validade</label><input type="date" value={ln.validade} onChange={e => set(i, "validade", e.target.value)} style={campoTexto} /></div>
                   </div>
                   {/* Conferir caixa contra unidade é o erro que a conversão
                       existe para evitar — então a tela diz os dois lados
@@ -11982,8 +11930,8 @@ function SupPreditivoView({ itens, lotes, saidasHist, leadMap = {} }) {
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item…" style={{ ...farmInp, maxWidth: 300, flex: "1 1 200px" }} />
-        <select value={tipoF} onChange={e => setTipoF(e.target.value)} style={{ ...farmInp, maxWidth: 180 }}>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item…" style={{ ...campoTexto, maxWidth: 300, flex: "1 1 200px" }} />
+        <select value={tipoF} onChange={e => setTipoF(e.target.value)} style={{ ...campoTexto, maxWidth: 180 }}>
           <option value="">Materiais + medicamentos</option>
           <option value="material">Só materiais</option>
           <option value="medicamento">Só medicamentos</option>
@@ -12561,15 +12509,15 @@ function SupExecutivoView({ itens, lotes, reqs = [], invs = [] }) {
             return (<>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: 8, marginBottom: 10 }}>
                 <div>
-                  <label style={farmLbl}>Grupo</label>
-                  <select value={grupoSel} onChange={e => setSimGrupo(e.target.value)} style={farmInp}>
+                  <label style={rotuloCampo}>Grupo</label>
+                  <select value={grupoSel} onChange={e => setSimGrupo(e.target.value)} style={campoTexto}>
                     <optgroup label="Medicamentos (classe)">{classesMed.map(c => <option key={"med:" + c} value={"med:" + c}>{c}</option>)}</optgroup>
                     <optgroup label="Materiais (categoria)">{catsMat.map(c => <option key={"mat:" + c} value={"mat:" + c}>{c}</option>)}</optgroup>
                   </select>
                 </div>
                 <div>
-                  <label style={farmLbl}>Aumento %</label>
-                  <input type="number" value={simPct} onChange={e => setSimPct(e.target.value)} style={farmInp} />
+                  <label style={rotuloCampo}>Aumento %</label>
+                  <input type="number" value={simPct} onChange={e => setSimPct(e.target.value)} style={campoTexto} />
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.6 }}>
@@ -12985,7 +12933,7 @@ function SupInventarioView({ currentUser, canEdit, itens, lotes, saidasHist, inv
       </div>
 
       <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item ou bipar código…" style={{ ...farmInp, maxWidth: 300, flex: "1 1 200px" }} />
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar item ou bipar código…" style={{ ...campoTexto, maxWidth: 300, flex: "1 1 200px" }} />
         <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: "var(--text-2)", cursor: "pointer" }}>
           <input type="checkbox" checked={soPendentes} onChange={e => setSoPendentes(e.target.checked)} style={{ accentColor: VX.turquesa, width: 14, height: 14 }} /> só os que estão na fila de hoje
         </label>
@@ -13074,8 +13022,8 @@ function SupContagemModal({ item, saldoSistema, lotesDoItem = [], chave = "item_
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>Conte na prateleira e digite a quantidade{item.unidade ? ` em ${item.unidade}` : ""}. O saldo do sistema fica oculto até você conferir.</div>
 
         <div style={{ marginBottom: 14 }}>
-          <label style={farmLbl}>Quantidade contada *</label>
-          <input type="number" min="0" step="any" value={contado} onChange={e => setContado(e.target.value)} disabled={revelado} placeholder="0" style={{ ...farmInp, fontSize: 18, fontWeight: 700, textAlign: "center" }} autoFocus />
+          <label style={rotuloCampo}>Quantidade contada *</label>
+          <input type="number" min="0" step="any" value={contado} onChange={e => setContado(e.target.value)} disabled={revelado} placeholder="0" style={{ ...campoTexto, fontSize: 18, fontWeight: 700, textAlign: "center" }} autoFocus />
         </div>
 
         {!revelado ? (
@@ -13100,8 +13048,8 @@ function SupContagemModal({ item, saldoSistema, lotesDoItem = [], chave = "item_
               // o FEFO, e o erro só aparece meses depois — como material
               // vencido que o sistema jurava estar bom.
               <div style={{ marginBottom: 12 }}>
-                <label style={farmLbl}>Em qual lote entram as {farmFmtQtd(dif)} unidade(s) a mais? *</label>
-                <select value={loteEscolhido} onChange={e => setLoteEscolhido(e.target.value)} style={farmInp}>
+                <label style={rotuloCampo}>Em qual lote entram as {farmFmtQtd(dif)} unidade(s) a mais? *</label>
+                <select value={loteEscolhido} onChange={e => setLoteEscolhido(e.target.value)} style={campoTexto}>
                   <option value="">Escolha o lote…</option>
                   {lotesDoItem.map(l => (
                     <option key={l.lote || "__generico__"} value={l.lote || ""}>
@@ -13127,8 +13075,8 @@ function SupContagemModal({ item, saldoSistema, lotesDoItem = [], chave = "item_
             )}
           </>)}
           <div style={{ marginBottom: 14 }}>
-            <label style={farmLbl}>Observação {dif !== 0 ? "(motivo provável da divergência)" : ""}</label>
-            <input value={obs} onChange={e => setObs(e.target.value)} placeholder={dif !== 0 ? "Ex.: quebra, saída não lançada, empréstimo a outro setor" : "opcional"} style={farmInp} />
+            <label style={rotuloCampo}>Observação {dif !== 0 ? "(motivo provável da divergência)" : ""}</label>
+            <input value={obs} onChange={e => setObs(e.target.value)} placeholder={dif !== 0 ? "Ex.: quebra, saída não lançada, empréstimo a outro setor" : "opcional"} style={campoTexto} />
           </div>
         </>)}
 
@@ -13220,7 +13168,7 @@ function SupNfeModal({ itens, forns, onClose, onConfirm }) {
                   <tr key={i} style={{ borderTop: "1px solid var(--border)", opacity: x.alvo === "skip" ? 0.5 : 1 }}>
                     <td style={{ padding: "7px 10px" }}>
                       <div style={{ fontWeight: 600, marginBottom: 3 }}>{x.nome} <span style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 400 }}>{x.ean ? `· EAN ${x.ean}` : ""}</span></div>
-                      <select value={x.alvo} onChange={e => set(i, "alvo", e.target.value)} style={{ ...farmInp, padding: "5px 8px", fontSize: 12 }}>
+                      <select value={x.alvo} onChange={e => set(i, "alvo", e.target.value)} style={{ ...campoTexto, padding: "5px 8px", fontSize: 12 }}>
                         <option value="novo">➕ Criar novo material</option>
                         <option value="skip">✕ Não importar</option>
                         <optgroup label="Casar com material existente">
@@ -13228,10 +13176,10 @@ function SupNfeModal({ itens, forns, onClose, onConfirm }) {
                         </optgroup>
                       </select>
                     </td>
-                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.qtd} onChange={e => set(i, "qtd", e.target.value)} style={{ ...farmInp, width: 70, padding: "5px 7px", fontSize: 12 }} /></td>
-                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.custo_unit} onChange={e => set(i, "custo_unit", e.target.value)} style={{ ...farmInp, width: 80, padding: "5px 7px", fontSize: 12 }} /></td>
-                    <td style={{ padding: "7px 10px" }}><input value={x.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="—" style={{ ...farmInp, width: 90, padding: "5px 7px", fontSize: 12 }} /></td>
-                    <td style={{ padding: "7px 10px" }}><input type="date" value={x.validade} onChange={e => set(i, "validade", e.target.value)} style={{ ...farmInp, width: 130, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.qtd} onChange={e => set(i, "qtd", e.target.value)} style={{ ...campoTexto, width: 70, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px", textAlign: "right" }}><input type="number" min="0" step="any" value={x.custo_unit} onChange={e => set(i, "custo_unit", e.target.value)} style={{ ...campoTexto, width: 80, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px" }}><input value={x.lote} onChange={e => set(i, "lote", e.target.value)} placeholder="—" style={{ ...campoTexto, width: 90, padding: "5px 7px", fontSize: 12 }} /></td>
+                    <td style={{ padding: "7px 10px" }}><input type="date" value={x.validade} onChange={e => set(i, "validade", e.target.value)} style={{ ...campoTexto, width: 130, padding: "5px 7px", fontSize: 12 }} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -13282,20 +13230,20 @@ function SupItemModal({ item, onClose, onSave }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{item.id ? "Editar material" : "Novo material"}</div>
         <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Nome / descrição *</label>
-          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Luva de procedimento M — caixa 100" style={farmInp} autoFocus />
+          <label style={rotuloCampo}>Nome / descrição *</label>
+          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Luva de procedimento M — caixa 100" style={campoTexto} autoFocus />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Categoria</label>
-            <select value={f.categoria || ""} onChange={e => set("categoria", e.target.value)} style={farmInp}>
+            <label style={rotuloCampo}>Categoria</label>
+            <select value={f.categoria || ""} onChange={e => set("categoria", e.target.value)} style={campoTexto}>
               <option value="">—</option>
               {SUP_CATEGORIAS.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
           <div>
-            <label style={farmLbl}>Unidade de consumo</label>
-            <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={farmInp}>
+            <label style={rotuloCampo}>Unidade de consumo</label>
+            <select value={f.unidade || "unidade"} onChange={e => set("unidade", e.target.value)} style={campoTexto}>
               {SUP_UNIDADES.map(x => <option key={x} value={x}>{x}</option>)}
             </select>
           </div>
@@ -13313,12 +13261,12 @@ function SupItemModal({ item, onClose, onSave }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
-              <label style={farmLbl}>Unidade de compra</label>
-              <input value={f.unidade_compra || ""} onChange={e => set("unidade_compra", e.target.value)} placeholder="Ex.: caixa, fardo" style={farmInp} />
+              <label style={rotuloCampo}>Unidade de compra</label>
+              <input value={f.unidade_compra || ""} onChange={e => set("unidade_compra", e.target.value)} placeholder="Ex.: caixa, fardo" style={campoTexto} />
             </div>
             <div>
-              <label style={farmLbl}>{f.unidade || "unidade"}(s) por {f.unidade_compra?.trim() || "unidade de compra"}</label>
-              <input type="number" min="0" step="any" value={f.fator_conversao ?? ""} onChange={e => set("fator_conversao", e.target.value)} placeholder="1" style={farmInp} />
+              <label style={rotuloCampo}>{f.unidade || "unidade"}(s) por {f.unidade_compra?.trim() || "unidade de compra"}</label>
+              <input type="number" min="0" step="any" value={f.fator_conversao ?? ""} onChange={e => set("fator_conversao", e.target.value)} placeholder="1" style={campoTexto} />
             </div>
           </div>
           {temConversao(f) && conf.ok && (
@@ -13333,25 +13281,25 @@ function SupItemModal({ item, onClose, onSave }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>Estoque mínimo</label>
-            <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={farmInp} />
+            <label style={rotuloCampo}>Estoque mínimo</label>
+            <input type="number" min="0" value={f.estoque_minimo ?? ""} onChange={e => set("estoque_minimo", e.target.value)} placeholder="0" style={campoTexto} />
           </div>
           <div>
-            <label style={farmLbl}>Custo unit. (R$)</label>
-            <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={farmInp} />
+            <label style={rotuloCampo}>Custo unit. (R$)</label>
+            <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={campoTexto} />
           </div>
         </div>
         <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Código de barras</label>
-          <input value={f.codigo_barras || ""} onChange={e => set("codigo_barras", e.target.value)} placeholder="Clique aqui e bipe com o leitor (ou digite o EAN)" style={farmInp} />
+          <label style={rotuloCampo}>Código de barras</label>
+          <input value={f.codigo_barras || ""} onChange={e => set("codigo_barras", e.target.value)} placeholder="Clique aqui e bipe com o leitor (ou digite o EAN)" style={campoTexto} />
           <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>Um leitor USB funciona como teclado: clique no campo e passe o produto. Depois dá para buscar o item bipando na barra de busca do Estoque.</div>
         </div>
         <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 12 }}>
           <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
         </label>
         <div style={{ marginBottom: 16 }}>
-          <label style={farmLbl}>Observação</label>
-          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Marca, especificação, armazenamento…" style={{ ...farmInp, resize: "vertical" }} />
+          <label style={rotuloCampo}>Observação</label>
+          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Marca, especificação, armazenamento…" style={{ ...campoTexto, resize: "vertical" }} />
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
@@ -13416,18 +13364,18 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, setores = [], onC
 
         {tipo === "entrada" ? (<>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div><label style={farmLbl}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} placeholder="Ex.: AB1234" style={farmInp} /></div>
-            <div><label style={farmLbl}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Lote</label><input value={f.lote} onChange={e => set("lote", e.target.value)} placeholder="Ex.: AB1234" style={campoTexto} /></div>
+            <div><label style={rotuloCampo}>Validade</label><input type="date" value={f.validade} onChange={e => set("validade", e.target.value)} style={campoTexto} /></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
-            <div><label style={farmLbl}>Custo unit. da nota (R$)</label><input type="number" min="0" step="any" value={f.custo_unit} onChange={e => set("custo_unit", e.target.value)} placeholder="0,00" style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={campoTexto} autoFocus /></div>
+            <div><label style={rotuloCampo}>Custo unit. da nota (R$)</label><input type="number" min="0" step="any" value={f.custo_unit} onChange={e => set("custo_unit", e.target.value)} placeholder="0,00" style={campoTexto} /></div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div><label style={farmLbl}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={farmInp} /></div>
+            <div><label style={rotuloCampo}>Nota fiscal / documento</label><input value={f.documento} onChange={e => set("documento", e.target.value)} placeholder="Nº NF" style={campoTexto} /></div>
             <div>
-              <label style={farmLbl}>Fornecedor</label>
-              <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={farmInp}>
+              <label style={rotuloCampo}>Fornecedor</label>
+              <select value={f.fornecedor_id} onChange={e => set("fornecedor_id", e.target.value)} style={campoTexto}>
                 <option value="">—</option>
                 {fornecedores.map(fo => <option key={fo.id} value={fo.id}>{fo.nome}</option>)}
               </select>
@@ -13439,30 +13387,30 @@ function SupMovModal({ item, tipoInicial, lotes, fornecedores, setores = [], onC
             <div style={{ fontSize: 13, color: "#f43f5e", background: "#f43f5e12", border: "1px solid #f43f5e44", borderRadius: 8, padding: "10px 12px", marginBottom: 14 }}>Não há saldo em estoque para dar baixa. Registre uma entrada primeiro.</div>
           ) : (<>
             <div style={{ marginBottom: 10 }}>
-              <label style={farmLbl}>Lote (vence primeiro no topo)</label>
-              <select value={f.lote_id} onChange={e => set("lote_id", e.target.value)} style={farmInp}>
+              <label style={rotuloCampo}>Lote (vence primeiro no topo)</label>
+              <select value={f.lote_id} onChange={e => set("lote_id", e.target.value)} style={campoTexto}>
                 {lotesComSaldo.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
               </select>
             </div>
             {loteSel && infoDeValidade(loteSel.validade).status === "vencido" && <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10, fontWeight: 600 }}>⚠ Lote vencido — a baixa deve ser por perda/descarte, não consumo.</div>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-              <div><label style={farmLbl}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={farmInp} autoFocus /></div>
-              <div><label style={farmLbl}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={farmInp}>{SUP_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
+              <div><label style={rotuloCampo}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={campoTexto} autoFocus /></div>
+              <div><label style={rotuloCampo}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={campoTexto}>{SUP_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
             </div>
             <div style={{ marginBottom: 12 }}>
-              <label style={farmLbl}>Setor de destino</label>
+              <label style={rotuloCampo}>Setor de destino</label>
               {setores.length > 0 && !setorLivre ? (
                 <select value={f.setor} onChange={e => {
                   if (e.target.value === "__outro__") { setSetorLivre(true); set("setor", ""); }
                   else set("setor", e.target.value);
-                }} style={farmInp}>
+                }} style={campoTexto}>
                   <option value="">—</option>
                   {setores.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
                   <option value="__outro__">Outro…</option>
                 </select>
               ) : (
                 <input value={f.setor} onChange={e => set("setor", e.target.value)}
-                  placeholder="Ex.: Posto 2, Centro Cirúrgico" style={farmInp} autoFocus={setorLivre} />
+                  placeholder="Ex.: Posto 2, Centro Cirúrgico" style={campoTexto} autoFocus={setorLivre} />
               )}
               {/* Avisa, não bloqueia. E só depois de digitar algo que o
                   catálogo não reconhece — nem mesmo por diferença de acento
@@ -13582,25 +13530,25 @@ function SupFornecedorModal({ forn, onClose, onSave }) {
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 480, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>{forn.id ? "Editar fornecedor" : "Novo fornecedor"}</div>
         <div style={{ marginBottom: 10 }}>
-          <label style={farmLbl}>Nome / razão social *</label>
-          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Distribuidora Hospitalar Ltda" style={farmInp} autoFocus />
+          <label style={rotuloCampo}>Nome / razão social *</label>
+          <input value={f.nome} onChange={e => set("nome", e.target.value)} placeholder="Ex.: Distribuidora Hospitalar Ltda" style={campoTexto} autoFocus />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div><label style={farmLbl}>CNPJ</label><input value={f.cnpj || ""} onChange={e => set("cnpj", e.target.value)} placeholder="00.000.000/0000-00" style={farmInp} /></div>
-          <div><label style={farmLbl}>Pessoa de contato</label><input value={f.contato || ""} onChange={e => set("contato", e.target.value)} placeholder="Nome" style={farmInp} /></div>
+          <div><label style={rotuloCampo}>CNPJ</label><input value={f.cnpj || ""} onChange={e => set("cnpj", e.target.value)} placeholder="00.000.000/0000-00" style={campoTexto} /></div>
+          <div><label style={rotuloCampo}>Pessoa de contato</label><input value={f.contato || ""} onChange={e => set("contato", e.target.value)} placeholder="Nome" style={campoTexto} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <div><label style={farmLbl}>Telefone</label><input value={f.telefone || ""} onChange={e => set("telefone", e.target.value)} placeholder="(00) 00000-0000" style={farmInp} /></div>
-          <div><label style={farmLbl}>E-mail</label><input value={f.email || ""} onChange={e => set("email", e.target.value)} placeholder="contato@fornecedor.com" style={farmInp} /></div>
+          <div><label style={rotuloCampo}>Telefone</label><input value={f.telefone || ""} onChange={e => set("telefone", e.target.value)} placeholder="(00) 00000-0000" style={campoTexto} /></div>
+          <div><label style={rotuloCampo}>E-mail</label><input value={f.email || ""} onChange={e => set("email", e.target.value)} placeholder="contato@fornecedor.com" style={campoTexto} /></div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
-            <label style={farmLbl}>O que fornece</label>
-            <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={farmInp} />
+            <label style={rotuloCampo}>O que fornece</label>
+            <input value={f.categorias || ""} onChange={e => set("categorias", e.target.value)} placeholder="Ex.: material hospitalar, EPI, escritório" style={campoTexto} />
           </div>
           <div>
-            <label style={farmLbl}>Prazo de entrega (dias)</label>
-            <input type="number" min="0" value={f.lead_time_dias ?? ""} onChange={e => set("lead_time_dias", e.target.value)} placeholder={String(SUP_LEAD_PADRAO)} style={farmInp} />
+            <label style={rotuloCampo}>Prazo de entrega (dias)</label>
+            <input type="number" min="0" value={f.lead_time_dias ?? ""} onChange={e => set("lead_time_dias", e.target.value)} placeholder={String(SUP_LEAD_PADRAO)} style={campoTexto} />
           </div>
         </div>
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", margintop: 0, marginBottom: 10 }}>O prazo de entrega alimenta o <strong>ponto de pedido</strong>: o sistema sugere comprar antes que o estoque acabe dentro desse prazo + margem. Sem valor, usa {SUP_LEAD_PADRAO} dias.</div>
@@ -13608,8 +13556,8 @@ function SupFornecedorModal({ forn, onClose, onSave }) {
           <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
         </label>
         <div style={{ marginBottom: 16 }}>
-          <label style={farmLbl}>Observação</label>
-          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Prazo de entrega, condições…" style={{ ...farmInp, resize: "vertical" }} />
+          <label style={rotuloCampo}>Observação</label>
+          <textarea value={f.observacao || ""} onChange={e => set("observacao", e.target.value)} rows={2} placeholder="Prazo de entrega, condições…" style={{ ...campoTexto, resize: "vertical" }} />
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
