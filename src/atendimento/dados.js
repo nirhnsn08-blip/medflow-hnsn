@@ -30,7 +30,7 @@ import { CAMPOS_DO_EPISODIO } from "./consultas.js";
 import { camposDaProducao } from "./producao.js";
 import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
-import { listaLida } from "../util/leitura.js";
+import { listaLida, naoDeuParaLer } from "../util/leitura.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -1225,6 +1225,20 @@ export async function contasDaCompetencia(sb, competencia, { status, limite = 50
   return listaLida(r);
 }
 
+/**
+ * TODAS as contas, sem recorte de competência — a série histórica do BI.
+ *
+ * ⚠️ NÃO É `contasDaCompetencia(sb, null)`. Aquela devolve `[]` quando não
+ * vem competência, e devolve certo: quem pergunta "as contas de nenhuma
+ * competência" não tem nenhuma. Mas para o painel de Análises esse `[]`
+ * viraria "o hospital não faturou nada", que é outra coisa. Duas perguntas
+ * diferentes, duas funções.
+ */
+export async function todasAsContas(sb, { limite = 1000 } = {}) {
+  const r = await sb(`at_contas?select=${CAMPOS_CONTA}&order=competencia.desc,criado_em.desc&limit=${limite}`);
+  return listaLida(r);
+}
+
 // ── RESPONSÁVEL DO EPISÓDIO ─────────────────────────────────
 
 const CAMPOS_RESPONSAVEL = [
@@ -1582,4 +1596,28 @@ export async function salvarGlosa(sb, glosa, user) {
     };
   }
   return { ok: true, glosa: r[0] };
+}
+
+/**
+ * Os itens de VÁRIAS contas de uma vez, agrupados por conta.
+ *
+ * As Análises precisam do valor de todas as contas da competência. Uma
+ * chamada por conta faria 200 idas ao banco para desenhar um cartão.
+ *
+ * ⚠️ Devolve `{ porConta, falhou }` em vez de só o mapa. Um mapa vazio
+ * seria indistinguível de "nenhuma conta tem item" — e faturamento zero é
+ * exatamente o número que não pode nascer de uma falha de leitura.
+ */
+export async function itensDasContas(sb, ids) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(v => v != null);
+  if (!lista.length) return { porConta: {}, falhou: false };
+
+  const r = await sb(`at_conta_itens?conta_id=in.(${lista.join(",")})` +
+    `&select=${CAMPOS_ITEM}&order=criado_em`);
+  const linhas = listaLida(r);
+  if (naoDeuParaLer(linhas)) return { porConta: {}, falhou: true };
+
+  const porConta = {};
+  for (const i of linhas) (porConta[i.conta_id] ||= []).push(i);
+  return { porConta, falhou: false };
 }

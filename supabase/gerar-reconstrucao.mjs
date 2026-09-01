@@ -103,12 +103,11 @@ const ORDEM = [
   // (o rls-leitura no fim recria pelos mesmos nomes) e necessario nos bancos
   // que ja existem, onde o arquivo de 41 KB nao cabe no editor.
   //
-  // ⚠️ Ele abre com \`set valentrax.quem = 'adauam'\` — conveniência de quem
-  // roda à mão. Aqui dentro a linha vale até o FIM da sessão, então todas as
-  // migrações abaixo que se anotam sozinhas ficam registradas como aplicadas
-  // por 'adauam' em vez de quem realmente rodou o script. Não quebra nada e
-  // não muda esquema; só deixa um nome errado no registro. Some sozinho se a
-  // linha sair do arquivo de origem.
+  // Ele abre com `set valentrax.quem` (conveniência de quem roda à mão) e
+  // FECHA com `reset valentrax.quem`. O reset foi acrescentado depois que
+  // esta lista apontou o vazamento: `set` vale até o fim da SESSÃO, e aqui
+  // 87 scripts rodam numa sessão só — sem o reset, todos os de baixo se
+  // registrariam como aplicados por 'adauam'.
   "migracao-glosas-rls.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
