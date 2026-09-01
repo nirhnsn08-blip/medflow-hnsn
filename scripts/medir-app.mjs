@@ -254,7 +254,7 @@ function domínio(p) {
 }
 
 const PAGINAS = comps
-  .filter(c => /Page$|^AtendimentoModal$/.test(c.nome) && c.nome !== "SupabasePage")
+  .filter(c => /Page$|^AtendimentoModal$/.test(c.nome))
   .map(c => c.nome);
 
 const alvo = process.argv.slice(2).find(a => !a.startsWith("-"));
