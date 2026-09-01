@@ -152,6 +152,10 @@ function AdminUsuarios({ sb, adminUsuarios, currentUser }) {
     // A Edge Function devolve o que vem do Auth (situação de ativo, e-mail);
     // `profiles` guarda perfil, categoria e conselho. Nenhuma das duas tem o
     // quadro inteiro, então juntamos aqui.
+    // ⚠️ `adminUsuarios` é prop, e sem ela não há como listar: a Edge
+    // Function é a única fonte de quem está ativo e do e-mail. Recusar com
+    // recado é melhor que uma promessa quebrada que ninguém vê.
+    if (typeof adminUsuarios !== "function") { setErro("A administração de usuários não está disponível nesta sessão."); setRows([]); return; }
     const [r, profs] = await Promise.all([
       adminUsuarios("list"),
       sb("profiles?select=id,perfil,categoria,conselho,registro_conselho,uf_conselho,setor,cbo").catch(() => []),
@@ -540,8 +544,12 @@ export default function UsersPage({ sb, adminUsuarios, trocarSenha, currentUser 
   // A lista carrega para TODO mundo: o adm_master precisa dela para
   // classificar a equipe (antes só carregava para quem NÃO era master, o
   // que deixava justamente o administrador sem a tela).
-  useEffect(() => { loadProfiles().then(setProfiles); }, [isMaster]);
-  const recarregarProfiles = () => loadProfiles().then(setProfiles);
+  // 🔴 CHAMAVA `loadProfiles()` SEM ARGUMENTO NENHUM. A carga ganhou `sb`
+  // como primeiro parâmetro na extração e estes dois lugares ficaram para
+  // trás: `await sb(...)` com `sb` indefinido estoura, a promessa morre
+  // sozinha e a lista simplesmente nunca chega. Nada na tela dizia isso.
+  useEffect(() => { loadProfiles(sb).then(setProfiles); }, [isMaster]);
+  const recarregarProfiles = () => loadProfiles(sb).then(setProfiles);
   async function handleChangePw() {
     if (busy) return;
     if (np1.length < 6) { setMsg("⚠️ A nova senha precisa de ao menos 6 caracteres."); return; }
