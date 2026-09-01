@@ -43,6 +43,9 @@ import BlocoPage from "./bloco/BlocoPage.jsx";
 import ScihPage from "./scih/ScihPage.jsx";
 import PacientePage from "./pacientes/Paciente360.jsx";
 import ProtocolosPage from "./protocolos/ProtocolosPage.jsx";
+import { K, loadDB, saveDB, loadFromSupabase, saveRecord } from "./painel/dados.js";
+import { aggregateMes, aggregateAno, comparativo, calcAlertas, ocupacaoSetor } from "./painel/agregados.js";
+import { RingGauge, StatCard, DeltaBadge, SemaforoMeta } from "./painel/widgets.jsx";
 import { ROLES } from "./acesso/papeis-sistema.js";
 import { validarCbo, formatarCbo, cbosDoCatalogo } from "./acesso/cbo.js";
 import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
@@ -416,57 +419,11 @@ function VxLogo({ size = 30 }) {
     </svg>
   );
 }
-// Wordmark VALENTRAX com o X em degradê azul
-// Ícones de linha (profissionais, sem emoji) — traço 1.8, herdam a cor do texto
-const K = "hnsn_v5";
 
 // ═══════════════════════════════════════════════════════════
 // STORAGE — localStorage + Supabase fallback
 // ═══════════════════════════════════════════════════════════
-const loadDB  = () => { try { return JSON.parse(localStorage.getItem(K) || "{}"); } catch { return {}; } };
-const saveDB  = d  => localStorage.setItem(K, JSON.stringify(d));
-// Lê TODOS os atendimentos do Supabase e reconstrói o formato db[data][especialidade].
-// É o que faz os números aparecerem em qualquer computador (não só onde foram digitados).
-async function loadFromSupabase() {
-  const rows = await sbFetch("atendimentos?select=*");
-  if (!Array.isArray(rows)) return null;
-  const db = {};
-  for (const r of rows) {
-    if (!db[r.data]) db[r.data] = {};
-    db[r.data][r.especialidade] = {
-      primeiras:   r.primeiras   || 0,
-      retornos:    r.retornos    || 0,
-      ofertadas:   r.ofertadas   || 0,
-      realizadas:  r.realizadas  || 0,
-      livres:      r.livres      || 0,
-      emergencias: r.emergencias || 0,
-      faltas:      r.faltas      || 0,
-    };
-  }
-  return db;
-}
 
-// Retorna "cloud" se o dado foi confirmado no Supabase, "local" caso contrário —
-// para a interface avisar quando o registro ficou salvo só neste aparelho.
-async function saveRecord(date, specId, data, user) {
-  const db = loadDB();
-  if (!db[date]) db[date] = {};
-  db[date][specId] = data;
-  saveDB(db);
-  // Supabase
-  let syncStatus = "local";
-  if (USE_SUPABASE) {
-    const res = await sbFetch("atendimentos?on_conflict=data,especialidade", {
-      method: "POST",
-      headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
-      body: JSON.stringify({ data: date, especialidade: specId, ...data, usuario: user?.name || null }),
-    });
-    if (res) syncStatus = "cloud";
-  }
-  // Auditoria
-  addAuditLog(user, "salvar", `${date} / ${specId}`, data);
-  return syncStatus;
-}
 
 // ═══════════════════════════════════════════════════════════
 // AUDITORIA
@@ -481,44 +438,6 @@ const addAuditLog = (user, acao, alvo, dados) => registrarAuditoria(SB(), user, 
 // ═══════════════════════════════════════════════════════════
 // AGGREGATE
 // ═══════════════════════════════════════════════════════════
-function aggregateMes(db, ano, mes, specId) {
-  const prefix = `${ano}-${String(mes + 1).padStart(2, "0")}`;
-  let r = { primeiras: 0, retornos: 0, ofertadas: 0, realizadas: 0, livres: 0, emergencias: 0, faltas: 0 };
-  Object.entries(db).filter(([d]) => d.startsWith(prefix)).forEach(([, day]) => {
-    const s = day[specId]; if (!s) return;
-    Object.keys(r).forEach(k => { r[k] += s[k] || 0; });
-  });
-  return r;
-}
-function aggregateAno(db, ano, specId) {
-  return Array.from({ length: 12 }, (_, m) => {
-    const d = aggregateMes(db, ano, m, specId);
-    return { mes: m, ...d, total: d.primeiras + d.retornos + d.emergencias };
-  });
-}
-// Aggregate acumulado — todos os dados disponíveis
-function aggregateTotal(db, specId) {
-  let r = { primeiras: 0, retornos: 0, ofertadas: 0, realizadas: 0, livres: 0, emergencias: 0, faltas: 0 };
-  Object.entries(db).forEach(([, day]) => {
-    const s = day[specId]; if (!s) return;
-    Object.keys(r).forEach(k => { r[k] += s[k] || 0; });
-  });
-  return { ...r, total: r.primeiras + r.retornos + r.emergencias };
-}
-// Comparativo mês vs mês anterior e mesmo mês ano anterior
-function comparativo(db, ano, mes, specId) {
-  const cur  = aggregateMes(db, ano, mes, specId);
-  const prev = mes > 0 ? aggregateMes(db, ano, mes - 1, specId) : aggregateMes(db, ano - 1, 11, specId);
-  const ly   = aggregateMes(db, ano - 1, mes, specId);
-  const total     = cur.primeiras + cur.retornos + cur.emergencias;
-  const prevTotal = prev.primeiras + prev.retornos + prev.emergencias;
-  const lyTotal   = ly.primeiras + ly.retornos + ly.emergencias;
-  return {
-    mesAtual: total, mesAnterior: prevTotal, mesAnteriorLabel: mes > 0 ? MONTHS[mes-1] : MONTHS[11],
-    mesAnoAnterior: lyTotal, variacaoMes: prevTotal > 0 ? ((total - prevTotal) / prevTotal) * 100 : 0,
-    variacaoAno: lyTotal > 0 ? ((total - lyTotal) / lyTotal) * 100 : 0,
-  };
-}
 
 // ═══════════════════════════════════════════════════════════
 // AUTH
@@ -678,111 +597,13 @@ async function adminUsuarios(action, payload = {}) {
 // ═══════════════════════════════════════════════════════════
 // ALERTAS AUTOMÁTICOS
 // ═══════════════════════════════════════════════════════════
-function calcAlertas(db) {
-  const now = new Date();
-  const ano = now.getFullYear(), mes = now.getMonth();
-  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
-  const diaAtual  = now.getDate();
-  const diasRestantes = diasNoMes - diaAtual;
-  const alerts = [];
-
-  SPECS.forEach(spec => {
-    const m     = aggregateMes(db, ano, mes, spec.id);
-    const total = m.primeiras + m.retornos + m.emergencias;
-    const pct   = spec.metaM > 0 ? (total / spec.metaM) * 100 : 0;
-    const ritmo = diaAtual > 0 ? total / diaAtual : 0;
-    const proj  = Math.round(ritmo * diasNoMes);
-    const txFalta = m.ofertadas > 0 ? (m.faltas / m.ofertadas) * 100 : 0;
-    const txComp  = m.ofertadas > 0 ? (m.realizadas / m.ofertadas) * 100 : 0;
-
-    // Alerta crítico: abaixo de 50% e estamos na 2ª quinzena
-    if (pct < 50 && diaAtual > 15)
-      alerts.push({ level: "critical", spec: spec.label, msg: `${spec.label} está em ${pct.toFixed(0)}% da meta mensal — risco alto de não atingir.`, color: spec.color });
-
-    // Alerta warning: projeção abaixo da meta
-    else if (proj < spec.metaM && pct < 80)
-      alerts.push({ level: "warning", spec: spec.label, msg: `${spec.label}: projeção de fechamento ${fmt(proj)} vs meta ${fmt(spec.metaM)} (faltam ${diasRestantes} dias).`, color: spec.color });
-
-    // Meta atingida — positivo
-    else if (pct >= 100)
-      alerts.push({ level: "success", spec: spec.label, msg: `${spec.label} atingiu 100% da meta mensal!`, color: spec.color });
-
-    // Alta taxa de faltas
-    if (txFalta > 20 && m.ofertadas > 0)
-      alerts.push({ level: "warning", spec: spec.label, msg: `${spec.label}: taxa de faltas em ${txFalta.toFixed(0)}% — acima do limite de 20%.`, color: spec.color });
-
-    // Baixo comparecimento
-    if (txComp < 60 && m.ofertadas > 0)
-      alerts.push({ level: "critical", spec: spec.label, msg: `${spec.label}: comparecimento baixo (${txComp.toFixed(0)}%). Revisar agendamentos.`, color: spec.color });
-  });
-
-  return alerts;
-}
 
 // ═══════════════════════════════════════════════════════════
 // HELPERS VISUAIS
 // ═══════════════════════════════════════════════════════════
-function RingGauge({ value, max, color, label, sub, size = 120 }) {
-  const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
-  const r = 44, cx = 60, cy = 60, circ = 2 * Math.PI * r;
-  const dash = (pct / 100) * circ;
-  const isOver = value > max;
-  const rc = isOver ? "#34d399" : pct >= 70 ? color : pct >= 40 ? "#fbbf24" : "#fb7185";
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <svg width={size} height={size} viewBox="0 0 120 120">
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--surface-3)" strokeWidth={10} />
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={rc} strokeWidth={10}
-          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-          transform="rotate(-90 60 60)" style={{ transition: "stroke-dasharray .6s ease" }} />
-        <text x={cx} y={cy - 6} textAnchor="middle" fill={rc} fontSize={18} fontWeight={700} fontFamily="JetBrains Mono, monospace">{Math.round(pct)}%</text>
-        <text x={cx} y={cy + 12} textAnchor="middle" fill="var(--text-3)" fontSize={10} fontFamily="Inter, sans-serif">
-          {isOver ? "✓ meta" : `${fmt(Math.max(max - value, 0))} falta`}
-        </text>
-      </svg>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
-        {sub && <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{sub}</div>}
-      </div>
-    </div>
-  );
-}
 
-function StatCard({ label, value, sub, color, big }) {
-  return (
-    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderTop: `2px solid ${color}`, borderRadius: 8, padding: "12px 14px", flex: 1, minWidth: 0 }}>
-      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em", color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: big ? 28 : 22, fontWeight: 600, color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
-}
 
-function DeltaBadge({ value, meta }) {
-  if (!meta || value === 0) return null;
-  const diff = value - meta, pct = Math.round((diff / meta) * 100), above = diff >= 0;
-  return (
-    <span style={{ background: above ? "#0a3d2a" : "#3d0f18", color: above ? "#34d399" : "#fb7185", border: `1px solid ${above ? "#34d399" : "#fb7185"}`, borderRadius: 99, fontSize: 11, fontWeight: 700, padding: "2px 8px", fontFamily: "JetBrains Mono, monospace" }}>
-      {above ? "▲" : "▼"} {Math.abs(pct)}% {above ? "acima" : "abaixo"} da meta
-    </span>
-  );
-}
 
-function SemaforoMeta({ pct, diasRestantes }) {
-  const proj = pct; // já calculado fora
-  let cor, icone, texto;
-  if (pct >= 100)                          { cor = "#34d399"; icone = "●"; texto = "Meta atingida!"; }
-  else if (diasRestantes > 0 && pct >= 70) { cor = "#fbbf24"; icone = "●"; texto = "Precisa acelerar"; }
-  else if (pct < 40 && diasRestantes < 10) { cor = "#fb7185"; icone = "●"; texto = "Meta em risco"; }
-  else if (pct >= 40)                      { cor = "#fbbf24"; icone = "●"; texto = "Atenção"; }
-  else                                     { cor = "#fb7185"; icone = "●"; texto = "Ritmo insuficiente"; }
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, background: cor + "18", border: `1px solid ${cor}44`, borderRadius: 6, padding: "4px 10px" }}>
-      <span style={{ fontSize: 14, color: cor }}>{icone}</span>
-      <span style={{ fontSize: 12, fontWeight: 700, color: cor }}>{texto}</span>
-    </div>
-  );
-}
 
 
 // ═══════════════════════════════════════════════════════════
@@ -845,7 +666,7 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 
   async function handleSave() {
     const data = { primeiras: f("primeiras"), retornos: f("retornos"), ofertadas: f("ofertadas"), realizadas: f("realizadas"), livres: f("livres"), emergencias: f("emergencias"), faltas: f("faltas") };
-    const syncStatus = await saveRecord(date, spec.id, data, currentUser);
+    const syncStatus = await saveRecord(SB(), date, spec.id, data, currentUser);
     const newDb = loadDB();
     onSave(newDb);
     setSaved(syncStatus); // "cloud" | "local"
@@ -1149,22 +970,6 @@ function EspecialidadePage({ spec, db, onSave, readOnly = false, currentUser }) 
 // ═══════════════════════════════════════════════════════════
 // SETORES + SOLICITAÇÕES (monitoramento de leitos)
 // ═══════════════════════════════════════════════════════════
-// Ocupação de um setor = SÓ os leitos ocupados (a fila de espera não conta —
-// paciente aguardando ainda não está num leito). A fila vira um selo separado.
-function ocupacaoSetor(leitos, solicitacoes, setor) {
-  const dele = leitos.filter(l => (l.setor || "") === setor.nome);
-  const operacionais = dele.filter(l => l.status !== "interditado").length;
-  const ocupados = dele.filter(l => l.status === "ocupado").length;
-  const fila = (solicitacoes || []).filter(s => s.setor_destino === setor.nome);
-  const aguardando = fila.length;
-  // maior tempo de espera da fila deste setor (em minutos)
-  const agora = nowISO();
-  const maiorEsperaMin = fila.reduce((m, s) => { const d = diffMin(s.hora_pedido, agora); return d != null && d > m ? d : m; }, 0);
-  const pct = operacionais > 0 ? Math.round((ocupados / operacionais) * 100) : null;
-  const amar = setor.alerta_amarelo ?? 90, verm = setor.alerta_vermelho ?? 100;
-  const cor = pct == null ? "var(--text-muted)" : pct >= verm ? "#f43f5e" : pct >= amar ? "#fbbf24" : "#34d399";
-  return { operacionais, ocupados, aguardando, maiorEsperaMin, pct, cor, restringir: pct != null && pct >= verm };
-}
 
 function Overview({ db, currentUser, canEdit, perms, onNav }) {
   const now = new Date();
@@ -2050,7 +1855,7 @@ export default function App() {
     if (!USE_SUPABASE || !currentUser) return;
     let cancelled = false;
     const syncFromCloud = () => {
-      loadFromSupabase().then(cloud => {
+      loadFromSupabase(SB()).then(cloud => {
         if (cancelled || !cloud) return;
         const prev = loadDB();
         const merged = { ...prev };
