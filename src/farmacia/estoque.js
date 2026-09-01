@@ -19,3 +19,14 @@ export const CHAVE_LOTE = "medicamento_id";
 
 /** Soma dos lotes de um medicamento. */
 export const saldoDoMedicamento = (medId, lotes = []) => supSaldoTotal(medId, lotes, CHAVE_LOTE);
+
+/**
+ * O custo unitário de um medicamento, em número.
+ *
+ * ⚠️ Vive aqui, e não na tela, porque é lido por NOVE declarações: os
+ * indicadores da Farmácia, o executivo e o inventário do Almoxarifado, a
+ * triagem do PS. Sem custo cadastrado é zero — e zero aqui significa "não
+ * sei quanto custa", não "é de graça". Quem soma custo total precisa dizer
+ * quantos itens entraram na conta sem preço.
+ */
+export const custoUnit = med => Number(med?.custo_unitario || 0);

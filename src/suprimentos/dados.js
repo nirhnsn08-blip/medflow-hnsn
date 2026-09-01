@@ -15,6 +15,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { conciliar } from "./kardex.js";
+import { nowISO } from "../util/datas.js";
 
 /** Linhas por requisição. O PostgREST tem teto próprio; 1000 é conservador. */
 export const PAGINA = 1000;
@@ -88,4 +89,176 @@ export async function conciliarAgora(sb, opcoes = {}) {
           : !completo ? "truncado" : null,
     movimentosLidos: mv.linhas?.length ?? 0,
   };
+}
+
+// ═══════════════════════════════════════════════════════════
+// AS TABELAS DO ALMOXARIFADO
+//
+// Saiu do App.jsx e veio para cá, junto da conciliação de kardex que já
+// morava neste arquivo: as duas falam com `sup_movimentos` e `sup_lotes`,
+// e mantê-las separadas faria a conciliação e a tela lerem por caminhos
+// diferentes a mesma coisa.
+//
+// ⚠️ `sb` é parâmetro, como em ../ps/dados.js e ../farmacia/dados.js.
+// Nulo = sem banco.
+// ═══════════════════════════════════════════════════════════
+
+export async function loadSupItens(sb) {
+  const rows = await sb("sup_itens?select=*&order=nome");
+  return Array.isArray(rows) ? rows : [];
+}
+export async function loadSupLotes(sb) {
+  const rows = await sb("sup_lotes?select=*&order=validade.asc.nullslast");
+  return Array.isArray(rows) ? rows : [];
+}
+export async function loadSupMovimentos(sb, itemId, limit = 60) {
+  const q = itemId
+    ? `sup_movimentos?item_id=eq.${itemId}&select=*&order=created_at.desc&limit=${limit}`
+    : `sup_movimentos?select=*&order=created_at.desc&limit=${limit}`;
+  const rows = await sb(q);
+  return Array.isArray(rows) ? rows : [];
+}
+export async function loadSupMovimentosPeriodo(sb, fromISO, toISO) {
+  const rows = await sb(`sup_movimentos?created_at=gte.${fromISO}&created_at=lt.${toISO}&select=*&order=created_at.desc&limit=8000`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Saídas desde uma data (para previsão de demanda)
+export async function loadSupSaidasDesde(sb, fromISO) {
+  const rows = await sb(`sup_movimentos?tipo=eq.saida&created_at=gte.${fromISO}&select=item_id,quantidade&limit=12000`);
+  return Array.isArray(rows) ? rows : [];
+}
+export async function upsertSupItemRemote(sb, item, user) {
+  if (!sb) return null;
+  const body = { ...item, usuario: user?.name || null, updated_at: nowISO() };
+  if (item.id) {
+    await sb(`sup_itens?id=eq.${item.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    return null;
+  }
+  delete body.id;
+  return await sb("sup_itens", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+// Exclusão de material: devolve { ok, erro }. O trigger `sup_item_protege_kardex`
+// RECUSA a exclusão quando há movimento no histórico — e o `sb` engole a
+// mensagem (além de o PostgREST responder 204 mesmo sem apagar linha nenhuma).
+// Sem o fetch direto, a tela mandaria excluir, nada aconteceria, e ninguém
+// saberia por quê. Mesmo padrão de `addSupMovimentoRemote`.
+/**
+ * Exclui um item do catálogo e DEVOLVE O MOTIVO quando o banco recusa.
+ *
+ * 🔴 Recebe o `sbCru`, e não o `sb`. A recusa aqui é quase sempre chave
+ * estrangeira: o item tem movimento, lote ou requisição apontando para ele.
+ * Com o `sb`, que devolve `null` em qualquer erro, a tela diria só "não
+ * deu" — e quem está no almoxarifado precisa saber que o item TEM
+ * histórico, porque a saída é inativar, não excluir.
+ */
+export async function deleteSupItemRemote(sbCru, id) {
+  if (!sbCru) return { ok: true };
+  return sbCru(`sup_itens?id=eq.${id}`, null, { method: "DELETE" });
+}
+// Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
+// e como o sb engole erros, aqui fazemos o fetch direto para capturar a mensagem.
+/**
+ * Registra um movimento de estoque e DEVOLVE O MOTIVO da recusa.
+ *
+ * 🔴 Mesma razão do movimento da Farmácia: a recusa vem de GATILHO do banco
+ * ("saldo insuficiente", "lote vencido", "movimento sem lote"), e quem está
+ * separando material precisa LER o motivo, não um "não deu".
+ */
+export async function addSupMovimentoRemote(sbCru, mov, user) {
+  if (!sbCru) return { ok: false, erro: "Supabase indisponível." };
+  return sbCru("sup_movimentos", { ...mov, usuario: user?.name || null });
+}
+export async function loadSupFornecedores(sb) {
+  const rows = await sb("sup_fornecedores?select=*&order=nome");
+  return Array.isArray(rows) ? rows : [];
+}
+export async function upsertSupFornecedorRemote(sb, f, user) {
+  if (!sb) return null;
+  const body = { ...f, usuario: user?.name || null, updated_at: nowISO() };
+  if (f.id) {
+    await sb(`sup_fornecedores?id=eq.${f.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    return null;
+  }
+  delete body.id;
+  return await sb("sup_fornecedores", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify(body) });
+}
+export async function deleteSupFornecedorRemote(sb, id) {
+  if (!sb) return;
+  await sb(`sup_fornecedores?id=eq.${id}`, { method: "DELETE" });
+}
+// Inventário cíclico — contagens cegas (append-only)
+// Entradas recentes com fornecedor, para saber o prazo de entrega de cada item
+export async function loadSupEntradasComForn(sb, fromISO) {
+  const rows = await sb(`sup_movimentos?tipo=eq.entrada&fornecedor_id=not.is.null&created_at=gte.${fromISO}&select=item_id,fornecedor_id,created_at&order=created_at.desc&limit=8000`);
+  return Array.isArray(rows) ? rows : [];
+}
+export async function loadSupInventarios(sb, limit = 400) {
+  const rows = await sb(`sup_inventarios?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+// Devolve a linha criada (precisamos do id para amarrar os movimentos de
+// ajuste à contagem, via `documento = INV-<id>`).
+export async function addSupInventarioRemote(sb, inv, user) {
+  if (!sb) return null;
+  const r = await sb("sup_inventarios", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...inv, usuario: user?.name || null }),
+  });
+  return Array.isArray(r) ? r[0] : r;
+}
+export async function setSupItemCustoRemote(sb, itemId, custo) {
+  if (!sb || custo == null) return;
+  await sb(`sup_itens?id=eq.${itemId}`, { method: "PATCH", body: JSON.stringify({ custo_unitario: Number(custo), updated_at: nowISO() }) });
+}
+// Requisições de materiais (Fase B)
+export async function loadSupRequisicoes(sb, limit = 200) {
+  const rows = await sb(`sup_requisicoes?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+export async function addSupRequisicaoRemote(sb, req, user) {
+  if (!sb) return null;
+  return await sb("sup_requisicoes", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...req, solicitado_por: user?.name || null, usuario: user?.name || null }),
+  });
+}
+export async function atualizarSupReqRemote(sb, id, campos) {
+  if (!sb) return;
+  await sb(`sup_requisicoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Pedidos de compra (Fase C)
+export async function loadSupPedidos(sb, limit = 200) {
+  const rows = await sb(`sup_pedidos?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+export async function addSupPedidoRemote(sb, ped, user) {
+  if (!sb) return null;
+  return await sb("sup_pedidos", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...ped, usuario: user?.name || null }),
+  });
+}
+export async function atualizarSupPedidoRemote(sb, id, campos) {
+  if (!sb) return;
+  await sb(`sup_pedidos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+}
+// Cotações de compra (comparar preços entre fornecedores)
+export async function loadSupCotacoes(sb, limit = 100) {
+  const rows = await sb(`sup_cotacoes?select=*&order=created_at.desc&limit=${limit}`);
+  return Array.isArray(rows) ? rows : [];
+}
+export async function addSupCotacaoRemote(sb, cot, user) {
+  if (!sb) return null;
+  return await sb("sup_cotacoes", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...cot, usuario: user?.name || null }),
+  });
+}
+export async function atualizarSupCotacaoRemote(sb, id, campos) {
+  if (!sb) return;
+  await sb(`sup_cotacoes?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
 }
