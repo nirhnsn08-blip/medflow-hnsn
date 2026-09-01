@@ -153,15 +153,25 @@ select 'tabela at_glosas existe', count(*)::text
  where table_schema = 'public' and table_name = 'at_glosas'
 
 union all
-select 'constraints (esperado 5)', count(*)::text
+-- ⚠️ `contype = 'c'` filtra SÓ os CHECK. A primeira versão desta
+-- conferência dizia "esperado 5" e contava 8, porque em LIKE o `_` é
+-- curinga de UM caractere: `at_glosa_%` casa com `at_glosas_pkey` e com
+-- as duas chaves estrangeiras. Conferência que dá alarme falso ensina a
+-- ignorar conferência.
+select 'CHECKs (esperado 5)', count(*)::text
   from pg_constraint
- where conrelid = 'public.at_glosas'::regclass
-   and conname like 'at_glosa_%'
+ where conrelid = 'public.at_glosas'::regclass and contype = 'c'
 
 union all
-select 'indices (esperado 3)', count(*)::text
+select 'chaves estrangeiras (esperado 2)', count(*)::text
+  from pg_constraint
+ where conrelid = 'public.at_glosas'::regclass and contype = 'f'
+
+union all
+-- 4 = os 3 criados aqui + o índice implícito da chave primária
+select 'indices (esperado 4, com o da pkey)', count(*)::text
   from pg_indexes
- where schemaname = 'public' and indexname like 'at_glosas_%'
+ where schemaname = 'public' and tablename = 'at_glosas'
 
 union all
 select '⚠️ politicas RLS (0 = FALTA RODAR migracao-rls-leitura.sql)', count(*)::text
