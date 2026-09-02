@@ -392,12 +392,51 @@ sair do papel: **Glosas** (#197, com tabela `at_glosas` nova nos dois bancos) e
      na aba Convênios & contratos — o CRUD de convênio/plano já existe na aba Tabelas
      do Atendimento; o que não existe é preço nem regra.)*
 
-5. **O CI NÃO barra merge.** `gh pr merge` não consulta o GitHub Actions e a Vercel
-   publica independente. Em 01/09 a `main` ficou vermelha por **três merges seguidos**
-   sem que nada avisasse. **Rode `gh pr checks <n>` antes de todo merge** — e repare
-   que o `vitest` imprime `Tests N passed` e `Errors N` em linhas separadas: dá para
-   ler como sucesso e sair como exit 1. Barrar de verdade exige *branch protection*
-   ligado no GitHub, que ainda não está.
+5. **O CI NÃO barra merge — e há uma trava parcial deste lado.**
+
+   `gh pr merge` não consulta o GitHub Actions e a Vercel publica independente.
+   Em 01/09 a `main` ficou vermelha por **três merges seguidos** sem que nada
+   avisasse (e já tinha acontecido em 27/08).
+
+   **Use `npm run mergear <n>`** em vez de `gh pr merge`. Ele confere sete
+   coisas antes e o CI da base depois. As duas que mais importam:
+
+   - 🔴 **o verde é DO COMMIT que está no topo do PR.** Um push depois do CI
+     deixa o ✓ apontando para o commit anterior, e a tela do PR continua
+     tranquilizadora.
+   - 🔴 **`mergeStateStatus = UNSTABLE` recusa.** Inclui o caso do check que
+     nem foi CRIADO ainda — contar só o que existe não vê o que falta.
+
+   `npm run mergear <n> --seco` confere sem mergear.
+
+   ⚠️ **Isto é barreira de HÁBITO, não de servidor.** `gh pr merge` continua
+   funcionando por fora.
+
+   ## 🔒 A trava de verdade: branch protection (PRECISA DE ADMIN)
+
+   Quem roda o Claude aqui tem `push`, **não `admin`** — conferido em
+   01/09/2026 (`{"admin": false, "push": true}`). Só quem administra o
+   `nirhnsn08-blip` consegue ligar. O caminho:
+
+   **Settings → Branches → Add branch ruleset** (ou *Add rule* no formato
+   antigo), com `main` como alvo, e marque:
+
+   | opção | por quê |
+   |---|---|
+   | **Require status checks to pass** → adicione **`build`** | é o que faltou nas 4 vezes |
+   | ↳ **Require branches to be up to date before merging** | impede o verde de uma base velha — a mesma coisa que a verificação 4 do `mergear` |
+   | **Block force pushes** | `push --force` na `main` apaga trabalho da outra pessoa |
+   | **Restrict deletions** | ninguém apaga a `main` por engano |
+
+   ⚠️ **NÃO marque "Require a pull request before merging" com aprovação
+   obrigatória** enquanto forem duas pessoas: cada um ficaria esperando o
+   outro revisar para publicar qualquer correção. O PR já é o hábito da casa;
+   o que falta é o CI barrar.
+
+   ⚠️ **Deixe "Do not allow bypassing" DESMARCADO** no começo. Se o `build`
+   quebrar por motivo de infraestrutura (runner fora do ar), alguém precisa
+   conseguir publicar uma correção urgente no hospital.
+
 
 ### O que foi corrigido em 21-22/08/2026 (PRs #107, #108, #109 — em produção)
 
