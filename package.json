@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "medir": "node scripts/medir-app.mjs",
-    "cargas": "node scripts/cargas.mjs"
+    "cargas": "node scripts/cargas.mjs",
+    "mergear": "node scripts/mergear.mjs"
   },
   "dependencies": {
     "react": "^18.2.0",
