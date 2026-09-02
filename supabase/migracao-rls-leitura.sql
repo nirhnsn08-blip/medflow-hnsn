@@ -213,7 +213,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 97 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 98 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -251,6 +251,7 @@ begin
       ('at_glosas', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
       ('at_planos', 'true'),                                                                          -- todos os autenticados
       ('at_procedimentos', 'true'),                                                                   -- todos os autenticados
+      ('at_repasses', 'public.pode_ver_algum(''atendimento'')'),                                      -- atendimento
       ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
       ('atendimentos', 'public.pode_ver_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
@@ -434,6 +435,7 @@ begin
       ('at_conta_itens', 'public.pode_editar_algum(''atendimento'')'),                                -- atendimento
       ('at_contas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
       ('at_glosas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
+      ('at_repasses', 'public.pode_editar_algum(''atendimento'')'),                                   -- atendimento
       ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
       ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
