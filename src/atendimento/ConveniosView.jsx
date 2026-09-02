@@ -22,7 +22,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  precoDe, lacunasDePreco, coberturaDoConvenio, regrasDoConvenio,
+   lacunasDePreco, coberturaDoConvenio, regrasDoConvenio,
   recusasDoPreco, SITUACAO,
 } from "./precos.js";
 import { carregarPrecos, itensComConvenio, salvarPreco, carregarCatalogos } from "./dados.js";

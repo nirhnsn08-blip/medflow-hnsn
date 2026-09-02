@@ -25,6 +25,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import globals from "globals";
+import reactPlugin from "eslint-plugin-react";
 
 export default [
   {
@@ -40,9 +41,30 @@ export default [
       },
     },
     linterOptions: { reportUnusedDisableDirectives: true },
+    plugins: { react: reactPlugin },
     rules: {
       // O defeito do PR #151, e o único motivo deste arquivo existir.
       "no-undef": "error",
+
+      // ⚠️ ESTA REGRA É O QUE FAZ `no-unused-vars` FUNCIONAR EM JSX.
+      // Sem ela o ESLint não conta `<Componente />` como uso, e todo
+      // import de componente vira falso positivo.
+      "react/jsx-uses-vars": "error",
+      "react/jsx-uses-react": "error",
+
+      // 🔴 LIGADA em 01/09/2026, DEPOIS de instalar o plugin acima.
+      // Ela existe aqui por um motivo concreto: o `App.jsx` importava 13
+      // componentes do `recharts` e NÃO USAVA NENHUM — sobra da extração.
+      // O import morto arrastava um chunk de 339 kB para dentro do
+      // carregamento de todo mundo, e nenhum detector via.
+      //
+      // `argsIgnorePattern` com `^_`: parâmetro que existe só para chegar
+      // no seguinte (`(_, i) => …`) não é descuido.
+      "no-unused-vars": ["error", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        caughtErrors: "none",
+      }],
 
       // ⚠️ `no-unused-vars` FICA DE FORA, e não por preguiça.
       // Ligada, ela acusou 259 erros — e quase todos eram FALSOS: sem o

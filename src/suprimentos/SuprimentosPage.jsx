@@ -684,7 +684,6 @@ function SupRequisicoesView({ sb, sbCru, currentUser, canEdit, itens, lotes, onC
   const [verHistorico, setVerHistorico] = useState(false);
   const [, setTick] = useState(0);
   const prevAguardando = useRef(null);
-  const isMaster = currentUser?.role === "adm_master";
 
   function carregar() {
     loadSupRequisicoes(sb).then(rows => {
@@ -962,7 +961,7 @@ function SupNovaReqModal({ itens, setores, lotes, onClose, onSave }) {
 }
 
 // Cotações — compara preços de fornecedores por item e gera o pedido do vencedor.
-function SupCotacoesView({ sb, currentUser, canEdit, isMaster, materiais, forns, cotacoes, onChanged }) {
+function SupCotacoesView({ sb, currentUser, canEdit, materiais, forns, cotacoes, onChanged }) {
   const [meds, setMeds] = useState([]);
   const [showNova, setShowNova] = useState(false);
   const [abrir, setAbrir] = useState(null);      // cotação em comparação
@@ -1009,7 +1008,7 @@ function SupCotacoesView({ sb, currentUser, canEdit, isMaster, materiais, forns,
   // Gera pedido(s): "porItem" = melhor preço de cada item (divide por fornecedor);
   // fornId = pedido único com um fornecedor.
   async function gerarPedido(cot, modo, fornIdUnico) {
-    const { itens, fids, vencedorItem } = analise(cot);
+    const { itens, vencedorItem } = analise(cot);
     const grupos = {};   // fornecedor_id → itens do pedido
     itens.forEach((it, i) => {
       let fid = null, preco = null;
@@ -1151,7 +1150,7 @@ function SupNovaCotacaoModal({ materiais, meds, forns, onClose, onSave }) {
 }
 
 // Comparação da cotação: matriz preço × fornecedor, destaca o mais barato, gera pedido
-function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalvar, onGerar }) {
+function SupCotacaoModal({ cot, forns, canEdit, busy, onClose, onSalvar, onGerar }) {
   const fById = {}; forns.forEach(f => fById[f.id] = f);
   const [itens, setItens] = useState(() => (Array.isArray(cot.itens) ? cot.itens : []).map(x => ({ ...x, precos: { ...(x.precos || {}) } })));
   const fids = (cot.fornecedores || []).map(String);
@@ -1229,7 +1228,7 @@ function SupCotacaoModal({ cot, forns, canEdit, busy, analiseFn, onClose, onSalv
 
 // Compras — pedidos por fornecedor com itens de material E medicamento.
 // Recebimento (total ou parcial) dá entrada automática no estoque certo.
-function SupComprasView({ sb, sbCru, currentUser, canEdit, isMaster, materiais, lotes, saidasHist, forns, pedidos, leadMap = {}, onChanged }) {
+function SupComprasView({ sb, sbCru, currentUser, canEdit, materiais, lotes, saidasHist, forns, pedidos, leadMap = {}, onChanged }) {
   const [meds, setMeds] = useState([]);
   const [medLotes, setMedLotes] = useState([]);
   const [medSaidas, setMedSaidas] = useState([]);
@@ -2808,7 +2807,7 @@ function SupAssistenteView({ sb }) {
   );
 }
 
-export function SupInventarioView({ sb, currentUser, canEdit, itens, lotes, saidasHist, invs, onSave, chave = "item_id", origem = "suprimentos", rotuloItem = "Material" }) {
+export function SupInventarioView({ sb, canEdit, itens, lotes, saidasHist, invs, onSave, chave = "item_id", rotuloItem = "Material" }) {
   const [contar, setContar] = useState(null);   // item em contagem
   const [busca, setBusca] = useState("");
   const [soPendentes, setSoPendentes] = useState(true);
@@ -2883,7 +2882,7 @@ export function SupInventarioView({ sb, currentUser, canEdit, itens, lotes, said
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 640 }}>
             <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>
               <th style={{ padding: "9px 12px" }}>Classe</th>
-              <th style={{ padding: "9px 12px" }}>Material</th>
+              <th style={{ padding: "9px 12px" }}>{rotuloItem}</th>
               <th style={{ padding: "9px 12px" }}>Última contagem</th>
               <th style={{ padding: "9px 12px" }}>Situação</th>
               <th style={{ padding: "9px 12px", textAlign: "right" }}>Ação</th>
@@ -3389,7 +3388,6 @@ function SupKardexModal({ sb, item, fornecedores, canEdit, onEstornar, onClose }
   // (índice único em `estorno_de`), aqui é só para não oferecer um botão
   // que vai falhar.
   const estornados = idsJaEstornados(movs || []);
-  const porId = Object.fromEntries((movs || []).map(m => [m.id, m]));
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto" }}>

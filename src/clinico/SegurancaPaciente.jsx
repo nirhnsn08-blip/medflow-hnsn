@@ -23,7 +23,7 @@
 import { useState, useEffect, useRef } from "react";
 import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, Icon } from "../ui/base.jsx";
 import { comGrupos } from "../ui/sub-nav.js";
-import { taxa } from "../util/formato.js";
+
 import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
          matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
          indicadoresSeguranca, farol, metasSeguranca, relatorioNsp, fichaNotivisa,
@@ -398,12 +398,6 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
   const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 4, display: "block" };
   const Pill = ({ c, t }) => <span style={{ background: `${c}1f`, color: c, border: `1px solid ${c}66`, borderRadius: 999, padding: "1px 9px", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>{t}</span>;
   const dataHora = d => d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
-  const Placeholder = ({ fase }) => (
-    <div style={{ ...card, textAlign: "center", padding: "2.5rem", color: "var(--text-muted)" }}>
-      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>{navAtual.label}</div>
-      <div style={{ fontSize: 12.5 }}>Em construção — entra na <strong>Fase {fase}</strong>. A estrutura já está aqui na barra lateral.</div>
-    </div>
-  );
   const btnPrimario = (on = true) => ({ background: on ? VX.turquesa : "#5b76a0", color: "#04222b", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: on ? "pointer" : "default" });
   const btnMiniP = { background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}66`, borderRadius: 6, padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer", marginLeft: "auto" };
   const btnGhost = { background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" };
@@ -416,7 +410,7 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 12px" }}>
           <Icon name="shield" size={16} /><span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".02em", color: VX.turquesa }}>SEGURANÇA DO PACIENTE</span>
         </div>
-        {comGrupos(NSP_NAV).map((it, i) => {
+        {comGrupos(NSP_NAV).map(it => {
           if (it.grupoTitulo) return (
             <div key={it.grupoTitulo} style={{ padding: "14px 16px 4px", fontSize: 9.5, fontWeight: 700, letterSpacing: ".13em", textTransform: "uppercase", color: "var(--text-muted)" }}>{it.grupoTitulo}</div>
           );

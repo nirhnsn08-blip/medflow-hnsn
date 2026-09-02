@@ -146,7 +146,7 @@ export function responderAssistente(pergunta, dados = {}) {
            "prazo medio", "prazo de pagamento", "prazo tipico", "demora")
       || ((has("previs", "proje", "quando", "entra", "idade")) && dinheiro)) {
     if (contasIlegiveis) return semLeitura("as contas");
-    const ag = aging(conciliacoes, hoje);
+    const ag = aging(conciliacoes);
 
     if (has("prazo", "quando", "demora", "medio", "mediana")) {
       const est = estatisticaDePrazo(prazosObservados(contas, repassesPorConta));

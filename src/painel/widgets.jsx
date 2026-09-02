@@ -9,7 +9,7 @@
 // juntos porque compõem o mesmo painel e mudam juntos.
 // ═══════════════════════════════════════════════════════════
 
-import { VX } from "../ui/base.jsx";
+
 import { fmt } from "../util/formato.js";
 export function RingGauge({ value, max, color, label, sub, size = 120 }) {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
@@ -58,7 +58,6 @@ export function DeltaBadge({ value, meta }) {
 }
 
 export function SemaforoMeta({ pct, diasRestantes }) {
-  const proj = pct; // já calculado fora
   let cor, icone, texto;
   if (pct >= 100)                          { cor = "#34d399"; icone = "●"; texto = "Meta atingida!"; }
   else if (diasRestantes > 0 && pct >= 70) { cor = "#fbbf24"; icone = "●"; texto = "Precisa acelerar"; }

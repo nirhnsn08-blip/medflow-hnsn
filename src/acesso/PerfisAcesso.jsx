@@ -11,7 +11,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect, useMemo } from "react";
-import { MODULOS, GRUPOS, NIVEIS, NIVEL_LABEL, MODULO_POR_CHAVE } from "./modulos.js";
+import { MODULOS, GRUPOS, NIVEL_LABEL } from "./modulos.js";
 import { conferirPerfil, podeSalvarPerfil, quantosUsam, permissoesEfetivas, resumoDeAcesso } from "./permissoes.js";
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "../clinico/papeis.js";
 import { listaLida } from "../util/leitura.js";

@@ -72,7 +72,7 @@ export async function checarPassoProt(sb, item, user) {
   });
 }
 
-export async function encerrarAtivacaoProt(sb, a, desfecho, motivo, user) {
+export async function encerrarAtivacaoProt(sb, a, desfecho, motivo) {
   if (!sb) return;
   await sb(`prot_ativacoes?id=eq.${a.id}`, { method: "PATCH", body: JSON.stringify({
     status: "concluida", desfecho: desfecho || null, motivo: motivo || null, encerrado_em: new Date().toISOString(),

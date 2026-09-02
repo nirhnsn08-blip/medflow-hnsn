@@ -14,7 +14,7 @@
 // ⚠️ `sb` é parâmetro. Nulo = grava só no armário local.
 // ═══════════════════════════════════════════════════════════
 
-import { ESPECIALIDADES as SPECS } from "../ambulatorio/especialidades.js";
+
 import { registrarAuditoria } from "../auditoria/dados.js";
 // Wordmark VALENTRAX com o X em degradê azul
 // Ícones de linha (profissionais, sem emoji) — traço 1.8, herdam a cor do texto

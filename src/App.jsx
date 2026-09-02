@@ -1,181 +1,101 @@
-import { useState, useEffect, useCallback, useRef, Fragment, Component } from "react";
-import {
-  BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine, Legend, ComposedChart, Area
-} from "recharts";
+import { useState, useEffect, useCallback, Fragment, Component } from "react";
+
 
 // Motor de alertas da farmácia clínica — dose máxima, interação, alergia,
 // Beers, sonda, ajuste renal/hepático. Vive fora do App.jsx por ser o código
 // mais crítico do sistema: lá ele é testável (src/clinico/alertas.test.js).
-import {
-  FARM_GRAV, FARM_CROSS, FARM_SCORE_COR,
-  farmFmtQtd, normTxt, parseAlergias, checarAlergia,
-  analisarPrescricaoClinica, scoreItemClinico, scorePrescricao,
-} from "./clinico/alertas.js";
-import { sugerirGerme, camposDoGerme } from "./clinico/germes.js";
-import { ISOLAMENTOS, precaucaoDe } from "./clinico/isolamento.js";
+
+
 // Alergia como atributo do paciente (fonte única pep_alergias, com o campo
 // legado do atendimento fundido durante a transição).
-import { situacaoAlergica, textoAlergiasParaAlerta } from "./clinico/alergias.js";
+
 // Prontuário do paciente internado — em arquivo próprio para o módulo
 // evoluir sem disputar espaço neste arquivo, que já tem 14 mil linhas.
-import ProntuarioInternado from "./prontuario/ProntuarioInternado.jsx";
 // 🔴 A LIGAÇÃO QUE FALTAVA: ocupar o leito não abria o prontuário da
 // internação, e sem episódio TUDO que se registra sobre o internado ficava
 // vazio por construção. Ver prontuario/internacao.js.
-import { abrirEpisodio, encerrarEpisodio } from "./prontuario/dados.js";
-import { podeAbrirEpisodio, dadosDoEpisodio, desfechoDoLeito, avisoEpisodioNaoAberto } from "./prontuario/internacao.js";
+
+
 // 🔴 pep_alergias era lida em 4 lugares — inclusive na pulseira — e escrita
 // em nenhum. A tela MANDAVA registrar e não oferecia caminho.
-import { registrarAlergia } from "./prontuario/dados.js";
-import { validarAlergia, dadosDaAlergia, recadoDepoisDeGravar,
-         TIPOS as TIPOS_ALERGIA, GRAVIDADES as GRAVIDADES_ALERGIA } from "./clinico/registro-alergia.js";
+
+
 // Categorias profissionais — usadas na tela que classifica a equipe.
-import { CATEGORIAS as CATEGORIAS_CLINICAS } from "./clinico/papeis.js";
-import { permissoesEfetivas, podeVer, resumoDeAcesso, excecoesAplicadas,
-         modulosExcecionaveis, validarExcecao, rotuloNivel, NIVEIS_EXCECAO } from "./acesso/permissoes.js";
+
+import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
 import { GRUPOS } from "./acesso/modulos.js";
-import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon,
-         btnContorno, VxWordmark, customTooltip, campoTexto, rotuloCampo } from "./ui/base.jsx";
-import PerfisAcesso from "./acesso/PerfisAcesso.jsx";
+import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, VxWordmark } from "./ui/base.jsx";
 import UsersPage from "./acesso/Usuarios.jsx";
 import BlocoPage from "./bloco/BlocoPage.jsx";
 import ScihPage from "./scih/ScihPage.jsx";
 import PacientePage from "./pacientes/Paciente360.jsx";
 import ProtocolosPage from "./protocolos/ProtocolosPage.jsx";
-import { K, loadDB, saveDB, loadFromSupabase, saveRecord } from "./painel/dados.js";
-import { aggregateMes, aggregateAno, comparativo, calcAlertas, ocupacaoSetor } from "./painel/agregados.js";
+import {  loadDB, saveDB, loadFromSupabase } from "./painel/dados.js";
+
 import { AlertBanner, Overview, EspecialidadePage, PrintDashboard, ImportPage } from "./painel/Painel.jsx";
 import { ROLES } from "./acesso/papeis-sistema.js";
-import { validarCbo, formatarCbo, cbosDoCatalogo } from "./acesso/cbo.js";
-import ChecklistImplantacao from "./implantacao/ChecklistImplantacao.jsx";
-import {
-  SUP_LEAD_PADRAO, SUP_MARGEM_SEG, supPrazoReposicao, supSaldoTotal,
-  supLeadTimeMap, custoMedioPonderado, supPedidoTotal,
-} from "./suprimentos/kardex.js";
-import ConciliacaoKardex from "./suprimentos/ConciliacaoKardex.jsx";
-import SuprimentosPage, { SupInventarioView, SupContagemModal } from "./suprimentos/SuprimentosPage.jsx";
-import {
-  loadSupItens, loadSupLotes, loadSupMovimentos, loadSupMovimentosPeriodo, loadSupSaidasDesde,
-  upsertSupItemRemote, deleteSupItemRemote, addSupMovimentoRemote, loadSupFornecedores, upsertSupFornecedorRemote,
-  deleteSupFornecedorRemote, loadSupEntradasComForn, loadSupInventarios, addSupInventarioRemote,
-  setSupItemCustoRemote, loadSupRequisicoes, addSupRequisicaoRemote, atualizarSupReqRemote,
-  loadSupPedidos, addSupPedidoRemote, atualizarSupPedidoRemote, loadSupCotacoes, addSupCotacaoRemote,
-  atualizarSupCotacaoRemote,
-} from "./suprimentos/dados.js";
-import {
-  SUP_CATEGORIAS, SUP_UNIDADES, SUP_MOTIVOS_SAIDA, SUP_FARMACOS_MONITORADOS, SUP_PED_STATUS,
-  SUP_REQ_STATUS, SUP_EXEC_COBERTURA_ALVO, SUP_INV_INTERVALO,
-} from "./suprimentos/catalogo.js";
-import { custoUnit } from "./farmacia/estoque.js";
-import { casarComCatalogo, ehSetorNovo } from "./suprimentos/setores.js";
+
+
+import SuprimentosPage from "./suprimentos/SuprimentosPage.jsx";
+
+
 // A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
 // cabeçalho de preparo.js para o caminho que era válido e não deixava rastro.
-import { podeMarcarPronto, dispensadoDoItem } from "./farmacia/preparo.js";
-import { abasVisiveis, podeAbrirAba } from "./farmacia/abas.js";
-import { FARM_FORMAS, FARM_UNIDADES, FARM_CLASSES, FARM_MOTIVOS_SAIDA, FARM_ALERTA_TIPOS,
-         FARM_PREV_JANELA, FARM_PREV_HORIZONTE } from "./farmacia/catalogo.js";
-import { somLigado, ligarSom, avisoSonoro } from "./ui/som.js";
-import {
-  loadFarmMedicamentos, loadFarmLotes, loadFarmMovimentos, loadFarmMovimentosPeriodo, loadFarmSaidasDesde,
-  upsertFarmMedicamentoRemote, deleteFarmMedicamentoRemote, addFarmMovimentoRemote, loadFarmInteracoes,
-  loadFarmIncompatY, upsertFarmInteracaoRemote, deleteFarmInteracaoRemote, upsertFarmIncompatRemote,
-  deleteFarmIncompatRemote, loadFarmPreparo, receberPreparoRemote, atualizarPreparoRemote,
-  loadFarmMovimentosByMeds, loadFarmNaoPadronizados, addFarmNaoPadronizadoRemote, updateFarmNaoPadronizadoRemote,
-  deleteFarmNaoPadronizadoRemote, loadFarmIntervencoes, addFarmIntervencaoRemote, updateFarmIntervencaoRemote,
-  deleteFarmIntervencaoRemote, loadFarmInventarios, addFarmInventarioRemote, loadFarmSaidasByAtendimentos,
-  loadFarmSaidasByAtendimento,
-} from "./farmacia/dados.js";
-import { comGrupos } from "./ui/sub-nav.js";
+
+
 // Lote vencido não vai para paciente — mas SAI por descarte, senão fica
 // preso na prateleira. Ver o cabeçalho de validade.js.
-import { podeSair, lotesParaEscolha, situacaoDoLote, infoDeValidade, DIAS_VENCENDO } from "./farmacia/validade.js";
-import { saldoDoMedicamento } from "./farmacia/estoque.js";
-import { podeAprovarPedido, descreverAlcada, validarLimite } from "./suprimentos/aprovacao.js";
-import { carregarAlcada, salvarAlcada } from "./suprimentos/parametros.js";
+
+
 import TrilhaAuditoria from "./auditoria/Trilha.jsx";
-import { registrarAuditoria } from "./auditoria/dados.js";
-import {
-  MOTIVO_AJUSTE, documentoDaContagem, planejarAjuste, descreverPlano,
-  podeEstornar, movimentoDeEstorno, idsJaEstornados,
-} from "./suprimentos/inventario.js";
-import {
-  temConversao, comprarParaConsumo, custoPorUnidadeConsumo,
-  custoPorUnidadeCompra, consumoParaCompra, rotuloCompra, descreverEntrada, validarConversao,
-} from "./suprimentos/conversao.js";
+
+
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
 import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.js";
 // Triagem pediátrica — sugestão de Manchester por faixa de idade (Fase 3).
-import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "./clinico/pediatria.js";
+
 // Triagem obstétrica — sugestão por discriminadores + PA (pré-eclâmpsia).
-import { avaliarObstetrica, obstetricasValidadas } from "./clinico/obstetricia.js";
+
 // Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
-import { montarMapaRisco } from "./clinico/mapa-risco.js";
-import { montarChecagemSae } from "./clinico/sae.js";
+
+
 import FarmaciaPage from "./farmacia/FarmaciaPage.jsx";
 import PSPage from "./ps/PsPage.jsx";
-import {
-  PS_FREQUENCIAS, PS_DOSE_UNID, PS_PROTOCOLO, PS_DISCRIMINADORES, PS_AREAS, PS_SALA_STATUS, PS_DESFECHOS,
-  PS_EXAME_CATEGORIAS, PS_EVOL_CATEGORIAS, PS_VIAS, PS_ADM_STATUS, PS_ADM_MOTIVOS, PS_ADM_CATEGORIAS,
-  PS_PRIORIDADE, PS_CONSCIENCIA, MANCHESTER, fmtSinaisVitais,
-} from "./ps/catalogo.js";
-import {
-  loadPsPrescricoesByAtendimentos, loadPsProtocolos, upsertPsProtocoloRemote, deletePsProtocoloRemote,
-  loadPsSalas, upsertPsSalaRemote, deletePsSalaRemote, loadPsAtendimentos, loadPsFinalizadosHoje,
-  loadPsAtendimentosPeriodo, loadPsExamesPeriodo, addPsAtendimentoRemote, updatePsAtendimentoRemote,
-  patchPsAtendimentoDireto, addPsSinalRemote, loadPsSinais, loadPsRegistros, loadPsExamesPendentes,
-  addPsRegistroRemote, updatePsRegistroRemote, loadPsPrescricaoItens, loadPsPrescricaoItensByAtendimentos,
-  addPsPrescricaoItens, loadPsAdministracoes, loadPsAdministracoesByAtendimentos, addPsAdministracao,
-} from "./ps/dados.js";
+
+
 import LeitosPage from "./leitos/GiroDeLeitos.jsx";
-import { LEITOS_KEY, loadLeitos, saveLeitos, loadLeitosFromSupabase, upsertLeitoRemote, deleteLeitoRemote,
-         SETORES_KEY, loadSetoresLocal, saveSetoresLocal, loadSetoresFromSupabase, upsertSetorRemote, deleteSetorRemote,
-         loadSolicitacoes, addSolicitacaoRemote, updateSolicitacaoRemote,
-         registrarSaidaRemote, loadSaidas, registrarTurnoverRemote, loadTurnover } from "./leitos/dados.js";
+
 import NSPPage, { NotificacaoRapida } from "./clinico/SegurancaPaciente.jsx";
-import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, STATUS as NSP_STATUS,
-         matrizRisco, exigeRCA, notificacaoCompulsoria, resumoIncidentes,
-         indicadoresSeguranca, farol, metasSeguranca, relatorioNsp, fichaNotivisa,
-         METAS as NSP_METAS, STATUS_PROTOCOLO, protocoloRevisaoVencida, resumoProtocolos,
-         STATUS_CAPACITACAO, capacitacaoVencida, resumoCapacitacoes,
-         TIPO_COMUNICADO, PRIORIDADE_COMUNICADO, resumoComunicados,
-         responderAssistenteNsp, NSP_ASSIST_AJUDA,
-         ISHIKAWA_CATEGORIAS, FATORES_CONTRIBUINTES, METODOS_RCA, STATUS_ACAO,
-         acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
-         rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./clinico/nsp.js";
+
 // Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
-import { avaliarGatilhoSepse, avaliarGatilhoDorToracica, avaliarGatilhoAvc, janelaTerapeutica, escorePadua, recomendacaoTev, montarBundle, estadoAtivacao, indicadoresProtocolo } from "./clinico/protocolos.js";
-import { PROTOCOLOS_CATALOGO, PROT_DESFECHO } from "./clinico/protocolos-catalogo.js";
+
+
 // Utilitários puros extraídos deste arquivo — data/hora e número/moeda.
 // São as funções mais reutilizadas do sistema (nowISO, fmtDur, fmtReais,
 // diffMin); ficam testadas em src/util/*.test.js. `todayStr` mora aqui
 // porque é onde o projeto já teve o bug de fuso mais caro.
 import {
-  todayStr, nowISO, diffMin, fmtDur, horaFmt, isoToLocal, localToIso,
-  fmtDataBR, compDe, compLabel, horaMin,
+   nowISO, diffMin, fmtDur,
 } from "./util/datas.js";
-import { fmt, fmtBRL, fmtReais, taxa } from "./util/formato.js";
+
 // Previsão de alta e sinaleira de permanência do Giro de Leitos (puras).
-import { sugerirCid, calcAlta, sinalLeito, diasDesde, corEsperaFila } from "./clinico/leitos.js";
-import { resumoExamesPorCategoria } from "./clinico/exames.js";
-import { COMORBIDADES, rotulosComorbidades } from "./clinico/comorbidades.js";
+import {  corEsperaFila } from "./clinico/leitos.js";
+
+
 // Identificação do paciente: conteúdo mínimo da CFM 1.638/2002, validação
 // de CPF/CNS e idade EXATA. A idade por subtração de anos errava até 11
 // meses — o que trocava a faixa de referência na triagem pediátrica.
-import { conferirCadastro, idadeMesesParaTriagem, comoExibir, rotuloSexo } from "./pacientes/identidade.js";
-import CadastroPaciente from "./pacientes/CadastroPaciente.jsx";
+
 import Atendimento from "./atendimento/Atendimento.jsx";
 import FaturamentoPage from "./atendimento/FaturamentoSus.jsx";
 import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
-import { PS_VIAS_TRANSF, PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe } from "./atendimento/recepcao.js";
-import { carregarPaciente, carregarCatalogos } from "./atendimento/dados.js";
-import { avisoDeConta, dadosDeConta, geraConta, convenioSugerido, valoresIniciais } from "./atendimento/faturavel.js";
-import { opcoesDeProcedimento, filtrarProcedimentos, avisoDeCatalogo, viaDaEscolha } from "./atendimento/escolha-procedimento.js";
+
+
 // "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
 // como `status !== "finalizado"` em três pontos daqui — e o status
 // 'cancelado', criado depois, vazaria por todos eles: o Paciente 360
 // passaria a dizer "está no PS agora (cancelado)".
-import { atendimentoAberto, FILTRO_ATENDIMENTO_ABERTO } from "./atendimento/ciclo.js";
+
 
 // ═══════════════════════════════════════════════════════════
 // SUPABASE CONFIG — substitua pelas suas credenciais
@@ -429,11 +349,9 @@ function VxLogo({ size = 30 }) {
 // AUDITORIA
 // ═══════════════════════════════════════════════════════════
 // A trilha mudou-se para src/auditoria/dados.js, junto da leitura. Fica
-// aqui só o adaptador que injeta o `sb`: são 107 pontos de chamada, e
-// reescrever todos esconderia a mudança de verdade no meio do ruído. Os
-// módulos já extraídos importam `registrarAuditoria` direto, com o `sb`
-// que eles próprios recebem.
-const addAuditLog = (user, acao, alvo, dados) => registrarAuditoria(SB(), user, acao, alvo, dados);
+// ⚠️ O adaptador `addAuditLog` foi REMOVIDO em 01/09/2026: os 107 pontos de
+// chamada que o comentário antigo citava saíram todos na extração, e cada
+// módulo agora importa `registrarAuditoria` direto, com o `sb` que recebe.
 
 // ═══════════════════════════════════════════════════════════
 // AGGREGATE
@@ -574,7 +492,6 @@ async function changeMyPassword(newPassword) {
 }
 
 
-
 // Administração de usuários (só adm_master). Chama a Edge Function protegida
 // que roda no servidor com a service_role — o navegador nunca vê a chave admin.
 // Ações: "list" | "create" | "update" | "reset_senha" | "set_ativo".
@@ -603,9 +520,6 @@ async function adminUsuarios(action, payload = {}) {
 // ═══════════════════════════════════════════════════════════
 
 
-
-
-
 // ═══════════════════════════════════════════════════════════
 // BANNER DE ALERTAS (topo do app)
 // ═══════════════════════════════════════════════════════════
@@ -620,7 +534,6 @@ async function adminUsuarios(action, payload = {}) {
 // ═══════════════════════════════════════════════════════════
 // SETORES + SOLICITAÇÕES (monitoramento de leitos)
 // ═══════════════════════════════════════════════════════════
-
 
 
 // ═══════════════════════════════════════════════════════════
@@ -677,16 +590,10 @@ async function adminUsuarios(action, payload = {}) {
 // Discriminadores gerais do Manchester — atravessam todos os fluxogramas de queixa
 
 
-
-
-
-
-
 // Saídas (dispensações) já registradas para calcular o quanto de cada item foi entregue
 // Prioridade de ordenação da fila (menor = mais urgente)
 
 // Linha compacta dos sinais vitais registrados (fila e Paciente 360)
-
 
 
 // ═══════════════════════════════════════════════════════════
@@ -702,16 +609,9 @@ async function adminUsuarios(action, payload = {}) {
  */
 
 
-
-
 // ═══════════════════════════════════════════════════════════
 // BLOCO CIRÚRGICO — agenda, mapa, workflow do dia e indicadores
 // ═══════════════════════════════════════════════════════════
-
-
-
-
-
 
 
 // ── Página Pronto-Socorro: chegada → triagem → atendimento → desfecho ──
@@ -720,13 +620,6 @@ async function adminUsuarios(action, payload = {}) {
 // Mesmo padrão do SCIH: visão imprimível + window.print() nativo.
 // Sem biblioteca de PDF e sem envio de dado clínico para fora do navegador.
 // ═══════════════════════════════════════════════════════════
-
-
-
-
-
-
-
 
 
 // ═══════════════════════════════════════════════════════════
@@ -749,28 +642,6 @@ async function adminUsuarios(action, payload = {}) {
  * Dizer que a tabela ficou selada seria mentira, e mentira sobre acesso é
  * pior que acesso aberto: o hospital para de olhar.
  */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 // Blindagem: um erro de render em QUALQUER módulo mostra a mensagem na tela (e
@@ -806,31 +677,9 @@ class LimiteErro extends Component {
 // ═══════════════════════════════════════════════════════════
 
 
-
 // ═══════════════════════════════════════════════════════════
 // SUPRIMENTOS (Estoque & Compras) — página com barra lateral própria (padrão Farmácia)
 // ═══════════════════════════════════════════════════════════
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 // ═══════════════════════════════════════════════════════════
@@ -1012,7 +861,7 @@ export default function App() {
   }, [currentUser]);
   
   const handleSave = useCallback(newDb => {
-    setDb(prev => ({ ...newDb }));
+    setDb(() => ({ ...newDb }));
   }, []);
 
   // O perfil é relido a cada carga do app, não apenas quando falta algum
@@ -1189,7 +1038,16 @@ export default function App() {
   const isAnalista  = currentUser?.role === "analista";
   const isReadOnly  = currentUser?.role === "visualizador";
 
-  const canEdit     = isMaster || isSilver || isAnalista === false && !isReadOnly; // silver e acima lançam dados
+  // 🔴 `canEdit` REMOVIDO em 01/09/2026. Estava morto — TODA tela recebe
+  // `canEdit={canLaunch}` —, mas a regra dele era:
+  //
+  //     isMaster || isSilver || isAnalista === false && !isReadOnly
+  //
+  // que o JS agrupa como `a || b || ((c === false) && !d)`. Para um usuário
+  // comum (nem master, nem silver, nem analista, não somente-leitura) isso
+  // dava **true**, enquanto o comentário ao lado prometia "silver e acima".
+  // Bastava alguém ligar essa variável numa tela para abrir edição a quem
+  // não deveria. Nunca esteve ligada — foi achado ao ligar `no-unused-vars`.
   const canLaunch   = isMaster || isSilver;   // master e silver lançam dados
   const canPrint    = isMaster || isSilver || isAnalista; // master, silver e analista geram dashboard
   const canImport   = isMaster || isSilver;   // master e silver importam
@@ -1315,7 +1173,7 @@ export default function App() {
         {/* SIDEBAR */}
         <nav style={{ width: 215, minWidth: 215, background: "var(--bg-2)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
           {isReadOnly && <div style={{ margin: "0 10px 8px", background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>Somente visualização</div>}
-          {sidebarItems.map((item, i) => {
+          {sidebarItems.map((item) => {
             // Cabeçalho de grupo. Substituiu os separadores anônimos: a linha
             // dizia "aqui muda alguma coisa" e não dizia o quê.
             if (item.grupoTitulo) return (

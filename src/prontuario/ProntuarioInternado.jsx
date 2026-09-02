@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  episodioAtivo, diasInternacao, prescricaoVigente, itensAtivos,
+   diasInternacao, prescricaoVigente, itensAtivos,
   horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce,
   timelineEpisodio,
 } from "../clinico/prontuario.js";
@@ -256,7 +256,7 @@ const CAT_ANOTACAO = [
   ["orientacao", "Orientação"], ["intercorrencia", "Intercorrência"], ["outro", "Outro"],
 ];
 
-function Visao({ d, ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
+function Visao({ ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
   const [texto, setTexto] = useState("");
   const [categoria, setCategoria] = useState("outro");
   const [salvando, setSalvando] = useState(false);
@@ -350,7 +350,7 @@ function Visao({ d, ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
 }
 
 // ── PRESCRIÇÃO ──────────────────────────────────────────────
-function Prescricao({ presc, itens, alertas, adms, ep, canEdit, sb, user, onOk, onNova }) {
+function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, onOk, onNova }) {
   const podePrescrever = podeClinico(user, "prescricao_medica") || podeClinico(user, "prescricao_enfermagem");
   const botaoNova = canEdit && (
     podePrescrever

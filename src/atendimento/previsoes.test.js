@@ -118,7 +118,7 @@ describe("🔴 aging — o número que não depende de modelo nenhum", () => {
   ];
 
   it("reparte pelas quatro faixas", () => {
-    const a = aging(cs, HOJE);
+    const a = aging(cs);
     expect(a.faixas.map(f => f.valor)).toEqual([100, 200, 300, 400]);
     expect(a.total).toBe(1000);
   });
@@ -131,26 +131,26 @@ describe("🔴 aging — o número que não depende de modelo nenhum", () => {
   });
 
   it("conta QUITADA e NÃO FATURADA ficam fora", () => {
-    const a = aging([...cs, conc({ estado: "quitada", diferenca: 999 }), conc({ estado: "nao_faturada", diferenca: 999 })], HOJE);
+    const a = aging([...cs, conc({ estado: "quitada", diferenca: 999 }), conc({ estado: "nao_faturada", diferenca: 999 })]);
     expect(a.total).toBe(1000);
   });
 
   it("⚠️ recebida a MAIOR não é 'a receber'", () => {
     // Diferença negativa somaria contra o total e esconderia atraso real.
-    const a = aging([...cs, conc({ estado: "a_maior", diferenca: -500 })], HOJE);
+    const a = aging([...cs, conc({ estado: "a_maior", diferenca: -500 })]);
     expect(a.total).toBe(1000);
   });
 
   it("🔴 conta sem data de faturamento NÃO é enfiada numa faixa", () => {
     // Ela não tem idade. Somá-la em qualquer faixa inventaria uma data.
-    const a = aging([...cs, conc({ contaId: 9, diferenca: 700, diasDesdeFaturamento: null })], HOJE);
+    const a = aging([...cs, conc({ contaId: 9, diferenca: 700, diasDesdeFaturamento: null })]);
     expect(a.total).toBe(1700);
     expect(a.semData.valor).toBe(700);
     expect(a.faixas.reduce((s, f) => s + f.valor, 0)).toBe(1000);
   });
 
   it("diferença nula (leitura falhou) não entra", () => {
-    const a = aging([conc({ diferenca: null })], HOJE);
+    const a = aging([conc({ diferenca: null })]);
     expect(a.total).toBe(0);
   });
 });
@@ -239,7 +239,7 @@ describe("os avisos", () => {
   });
 
   it("🔴 mais de 90 dias: diz que o provável não é demora, é glosa não registrada", () => {
-    const ag = aging([conc({ diferenca: 500, diasDesdeFaturamento: 200 })], HOJE);
+    const ag = aging([conc({ diferenca: 500, diasDesdeFaturamento: 200 })]);
     const a = avisosDaPrevisao({ aging: ag });
     expect(a.some(x => /glosa que chegou e ninguém registrou/i.test(x.texto))).toBe(true);
   });
@@ -253,7 +253,7 @@ describe("os avisos", () => {
   it("cenário limpo não gera aviso nenhum", () => {
     const cs = [conc({ diferenca: 100, diasDesdeFaturamento: 10, faturadaEm: "2026-08-22" })];
     const pr = projecao({ conciliacoes: cs, prazos: [29, 30, 30, 31, 32], hoje: HOJE });
-    expect(avisosDaPrevisao({ projecao: pr, aging: aging(cs, HOJE) })).toEqual([]);
+    expect(avisosDaPrevisao({ projecao: pr, aging: aging(cs) })).toEqual([]);
   });
 });
 

@@ -3143,7 +3143,6 @@ function TriagemModal({ sb, paciente, onClose, onTriar, reavaliacao = false, fai
     if (reavaliacao) loadPsSinais(sb, paciente.id).then(setHistorico);
   }, []);
   const pediatrico = tipo === "pediatrica" || (idade != null && idade < 13);
-  const naoAdulto = tipo !== "adulto";
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 10.5, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 4 };
   // Idade em meses para a faixa pediátrica. A ordem importa:

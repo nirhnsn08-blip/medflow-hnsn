@@ -118,7 +118,11 @@ export const FAIXAS = [
  * chance de o dinheiro entrar — e maior a chance de haver uma glosa que
  * ninguém registrou.
  */
-export function aging(conciliacoes, hoje = new Date()) {
+// ⚠️ NÃO recebe data, de propósito: a idade de cada conta
+// (`diasDesdeFaturamento`) já vem calculada de `conciliarConta`, com o
+// `hoje` que ELA usou. Aceitar outra data aqui abriria a porta para as duas
+// discordarem — a faixa diria uma coisa e a lista, outra.
+export function aging(conciliacoes) {
   const base = { total: 0, contas: 0 };
   const faixas = Object.fromEntries(FAIXAS.map(f => [f.chave, { ...f, valor: 0, contas: 0 }]));
   const semData = { valor: 0, contas: 0 };
@@ -252,7 +256,7 @@ export function avisosDaPrevisao({ projecao: pr, aging: ag, contasFalharam = fal
 /** Atalho para a tela: tudo de uma vez. */
 export function panorama({ conciliacoes = [], contas = [], repassesPorConta = {}, hoje = new Date() } = {}) {
   const prazos = prazosObservados(contas, repassesPorConta);
-  const ag = aging(conciliacoes, hoje);
+  const ag = aging(conciliacoes);
   const pr = projecao({ conciliacoes, prazos, hoje });
   return {
     aging: ag,

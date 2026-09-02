@@ -347,7 +347,7 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
         <SupInventarioView sb={sb} currentUser={currentUser} canEdit={canEdit}
           itens={meds.filter(m => m.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs}
           onSave={salvarInventarioFarm}
-          chave="medicamento_id" origem="farmacia" rotuloItem="Medicamento" />
+          chave="medicamento_id" rotuloItem="Medicamento" />
       )}
 
       {sub === "estoque" && (<>
@@ -1196,7 +1196,6 @@ function FarmIndicadoresView({ sb }) {
 
   // Snapshot: rupturas e validade (independem do período)
   const ativos = meds.filter(m => m.ativo !== false);
-  const saldo = m => saldoDoMedicamento(m.id, lotes);
   const rupturas = ativos.filter(m => farmStatusEstoque(m, lotes).key === "zerado");
   const abaixoMin = ativos.filter(m => farmStatusEstoque(m, lotes).key === "baixo");
   const lotesEstoque = lotes.filter(l => Number(l.quantidade) > 0);
@@ -2153,7 +2152,7 @@ function FarmIntervencaoModal({ prefill, onClose, onSave }) {
 }
 
 // Dashboard da Farmácia — visão geral com atalhos
-function FarmDashboardView({ sb, currentUser, canEdit, onNav }) {
+function FarmDashboardView({ sb, onNav }) {
   const [ats, setAts] = useState([]);
   const [pres, setPres] = useState([]);
   const [prep, setPrep] = useState([]);

@@ -22,7 +22,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-import { AvisoLeitura, VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon, btnContorno, VxWordmark, customTooltip } from "../ui/base.jsx";
+import {  VX, HOSPITAL_NOME, HOSPITAL_SIGLA, MONTHS_FULL, MONTHS, Icon, btnContorno, VxWordmark, customTooltip } from "../ui/base.jsx";
 import { comGrupos } from "../ui/sub-nav.js";
 import { todayStr, nowISO, diffMin, fmtDur, horaFmt, isoToLocal, localToIso } from "../util/datas.js";
 import { FARM_GRAV, normTxt } from "../clinico/alertas.js";
@@ -30,7 +30,7 @@ import { ISOLAMENTOS, precaucaoDe } from "../clinico/isolamento.js";
 import { sugerirCid, calcAlta, sinalLeito, corEsperaFila } from "../clinico/leitos.js";
 import { montarMapaRisco } from "../clinico/mapa-risco.js";
 import { montarChecagemSae } from "../clinico/sae.js";
-import { farol } from "../clinico/nsp.js";
+
 import { abrirEpisodio, encerrarEpisodio } from "../prontuario/dados.js";
 import { podeAbrirEpisodio, dadosDoEpisodio, desfechoDoLeito, avisoEpisodioNaoAberto } from "../prontuario/internacao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
