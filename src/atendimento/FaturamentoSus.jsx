@@ -42,6 +42,7 @@ import AnalisesView from "./AnalisesView.jsx";
 import ReceitasView from "./ReceitasView.jsx";
 import ConveniosView from "./ConveniosView.jsx";
 import PrevisoesView from "./PrevisoesView.jsx";
+import AssistenteView from "./AssistenteView.jsx";
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -91,9 +92,11 @@ const FAT_NAV = [
   ] },
 ];
 
-const EM_CONSTRUCAO = {
-  assistente: "Assistente que responde sobre a produção, a glosa e os prazos do faturamento.",
-};
+// 🔴 VAZIO desde 01/09/2026 — as nove abas do Faturamento existem.
+// O objeto e o componente `EmConstrucao` ficam porque a Fase 5 vai abrir
+// abas novas, e o marcador honesto ("isto ainda nao existe") vale mais que
+// uma tela vazia que parece quebrada.
+const EM_CONSTRUCAO = {};
 
 // ── Cérebro 3D (canvas puro) ────────────────────────────────
 function BrainCanvas() {
@@ -1300,6 +1303,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
         {sub === "receitas" && <ReceitasView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {sub === "convenios" && <ConveniosView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {sub === "previsoes" && <PrevisoesView sb={sb} />}
+        {sub === "assistente" && <AssistenteView sb={sb} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
       </div>
     </div>

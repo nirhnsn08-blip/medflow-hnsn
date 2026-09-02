@@ -253,7 +253,10 @@ function NspAssistenteView({ incidentes, acoes, rcas, faixas, medicoes, lppAdqui
   const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do Núcleo de Segurança do Paciente. " + NSP_ASSIST_AJUDA }]);
   const [q, setQ] = useState("");
   const fimRef = useRef(null);
-  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+  // ⚠️ `?.` no MÉTODO, não só no ref: `scrollIntoView` não existe no jsdom
+  // (nem em ambiente sem layout), e a falta dele derrubava a aba inteira —
+  // o `telas.test.jsx` pegou isso na montagem.
+  useEffect(() => { fimRef.current?.scrollIntoView?.({ behavior: "smooth" }); }, [msgs]);
 
   function enviar(texto) {
     const t = (texto != null ? texto : q).trim();
