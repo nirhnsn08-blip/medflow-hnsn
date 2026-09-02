@@ -109,6 +109,9 @@ const ORDEM = [
   // 87 scripts rodam numa sessão só — sem o reset, todos os de baixo se
   // registrariam como aplicados por 'adauam'.
   "migracao-glosas-rls.sql",
+  // O repasse: o dinheiro que entrou. Depois da conta (FK) e junto com as
+  // proprias politicas, pelo mesmo motivo do arquivo acima.
+  "migracao-faturamento-repasses.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
   // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não

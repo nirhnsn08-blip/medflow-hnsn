@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 97 tabelas, 1530 colunas.
+-- Cobertura atual: 98 tabelas, 1540 colunas.
 -- ============================================================
 
 with
@@ -28,6 +28,7 @@ tabelas(nome, origem) as (values
   ('at_glosas','faturamento-glosas'),
   ('at_planos','atendimento-fase2'),
   ('at_procedimentos','atendimento-fase2'),
+  ('at_repasses','faturamento-repasses'),
   ('at_responsaveis','atendimento-responsavel'),
   ('atendimentos','schema'),
   ('auditoria','schema'),
@@ -259,6 +260,16 @@ colunas(tabela, coluna, origem) as (values
   ('at_procedimentos','usuario','atendimento-fase2'),
   ('at_procedimentos','valor_sus','atendimento-faturamento'),
   ('at_procedimentos','via_sus','atendimento-faturamento'),
+  ('at_repasses','competencia_repasse','faturamento-repasses'),
+  ('at_repasses','conta_id','faturamento-repasses'),
+  ('at_repasses','criado_em','faturamento-repasses'),
+  ('at_repasses','documento','faturamento-repasses'),
+  ('at_repasses','id','faturamento-repasses'),
+  ('at_repasses','observacao','faturamento-repasses'),
+  ('at_repasses','recebido_em','faturamento-repasses'),
+  ('at_repasses','updated_at','faturamento-repasses'),
+  ('at_repasses','usuario','faturamento-repasses'),
+  ('at_repasses','valor','faturamento-repasses'),
   ('at_responsaveis','atendimento_id','atendimento-responsavel'),
   ('at_responsaveis','ativo','atendimento-responsavel'),
   ('at_responsaveis','consente','atendimento-responsavel'),

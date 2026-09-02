@@ -69,6 +69,8 @@ export const MAPA_TABELAS = {
   at_contas:                ["atendimento"],
   // A glosa recebida carrega prontuário e valor da conta de um paciente.
   at_glosas:                ["atendimento"],
+  // O repasse aponta para a conta de um paciente e diz quanto foi pago por ela.
+  at_repasses:              ["atendimento"],
   // Guarda CPF e documento judicial do curador/responsável. O prontuário
   // precisa saber quem consente e quem recebe a alta.
   at_responsaveis:          ["atendimento", "paciente"],
@@ -282,7 +284,8 @@ export const ESCRITA_ABERTA = new Set([
 ]);
 
 export const SENSIVEIS = new Set([
-  "ag_agendamentos", "at_conta_itens", "at_contas", "at_glosas", "at_responsaveis",
+  "ag_agendamentos", "at_conta_itens", "at_contas", "at_glosas", "at_repasses",
+  "at_responsaveis",
   "auditoria", "cc_cirurgias",
   "enf_escalas", "enf_lesao_pressao", "enf_sae_checagem",
   "enf_sae_diagnosticos", "enf_sae_historico",

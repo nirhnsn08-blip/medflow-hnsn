@@ -1621,3 +1621,88 @@ export async function itensDasContas(sb, ids) {
   for (const i of linhas) (porConta[i.conta_id] ||= []).push(i);
   return { porConta, falhou: false };
 }
+
+// ── REPASSE (o dinheiro que ENTROU) ─────────────────────────
+//
+// As regras (conciliação, estados, agrupamentos) moram em `receitas.js`;
+// aqui só entra e sai do banco.
+//
+// ⚠️ O único CHECK é `valor <> 0`. Negativo PASSA de propósito: é estorno,
+// e o SUS faz desconto retroativo em competência posterior.
+
+const CAMPOS_REPASSE = [
+  "id", "conta_id", "competencia_repasse", "valor", "recebido_em",
+  "documento", "observacao", "usuario", "criado_em",
+].join(",");
+
+/** Todos os repasses (ou os de uma competência de CRÉDITO). */
+export async function carregarRepasses(sb, { competenciaRepasse, limite = 1000 } = {}) {
+  const filtro = competenciaRepasse
+    ? `competencia_repasse=eq.${encodeURIComponent(competenciaRepasse)}&` : "";
+  const r = await sb(`at_repasses?${filtro}select=${CAMPOS_REPASSE}&order=recebido_em.desc&limit=${limite}`);
+  return listaLida(r);
+}
+
+/**
+ * Os repasses de VÁRIAS contas, agrupados por conta.
+ *
+ * ⚠️ Devolve `{ porConta, falhou }` pelo mesmo motivo de `itensDasContas`:
+ * mapa vazio seria indistinguível de "nenhuma conta recebeu nada" — e
+ * "não recebemos nada" é a acusação mais grave que esta tela pode fazer.
+ */
+export async function repassesDasContas(sb, ids) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(v => v != null);
+  if (!lista.length) return { porConta: {}, falhou: false };
+
+  const r = await sb(`at_repasses?conta_id=in.(${lista.join(",")})` +
+    `&select=${CAMPOS_REPASSE}&order=recebido_em`);
+  const linhas = listaLida(r);
+  if (naoDeuParaLer(linhas)) return { porConta: {}, falhou: true };
+
+  const porConta = {};
+  for (const x of linhas) (porConta[x.conta_id] ||= []).push(x);
+  return { porConta, falhou: false };
+}
+
+/** As glosas de VÁRIAS contas, agrupadas por conta. Mesmo contrato. */
+export async function glosasDasContas(sb, ids) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(v => v != null);
+  if (!lista.length) return { porConta: {}, falhou: false };
+
+  const r = await sb(`at_glosas?conta_id=in.(${lista.join(",")})` +
+    `&select=${CAMPOS_GLOSA}&order=recebida_em`);
+  const linhas = listaLida(r);
+  if (naoDeuParaLer(linhas)) return { porConta: {}, falhou: true };
+
+  const porConta = {};
+  for (const x of linhas) (porConta[x.conta_id] ||= []).push(x);
+  return { porConta, falhou: false };
+}
+
+/** Grava um repasse (novo ou existente). Devolve `{ ok, repasse?, motivo? }`. */
+export async function salvarRepasse(sb, rep, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const corpo = {
+    conta_id: rep.conta_id,
+    competencia_repasse: rep.competencia_repasse || null,
+    valor: Number(String(rep.valor).replace(/\./g, "").replace(",", ".")),
+    recebido_em: rep.recebido_em,
+    documento: rep.documento || null,
+    observacao: rep.observacao || null,
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const r = rep.id
+    ? await sb(`at_repasses?id=eq.${encodeURIComponent(rep.id)}`, {
+        method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(corpo),
+      }).catch(() => null)
+    : await sb("at_repasses", {
+        method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(corpo),
+      }).catch(() => null);
+
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Nada foi gravado. O banco recusa repasse de valor ZERO (negativo é permitido — é estorno) e exige a conta e a data do crédito." };
+  }
+  return { ok: true, repasse: r[0] };
+}
