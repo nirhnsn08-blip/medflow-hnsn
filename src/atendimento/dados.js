@@ -1706,3 +1706,73 @@ export async function salvarRepasse(sb, rep, user) {
   }
   return { ok: true, repasse: r[0] };
 }
+
+// ── PREÇO POR CONVÊNIO ──────────────────────────────────────
+//
+// As regras (vigência, as três respostas, lacunas) moram em `precos.js`.
+//
+// ⚠️ O banco tem um `EXCLUDE USING gist` que recusa dois preços ATIVOS do
+// mesmo convênio e código com períodos que se cruzam. A tela avisa antes
+// (`recusasDoPreco`), mas quem recusa de verdade é ele.
+
+const CAMPOS_PRECO = [
+  "id", "convenio_id", "codigo", "tabela", "descricao", "valor",
+  "vigencia_inicio", "vigencia_fim", "ativo", "observacao", "usuario", "criado_em",
+].join(",");
+
+/** Todos os preços (o catálogo inteiro é pequeno e a tela cruza tudo). */
+export async function carregarPrecos(sb, { convenioId, limite = 2000 } = {}) {
+  const filtro = convenioId ? `convenio_id=eq.${encodeURIComponent(convenioId)}&` : "";
+  const r = await sb(`at_precos?${filtro}select=${CAMPOS_PRECO}` +
+    `&order=convenio_id,codigo,vigencia_inicio.desc&limit=${limite}`);
+  return listaLida(r);
+}
+
+/**
+ * Os itens faturados COM o convênio da conta junto.
+ *
+ * O convênio mora na conta e o código no item — e a lacuna de preço é um
+ * par (convênio × código). Sem o embed seriam duas consultas e uma junção
+ * à mão, que é onde se perde item de conta sem convênio.
+ */
+export async function itensComConvenio(sb, { limite = 2000 } = {}) {
+  const r = await sb(`at_conta_itens?select=id,conta_id,codigo,descricao,valor_total,cancelado,at_contas(convenio_id,competencia)` +
+    `&order=criado_em.desc&limit=${limite}`);
+  const linhas = listaLida(r);
+  if (naoDeuParaLer(linhas)) return linhas;
+  return linhas.map(i => ({ ...i, convenio_id: i.at_contas?.convenio_id ?? null, competencia: i.at_contas?.competencia ?? null }));
+}
+
+/** Grava um preço. Devolve `{ ok, preco?, motivo? }`. */
+export async function salvarPreco(sb, p, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const corpo = {
+    convenio_id: p.convenio_id,
+    codigo: String(p.codigo || "").trim(),
+    tabela: p.tabela || null,
+    descricao: p.descricao || null,
+    valor: Number(String(p.valor).replace(/\./g, "").replace(",", ".")),
+    vigencia_inicio: p.vigencia_inicio,
+    vigencia_fim: p.vigencia_fim || null,
+    ativo: p.ativo !== false,
+    observacao: p.observacao || null,
+    usuario: user?.name || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const r = p.id
+    ? await sb(`at_precos?id=eq.${encodeURIComponent(p.id)}`, {
+        method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(corpo),
+      }).catch(() => null)
+    : await sb("at_precos", {
+        method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(corpo),
+      }).catch(() => null);
+
+  if (!Array.isArray(r) || !r.length) {
+    return {
+      ok: false,
+      motivo: "Nada foi gravado. O banco recusa preço negativo, vigência que termina antes de começar, e DOIS PREÇOS ATIVOS do mesmo código e convênio com períodos que se cruzam — encerre o anterior antes de criar o novo.",
+    };
+  }
+  return { ok: true, preco: r[0] };
+}

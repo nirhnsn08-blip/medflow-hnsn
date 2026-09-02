@@ -112,6 +112,9 @@ const ORDEM = [
   // O repasse: o dinheiro que entrou. Depois da conta (FK) e junto com as
   // proprias politicas, pelo mesmo motivo do arquivo acima.
   "migracao-faturamento-repasses.sql",
+  // Preco por convenio, com vigencia. Depois de at_convenios (FK) e traz a
+  // extensao btree_gist, que a trava de sobreposicao exige.
+  "migracao-faturamento-precos.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
   // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não

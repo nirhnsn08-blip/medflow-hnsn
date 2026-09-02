@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 98 tabelas, 1540 colunas.
+-- Cobertura atual: 99 tabelas, 1553 colunas.
 -- ============================================================
 
 with
@@ -27,6 +27,7 @@ tabelas(nome, origem) as (values
   ('at_dominios','atendimento-fase2'),
   ('at_glosas','faturamento-glosas'),
   ('at_planos','atendimento-fase2'),
+  ('at_precos','faturamento-precos'),
   ('at_procedimentos','atendimento-fase2'),
   ('at_repasses','faturamento-repasses'),
   ('at_responsaveis','atendimento-responsavel'),
@@ -250,6 +251,19 @@ colunas(tabela, coluna, origem) as (values
   ('at_planos','nome','atendimento-fase2'),
   ('at_planos','updated_at','atendimento-fase2'),
   ('at_planos','usuario','atendimento-fase2'),
+  ('at_precos','ativo','faturamento-precos'),
+  ('at_precos','codigo','faturamento-precos'),
+  ('at_precos','convenio_id','faturamento-precos'),
+  ('at_precos','criado_em','faturamento-precos'),
+  ('at_precos','descricao','faturamento-precos'),
+  ('at_precos','id','faturamento-precos'),
+  ('at_precos','observacao','faturamento-precos'),
+  ('at_precos','tabela','faturamento-precos'),
+  ('at_precos','updated_at','faturamento-precos'),
+  ('at_precos','usuario','faturamento-precos'),
+  ('at_precos','valor','faturamento-precos'),
+  ('at_precos','vigencia_fim','faturamento-precos'),
+  ('at_precos','vigencia_inicio','faturamento-precos'),
   ('at_procedimentos','ativo','atendimento-fase2'),
   ('at_procedimentos','cbos_compativeis','atendimento-fase2'),
   ('at_procedimentos','codigo','atendimento-fase2'),

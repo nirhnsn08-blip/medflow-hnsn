@@ -71,6 +71,9 @@ export const MAPA_TABELAS = {
   at_glosas:                ["atendimento"],
   // O repasse aponta para a conta de um paciente e diz quanto foi pago por ela.
   at_repasses:              ["atendimento"],
+  // Preco por convenio. NAO tem paciente, mas e informacao comercial —
+  // quem nao fatura nao precisa da tabela de precos da operadora.
+  at_precos:                ["atendimento"],
   // Guarda CPF e documento judicial do curador/responsável. O prontuário
   // precisa saber quem consente e quem recebe a alta.
   at_responsaveis:          ["atendimento", "paciente"],
