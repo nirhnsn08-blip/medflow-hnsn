@@ -467,3 +467,5 @@ Para o site, o caminho mais rápido é a Vercel: *Deployments* → deploy anteri
 
 ⚠️ **Não use `git reset --hard` + `push --force` na `main`.** Com duas pessoas
 trabalhando, isso apaga o trabalho da outra.
+
+<!-- prova de que o branch protection barra: este arquivo volta ao normal antes do merge -->
