@@ -6,7 +6,7 @@ um tempo, ou começa num chat novo.
 > **O raio-x completo está em [CONTEXTO.md](CONTEXTO.md).** Leia de lá em vez de
 > reconstruir de cabeça. Este arquivo é só o essencial para começar sem quebrar nada.
 
-**Atualizado em:** 2026-09-01 · `main` em `107bbf9` · zero PRs abertos · **nada pendente de SQL**.
+**Atualizado em:** 2026-09-01 · `main` em `967985e` · zero PRs abertos · **nada pendente de SQL**.
 
 ## 👥 Quem está com o quê (combinado em 22/08/2026)
 
@@ -23,15 +23,20 @@ Um dia de trabalho pesado (PRs #166–#199) mudou **onde as coisas moram** e **o
 que o banco tem**. Se você planejar em cima do estado anterior, vai propor coisa
 que já existe ou recriar tabela que já está no ar com dado dentro.
 
-### 1. Tabela nova nos DOIS bancos: `at_glosas`
+### 1. TRÊS tabelas novas, nos DOIS bancos
 
 Glosa **recebida**, prazo de recurso e recuperação. Criada, com RLS, e conferida
 no demo **e** no principal (PR #197). **Não modele isso de novo.**
 
-```
-supabase/migracao-faturamento-glosas.sql   a tabela + 5 CHECK + 3 índices
-supabase/migracao-glosas-rls.sql           as 7 políticas
-```
+| tabela | o que guarda | migração |
+|---|---|---|
+| `at_glosas` | glosa recebida, prazo de recurso, recuperação | `migracao-faturamento-glosas.sql` + `migracao-glosas-rls.sql` |
+| `at_repasses` | o dinheiro que entrou (negativo = estorno) | `migracao-faturamento-repasses.sql` |
+| `at_precos` | preço por convênio, com vigência | `migracao-faturamento-precos.sql` |
+
+⚠️ **`at_precos` traz a extensão `btree_gist`** e um `EXCLUDE USING gist` que
+recusa dois preços ativos do mesmo convênio+código com períodos que se
+cruzam. É a primeira migração do projeto que instala extensão.
 
 Estrutura: `conta_id` (FK obrigatória) · `item_id` (opcional — a operadora glosa
 ora um item, ora a conta inteira) · `valor_glosado` · `recebida_em` (NOT NULL, é
@@ -74,25 +79,27 @@ custou a este sistema.
 Para distinguir na tela: `naoDeuParaLer(lista)` e o componente `<AvisoLeitura>`
 de `src/ui/base.jsx`.
 
-### 4. Faturamento: 5 de 9 abas funcionam
+### 4. Faturamento: a Fase 4 ESTÁ COMPLETA — 9 de 9 abas
 
-| aba | chave | estado |
+`EM_CONSTRUCAO` do módulo está **vazio**. As nove: Visão executiva ·
+Pendentes · **Glosas** · **Receitas** · **Análises** · **Previsões** ·
+**Convênios & contratos** · Tabela SIGTAP · **Assistente AI**.
+
+O ciclo do dinheiro fecha:
+**faturado → glosado → recebido → a diferença que ninguém explicou.**
+
+Regras e arquivos de cada uma:
+
+| aba | regras em | tela |
 |---|---|---|
-| Visão executiva · Pendentes · Tabela SIGTAP | `visao` `pendentes` `sigtap` | já existiam |
-| **Glosas** | `glosas` | NOVA (#197) — fila por urgência, recurso, recuperação |
-| **Análises** | `analises` | NOVA (#198) — produção, ticket médio, índice de glosa, rejeição |
-| Receitas · Convênios & contratos · Previsões · Assistente AI | `receitas` `convenios` `previsoes` `assistente` | `EM CONSTRUCAO` em `FaturamentoSus.jsx` |
+| Glosas | `glosas.js` | `GlosasView.jsx` |
+| Análises | `analises.js` | `AnalisesView.jsx` |
+| Receitas | `receitas.js` | `ReceitasView.jsx` |
+| Convênios | `precos.js` | `ConveniosView.jsx` |
+| Previsões | `previsoes.js` | `PrevisoesView.jsx` |
+| Assistente | `assistente.js` | `AssistenteView.jsx` |
 
-**O que falta para as quatro restantes**, já levantado contra o banco:
-
-- **Receitas** — "faturado × recebido × glosado". Só o faturado existe; **não há
-  nenhuma coluna de recebimento**. Precisa de migração.
-- **Convênios & contratos** — o CRUD de convênio/plano **já existe** na aba
-  Tabelas do Atendimento (`at_convenios`, `at_planos`). O que não existe é
-  **preço e regra por operadora**. Precisa de migração.
-- **Previsões** — projeta de série histórica. O demo tem **1 conta e 1
-  competência**; o gráfico teria um ponto.
-- **Assistente AI** — depende das outras.
+Todas as regras têm teste, e as de dinheiro foram verificadas por mutação.
 
 **Duas glosas convivem, e não se misturam:** a *preventiva* (`avaliarGlosa` em
 `sigtap.js` — olha a conta ANTES de sair, e aparece no simulador da aba SIGTAP) e
@@ -102,7 +109,7 @@ confirme que não é a outra.
 O branch `feat/glosa-valor` foi rebaseado e mergeado no #195. **O branch original
 continua intacto no remoto** — o rebase virou um branch novo, sem force-push.
 
-### 5. Quatro decisões deliberadas — não "conserte" sem ler o porquê
+### 5. Sete decisões deliberadas — não "conserte" sem ler o porquê
 
 Todas têm teste travando e comentário no código. Se o plano for mudá-las, mude
 com intenção, não por parecerem incompletas.
@@ -119,6 +126,15 @@ com intenção, não por parecerem incompletas.
    não houve glosa (única que devolve 0) · a leitura falhou · não há faturado.
 4. **`valor_recuperado` nulo ≠ zero.** Nulo é "o recurso não acabou"; zero é
    "recorremos e não voltou nada". Colapsar os dois estraga a taxa de recuperação.
+5. **Repasse pode ser NEGATIVO** — é estorno, e o SUS faz desconto retroativo.
+   O único valor recusado é zero. E "nunca chegou" ≠ "chegou e voltou": a
+   decisão é pela EXISTÊNCIA de linha, não pelo saldo.
+6. **Preço: três respostas, não duas.** `VENCIDO` (houve contrato → pedir
+   aditivo) não é `AUSENTE` (nunca houve → cadastrar). Mandam a pessoa a
+   lugares diferentes.
+7. **Previsão não extrapola produção, e não publica prazo com menos de 5
+   repasses observados** — o calendário sai VAZIO em vez de sair inventado.
+   E usa MEDIANA, não média: prazo de pagamento tem cauda longa.
 
 ### 6. Três armadilhas de SQL que custaram tempo hoje
 
