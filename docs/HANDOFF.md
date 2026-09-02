@@ -17,62 +17,121 @@ um tempo, ou começa num chat novo.
 
 ---
 
-## 🔴 LAURA, LEIA ISTO ANTES DE COMEÇAR (01/09/2026)
+## 🔴 O QUE MUDOU EM 01/09/2026 — leia antes de planejar qualquer coisa
 
-**Eu (Adauam) mexi no Faturamento, que é seu território.** Não estava combinado;
-aconteceu numa sequência de trabalho e prefiro te contar aqui do que você
-descobrir num conflito. **Se algo aí atrapalhou o seu plano, desfaça sem
-cerimônia** — `git revert -m 1 <hash do merge>` e me avise.
+Um dia de trabalho pesado (PRs #166–#199) mudou **onde as coisas moram** e **o
+que o banco tem**. Se você planejar em cima do estado anterior, vai propor coisa
+que já existe ou recriar tabela que já está no ar com dado dentro.
 
-### Existe tabela nova nos DOIS bancos
+### 1. Tabela nova nos DOIS bancos: `at_glosas`
 
-**`at_glosas`** — glosa recebida, prazo de recurso e recuperação. Já rodada e
-conferida no demo E no principal (PR #197). **Não modele de novo por outro
-caminho.** Migrações: `supabase/migracao-faturamento-glosas.sql` e
-`supabase/migracao-glosas-rls.sql`.
+Glosa **recebida**, prazo de recurso e recuperação. Criada, com RLS, e conferida
+no demo **e** no principal (PR #197). **Não modele isso de novo.**
 
-### Seu `feat/glosa-valor` foi rebaseado e mergeado (#195)
+```
+supabase/migracao-faturamento-glosas.sql   a tabela + 5 CHECK + 3 índices
+supabase/migracao-glosas-rls.sql           as 7 políticas
+```
 
-Estava parado desde 19/08, 219 commits atrás. **O rebase saiu limpo** e eu
-**não** dei force-push no seu branch — ele continua intacto no remoto, ao lado
-do `glosa-valor-rebase` que virou o PR. A sua regra de valor cobrado ×
-referência SIGTAP está no ar, funcionando no simulador da aba Tabela SIGTAP.
+Estrutura: `conta_id` (FK obrigatória) · `item_id` (opcional — a operadora glosa
+ora um item, ora a conta inteira) · `valor_glosado` · `recebida_em` (NOT NULL, é
+o relógio) · `prazo_recurso_em` (nulo por decisão, ver abaixo) · `situacao` ·
+`valor_recuperado` (nulo ≠ zero).
 
-### O Faturamento hoje: 5 de 9 abas
+**Os 5 CHECK recusam de verdade** — seis ataques feitos direto na API, seis
+recusas (valor zero e valor negativo caem no mesmo CHECK): recuperado maior que o
+glosado · valor zero · valor negativo · prazo antes do recebimento · recurso
+enviado antes de a glosa chegar · situação fora da lista.
 
-| aba | estado |
-|---|---|
-| Visão executiva · Pendentes · Tabela SIGTAP | já eram suas, seguem iguais |
-| **Glosas** | NOVA (#197) — fila por urgência, recurso, recuperação |
-| **Análises** | NOVA (#198) — produção, ticket médio, índice de glosa, rejeição |
-| Receitas · Convênios & contratos · Previsões · Assistente AI | ainda `EM CONSTRUÇÃO` |
+Estão no banco e não só na tela porque glosa chega por **import de planilha da
+operadora**, que não passa por tela nenhuma.
 
-**Duas glosas convivem no sistema, e não se misturam:** a *preventiva* (sua
-`avaliarGlosa` em `sigtap.js`, olha a conta antes de sair) e a *recebida*
-(`glosas.js`, o dinheiro que já foi recusado). Se for mexer numa, confira se
-não é a outra.
+### 2. O `App.jsx` não é mais o lugar de nada
 
-### Três decisões que eu tomei e você pode reverter
+**18.392 → 1.391 linhas** (PRs #166–#193). Hoje são **139 arquivos** em 15 pastas por domínio.
+Qualquer plano que diga "extrair X do App.jsx" está desatualizado. O que sobrou
+lá é casco: rede, sessão e moldura.
 
-1. **O sistema NÃO calcula o prazo do recurso.** Ele muda por operadora,
-   contrato e portaria; uma data inventada erraria dos dois lados. O campo
-   nasce vazio e a glosa sem prazo vai para o **topo** da fila com selo
-   próprio. Se o hospital tiver um prazo fixo por contrato, dá para
-   preencher por padrão — mas aí é decisão sua, não do código.
-2. **A taxa de recuperação divide pelo ENCERRADO, não pelo glosado.** Com o
-   total glosado, o número cairia toda vez que chegasse glosa nova.
-3. **Indicador sem base mostra "—" e a frase do porquê, nunca 0%.** "Índice
-   de glosa 0%" é a melhor notícia possível, e três coisas opostas produzem
-   zero: não houve glosa · a leitura falhou · não há faturado.
+### 3. Contrato novo de carga — quebra o build se ignorado
 
-### O que mudou fora do Faturamento, e te afeta
+`sb` devolve `null` quando a leitura falha. Antes, ~105 cargas faziam
+`Array.isArray(rows) ? rows : []` e transformavam **falha de leitura em "não
+existe nenhum"** — a tela dizia "nenhum lote vencendo" onde o certo era "não foi
+possível ler" (PR #194).
 
-**105 cargas de rede pararam de transformar falha em lista vazia** (PR #194).
-Antes, `sb` devolvia `null` na queda e a carga virava `[]` — a tela dizia
-"nenhum lote vencendo" quando na verdade não deu para ler. Agora usam
-`listaLida()` de `src/util/leitura.js`, e há **duas catracas em
-`src/cargas.test.js`** que quebram se uma carga nova nascer do jeito antigo.
-Ao escrever `dados.js` novo: `return listaLida(rows)`, não `? rows : []`.
+```js
+import { listaLida } from "../util/leitura.js";
+const rows = await sb("tabela?select=*");
+return listaLida(rows);          // NÃO: Array.isArray(rows) ? rows : []
+```
+
+⚠️ **`src/cargas.test.js` tem duas catracas que ficam VERMELHAS** se uma carga
+nova nascer do jeito antigo, ou se alguém criar um atalho local
+(`const arr = x => Array.isArray(x) ? x : []`) em arquivo que lê da rede. As duas
+foram verificadas por mutação. Não são estilo — são a família de defeito que mais
+custou a este sistema.
+
+Para distinguir na tela: `naoDeuParaLer(lista)` e o componente `<AvisoLeitura>`
+de `src/ui/base.jsx`.
+
+### 4. Faturamento: 5 de 9 abas funcionam
+
+| aba | chave | estado |
+|---|---|---|
+| Visão executiva · Pendentes · Tabela SIGTAP | `visao` `pendentes` `sigtap` | já existiam |
+| **Glosas** | `glosas` | NOVA (#197) — fila por urgência, recurso, recuperação |
+| **Análises** | `analises` | NOVA (#198) — produção, ticket médio, índice de glosa, rejeição |
+| Receitas · Convênios & contratos · Previsões · Assistente AI | `receitas` `convenios` `previsoes` `assistente` | `EM CONSTRUCAO` em `FaturamentoSus.jsx` |
+
+**O que falta para as quatro restantes**, já levantado contra o banco:
+
+- **Receitas** — "faturado × recebido × glosado". Só o faturado existe; **não há
+  nenhuma coluna de recebimento**. Precisa de migração.
+- **Convênios & contratos** — o CRUD de convênio/plano **já existe** na aba
+  Tabelas do Atendimento (`at_convenios`, `at_planos`). O que não existe é
+  **preço e regra por operadora**. Precisa de migração.
+- **Previsões** — projeta de série histórica. O demo tem **1 conta e 1
+  competência**; o gráfico teria um ponto.
+- **Assistente AI** — depende das outras.
+
+**Duas glosas convivem, e não se misturam:** a *preventiva* (`avaliarGlosa` em
+`sigtap.js` — olha a conta ANTES de sair, e aparece no simulador da aba SIGTAP) e
+a *recebida* (`glosas.js` — o dinheiro que já foi recusado). Antes de mexer numa,
+confirme que não é a outra.
+
+O branch `feat/glosa-valor` foi rebaseado e mergeado no #195. **O branch original
+continua intacto no remoto** — o rebase virou um branch novo, sem force-push.
+
+### 5. Quatro decisões deliberadas — não "conserte" sem ler o porquê
+
+Todas têm teste travando e comentário no código. Se o plano for mudá-las, mude
+com intenção, não por parecerem incompletas.
+
+1. **O prazo do recurso NÃO é calculado.** Muda por operadora, contrato e
+   portaria. Data inventada erra dos dois lados: marca como vencida uma glosa que
+   dava tempo, ou como aberta uma já perdida. O campo nasce vazio, e glosa sem
+   prazo vai para o **topo** da fila com selo próprio — não para o rodapé.
+2. **A taxa de recuperação divide pelo ENCERRADO, não pelo glosado.** Com o total
+   glosado, o número cairia toda vez que chegasse glosa nova — pioraria
+   justamente quando o setor trabalha mais.
+3. **Indicador sem base mostra "—" e a frase do porquê, nunca 0%.** "Índice de
+   glosa 0%" é a melhor notícia possível, e três coisas opostas produzem zero:
+   não houve glosa (única que devolve 0) · a leitura falhou · não há faturado.
+4. **`valor_recuperado` nulo ≠ zero.** Nulo é "o recurso não acabou"; zero é
+   "recorremos e não voltou nada". Colapsar os dois estraga a taxa de recuperação.
+
+### 6. Três armadilhas de SQL que custaram tempo hoje
+
+- **Em `LIKE`, `_` é curinga de UM caractere.** `conname like 'at_glosa_%'` casa
+  também com `at_glosas_pkey` e as FKs — uma conferência dizia "esperado 5" e
+  contava 8. Filtre por `contype = 'c'`.
+- **`set valentrax.quem` vale até o fim da SESSÃO, não do arquivo.** O
+  `reconstruir-banco.sql` emenda 87 scripts numa sessão só; sem
+  `reset valentrax.quem` no fim, todos os de baixo se registram como aplicados
+  por quem abriu. Só 3 de 86 migrações usam a variável.
+- **O editor do Supabase trunca calado acima de ~26 KB.** O
+  `migracao-rls-leitura.sql` tem 41 KB. Para tabela nova, use um recorte por
+  tabela — `migracao-glosas-rls.sql` serve de molde.
 
 ---
 
@@ -135,7 +194,7 @@ migrações e +2.000 linhas** de um dia para o outro.
 | Qualquer outro módulo | a pasta do domínio em `src/` — **o `App.jsx` não é mais o lugar** |
 
 **A extração do `App.jsx` ACABOU em 01/09/2026** (PRs #166–#193): de **18.392 para
-1.392 linhas**, 135 arquivos em 15 pastas por domínio. O que sobrou lá é casco — a
+1.391 linhas**, e hoje são **139 arquivos** em 15 pastas por domínio. O que sobrou lá é casco — a
 rede, a sessão e a moldura — e **não deve sair**.
 
 **O padrão de MÓDULO NOVO**, que se firmou ali e vale repetir:
@@ -281,7 +340,7 @@ funil das internações, **faturamento por via** (AIH/BPA/APAC/TISS/direta) e **
 SIGTAP** —, sem número ilustrativo (`src/atendimento/resumo-faturamento.js`).
 
 E em **01/09/2026** fechou-se a **dívida estrutural**: o `App.jsx` deixou de ser um
-monólito de 18.392 linhas e virou **135 arquivos em 15 pastas por domínio** (#166–#193).
+monólito de 18.392 linhas e virou **139 arquivos em 15 pastas por domínio** (#166–#193).
 No caminho apareceu — e foi corrigida — a família de defeito que mais custou a este
 sistema: **ausência de dado renderizada como boa notícia**. 105 cargas de rede
 transformavam falha de leitura em lista vazia, e a tela dizia "nenhum lote vencendo"
@@ -301,7 +360,7 @@ sair do papel: **Glosas** (#197, com tabela `at_glosas` nova nos dois bancos) e
    (só os pacientes do meu setor — depende de lotação confiável em `profiles.setor`) e **RLS de
    ESCRITA** (insert/update/delete seguem pelo `role`, não pelo módulo).
 3. ~~**Modularizar o `App.jsx`**~~ **FEITO em 01/09/2026** (PRs #166–#193): 18.392 →
-   1.392 linhas. ⚠️ Isso **destravou o code-splitting por rota**, que estava parado
+   1.391 linhas. ⚠️ Isso **destravou o code-splitting por rota**, que estava parado
    justamente por depender de mexer no monólito — o bundle segue num pedaço só, com
    aviso de +700 kB em todo build. É a dívida técnica mais óbvia que sobrou.
 4. **A fila do Atendimento e a do Faturamento** — ver
