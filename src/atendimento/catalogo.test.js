@@ -19,7 +19,7 @@
 import { describe, it, expect } from "vitest";
 import {
   CATALOGOS, CATALOGO_POR_CHAVE, TIPOS_DE_CONVENIO, TABELAS_DE_PROCEDIMENTO,
-  normalizarCodigo, lerCbos, validarCatalogo, corpoDoCatalogo, contaComo, CONTA_COMO,
+  normalizarCodigo, lerCbos, validarCatalogo, corpoDoCatalogo, contaComo,
 } from "./catalogo.js";
 import { DOMINIOS } from "./ficha.js";
 

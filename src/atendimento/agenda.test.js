@@ -19,8 +19,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  ORIGENS_MARCACAO, diaCivil, diaSemanaDe, minutosDe, horariosDaGrade,
-  totalVagasDaGrade, cotasSomadas, validarGrade, gradeValeEm, gradesDoDia,
+  ORIGENS_MARCACAO, diaCivil, diaSemanaDe, minutosDe, horariosDaGrade, validarGrade, gradeValeEm, gradesDoDia,
   bloqueioDoDia, vagasDoDia, horariosLivres, podeMarcar, podeRegistrarDaRegulacao,
   producaoDoDia, ocupaVaga, donoDaVaga, gradeParaChegada, agendamentosAtingidos,
   MOTIVOS_DE_FALTA, validarFalta, STATUS_AGENDAMENTO,

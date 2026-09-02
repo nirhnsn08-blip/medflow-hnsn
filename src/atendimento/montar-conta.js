@@ -41,7 +41,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import {
-  centavos, totalDaConta, VIAS, viaDeFaturamento, competenciaDe, internouPeloSus,
+  centavos, totalDaConta, VIAS, competenciaDe, internouPeloSus,
 } from "./faturamento.js";
 import {
   codigoLimpo, codigoFormatado, montarProcedimento, viaDoProcedimento, viaPorGrupo,

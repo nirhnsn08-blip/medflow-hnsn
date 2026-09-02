@@ -46,7 +46,7 @@ import {
 } from "./identidade.js";
 import { cepCompleto, cepLimpo, camposDoCep, mensagemDoCep, invalidaOIbge, contarPreenchidosVisiveis } from "./cep.js";
 import {
-  podeUnificar, foiUnificado, avisoDaFichaUnificada, avisoDaFichaDestino, MOTIVO_MIN,
+  podeUnificar, foiUnificado, avisoDaFichaUnificada, avisoDaFichaDestino,
 } from "./unificacao.js";
 import { unificarProntuario, fichasUnificadasEm } from "../atendimento/dados.js";
 import { listaLida } from "../util/leitura.js";

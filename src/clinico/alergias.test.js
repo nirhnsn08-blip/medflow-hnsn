@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  alergiasVigentes, negaAlergias, textoAlergiasParaAlerta,
+  alergiasVigentes, textoAlergiasParaAlerta,
   alergiasParaExibir, situacaoAlergica, TIPO_NENHUMA,
 } from "./alergias.js";
 

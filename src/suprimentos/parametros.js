@@ -41,7 +41,7 @@ export async function salvarAlcada(sb, valor, usuario) {
   if (typeof sb !== "function") return { ok: false, erro: "Banco indisponível." };
 
   if (valor == null) {
-    const r = await Promise.resolve(
+    await Promise.resolve(
       sb(`sup_parametros?chave=eq.${CHAVE_ALCADA}`, { method: "DELETE" })
     ).catch(() => null);
     // DELETE bloqueado por RLS devolve 204 igual ao que deu certo — por isso
