@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Fragment, Component } from "react";
+import { useState, useEffect, useCallback, Fragment, Component, lazy, Suspense } from "react";
 
 
 // Motor de alertas da farmácia clínica — dose máxima, interação, alergia,
@@ -25,18 +25,19 @@ import { useState, useEffect, useCallback, Fragment, Component } from "react";
 import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
 import { GRUPOS } from "./acesso/modulos.js";
 import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, VxWordmark } from "./ui/base.jsx";
-import UsersPage from "./acesso/Usuarios.jsx";
-import BlocoPage from "./bloco/BlocoPage.jsx";
-import ScihPage from "./scih/ScihPage.jsx";
-import PacientePage from "./pacientes/Paciente360.jsx";
-import ProtocolosPage from "./protocolos/ProtocolosPage.jsx";
+import { ehErroDeChunk, TEXTO_CHUNK } from "./ui/erro-de-chunk.js";
+const UsersPage = lazy(() => import("./acesso/Usuarios.jsx"));
+const BlocoPage = lazy(() => import("./bloco/BlocoPage.jsx"));
+const ScihPage = lazy(() => import("./scih/ScihPage.jsx"));
+const PacientePage = lazy(() => import("./pacientes/Paciente360.jsx"));
+const ProtocolosPage = lazy(() => import("./protocolos/ProtocolosPage.jsx"));
 import {  loadDB, saveDB, loadFromSupabase } from "./painel/dados.js";
 
 import { AlertBanner, Overview, EspecialidadePage, PrintDashboard, ImportPage } from "./painel/Painel.jsx";
 import { ROLES } from "./acesso/papeis-sistema.js";
 
 
-import SuprimentosPage from "./suprimentos/SuprimentosPage.jsx";
+const SuprimentosPage = lazy(() => import("./suprimentos/SuprimentosPage.jsx"));
 
 
 // A prescrição só fica "pronta para retirada" se saiu do estoque — ver o
@@ -47,7 +48,7 @@ import SuprimentosPage from "./suprimentos/SuprimentosPage.jsx";
 // preso na prateleira. Ver o cabeçalho de validade.js.
 
 
-import TrilhaAuditoria from "./auditoria/Trilha.jsx";
+const TrilhaAuditoria = lazy(() => import("./auditoria/Trilha.jsx"));
 
 
 // Renovação da sessão (crachá JWT) — decisão pura testável; a rede fica aqui.
@@ -59,12 +60,17 @@ import { precisaRenovar, deveTentarRenovar, exigeCracha } from "./acesso/sessao.
 // Mapa de risco de enfermagem por leito (Tier 1 Fase 1a).
 
 
-import FarmaciaPage from "./farmacia/FarmaciaPage.jsx";
-import PSPage from "./ps/PsPage.jsx";
+const FarmaciaPage = lazy(() => import("./farmacia/FarmaciaPage.jsx"));
+const PSPage = lazy(() => import("./ps/PsPage.jsx"));
 
 
-import LeitosPage from "./leitos/GiroDeLeitos.jsx";
+const LeitosPage = lazy(() => import("./leitos/GiroDeLeitos.jsx"));
 
+// ⚠️ NÃO é lazy, e não por esquecimento: o casco usa `NotificacaoRapida`
+// deste mesmo arquivo — o botão de notificar incidente em 30s, que existe em
+// TODA tela. Carregar sob demanda a página não adiantaria: o módulo já veio
+// junto com o botão. Para separar, `NotificacaoRapida` precisa sair para um
+// arquivo próprio.
 import NSPPage, { NotificacaoRapida } from "./clinico/SegurancaPaciente.jsx";
 
 // Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
@@ -86,8 +92,8 @@ import {  corEsperaFila } from "./clinico/leitos.js";
 // de CPF/CNS e idade EXATA. A idade por subtração de anos errava até 11
 // meses — o que trocava a faixa de referência na triagem pediátrica.
 
-import Atendimento from "./atendimento/Atendimento.jsx";
-import FaturamentoPage from "./atendimento/FaturamentoSus.jsx";
+const Atendimento = lazy(() => import("./atendimento/Atendimento.jsx"));
+const FaturamentoPage = lazy(() => import("./atendimento/FaturamentoSus.jsx"));
 import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
 
 
@@ -654,6 +660,25 @@ class LimiteErro extends Component {
   render() {
     if (this.state.erro) {
       const e = this.state.erro;
+      // 🔴 FALHA AO BAIXAR O MÓDULO É OUTRO PROBLEMA, E OUTRO CONSELHO.
+      // Com as telas carregando sob demanda, um deploy novo troca o nome dos
+      // arquivos. Quem está com a aba aberta desde de manhã clica na
+      // Farmácia e o navegador pede um arquivo que não existe mais.
+      //
+      // Nesse caso "troque de módulo na barra lateral" é o conselho ERRADO:
+      // TODOS vão falhar igual. O certo é recarregar — e por isso a mensagem
+      // muda e aparece um botão.
+      if (ehErroDeChunk(e)) {
+        return (
+          <div style={{ padding: 24, fontFamily: "Inter, sans-serif", color: "var(--text)" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#f59e0b", marginBottom: 8 }}>{TEXTO_CHUNK.titulo}</div>
+            <div style={{ fontSize: 13, color: "var(--text-3)", marginBottom: 14, lineHeight: 1.5, maxWidth: 560 }}>{TEXTO_CHUNK.corpo}</div>
+            <button onClick={() => window.location.reload()} style={{ background: "#2dd4bf", color: "#062a26", border: "none", borderRadius: 8, padding: "10px 22px", fontWeight: 700, cursor: "pointer", fontSize: 13.5 }}>
+              {TEXTO_CHUNK.botao}
+            </button>
+          </div>
+        );
+      }
       return (
         <div style={{ padding: 24, fontFamily: "Inter, sans-serif", color: "var(--text)", overflow: "auto", height: "100%", boxSizing: "border-box" }}>
           <div style={{ fontSize: 16, fontWeight: 800, color: "#f43f5e", marginBottom: 8 }}>Este módulo teve um erro ao abrir</div>
@@ -1216,6 +1241,14 @@ export default function App() {
         {/* CONTENT */}
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <LimiteErro key={active}>
+          {/* ⚠️ O fallback NÃO é uma tela em branco. Módulo grande em rede
+              de hospital demora, e tela vazia parece sistema quebrado — a
+              pessoa clica de novo, ou desiste e liga para o suporte. */}
+          <Suspense fallback={
+            <div style={{ padding: 28, color: "var(--text-muted)", fontSize: 13 }}>
+              Carregando o módulo…
+            </div>
+          }>
           {active === "overview"  && <Overview sb={SB()} db={db} currentUser={currentUser} canEdit={canLaunch} perms={perms} onNav={setActive} />}
           {currentSpec            && <EspecialidadePage sb={SB()} spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
           {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
@@ -1241,6 +1274,7 @@ export default function App() {
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
           {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
           {active === "users"     && canUsers    && <UsersPage sb={SB()} adminUsuarios={adminUsuarios} trocarSenha={changeMyPassword} currentUser={currentUser} />}
+          </Suspense>
           </LimiteErro>
         </div>
       </div>
