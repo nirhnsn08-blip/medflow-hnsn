@@ -35,3 +35,4 @@ Thumbs.db
 # Supabase CLI (arquivos locais/temporários)
 supabase/.temp/
 supabase/.branches/
+varredura-vazio.txt

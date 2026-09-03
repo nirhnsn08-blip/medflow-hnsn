@@ -20,7 +20,7 @@ import {
 } from "./glosas.js";
 import { carregarGlosas, salvarGlosa } from "./dados.js";
 import { reais, centavos } from "./faturamento.js";
-import { naoDeuParaLer, avisoDeFalha } from "../util/leitura.js";
+import { naoDeuParaLer, listaLida, avisoDeFalha } from "../util/leitura.js";
 
 // O banco guarda reais (numeric 12,2); `reais()` da casa recebe centavos.
 // A conversão fica NUMA função só, na fronteira — e herda de graça a regra
@@ -233,7 +233,16 @@ export default function GlosasView({ sb, currentUser, canEdit }) {
         {carregando ? <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>Carregando…</p>
          : fila.length === 0 ? (
           <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-            {naoDeuParaLer(glosas) ? "Não foi possível ler." : "Nenhuma glosa em aberto."}
+            {/* 🔴 TRÊS MOTIVOS PARA A FILA ESTAR VAZIA. "Nenhuma glosa em
+                aberto" num hospital que nunca registrou glosa nenhuma lê-se
+                como "estamos em dia" — e o hospital pode estar sendo glosado
+                há meses sem ninguém lançar. Achado na varredura do estado
+                vazio em 03/09/2026. */}
+            {naoDeuParaLer(glosas)
+              ? "Não foi possível ler."
+              : listaLida(glosas).length === 0
+                ? "Nenhuma glosa registrada ainda. Isto não quer dizer que não houve glosa — quer dizer que nenhuma foi lançada aqui."
+                : "Nenhuma glosa em aberto: todas as registradas já foram encerradas."}
           </p>
         ) : (
           <div style={{ overflowX: "auto" }}>
