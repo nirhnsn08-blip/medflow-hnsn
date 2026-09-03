@@ -115,6 +115,11 @@ const ORDEM = [
   // Preco por convenio, com vigencia. Depois de at_convenios (FK) e traz a
   // extensao btree_gist, que a trava de sobreposicao exige.
   "migracao-faturamento-precos.sql",
+
+  // 🔴 DEPOIS das três acima, sempre: ela MOVE as políticas delas para o
+  // módulo `faturamento`. Rodando antes, as migrações originais recriariam
+  // as políticas em `atendimento` por cima e o conserto sumiria.
+  "migracao-faturamento-modulo.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
   // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não
