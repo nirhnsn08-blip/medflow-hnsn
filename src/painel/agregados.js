@@ -11,7 +11,9 @@
 // estreito: avisar de tudo faria a faixa virar decoração.
 // ═══════════════════════════════════════════════════════════
 
-import { ESPECIALIDADES as SPECS } from "../ambulatorio/especialidades.js";
+// ⚠️ A lista NÃO é mais importada: ela é do hospital, vem do cadastro e
+// chega por parâmetro. Importá-la aqui era o que fazia este módulo ter
+// opinião sobre quais especialidades existem.
 import { MONTHS } from "../ui/base.jsx";
 import { fmt } from "../util/formato.js";
 import { nowISO, diffMin } from "../util/datas.js";
@@ -47,7 +49,11 @@ export function comparativo(db, ano, mes, specId) {
   };
 }
 
-export function calcAlertas(db) {
+export function calcAlertas(db, especialidades = []) {
+  // ⚠️ Lista VAZIA devolve zero alerta, e é o certo: sem especialidade
+  // cadastrada não há meta contra a qual alertar. Antes o módulo importava
+  // as cinco do HNSN e alertava sobre elas em qualquer hospital.
+  const SPECS = Array.isArray(especialidades) ? especialidades : [];
   const now = new Date();
   const ano = now.getFullYear(), mes = now.getMonth();
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();

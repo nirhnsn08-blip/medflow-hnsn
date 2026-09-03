@@ -31,7 +31,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { producaoDoDia, gradesDoDia, bloqueioDoDia } from "./agenda.js";
-import { ESPECIALIDADE_POR_ID, idDaEspecialidade } from "../ambulatorio/especialidades.js";
+import { indicePorId, idDaEspecialidade } from "../ambulatorio/especialidades.js";
 
 /** As colunas numéricas da tabela agregada `atendimentos`. */
 export const CAMPOS_PRODUCAO = [
@@ -100,7 +100,11 @@ export function producaoDaEspecialidade({ grades = [], agendamentos = [], bloque
  */
 export function conciliarProducao({
   grades = [], agendamentos = [], bloqueios = [], data, gravado = [], catalogoEspecialidades = [],
+  especialidades = [],
 } = {}) {
+  // A lista do hospital, vinda do cadastro. Sem ela, TODA especialidade cai
+  // em `semCorrespondencia` — que é honesto: não há painel para gravar.
+  const ESPECIALIDADE_POR_ID = indicePorId(especialidades);
   const dia = String(data ?? "").slice(0, 10);
   const nomeDe = cod => (catalogoEspecialidades || []).find(e => e.codigo === cod)?.nome || null;
   const gravadoDe = id => (gravado || []).find(g =>
@@ -111,7 +115,7 @@ export function conciliarProducao({
 
   for (const cod of especialidadesDoDia({ grades, agendamentos, data: dia })) {
     const nome = nomeDe(cod);
-    const id = idDaEspecialidade(cod, nome);
+    const id = idDaEspecialidade(cod, nome, especialidades);
     const apurada = producaoDaEspecialidade({ grades, agendamentos, bloqueios, data: dia, especialidadeCod: cod });
 
     if (!id) {
@@ -193,7 +197,9 @@ export function diasDoMes(ano, mes) {
  */
 export function producaoDoMes({
   grades = [], agendamentos = [], bloqueios = [], ano, mes, catalogoEspecialidades = [],
+  especialidades = [],
 } = {}) {
+  const ESPECIALIDADE_POR_ID = indicePorId(especialidades);
   const dias = diasDoMes(ano, mes);
   const nomeDe = cod => (catalogoEspecialidades || []).find(e => e.codigo === cod)?.nome || null;
   const noMes = agendamentos.filter(a => dias.includes(String(a.data ?? "").slice(0, 10)));
@@ -229,7 +235,7 @@ export function producaoDoMes({
       };
     }
 
-    const id = idDaEspecialidade(cod, nomeDe(cod));
+    const id = idDaEspecialidade(cod, nomeDe(cod), especialidades);
     return {
       especialidadeCod: cod,
       id,

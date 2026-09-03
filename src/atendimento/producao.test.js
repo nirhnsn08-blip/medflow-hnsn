@@ -23,7 +23,23 @@ import {
   producaoDaEspecialidade, conciliarProducao, camposDaProducao, validarGravacao,
   diasDoMes, producaoDoMes,
 } from "./producao.js";
-import { idDaEspecialidade, ESPECIALIDADES } from "../ambulatorio/especialidades.js";
+import { idDaEspecialidade, especialidadesDoCadastro } from "../ambulatorio/especialidades.js";
+
+// 🔴 A LISTA VEM DO CADASTRO DO HOSPITAL, não do código. Aqui ela é montada
+// como `at_dominios` traria, com as cinco que o HNSN pactuou — para os
+// testes continuarem falando do mesmo caso concreto de antes.
+const ESPECIALIDADES = especialidadesDoCadastro([
+  { dominio: "especialidade", codigo: "CIRURGIA_GERAL", nome: "Cirurgia Geral", ativo: true,
+    extras: { painel_id: "cirurgia_geral", meta_mensal: 360, meta_anual: 4320, meta_primeiras: 1320 } },
+  { dominio: "especialidade", codigo: "OFTALMOLOGIA",   nome: "Oftalmologia",   ativo: true,
+    extras: { painel_id: "oftalmologia",   meta_mensal: 240, meta_anual: 2880, meta_primeiras: 864 } },
+  { dominio: "especialidade", codigo: "GINECOLOGIA",    nome: "Ginecologia",    ativo: true,
+    extras: { painel_id: "ginecologia",    meta_mensal: 240, meta_anual: 2880, meta_primeiras: 864 } },
+  { dominio: "especialidade", codigo: "UROLOGIA",       nome: "Urologia",       ativo: true,
+    extras: { painel_id: "urologia",       meta_mensal: 240, meta_anual: 2880, meta_primeiras: 864 } },
+  { dominio: "especialidade", codigo: "ORTOPEDIA",      nome: "Ortopedia",      ativo: true,
+    extras: { painel_id: "ortopedia",      meta_mensal: 387, meta_anual: 4644, meta_primeiras: 1394 } },
+]);
 
 const QUARTA = "2026-07-29";
 
@@ -93,7 +109,7 @@ describe("conciliação", () => {
   const base = { grades: [grade()], agendamentos: [ag({ status: "presente" })], data: QUARTA };
 
   it("aponta a diferença campo a campo", () => {
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       ...base,
       gravado: [{ data: QUARTA, especialidade: "ortopedia", ofertadas: 12, realizadas: 9, faltas: 0, primeiras: 9, retornos: 0, livres: 3, emergencias: 4 }],
     });
@@ -107,7 +123,7 @@ describe("conciliação", () => {
   });
 
   it("nunca gravado conta como divergente — o número existe e não está no painel", () => {
-    const c = conciliarProducao({ ...base, gravado: [] });
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES, ...base, gravado: [] });
     expect(c.linhas[0].gravada).toBeNull();
     expect(c.linhas[0].divergente).toBe(true);
     expect(c.divergentes).toBe(1);
@@ -115,7 +131,7 @@ describe("conciliação", () => {
 
   it("igual não é divergente", () => {
     const apurada = producaoDaEspecialidade({ ...base, especialidadeCod: "ORTOPEDIA" });
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       ...base,
       gravado: [{ data: QUARTA, especialidade: "ortopedia", ...apurada, emergencias: 0 }],
     });
@@ -124,7 +140,7 @@ describe("conciliação", () => {
   });
 
   it("especialidade fora do painel vira AVISO, não chave inventada", () => {
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       grades: [grade({ especialidade_cod: "CARDIOLOGIA" })],
       agendamentos: [], data: QUARTA,
       catalogoEspecialidades: [{ codigo: "CARDIOLOGIA", nome: "Cardiologia" }],
@@ -135,7 +151,7 @@ describe("conciliação", () => {
   });
 
   it("linha gravada à mão sem agenda no dia aparece como órfã, e não zerada", () => {
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       ...base,
       gravado: [
         { data: QUARTA, especialidade: "ortopedia", realizadas: 1 },
@@ -148,7 +164,7 @@ describe("conciliação", () => {
   });
 
   it("linha gravada zerada não vira órfã — não há o que preservar", () => {
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       ...base,
       gravado: [{ data: QUARTA, especialidade: "urologia", realizadas: 0, ofertadas: 0 }],
     });
@@ -156,7 +172,7 @@ describe("conciliação", () => {
   });
 
   it("gravado de outro dia não entra na conciliação de hoje", () => {
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       ...base,
       gravado: [{ data: "2026-07-28", especialidade: "ortopedia", realizadas: 99 }],
     });
@@ -165,7 +181,7 @@ describe("conciliação", () => {
   });
 
   it("marca o dia bloqueado — grade que não valeu não deveria virar oferta", () => {
-    const c = conciliarProducao({
+    const c = conciliarProducao({ especialidades: ESPECIALIDADES,
       ...base,
       bloqueios: [{ data_inicio: QUARTA, data_fim: QUARTA, especialidade_cod: "ORTOPEDIA", motivo: "Férias" }],
     });
@@ -246,7 +262,7 @@ describe("o mês", () => {
 
   it("soma as quartas do mês inteiro", () => {
     // julho/2026 tem 5 quartas: 1, 8, 15, 22 e 29.
-    const m = producaoDoMes({ grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES, grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
     expect(m.porEspecialidade[0].ofertadas).toBe(12 * 5);
     expect(m.porEspecialidade[0].diasComGrade).toBe(5);
   });
@@ -259,7 +275,7 @@ describe("o mês", () => {
       ...Array.from({ length: 9 }, (_, i) => ag({ id: 10 + i, data: "2026-07-08", status: "presente", hora: `09:${String(i * 2).padStart(2, "0")}` })),
       ag({ id: 30, data: "2026-07-08", status: "falta", hora: "10:00" }),
     ];
-    const m = producaoDoMes({ grades: [grade()], agendamentos, ano: 2026, mes: 6 });
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES, grades: [grade()], agendamentos, ano: 2026, mes: 6 });
     const e = m.porEspecialidade[0];
     expect(e.marcados).toBe(11);
     expect(e.faltas).toBe(2);
@@ -268,7 +284,7 @@ describe("o mês", () => {
   });
 
   it("ordem de chegada não entra no denominador do absenteísmo", () => {
-    const m = producaoDoMes({
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES,
       grades: [grade()],
       agendamentos: [
         ag({ id: 1, data: "2026-07-01", status: "presente", origem_marcacao: "chegada", hora: null }),
@@ -283,13 +299,13 @@ describe("o mês", () => {
   });
 
   it("sem ninguém marcado o absenteísmo é null, e não 0%", () => {
-    const m = producaoDoMes({ grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES, grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
     expect(m.porEspecialidade[0].absenteismo).toBeNull();
     expect(m.total.absenteismo).toBeNull();
   });
 
   it("separa a produção por dono da vaga", () => {
-    const m = producaoDoMes({
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES,
       grades: [grade()],
       agendamentos: [
         ag({ id: 1, data: "2026-07-01", status: "presente", origem_marcacao: "regulacao" }),
@@ -305,11 +321,11 @@ describe("o mês", () => {
   });
 
   it("compara com a meta da especialidade — e não inventa meta para quem não tem", () => {
-    const comMeta = producaoDoMes({ grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
+    const comMeta = producaoDoMes({ especialidades: ESPECIALIDADES, grades: [grade()], agendamentos: [], ano: 2026, mes: 6 });
     expect(comMeta.porEspecialidade[0].meta).toBe(387);       // ortopedia
     expect(comMeta.porEspecialidade[0].pctMeta).toBe(0);
 
-    const semMeta = producaoDoMes({
+    const semMeta = producaoDoMes({ especialidades: ESPECIALIDADES,
       grades: [grade({ especialidade_cod: "CARDIOLOGIA" })], agendamentos: [], ano: 2026, mes: 6,
     });
     expect(semMeta.porEspecialidade[0].meta).toBeNull();
@@ -317,7 +333,7 @@ describe("o mês", () => {
   });
 
   it("agendamento de outro mês não entra", () => {
-    const m = producaoDoMes({
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES,
       grades: [grade()],
       agendamentos: [ag({ id: 1, data: "2026-06-03", status: "presente" })],
       ano: 2026, mes: 6,
@@ -326,7 +342,7 @@ describe("o mês", () => {
   });
 
   it("o total soma as especialidades", () => {
-    const m = producaoDoMes({
+    const m = producaoDoMes({ especialidades: ESPECIALIDADES,
       grades: [grade(), grade({ id: 2, especialidade_cod: "OFTALMOLOGIA", vagas_internas: 1, vagas_regulacao: 0, vagas_chegada: 0 })],
       agendamentos: [
         ag({ id: 1, data: "2026-07-01", status: "presente" }),
@@ -342,23 +358,34 @@ describe("o mês", () => {
 
 describe("de qual especialidade do painel é este código", () => {
   it("casa por código, por rótulo e ignorando caixa e acento", () => {
-    expect(idDaEspecialidade("ORTOPEDIA")).toBe("ortopedia");
-    expect(idDaEspecialidade("cirurgia_geral")).toBe("cirurgia_geral");
-    expect(idDaEspecialidade("CIR-GERAL", "Cirurgia Geral")).toBe("cirurgia_geral");
-    expect(idDaEspecialidade("Oftalmologia")).toBe("oftalmologia");
+    expect(idDaEspecialidade("ORTOPEDIA", null, ESPECIALIDADES)).toBe("ortopedia");
+    expect(idDaEspecialidade("cirurgia_geral", null, ESPECIALIDADES)).toBe("cirurgia_geral");
+    expect(idDaEspecialidade("CIR-GERAL", "Cirurgia Geral", ESPECIALIDADES)).toBe("cirurgia_geral");
+    expect(idDaEspecialidade("Oftalmologia", null, ESPECIALIDADES)).toBe("oftalmologia");
   });
 
   it("o que não é do painel devolve null, e não o primeiro parecido", () => {
-    expect(idDaEspecialidade("CARDIOLOGIA")).toBeNull();
-    expect(idDaEspecialidade("")).toBeNull();
-    expect(idDaEspecialidade(null)).toBeNull();
+    expect(idDaEspecialidade("CARDIOLOGIA", null, ESPECIALIDADES)).toBeNull();
+    expect(idDaEspecialidade("", null, ESPECIALIDADES)).toBeNull();
+    expect(idDaEspecialidade(null, null, ESPECIALIDADES)).toBeNull();
     // "ortopedia_infantil" não é "ortopedia": especialidade diferente,
     // meta diferente. Casar por prefixo somaria produção de uma na outra.
-    expect(idDaEspecialidade("ORTOPEDIA_INFANTIL")).toBeNull();
+    expect(idDaEspecialidade("ORTOPEDIA_INFANTIL", null, ESPECIALIDADES)).toBeNull();
   });
 
-  it("as cinco do painel continuam sendo as cinco pactuadas", () => {
+  it("🔴 o painel_id do cadastro é o que amarra o histórico", () => {
+    // A produção está gravada em `atendimentos.especialidade` com estas
+    // chaves. Se o cadastro trouxer outro `painel_id`, o histórico daquela
+    // especialidade some do painel — sem erro em lugar nenhum.
     expect(ESPECIALIDADES.map(e => e.id))
       .toEqual(["cirurgia_geral", "oftalmologia", "ginecologia", "urologia", "ortopedia"]);
+  });
+
+  it("⚠️ sem cadastro, NÃO existem especialidades — e não as cinco do HNSN", () => {
+    // É a razão de toda esta mudança: o cliente novo não pode ver a
+    // pactuação de outro hospital.
+    expect(especialidadesDoCadastro([])).toEqual([]);
+    expect(especialidadesDoCadastro(null)).toEqual([]);
+    expect(idDaEspecialidade("CIRURGIA_GERAL", "Cirurgia Geral", [])).toBeNull();
   });
 });
