@@ -22,7 +22,8 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { render, cleanup, waitFor, fireEvent } from "@testing-library/react";
-import NSPPage, { NotificacaoRapida } from "./SegurancaPaciente.jsx";
+import NSPPage from "./SegurancaPaciente.jsx";
+import { NotificacaoRapida } from "./NotificacaoRapida.jsx";
 
 afterEach(cleanup);
 

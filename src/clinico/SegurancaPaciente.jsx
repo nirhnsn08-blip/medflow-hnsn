@@ -5,7 +5,10 @@
 // continuam em ./nsp.js e o acesso ao banco em ./nsp-dados.js; aqui é só
 // tela e estado.
 //
-// Vem junto o `NotificacaoRapida`, o botão flutuante de notificar em 30s.
+// ⚠️ O `NotificacaoRapida` (o botão de notificar em 30s) NÃO mora mais aqui
+// — foi para `NotificacaoRapida.jsx` em 03/09/2026. Ele vive no casco e
+// aparece em toda tela; enquanto os dois saíam deste arquivo, o casco
+// arrastava o módulo inteiro para o primeiro carregamento.
 // Ele mora em outro canto do App.jsx, mas era o único usuário externo de
 // `registrarIncidente` e das cores — trazendo ele, o módulo fecha sem
 // deixar resto. E ele É deste módulo: é a porta de entrada do notificante,
@@ -35,6 +38,7 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./nsp.js";
 import { loadIncidentes, loadLppAdquiridas, registrarIncidente, atualizarStatusIncidente, loadRcas, loadAcoes, registrarRca, registrarAcao, atualizarAcao, loadMetaFaixas, loadMetaMedicoes, salvarMetaFaixa, registrarMetaMedicao, loadProtocolos, salvarProtocolo, loadCapacitacoes, salvarCapacitacao, loadComunicados, salvarComunicado } from "./nsp-dados.js";
+import { NSP_COR, nspCorClasse, nspCorGrau } from "./nsp-cores.js";
 import PrimeiroUso from "../ui/PrimeiroUso.jsx";
 import { useChecagens } from "../ui/usar-checagens.js";
 
@@ -94,9 +98,9 @@ const NSP_NAV = [
   { key: "relatorios",   label: "Relatórios",          icon: "printer", grupo: "Acompanhar" },
   { key: "assistente",   label: "Assistente AI",       icon: "chat",    grupo: "Acompanhar" },
 ];
-const NSP_COR = { verde: "#34d399", amarelo: "#f5b301", laranja: "#fb923c", vermelho: "#f43f5e", azul: "#38bdf8" };
-const nspCorClasse = c => NSP_COR[(NSP_CLASSES.find(x => x.v === c) || {}).nivel] || "#8891a5";
-const nspCorGrau   = g => NSP_COR[(NSP_GRAUS.find(x => x.v === g) || {}).nivel] || "#8891a5";
+// As cores saíram para `nsp-cores.js`, e o botão de notificar para
+// `NotificacaoRapida.jsx`: ele vive no casco, e importá-lo daqui arrastava
+// este módulo inteiro para o primeiro carregamento de todo mundo.
 const nspCorStatus = s => NSP_COR[(NSP_STATUS.find(x => x.v === s) || {}).nivel] || "#8891a5";
 function nspFormVazio() {
   return { classe: "", tipo: "", grau_dano: "", descricao: "", acoes_imediatas: "", local_setor: "", leito: "", prontuario: "", probabilidade: "", gravidade: "", anonimo: false };
@@ -1026,46 +1030,4 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
 
 // Notificação em 30s de qualquer tela (diferencial). Botão flutuante global,
 // disponível a todo usuário logado — cultura justa, não-punitiva, com anonimato.
-export function NotificacaoRapida({ sb, currentUser }) {
-  const [aberto, setAberto] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [ok, setOk] = useState(false);
-  const [f, setF] = useState({ classe: "near_miss", tipo: "", descricao: "", anonimo: false });
-  if (!sb) return null;
-  async function enviar() {
-    if (busy || !f.descricao.trim()) return;
-    setBusy(true);
-    await registrarIncidente(sb, { ...f, origem_tipo: "rapida" }, currentUser);
-    setBusy(false); setOk(true);
-    setTimeout(() => { setOk(false); setAberto(false); setF({ classe: "near_miss", tipo: "", descricao: "", anonimo: false }); }, 1800);
-  }
-  const campo = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, width: "100%", boxSizing: "border-box" };
-  return (<>
-    <button onClick={() => setAberto(true)} title="Notificar incidente de segurança (30s)" style={{ position: "fixed", right: 20, bottom: 20, zIndex: 250, background: "#f43f5e", color: "#fff", border: "none", borderRadius: 999, padding: "11px 17px", fontWeight: 800, fontSize: 12.5, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.3)", display: "flex", alignItems: "center", gap: 7 }}>
-      <Icon name="shield" size={15} />Notificar
-    </button>
-    {aberto && (
-      <div onClick={() => setAberto(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 16 }}>
-        <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.3rem", width: 480, maxWidth: "96vw" }}>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>Notificar incidente de segurança</div>
-          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 14 }}>Cultura justa, sem punição. Vale para quase-erros também — notificar antes do dano é o que salva.</div>
-          {ok ? <div style={{ padding: "1.5rem", textAlign: "center", color: "#34d399", fontWeight: 700 }}>Notificação registrada. Obrigado.</div> : (<>
-            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-              {NSP_CLASSES.slice(0, 4).map(c => <button key={c.v} onClick={() => setF(x => ({ ...x, classe: c.v }))} style={{ background: f.classe === c.v ? nspCorClasse(c.v) + "33" : "transparent", color: f.classe === c.v ? nspCorClasse(c.v) : "var(--text-3)", border: `1px solid ${f.classe === c.v ? nspCorClasse(c.v) : "var(--border)"}`, borderRadius: 7, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>{c.l}</button>)}
-            </div>
-            <select value={f.tipo} onChange={e => setF(x => ({ ...x, tipo: e.target.value }))} style={{ ...campo, marginBottom: 10 }}><option value="">Tipo (opcional)</option>{NSP_TIPOS.map(t => <option key={t.v} value={t.v}>{t.l}</option>)}</select>
-            <textarea value={f.descricao} onChange={e => setF(x => ({ ...x, descricao: e.target.value }))} rows={3} placeholder="O que aconteceu?" style={{ ...campo, resize: "vertical", marginBottom: 10 }} />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text)" }}><input type="checkbox" checked={f.anonimo} onChange={e => setF(x => ({ ...x, anonimo: e.target.checked }))} /> Anônimo</label>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setAberto(false)} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 14px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Cancelar</button>
-                <button onClick={enviar} disabled={busy || !f.descricao.trim()} style={{ background: busy || !f.descricao.trim() ? "#5b76a0" : "#f43f5e", color: "#fff", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 800, fontSize: 13, cursor: busy || !f.descricao.trim() ? "default" : "pointer" }}>{busy ? "…" : "Notificar"}</button>
-              </div>
-            </div>
-          </>)}
-        </div>
-      </div>
-    )}
-  </>);
-}
 
