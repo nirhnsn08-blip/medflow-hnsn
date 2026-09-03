@@ -244,15 +244,15 @@ begin
       ('ag_agendamentos', 'public.pode_ver_algum(''atendimento'')'),                                  -- atendimento
       ('ag_bloqueios', 'public.pode_ver_algum(''atendimento'')'),                                     -- atendimento
       ('ag_grades', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
-      ('at_conta_itens', 'public.pode_ver_algum(''atendimento'')'),                                   -- atendimento
-      ('at_contas', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
+      ('at_conta_itens', 'public.pode_ver_algum(''faturamento'')'),                                   -- faturamento
+      ('at_contas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_convenios', 'true'),                                                                       -- todos os autenticados
       ('at_dominios', 'true'),                                                                        -- todos os autenticados
-      ('at_glosas', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
+      ('at_glosas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_planos', 'true'),                                                                          -- todos os autenticados
-      ('at_precos', 'public.pode_ver_algum(''atendimento'')'),                                        -- atendimento
+      ('at_precos', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_procedimentos', 'true'),                                                                   -- todos os autenticados
-      ('at_repasses', 'public.pode_ver_algum(''atendimento'')'),                                      -- atendimento
+      ('at_repasses', 'public.pode_ver_algum(''faturamento'')'),                                      -- faturamento
       ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
       ('atendimentos', 'public.pode_ver_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
@@ -433,11 +433,11 @@ begin
       ('ag_agendamentos', 'public.pode_editar_algum(''atendimento'')'),                               -- atendimento
       ('ag_bloqueios', 'public.pode_editar_algum(''atendimento'')'),                                  -- atendimento
       ('ag_grades', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
-      ('at_conta_itens', 'public.pode_editar_algum(''atendimento'')'),                                -- atendimento
-      ('at_contas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
-      ('at_glosas', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
-      ('at_precos', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
-      ('at_repasses', 'public.pode_editar_algum(''atendimento'')'),                                   -- atendimento
+      ('at_conta_itens', 'public.pode_editar_algum(''faturamento'')'),                                -- faturamento
+      ('at_contas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
+      ('at_glosas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
+      ('at_precos', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
+      ('at_repasses', 'public.pode_editar_algum(''faturamento'')'),                                   -- faturamento
       ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
       ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco

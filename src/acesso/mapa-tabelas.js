@@ -65,15 +65,22 @@ export const MAPA_TABELAS = {
   ag_agendamentos:          ["atendimento"],
   ag_bloqueios:             ["atendimento"],
   ag_grades:                ["atendimento"],
-  at_conta_itens:           ["atendimento"],
-  at_contas:                ["atendimento"],
+  // 🔴 AS CINCO DO FATURAMENTO saíram de "atendimento" em 03/09/2026, e não
+  // foi arrumação: o perfil Faturamento tem `atendimento: leitura` e
+  // `faturamento: escrita`, e enquanto estas tabelas exigiam ESCRITA EM
+  // ATENDIMENTO o analista não conseguia gravar conta, glosa, preço nem
+  // repasse — o módulo inteiro era só-leitura para quem trabalha nele.
+  // A separação conserta isso e, de quebra, torna o Faturamento vendável à
+  // parte do Atendimento. Ver `migracao-faturamento-modulo.sql`.
+  at_conta_itens:           ["faturamento"],
+  at_contas:                ["faturamento"],
   // A glosa recebida carrega prontuário e valor da conta de um paciente.
-  at_glosas:                ["atendimento"],
+  at_glosas:                ["faturamento"],
   // O repasse aponta para a conta de um paciente e diz quanto foi pago por ela.
-  at_repasses:              ["atendimento"],
+  at_repasses:              ["faturamento"],
   // Preco por convenio. NAO tem paciente, mas e informacao comercial —
   // quem nao fatura nao precisa da tabela de precos da operadora.
-  at_precos:                ["atendimento"],
+  at_precos:                ["faturamento"],
   // Guarda CPF e documento judicial do curador/responsável. O prontuário
   // precisa saber quem consente e quem recebe a alta.
   at_responsaveis:          ["atendimento", "paciente"],
