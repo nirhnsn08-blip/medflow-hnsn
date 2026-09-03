@@ -1744,17 +1744,20 @@ export async function itensComConvenio(sb, { limite = 2000 } = {}) {
   return linhas.map(i => ({ ...i, convenio_id: i.at_contas?.convenio_id ?? null, competencia: i.at_contas?.competencia ?? null }));
 }
 
-/** Grava um preço. Devolve `{ ok, preco?, motivo? }`. */
-export async function salvarPreco(sb, p, user) {
-  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
-  const corpo = {
+const RECUSA_DO_BANCO =
+  "O banco recusa preço negativo, vigência que termina antes de começar, e DOIS PREÇOS " +
+  "ATIVOS do mesmo código e convênio com períodos que se cruzam — encerre o anterior antes.";
+
+function corpoDoPreco(p, user) {
+  return {
     convenio_id: p.convenio_id,
     codigo: String(p.codigo || "").trim(),
     tabela: p.tabela || null,
     descricao: p.descricao || null,
-    // 🔴 Era `String(p.valor).replace(/./g,"")`, que comia TODO ponto como
-    // separador de milhar: quem digitasse 1234.56 gravava 123456 — cem vezes
-    // mais, sem erro em tela. Ver `util/numero-brasileiro.js`.
+    // 🔴 Antes o valor era relido apagando TODO ponto, como se ponto só
+    // pudesse ser separador de milhar: quem digitasse 1234.56 gravava
+    // 123456 — cem vezes mais, sem erro em tela. Ver
+    // `util/numero-brasileiro.js`, que é o único leitor de número agora.
     valor: numeroDigitado(p.valor),
     vigencia_inicio: p.vigencia_inicio,
     vigencia_fim: p.vigencia_fim || null,
@@ -1763,6 +1766,48 @@ export async function salvarPreco(sb, p, user) {
     usuario: user?.name || null,
     updated_at: new Date().toISOString(),
   };
+}
+
+/**
+ * Grava MUITOS preços numa requisição só.
+ *
+ * 🔴 UMA REQUISIÇÃO É UMA TRANSAÇÃO. É por isso que isto não é um laço de
+ * `salvarPreco`: no laço, o `EXCLUDE` de vigência recusaria a linha 174 com
+ * as 173 anteriores já gravadas, e a pessoa ficaria com meia tabela dentro
+ * do banco e o arquivo inteiro na mão — recolar duplicaria, não recolar
+ * deixaria faltando, e não há como saber qual das duas sem conferir 400
+ * linhas. Aqui ou entra tudo, ou não entra nada, e o conserto é recolar.
+ */
+export async function salvarPrecosEmLote(sb, lista, user) {
+  if (!sb) return { ok: false, gravadas: 0, motivo: "Sem conexão com o banco." };
+  const linhas = listaLida(lista);
+  if (!linhas.length) return { ok: false, gravadas: 0, motivo: "Nada a gravar." };
+
+  const r = await sb("at_precos", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify(linhas.map(p => corpoDoPreco(p, user))),
+  }).catch(() => null);
+
+  // ⚠️ Conferir o RETORNO, não o status: o PostgREST responde 2xx alterando
+  // zero linha. E conferir a QUANTIDADE: um retorno menor que o enviado
+  // seria gravação parcial, que aqui não pode existir — se acontecer, é
+  // melhor dizer que não se sabe do que afirmar que deu certo.
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, gravadas: 0, motivo: `Nada foi gravado. ${RECUSA_DO_BANCO}` };
+  }
+  if (r.length !== linhas.length) {
+    return {
+      ok: false, gravadas: r.length,
+      motivo: `Enviei ${linhas.length} preços e o banco devolveu ${r.length}. Confira a tabela antes de tentar de novo — recolar tudo pode duplicar o que entrou.`,
+    };
+  }
+  return { ok: true, gravadas: r.length, precos: r };
+}
+
+/** Grava um preço. Devolve `{ ok, preco?, motivo? }`. */
+export async function salvarPreco(sb, p, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const corpo = corpoDoPreco(p, user);
 
   const r = p.id
     ? await sb(`at_precos?id=eq.${encodeURIComponent(p.id)}`, {
@@ -1773,10 +1818,7 @@ export async function salvarPreco(sb, p, user) {
       }).catch(() => null);
 
   if (!Array.isArray(r) || !r.length) {
-    return {
-      ok: false,
-      motivo: "Nada foi gravado. O banco recusa preço negativo, vigência que termina antes de começar, e DOIS PREÇOS ATIVOS do mesmo código e convênio com períodos que se cruzam — encerre o anterior antes de criar o novo.",
-    };
+    return { ok: false, motivo: `Nada foi gravado. ${RECUSA_DO_BANCO}` };
   }
   return { ok: true, preco: r[0] };
 }

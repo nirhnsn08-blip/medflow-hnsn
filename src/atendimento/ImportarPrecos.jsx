@@ -11,17 +11,19 @@
 // (dividida por cem, com a coluna do total no lugar da do unitário). Nada
 // disso dá erro. Só aparece meses depois, na glosa.
 //
-// ⚠️ A GRAVAÇÃO PODE PARAR NO MEIO, e a tela DIZ onde parou. O banco tem um
-// `EXCLUDE` de vigência que recusa linha a linha; se a 174 for recusada, as
-// 173 anteriores já estão dentro. Fingir "deu erro" ali apagaria da vista o
-// fato de que metade da tabela foi gravada.
+// ⚠️ A GRAVAÇÃO NÃO PODE PARAR NO MEIO. O banco tem um `EXCLUDE` de vigência
+// que recusa linha a linha; gravando uma por uma, a recusa da 174 deixaria
+// as 173 anteriores dentro, e quem importou ficaria com meia tabela no banco
+// e o arquivo inteiro na mão — recolar duplica, não recolar deixa faltando,
+// e não dá para saber qual sem conferir 400 linhas. Por isso vai tudo numa
+// requisição só (`salvarPrecosEmLote`), que no PostgREST é uma transação.
 //
 // As regras estão em `importar-precos.js`, testadas por mutação.
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useMemo } from "react";
 import { analisarImportacao, paraGravar, ENTRA } from "./importar-precos.js";
-import { salvarPreco } from "./dados.js";
+import { salvarPrecosEmLote } from "./dados.js";
 import { reais, centavos } from "./faturamento.js";
 
 const brl = v => reais(centavos(v));
@@ -49,7 +51,6 @@ export default function ImportarPrecos({ sb, currentUser, precos, convenios, onP
   const [texto, setTexto] = useState("");
   const [plano, setPlano] = useState(null);
   const [gravando, setGravando] = useState(false);
-  const [andamento, setAndamento] = useState(null);
   const [resultado, setResultado] = useState(null);
 
   const conv = Number(convenioId) || null;
@@ -65,34 +66,19 @@ export default function ImportarPrecos({ sb, currentUser, precos, convenios, onP
     }));
   }
 
-  // 🔴 Sequencial de propósito. Em paralelo, o `EXCLUDE` do banco decidiria
-  // qual de dois códigos iguais entra pela ordem de chegada da rede, e a
-  // tela não teria como dizer onde parou.
+  // 🔴 UMA REQUISIÇÃO SÓ, de propósito. Um laço de `salvarPreco` gravaria
+  // linha a linha, e a recusa da linha 174 deixaria as 173 anteriores
+  // dentro do banco — meia tabela, com o arquivo inteiro na mão de quem
+  // teria de decidir se recola (duplicando) ou não (faltando). Em lote o
+  // PostgREST usa uma transação: ou entra tudo, ou não entra nada.
   async function gravar() {
     if (!plano?.ok || gravando) return;
     const fila = paraGravar(plano, { convenioId: conv, vigenciaInicio: ini, vigenciaFim: fim || null });
     setGravando(true); setResultado(null);
-    let feitas = 0;
-    for (const [i, linha] of fila.entries()) {
-      setAndamento({ i: i + 1, de: fila.length });
-      const r = await salvarPreco(sb, linha, currentUser);
-      if (!r.ok) {
-        setGravando(false); setAndamento(null);
-        // ⚠️ O número de gravadas vem ANTES do motivo. É o que muda o que a
-        // pessoa faz agora: importar de novo o arquivo inteiro duplicaria.
-        setResultado({
-          ok: false, gravadas: feitas, total: fila.length,
-          codigo: linha.codigo,
-          motivo: r.motivo || "O banco não gravou e não disse por quê.",
-        });
-        return;
-      }
-      feitas++;
-    }
-    setGravando(false); setAndamento(null);
-    setResultado({ ok: true, gravadas: feitas, total: fila.length });
-    setPlano(null); setTexto("");
-    onPronto?.();
+    const r = await salvarPrecosEmLote(sb, fila, currentUser);
+    setGravando(false);
+    setResultado({ ...r, total: fila.length });
+    if (r.ok) { setPlano(null); setTexto(""); onPronto?.(); }
   }
 
   const r = plano?.resumo;
@@ -150,7 +136,7 @@ export default function ImportarPrecos({ sb, currentUser, precos, convenios, onP
             background: gravando ? "var(--surface-2)" : "#22c55e", color: gravando ? "var(--text-muted)" : "#052e16",
             border: "none", borderRadius: 8, padding: "9px 20px", fontWeight: 700, cursor: gravando ? "default" : "pointer", fontSize: 13,
           }}>
-            {gravando && andamento ? `Gravando ${andamento.i} de ${andamento.de}…` : `Gravar ${r.entram} ${r.entram === 1 ? "preço" : "preços"}`}
+            {gravando ? "Gravando…" : `Gravar ${r.entram} ${r.entram === 1 ? "preço" : "preços"}`}
           </button>
         )}
       </div>
@@ -217,9 +203,11 @@ export default function ImportarPrecos({ sb, currentUser, precos, convenios, onP
           {resultado.ok
             ? `${resultado.gravadas} ${resultado.gravadas === 1 ? "preço gravado" : "preços gravados"}.`
             : <>
-                <strong>Parei no meio.</strong> {resultado.gravadas} de {resultado.total} já foram gravados
-                {" "}e continuam no banco — não cole o arquivo inteiro de novo, ou eles duplicam.
-                {" "}A gravação parou no código <code>{resultado.codigo}</code>: {resultado.motivo}
+                {/* ⚠️ Dizer que NADA entrou é metade da informação útil: sem
+                    isso a pessoa não sabe se pode recolar. */}
+                <strong>Não gravei nada</strong>{resultado.gravadas ? " por inteiro" : ""} —
+                {" "}as {resultado.total} linhas continuam fora do banco.
+                {" "}{resultado.motivo}
               </>}
         </div>
       )}
