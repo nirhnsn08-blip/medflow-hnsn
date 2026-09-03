@@ -31,6 +31,7 @@ import { camposDaProducao } from "./producao.js";
 import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
 import { listaLida, naoDeuParaLer } from "../util/leitura.js";
+import { numeroDigitado } from "../util/numero-brasileiro.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -1685,7 +1686,7 @@ export async function salvarRepasse(sb, rep, user) {
   const corpo = {
     conta_id: rep.conta_id,
     competencia_repasse: rep.competencia_repasse || null,
-    valor: Number(String(rep.valor).replace(/\./g, "").replace(",", ".")),
+    valor: numeroDigitado(rep.valor),
     recebido_em: rep.recebido_em,
     documento: rep.documento || null,
     observacao: rep.observacao || null,
@@ -1751,7 +1752,10 @@ export async function salvarPreco(sb, p, user) {
     codigo: String(p.codigo || "").trim(),
     tabela: p.tabela || null,
     descricao: p.descricao || null,
-    valor: Number(String(p.valor).replace(/\./g, "").replace(",", ".")),
+    // 🔴 Era `String(p.valor).replace(/./g,"")`, que comia TODO ponto como
+    // separador de milhar: quem digitasse 1234.56 gravava 123456 — cem vezes
+    // mais, sem erro em tela. Ver `util/numero-brasileiro.js`.
+    valor: numeroDigitado(p.valor),
     vigencia_inicio: p.vigencia_inicio,
     vigencia_fim: p.vigencia_fim || null,
     ativo: p.ativo !== false,

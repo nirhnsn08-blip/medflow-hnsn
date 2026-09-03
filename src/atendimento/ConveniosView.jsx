@@ -28,6 +28,7 @@ import {
 import { carregarPrecos, itensComConvenio, salvarPreco, carregarCatalogos } from "./dados.js";
 import { reais, centavos } from "./faturamento.js";
 import { naoDeuParaLer, avisoDeFalha } from "../util/leitura.js";
+import ImportarPrecos from "./ImportarPrecos.jsx";
 
 const brl = v => reais(centavos(v));
 
@@ -116,6 +117,7 @@ export default function ConveniosView({ sb, currentUser, canEdit }) {
   const [convenios, setConvenios] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [form, setForm] = useState(null);
+  const [importando, setImportando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const hoje = new Date();
@@ -162,10 +164,23 @@ export default function ConveniosView({ sb, currentUser, canEdit }) {
         </div>
       )}
 
-      {canEdit && !form && (
-        <button onClick={() => setForm({})} style={{ background: "#2dd4bf", color: "#062a26", border: "none", borderRadius: 8, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginBottom: 18 }}>
-          + Cadastrar preço
-        </button>
+      {canEdit && !form && !importando && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+          <button onClick={() => setForm({})} style={{ background: "#2dd4bf", color: "#062a26", border: "none", borderRadius: 8, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+            + Cadastrar preço
+          </button>
+          {/* 🔴 O botão que faz a tabela sair do zero. Cadastrar um a um uma
+              tabela de 400 procedimentos é por que `at_precos` fica vazia — e
+              enquanto ela está vazia, a conta do convênio sai com preço do SUS. */}
+          <button onClick={() => setImportando(true)} style={{ background: "transparent", color: "#2dd4bf", border: "1px solid #2dd4bf66", borderRadius: 8, padding: "9px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>
+            Importar tabela da operadora
+          </button>
+        </div>
+      )}
+      {importando && (
+        <ImportarPrecos
+          sb={sb} currentUser={currentUser} precos={precos} convenios={convenios}
+          onPronto={recarregar} onCancelar={() => setImportando(false)} />
       )}
       {form && <FormPreco inicial={form} precos={precos} convenios={convenios} salvando={salvando} onSalvar={gravar} onCancelar={() => { setForm(null); setErro(""); }} />}
       {erro && <div style={{ background: "#7f1d1d22", border: "1px solid #ef444455", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12.5, color: "#fca5a5" }}>{erro}</div>}

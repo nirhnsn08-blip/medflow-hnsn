@@ -25,6 +25,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { listaLida, naoDeuParaLer } from "../util/leitura.js";
+import { numeroDigitado } from "../util/numero-brasileiro.js";
 
 export const SITUACAO = {
   ACHADO:  "achado",
@@ -178,11 +179,13 @@ export function regrasDoConvenio(convenio) {
 /** O que impede de gravar um preço. Lista vazia = pode. */
 export function recusasDoPreco(p, outros = []) {
   const fora = [];
-  const v = Number(String(p?.valor ?? "").replace(/\./g, "").replace(",", "."));
+  // 🔴 O MESMO leitor que a gravação usa. Enquanto eram dois, a tela podia
+  // aprovar um valor e o banco gravar outro — e o outro era cem vezes maior.
+  const v = numeroDigitado(p?.valor);
 
   if (!p?.convenio_id) fora.push("Sem convênio: o preço é sempre de alguém.");
   if (!String(p?.codigo ?? "").trim()) fora.push("Sem código o preço não encontra procedimento nenhum.");
-  if (p?.valor === "" || p?.valor == null || !Number.isFinite(v)) fora.push("Valor inválido.");
+  if (v == null) fora.push("Valor inválido.");
   else if (v < 0) fora.push("Preço negativo não existe. Zero existe — é procedimento incluso no pacote.");
   if (!p?.vigencia_inicio) fora.push("Sem início de vigência não dá para dizer de quando o preço vale.");
   if (p?.vigencia_fim && p?.vigencia_inicio && diaDe(p.vigencia_fim) < diaDe(p.vigencia_inicio)) {
