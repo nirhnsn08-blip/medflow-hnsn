@@ -11,52 +11,19 @@
 
 const arr = x => (Array.isArray(x) ? x : []);
 
-// Classe do incidente — do menos ao mais grave (ordem importa no dashboard).
-export const CLASSES = [
-  { v: "circunstancia_risco", l: "Circunstância de risco", sub: "condição com potencial de dano, sem incidente ainda", nivel: "amarelo" },
-  { v: "near_miss",           l: "Near-miss (quase-erro)",  sub: "barrado antes de chegar ao paciente",              nivel: "amarelo" },
-  { v: "incidente_sem_dano",  l: "Incidente sem dano",      sub: "chegou ao paciente, sem dano",                     nivel: "laranja" },
-  { v: "evento_adverso",      l: "Evento adverso",          sub: "incidente COM dano ao paciente",                   nivel: "vermelho" },
-  { v: "never_event",         l: "Never event",             sub: "evento grave que nunca deveria ocorrer",           nivel: "vermelho" },
-];
+// As taxonomias saíram para `nsp-catalogo.js` e as três regras de
+// classificação de incidente para `nsp-incidente.js`: o botão de notificar,
+// que vive no casco, precisa das duas — e enquanto elas moravam aqui, este
+// arquivo inteiro era içado para o chunk inicial. Reexportados abaixo para
+// quem já importava daqui não precisar mudar.
+export * from "./nsp-catalogo.js";
+export * from "./nsp-incidente.js";
+// ⚠️ `export *` REEXPORTA, mas não traz o nome para o escopo deste
+// arquivo — e ele usa vários por dentro. Sem estes imports o lint acusa
+// cinco `no-undef`, que é exatamente o detector fazendo o trabalho dele.
+import { rotuloClasse, rotuloTipo, rotuloGrau } from "./nsp-catalogo.js";
+import { exigeRCA, notificacaoCompulsoria } from "./nsp-incidente.js";
 
-// Grau de dano (taxonomia OMS/ICPS).
-export const GRAUS_DANO = [
-  { v: "nenhum",   l: "Nenhum",   nivel: "verde" },
-  { v: "leve",     l: "Leve",     nivel: "amarelo" },
-  { v: "moderado", l: "Moderado", nivel: "laranja" },
-  { v: "grave",    l: "Grave",    nivel: "vermelho" },
-  { v: "obito",    l: "Óbito",    nivel: "vermelho" },
-];
-
-// Tipo de incidente. `origem` liga aos módulos que já temos (Fase 1).
-export const TIPOS = [
-  { v: "medicacao",     l: "Medicação",                 origem: "prescricao" },
-  { v: "queda",         l: "Queda",                     origem: "escala_morse" },
-  { v: "lpp",           l: "Lesão por pressão",         origem: "lpp" },
-  { v: "identificacao", l: "Identificação do paciente" },
-  { v: "cirurgico",     l: "Cirúrgico / procedimento" },
-  { v: "dispositivo",   l: "Dispositivo / equipamento" },
-  { v: "laboratorio",   l: "Laboratório / amostra" },
-  { v: "iras",          l: "Infecção (IRAS)" },
-  { v: "flebite",       l: "Flebite / acesso vascular", origem: "flebite" },
-  { v: "transfusao",    l: "Transfusão / hemocomponente" },
-  { v: "diagnostico",   l: "Diagnóstico / atraso" },
-  { v: "comportamento", l: "Comportamento / violência" },
-  { v: "infraestrutura",l: "Infraestrutura / predial" },
-  { v: "outro",         l: "Outro" },
-];
-
-// Fluxo do núcleo.
-export const STATUS = [
-  { v: "nova",          l: "Nova",           nivel: "amarelo" },
-  { v: "em_analise",    l: "Em análise",     nivel: "laranja" },
-  { v: "classificada",  l: "Classificada",   nivel: "azul" },
-  { v: "em_tratamento", l: "Em tratamento",  nivel: "laranja" },
-  { v: "concluida",     l: "Concluída",      nivel: "verde" },
-];
-
-// As 6 Metas Internacionais de Segurança do Paciente (OMS/JCI) — usadas nas
 // telas de Metas e Protocolos (Fase 2c/2d); ficam aqui como referência fixa.
 export const METAS = [
   { v: "identificacao",   l: "Identificar corretamente o paciente" },
@@ -67,38 +34,9 @@ export const METAS = [
   { v: "quedas_lpp",      l: "Reduzir quedas e lesões por pressão" },
 ];
 
-const rotuloDe = (lista, v) => lista.find(x => x.v === v)?.l || v || null;
-export const rotuloClasse = v => rotuloDe(CLASSES, v);
-export const rotuloTipo   = v => rotuloDe(TIPOS, v);
-export const rotuloGrau   = v => rotuloDe(GRAUS_DANO, v);
-export const rotuloStatus = v => rotuloDe(STATUS, v);
-
-/**
- * Matriz de risco: probabilidade × gravidade (1–5 cada) → score 1–25 e faixa.
- * Padrão NHS/AHRQ: extremo ≥15, alto 8–14, moderado 4–7, baixo 1–3.
- */
-export function matrizRisco(probabilidade, gravidade) {
-  const p = Number(probabilidade) || 0;
-  const g = Number(gravidade) || 0;
-  const score = p * g;
-  const faixa = score >= 15 ? "extremo" : score >= 8 ? "alto" : score >= 4 ? "moderado" : score >= 1 ? "baixo" : null;
-  return { score, faixa };
-}
 
 const COM_DANO_GRAU = new Set(["leve", "moderado", "grave", "obito"]);
-const DANO_SIGNIFICATIVO = new Set(["moderado", "grave", "obito"]);
 
-/** Evento que exige análise de causa raiz (RCA): evento adverso, never event, ou dano moderado+. */
-export function exigeRCA(inc) {
-  if (!inc) return false;
-  return inc.classe === "never_event" || inc.classe === "evento_adverso" || DANO_SIGNIFICATIVO.has(inc.grau_dano);
-}
-
-/** Notificação compulsória à ANVISA/VISA: never events e óbito. */
-export function notificacaoCompulsoria(inc) {
-  if (!inc) return false;
-  return inc.classe === "never_event" || inc.grau_dano === "obito";
-}
 
 /** O incidente chegou ao paciente com dano? (para o near-miss ratio) */
 export function temDano(inc) {

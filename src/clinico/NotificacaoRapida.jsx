@@ -18,7 +18,10 @@
 
 import { useState } from "react";
 import { Icon } from "../ui/base.jsx";
-import { CLASSES as NSP_CLASSES, TIPOS as NSP_TIPOS } from "./nsp.js";
+// 🔴 De `nsp-catalogo.js`, NÃO de `nsp.js`. Importar do arquivo grande
+// arrastaria o assistente, as metas e o Ishikawa para o chunk inicial —
+// medido em 20,3 kB antes desta separação.
+import { CLASSES as NSP_CLASSES, TIPOS as NSP_TIPOS } from "./nsp-catalogo.js";
 import { registrarIncidente } from "./nsp-dados.js";
 import { nspCorClasse } from "./nsp-cores.js";
 

@@ -21,7 +21,9 @@
 // status já produziu bug nesta casa.
 // ═══════════════════════════════════════════════════════════
 
-import { matrizRisco, exigeRCA, notificacaoCompulsoria } from "./nsp.js";
+// 🔴 De `nsp-incidente.js`: esta camada é chamada pelo botão que vive no
+// casco, e importar de `nsp.js` traria o módulo inteiro junto.
+import { matrizRisco, exigeRCA, notificacaoCompulsoria } from "./nsp-incidente.js";
 import { listaLida } from "../util/leitura.js";
 
 // ── NSP — Núcleo de Segurança do Paciente (Fase 2a) ──
