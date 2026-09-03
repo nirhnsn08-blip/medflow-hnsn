@@ -66,7 +66,19 @@ export const MODULOS = [
   // módulo sem alcançar o Paciente 360.
   { chave: "atendimento",  label: "Atendimento / Recepção", grupo: "Atendimento",
     nota: "Não é prontuário, mas concentra o dado pessoal identificável (nome, CPF, filiação, endereço) de todo mundo que já passou pelo hospital." },
-  { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Atendimento", clinico: true },
+  // ⚠️ `semMenu`: o módulo EXISTE (gate de RLS de 3 tabelas, e o perfil o
+  // lista na matriz), mas não tem entrada na barra lateral. Chega-se a ele
+  // clicando na especialidade dentro do Centro de Monitoramento.
+  //
+  // Era o MVP inteiro no começo, e por isso ocupava um lugar de primeiro
+  // nível com as cinco especialidades abertas embaixo — seis entradas de
+  // menu para uma seção de painel. Num sistema completo, "Oftalmologia" não
+  // é conceito de navegação de primeiro nível.
+  //
+  // 🔴 A FLAG É O QUE IMPEDE A DIVERGÊNCIA SILENCIOSA: sem ela, um módulo
+  // esquecido no menu e um módulo deliberadamente fora dele ficariam
+  // indistinguíveis. `modulos.test.js` confere os dois lados.
+  { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Atendimento", clinico: true, semMenu: true },
   { chave: "ps",           label: "Pronto-Socorro",     grupo: "Clínica e assistencial", clinico: true },
   { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Clínica e assistencial", clinico: true },
   { chave: "leitos",       label: "Giro de Leitos",     grupo: "Clínica e assistencial", clinico: true },
@@ -83,7 +95,11 @@ export const MODULOS = [
   { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Clínica e assistencial", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
   { chave: "farmacia",     label: "Farmácia",           grupo: "Farmácia" },
-  { chave: "controlados",  label: "Livro de Controlados", grupo: "Farmácia",
+  // ⚠️ `semMenu`: é ABA da Farmácia ("Registro e referência" → Controlados),
+  // com permissão própria porque o livro de controlados tem regra legal
+  // separada. Nunca teve entrada na barra lateral — a diferença é que agora
+  // isso está DECLARADO, e não implícito na ausência.
+  { chave: "controlados",  label: "Livro de Controlados", grupo: "Farmácia", semMenu: true,
     nota: "Documento fiscalizável (Portaria 344/98) — acesso restrito por norma." },
   { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Materiais e logística" },
   { chave: "faturamento",  label: "Faturamento",        grupo: "Faturamento",

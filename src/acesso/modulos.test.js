@@ -177,3 +177,35 @@ describe("🔴 a ordem do menu segue o caminho do trabalho", () => {
     expect(GRUPOS[GRUPOS.length - 1]).toBe("Apoio e TI");
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 TODO MÓDULO OU ESTÁ NO MENU, OU DECLARA QUE NÃO ESTÁ
+//
+// Módulo esquecido na barra lateral e módulo deliberadamente fora dela são
+// indistinguíveis a olho — os dois simplesmente não aparecem. A flag
+// `semMenu` transforma a segunda situação em declaração, e este teste pega
+// a primeira.
+//
+// Sem isto, acrescentar um módulo ao catálogo e esquecer a barra passaria
+// verde: o `GRUPOS_ORFAOS` olha o grupo, não a navegação.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 nenhum módulo some do menu por esquecimento", () => {
+  const app = readFileSync(join(process.cwd(), "src", "App.jsx"), "utf8");
+  const noMenu = chave => app.includes(`id: "${chave}"`);
+
+  for (const m of MODULOS) {
+    it(`${m.chave}${m.semMenu ? " (semMenu, de propósito)" : ""}`, () => {
+      if (m.semMenu) {
+        expect(noMenu(m.chave), `${m.chave} declara semMenu mas ESTÁ na barra`).toBe(false);
+      } else {
+        expect(noMenu(m.chave), `${m.chave} não está na barra lateral nem declara semMenu`).toBe(true);
+      }
+    });
+  }
+
+  it("⚠️ e a busca não é decorativa", () => {
+    // Regex que deixou de casar passaria tudo verde.
+    expect(noMenu("overview")).toBe(true);
+    expect(noMenu("modulo_que_nao_existe")).toBe(false);
+  });
+});

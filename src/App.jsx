@@ -1159,7 +1159,12 @@ export default function App() {
     { id: "suprimentos", icon: "cart", label: "Estoque & Compras", ver: verModulo("suprimentos") },
 
     { id: "faturamento", icon: "briefcase", label: "Faturamento SUS", ver: verModulo("faturamento") },
-    { id: "ambulatorio", icon: "clinic", label: "Ambulatório", ver: verModulo("ambulatorio"), children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
+    // 🔴 O AMBULATÓRIO NÃO É ITEM DE MENU desde 03/09/2026. Ele era o MVP
+    // inteiro no começo, e por isso ocupava um lugar de primeiro nível com as
+    // cinco especialidades abertas embaixo — seis entradas na barra para uma
+    // seção de painel. O módulo CONTINUA existindo (gate de RLS de 3 tabelas
+    // e `currentSpec` abaixo); o que mudou é por onde se chega: clicando na
+    // especialidade dentro do Centro de Monitoramento.
     { id: "print", icon: "printer", label: "Imprimir Dashboard", ver: canPrint && verModulo("print") },
 
     { id: "auditoria", icon: "clipboard", label: "Auditoria", ver: canAudit && verModulo("auditoria") },
