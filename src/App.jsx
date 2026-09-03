@@ -66,12 +66,14 @@ const PSPage = lazy(() => import("./ps/PsPage.jsx"));
 
 const LeitosPage = lazy(() => import("./leitos/GiroDeLeitos.jsx"));
 
-// ⚠️ NÃO é lazy, e não por esquecimento: o casco usa `NotificacaoRapida`
-// deste mesmo arquivo — o botão de notificar incidente em 30s, que existe em
-// TODA tela. Carregar sob demanda a página não adiantaria: o módulo já veio
-// junto com o botão. Para separar, `NotificacaoRapida` precisa sair para um
-// arquivo próprio.
-import NSPPage, { NotificacaoRapida } from "./clinico/SegurancaPaciente.jsx";
+// ✅ Agora É lazy. `NotificacaoRapida` saiu para arquivo próprio em
+// 03/09/2026, e com isso o último dos doze módulos passou a carregar sob
+// demanda. Antes, o botão de notificar em 30s — que existe em TODA tela —
+// obrigava o módulo NSP inteiro a entrar no primeiro carregamento.
+const NSPPage = lazy(() => import("./clinico/SegurancaPaciente.jsx"));
+// ⚠️ Este SIM é import direto, e tem de ser: o botão é parte do casco,
+// aparece antes de qualquer módulo e não pode esperar um `Suspense`.
+import { NotificacaoRapida } from "./clinico/NotificacaoRapida.jsx";
 
 // Protocolos clínicos gerenciados (Tier 1 Fase 3a) — gatilho/bundle/relógio/KPIs puros.
 
