@@ -88,7 +88,10 @@ export const MODULOS = [
   { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Materiais e logística" },
   { chave: "faturamento",  label: "Faturamento",        grupo: "Faturamento",
     nota: "Faturamento SUS: SIGTAP, conta montada do prontuário e trava de glosa antes do envio (AIH/APAC/BPA). Sem prontuário — é administrativo." },
-  { chave: "print",        label: "Imprimir Dashboard", grupo: "Geral" },
+  // ⚠️ "Imprimir Dashboard" é SAÍDA, não processo. Ficava em "Geral", o que
+  // lhe dava a segunda posição do menu — o lugar mais nobre da tela — por
+  // acidente do agrupamento antigo. É utilitário: desce para o apoio.
+  { chave: "print",        label: "Imprimir Dashboard", grupo: "Apoio e TI" },
   { chave: "auditoria",    label: "Auditoria",          grupo: "Apoio e TI",
     nota: "Trilha de quem fez o quê. Quem é auditado não deveria administrar a própria trilha." },
   { chave: "import",       label: "Importar Dados",     grupo: "Apoio e TI" },

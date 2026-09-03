@@ -135,3 +135,45 @@ describe("🔴 ninguém redeclara grupo fora do catálogo", () => {
     expect(isca.match(/grupo:\s*"[^"]+"/g)).toHaveLength(1);
   });
 });
+
+describe("🔴 a ordem do menu segue o caminho do trabalho", () => {
+  // A ordem não é gosto: é o caminho do paciente, depois o dinheiro, depois
+  // o apoio. É a mesma sequência do MV — o hospital já lê menu assim.
+  const pos = g => GRUPOS.indexOf(g);
+
+  it("a home abre o menu e não leva cabeçalho", () => {
+    // "Geral" é a porta de entrada, não uma categoria. O renderizador omite
+    // o cabeçalho dele de propósito (App.jsx); aqui se garante que ele é o
+    // primeiro, senão a home apareceria no meio da lista.
+    expect(GRUPOS[0]).toBe("Geral");
+    expect(MODULO_POR_CHAVE.overview.grupo).toBe("Geral");
+  });
+
+  it("atende → trata → confere → fatura", () => {
+    expect(pos("Atendimento")).toBeLessThan(pos("Clínica e assistencial"));
+    expect(pos("Clínica e assistencial")).toBeLessThan(pos("Qualidade e vigilância"));
+    expect(pos("Qualidade e vigilância")).toBeLessThan(pos("Faturamento"));
+  });
+
+  it("⚠️ a qualidade fica COLADA no assistencial — é o mesmo domínio", () => {
+    // Uma faz, a outra confere. Separá-las por um grupo de outra natureza
+    // (dinheiro, estoque) quebraria a leitura.
+    expect(pos("Qualidade e vigilância") - pos("Clínica e assistencial")).toBe(1);
+  });
+
+  it("farmácia antes do almoxarifado — o que toca paciente vem primeiro", () => {
+    // A farmácia decide dose, interação e alergia. O almoxarifado não toca
+    // ninguém. Já era a regra da barra antiga e continua valendo.
+    expect(pos("Farmácia")).toBeLessThan(pos("Materiais e logística"));
+  });
+
+  it("🔴 `print` NÃO ocupa a segunda posição do menu — é saída, não processo", () => {
+    // Ficava em "Geral", o que lhe dava o lugar mais nobre da tela por
+    // acidente do agrupamento antigo.
+    expect(MODULO_POR_CHAVE.print.grupo).toBe("Apoio e TI");
+  });
+
+  it("o apoio fecha a lista", () => {
+    expect(GRUPOS[GRUPOS.length - 1]).toBe("Apoio e TI");
+  });
+});
