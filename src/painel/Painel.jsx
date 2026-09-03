@@ -549,8 +549,22 @@ export function Overview({ sb, db, currentUser, canEdit, perms, onNav }) {
       {/* ESPECIALIDADES — META x REALIZADO */}
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Ambulatório — meta mensal × realizado ({MONTHS[mes]})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* 🔴 CADA LINHA É A PORTA DA ESPECIALIDADE. Até 03/09/2026 o
+            Ambulatório era item de menu com as cinco especialidades abertas
+            embaixo — resto do MVP, quando o produto ERA só isto. Num sistema
+            completo, "Oftalmologia" não é conceito de navegação de primeiro
+            nível; é detalhe de uma seção do painel. O resumo já estava aqui,
+            só faltava poder clicar nele. */}
         {specRows.map(({ spec, total, pct }) => (
-          <div key={spec.id}>
+          <div
+            key={spec.id}
+            onClick={onNav ? () => onNav(spec.id) : undefined}
+            role={onNav ? "button" : undefined}
+            tabIndex={onNav ? 0 : undefined}
+            onKeyDown={onNav ? (e => (e.key === "Enter" || e.key === " ") && onNav(spec.id)) : undefined}
+            title={onNav ? `Abrir ${spec.label}` : undefined}
+            style={onNav ? { cursor: "pointer", borderRadius: 6, padding: "2px 4px", margin: "0 -4px" } : undefined}
+          >
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
               <span style={{ fontWeight: 600, color: spec.color }}>{spec.label}</span>
               <span style={{ color: "var(--text-3)" }}><strong style={{ color: "var(--text)" }}>{fmt(total)}</strong> / {fmt(spec.metaM)} · {pct}%</span>
