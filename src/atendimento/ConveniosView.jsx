@@ -111,7 +111,7 @@ function FormPreco({ inicial, precos, convenios, onSalvar, onCancelar, salvando 
   );
 }
 
-export default function ConveniosView({ sb, currentUser, canEdit }) {
+export default function ConveniosView({ sb, currentUser, canEdit, onIrPara }) {
   const [precos, setPrecos] = useState([]);
   const [itens, setItens] = useState([]);
   const [convenios, setConvenios] = useState([]);
@@ -183,7 +183,8 @@ export default function ConveniosView({ sb, currentUser, canEdit }) {
       {importando && (
         <ImportarPrecos
           sb={sb} currentUser={currentUser} precos={precos} convenios={convenios}
-          onPronto={recarregar} onCancelar={() => setImportando(false)} />
+          onPronto={recarregar} onCancelar={() => setImportando(false)}
+          onCadastrarConvenio={onIrPara && (() => onIrPara("atendimento", "tabelas"))} />
       )}
       {form && <FormPreco inicial={form} precos={precos} convenios={convenios} salvando={salvando} onSalvar={gravar} onCancelar={() => { setForm(null); setErro(""); }} />}
       {erro && <div style={{ background: "#7f1d1d22", border: "1px solid #ef444455", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 12.5, color: "#fca5a5" }}>{erro}</div>}

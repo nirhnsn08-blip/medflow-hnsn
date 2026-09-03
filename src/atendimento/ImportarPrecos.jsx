@@ -43,7 +43,7 @@ const EXEMPLO = [
 
 const TABELAS = ["", "sigtap", "tuss", "cbhpm", "proprio"];
 
-export default function ImportarPrecos({ sb, currentUser, precos, convenios, onPronto, onCancelar }) {
+export default function ImportarPrecos({ sb, currentUser, precos, convenios, onPronto, onCancelar, onCadastrarConvenio }) {
   const [convenioId, setConvenioId] = useState("");
   const [ini, setIni] = useState("");
   const [fim, setFim] = useState("");
@@ -103,7 +103,18 @@ export default function ImportarPrecos({ sb, currentUser, precos, convenios, onP
       {(convenios || []).length === 0 && (
         <div role="alert" style={{ ...cx.aviso, marginBottom: 14 }}>
           <strong>Não há convênio cadastrado.</strong> Preço é sempre de alguém, então não há o que importar ainda.
-          Cadastre as operadoras em <strong>Atendimento → Tabelas</strong> e volte aqui.
+          {/* ⚠️ O BOTÃO, e não só a instrução. Escrever "vá em Atendimento →
+              Tabelas" faz a pessoa achar o caminho sozinha justamente no
+              primeiro minuto de uso do sistema, que num produto vendido a
+              vários hospitais é a primeira impressão de todo cliente novo. */}
+          {onCadastrarConvenio
+            ? <> Cadastre as operadoras primeiro:{" "}
+                <button onClick={onCadastrarConvenio} style={{
+                  background: "transparent", color: "#fca5a5", border: "1px solid #ef444488",
+                  borderRadius: 6, padding: "3px 11px", cursor: "pointer", fontSize: 12, fontWeight: 700,
+                }}>Ir para o cadastro de convênios</button>
+              </>
+            : <> Cadastre as operadoras em <strong>Atendimento → Tabelas</strong> e volte aqui.</>}
         </div>
       )}
 

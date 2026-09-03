@@ -1251,7 +1251,7 @@ function EmConstrucao({ titulo, desc }) {
 }
 
 // ── Shell ───────────────────────────────────────────────────
-export default function FaturamentoPage({ sb, currentUser, canEdit }) {
+export default function FaturamentoPage({ sb, currentUser, canEdit, onIrPara }) {
   const [sub, setSub] = useState("visao");
   const [rows, setRows] = useState([]);
   const [carregando, setCarregando] = useState(true);
@@ -1301,7 +1301,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit }) {
         {sub === "glosas" && <GlosasView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {sub === "analises" && <AnalisesView sb={sb} />}
         {sub === "receitas" && <ReceitasView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
-        {sub === "convenios" && <ConveniosView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
+        {sub === "convenios" && <ConveniosView sb={sb} currentUser={currentUser} canEdit={canEdit} onIrPara={onIrPara} />}
         {sub === "previsoes" && <PrevisoesView sb={sb} />}
         {sub === "assistente" && <AssistenteView sb={sb} />}
         {EM_CONSTRUCAO[sub] && <EmConstrucao titulo={titulo[sub]} desc={EM_CONSTRUCAO[sub]} />}
