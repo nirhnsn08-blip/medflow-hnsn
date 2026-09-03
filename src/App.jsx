@@ -861,9 +861,17 @@ export default function App() {
   // em Atendimento → Tabelas" escrito num aviso obriga a pessoa a achar o
   // caminho sozinha, no primeiro minuto de uso.
   //
-  // ⚠️ A aba é DE UM USO SÓ. Se ficasse guardada, o próximo clique em
-  // "Atendimento" na barra lateral cairia em Tabelas em vez de Recepção —
-  // por isso `navegar` zera a aba, e é ela que a barra lateral chama.
+  // ⚠️ A aba é DE UM USO SÓ. Se ficasse guardada, VOLTAR ao Atendimento
+  // depois cairia em Tabelas em vez de Recepção — por isso `navegar` zera a
+  // aba, e é ela que a barra lateral chama.
+  //
+  // ⚠️ E ELA SÓ VALE NA MONTAGEM. Clicar "Atendimento" na lateral estando JÁ
+  // no Atendimento não troca `active`, então o módulo não remonta e a aba
+  // fica onde está. Isso é o comportamento normal de item de menu do módulo
+  // atual, NÃO é o atalho grudando: o teste que importa é sair do módulo e
+  // voltar, e aí cai em Recepção. Caminhado na tela em 03/09/2026 — a
+  // primeira versão desta caminhada testou a coisa errada e acusou um bug
+  // que não existia.
   const [abaAtendimento, setAbaAtendimento] = useState(null);
   const navegar = (id, aba = null) => { setAbaAtendimento(aba); setActive(id); };
   const [ambOpen, setAmbOpen] = useState(true);
