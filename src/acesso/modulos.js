@@ -64,12 +64,12 @@ export const MODULOS = [
   // é exatamente o recorte administrativo que a COFEN 754/2024 art. 6º
   // manda separar do prontuário, e é por isso que a Recepção pode ter este
   // módulo sem alcançar o Paciente 360.
-  { chave: "atendimento",  label: "Atendimento / Recepção", grupo: "Jornada do paciente",
+  { chave: "atendimento",  label: "Atendimento / Recepção", grupo: "Atendimento",
     nota: "Não é prontuário, mas concentra o dado pessoal identificável (nome, CPF, filiação, endereço) de todo mundo que já passou pelo hospital." },
-  { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Receita e produção", clinico: true },
-  { chave: "ps",           label: "Pronto-Socorro",     grupo: "Jornada do paciente", clinico: true },
-  { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Jornada do paciente", clinico: true },
-  { chave: "leitos",       label: "Giro de Leitos",     grupo: "Jornada do paciente", clinico: true },
+  { chave: "ambulatorio",  label: "Ambulatório",        grupo: "Atendimento", clinico: true },
+  { chave: "ps",           label: "Pronto-Socorro",     grupo: "Clínica e assistencial", clinico: true },
+  { chave: "bloco",        label: "Bloco Cirúrgico",    grupo: "Clínica e assistencial", clinico: true },
+  { chave: "leitos",       label: "Giro de Leitos",     grupo: "Clínica e assistencial", clinico: true },
   { chave: "scih",         label: "SCIH",               grupo: "Qualidade e vigilância", clinico: true },
   { chave: "nsp",          label: "Segurança do Paciente", grupo: "Qualidade e vigilância", clinico: true,
     // Este é o único módulo que quase todo perfil recebe em ESCRITA, e é de
@@ -80,19 +80,19 @@ export const MODULOS = [
     nota: "Núcleo de Segurança do Paciente (RDC 36/2013). Notificação de incidentes e eventos adversos." },
   { chave: "protocolos",   label: "Protocolos Clínicos", grupo: "Qualidade e vigilância", clinico: true,
     nota: "Protocolos gerenciados tempo-dependentes (sepse, IAM, AVC, TEV): gatilho por NEWS/triagem, bundle com relógio e indicadores porta→ação, por setor assistencial." },
-  { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Jornada do paciente", clinico: true,
+  { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Clínica e assistencial", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
-  { chave: "farmacia",     label: "Farmácia",           grupo: "Farmácia e suprimentos" },
-  { chave: "controlados",  label: "Livro de Controlados", grupo: "Farmácia e suprimentos",
+  { chave: "farmacia",     label: "Farmácia",           grupo: "Farmácia" },
+  { chave: "controlados",  label: "Livro de Controlados", grupo: "Farmácia",
     nota: "Documento fiscalizável (Portaria 344/98) — acesso restrito por norma." },
-  { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Farmácia e suprimentos" },
-  { chave: "faturamento",  label: "Faturamento",        grupo: "Receita e produção",
+  { chave: "suprimentos",  label: "Estoque & Compras",  grupo: "Materiais e logística" },
+  { chave: "faturamento",  label: "Faturamento",        grupo: "Faturamento",
     nota: "Faturamento SUS: SIGTAP, conta montada do prontuário e trava de glosa antes do envio (AIH/APAC/BPA). Sem prontuário — é administrativo." },
-  { chave: "print",        label: "Imprimir Dashboard", grupo: "Receita e produção" },
-  { chave: "auditoria",    label: "Auditoria",          grupo: "Administração do sistema",
+  { chave: "print",        label: "Imprimir Dashboard", grupo: "Geral" },
+  { chave: "auditoria",    label: "Auditoria",          grupo: "Apoio e TI",
     nota: "Trilha de quem fez o quê. Quem é auditado não deveria administrar a própria trilha." },
-  { chave: "import",       label: "Importar Dados",     grupo: "Administração do sistema" },
-  { chave: "users",        label: "Usuários e Perfis",  grupo: "Administração do sistema", exigeMaster: true,
+  { chave: "import",       label: "Importar Dados",     grupo: "Apoio e TI" },
+  { chave: "users",        label: "Usuários e Perfis",  grupo: "Apoio e TI", exigeMaster: true,
     nota: "Exige ADM Master sempre — é a porta de volta se um perfil for configurado errado." },
 ];
 
@@ -111,13 +111,31 @@ export const MODULO_POR_CHAVE = Object.fromEntries(MODULOS.map(m => [m.chave, m]
  * cuidado, o que sustenta a assistência, o que vira dinheiro, e por fim o
  * que só a administração toca.
  */
+// 🔴 UM GRUPO POR CLASSE DE PROCESSO, na ordem do fluxo do hospital.
+//
+// Reorganizado em 03/09/2026. Os cinco grupos antigos misturavam coisas que
+// o usuário faz em lugares diferentes e em momentos diferentes:
+//
+//   "Jornada do paciente"     punha a RECEPÇÃO junto com PS, bloco e leitos
+//   "Farmácia e suprimentos"  punha a FARMÁCIA junto com o almoxarifado
+//   "Receita e produção"      punha o AMBULATÓRIO junto com o faturamento
+//
+// Os nomes seguem o vocabulário do MV ("Atendimento", "Clínica e
+// assistencial", "Materiais e logística"), que é o que a equipe do hospital
+// já usa — menu que fala a língua de quem opera não precisa ser aprendido.
+//
+// ⚠️ E a taxonomia é a MESMA dos pacotes vendáveis: cada grupo aqui é um
+// candidato a módulo licenciado. Ver a memória do projeto sobre venda por
+// módulo — se um dia um grupo virar SKU, o menu já está desenhado.
 export const GRUPOS = [
   "Geral",
-  "Jornada do paciente",
+  "Atendimento",
+  "Clínica e assistencial",
   "Qualidade e vigilância",
-  "Farmácia e suprimentos",
-  "Receita e produção",
-  "Administração do sistema",
+  "Faturamento",
+  "Farmácia",
+  "Materiais e logística",
+  "Apoio e TI",
 ];
 
 // Um módulo com grupo fora desta lista sumiria do menu E da matriz de

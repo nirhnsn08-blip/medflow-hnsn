@@ -23,7 +23,7 @@ import { useState, useEffect, useCallback, Fragment, Component, lazy, Suspense }
 // Categorias profissionais — usadas na tela que classifica a equipe.
 
 import { permissoesEfetivas, podeVer } from "./acesso/permissoes.js";
-import { GRUPOS } from "./acesso/modulos.js";
+import { GRUPOS, MODULO_POR_CHAVE } from "./acesso/modulos.js";
 import { VX, HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, VxWordmark } from "./ui/base.jsx";
 import { ehErroDeChunk, TEXTO_CHUNK } from "./ui/erro-de-chunk.js";
 const UsersPage = lazy(() => import("./acesso/Usuarios.jsx"));
@@ -1139,35 +1139,43 @@ export default function App() {
   // um item só é ruído. `verModulo` continua decidindo item a item, e um
   // grupo cujos itens todos sumiram não desenha cabeçalho órfão.
   const itensDoMenu = [
-    { grupo: "Geral", id: "overview", icon: "dashboard", label: "Centro de Monitoramento", ver: verModulo("overview") },
+    { id: "overview", icon: "dashboard", label: "Centro de Monitoramento", ver: verModulo("overview") },
 
-    { grupo: "Jornada do paciente", id: "atendimento", icon: "door", label: "Atendimento", ver: verModulo("atendimento") },
-    { grupo: "Jornada do paciente", id: "ps", icon: "activity", label: "Pronto-Socorro", ver: verModulo("ps") },
-    { grupo: "Jornada do paciente", id: "bloco", icon: "scissors", label: "Bloco Cirúrgico", ver: verModulo("bloco") },
-    { grupo: "Jornada do paciente", id: "leitos", icon: "bed", label: "Giro de Leitos", ver: verModulo("leitos"), aviso: filaAviso.n ? filaAviso : null },
-    { grupo: "Jornada do paciente", id: "paciente", icon: "record", label: "Paciente 360", ver: verModulo("paciente") },
+    { id: "atendimento", icon: "door", label: "Atendimento", ver: verModulo("atendimento") },
+    { id: "ps", icon: "activity", label: "Pronto-Socorro", ver: verModulo("ps") },
+    { id: "bloco", icon: "scissors", label: "Bloco Cirúrgico", ver: verModulo("bloco") },
+    { id: "leitos", icon: "bed", label: "Giro de Leitos", ver: verModulo("leitos"), aviso: filaAviso.n ? filaAviso : null },
+    { id: "paciente", icon: "record", label: "Paciente 360", ver: verModulo("paciente") },
 
     // Ordenados por TEMPO ATÉ AGIR, não por hierarquia: protocolo tem
     // relógio contando, notificação é do dia, vigilância é de meses.
-    { grupo: "Qualidade e vigilância", id: "protocolos", icon: "activity", label: "Protocolos Clínicos", ver: verModulo("protocolos") },
-    { grupo: "Qualidade e vigilância", id: "nsp", icon: "clipboard", label: "Segurança do Paciente", ver: verModulo("nsp") },
-    { grupo: "Qualidade e vigilância", id: "scih", icon: "shield", label: "SCIH", ver: verModulo("scih") },
+    { id: "protocolos", icon: "activity", label: "Protocolos Clínicos", ver: verModulo("protocolos") },
+    { id: "nsp", icon: "clipboard", label: "Segurança do Paciente", ver: verModulo("nsp") },
+    { id: "scih", icon: "shield", label: "SCIH", ver: verModulo("scih") },
 
     // Farmácia antes: ela consome o catálogo do almoxarifado e toca
     // paciente; o estoque não toca ninguém.
-    { grupo: "Farmácia e suprimentos", id: "farmacia", icon: "pill", label: "Farmácia", ver: verModulo("farmacia") },
-    { grupo: "Farmácia e suprimentos", id: "suprimentos", icon: "cart", label: "Estoque & Compras", ver: verModulo("suprimentos") },
+    { id: "farmacia", icon: "pill", label: "Farmácia", ver: verModulo("farmacia") },
+    { id: "suprimentos", icon: "cart", label: "Estoque & Compras", ver: verModulo("suprimentos") },
 
-    { grupo: "Receita e produção", id: "faturamento", icon: "briefcase", label: "Faturamento SUS", ver: verModulo("faturamento") },
-    { grupo: "Receita e produção", id: "ambulatorio", icon: "clinic", label: "Ambulatório", ver: verModulo("ambulatorio"), children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
-    { grupo: "Receita e produção", id: "print", icon: "printer", label: "Imprimir Dashboard", ver: canPrint && verModulo("print") },
+    { id: "faturamento", icon: "briefcase", label: "Faturamento SUS", ver: verModulo("faturamento") },
+    { id: "ambulatorio", icon: "clinic", label: "Ambulatório", ver: verModulo("ambulatorio"), children: SPECS.map(s => ({ id: s.id, label: s.label, color: s.color })) },
+    { id: "print", icon: "printer", label: "Imprimir Dashboard", ver: canPrint && verModulo("print") },
 
-    { grupo: "Administração do sistema", id: "auditoria", icon: "clipboard", label: "Auditoria", ver: canAudit && verModulo("auditoria") },
-    { grupo: "Administração do sistema", id: "import", icon: "upload", label: "Importar Dados", ver: canImport && verModulo("import") },
+    { id: "auditoria", icon: "clipboard", label: "Auditoria", ver: canAudit && verModulo("auditoria") },
+    { id: "import", icon: "upload", label: "Importar Dados", ver: canImport && verModulo("import") },
     // `users` ignora `verModulo` de propósito — é a porta de volta quando um
     // perfil é configurado errado (ver `modulos.js`, `exigeMaster`).
-    { grupo: "Administração do sistema", id: "users", icon: "users", label: "Usuários e Perfis", ver: canUsers },
-  ].filter(it => it.ver);
+    { id: "users", icon: "users", label: "Usuários e Perfis", ver: canUsers },
+  ]
+    // 🔴 O GRUPO VEM DO CATÁLOGO, não de uma cópia aqui. Até 03/09/2026 cada
+    // item repetia a string do grupo, e o `modulos.js` tinha a MESMA
+    // taxonomia — duas fontes para a mesma verdade. Ao renomear os grupos no
+    // catálogo, SEIS grupos inteiros sumiram da barra lateral em silêncio: a
+    // barra filtra por `GRUPOS`, e nenhum item batia mais. Os 2.823 testes
+    // passaram verdes; quem viu foi a tela.
+    .map(it => ({ ...it, grupo: MODULO_POR_CHAVE[it.id]?.grupo }))
+    .filter(it => it.ver);
 
   // Intercala os cabeçalhos, pulando grupo que ficou sem nenhum item.
   const sidebarItems = GRUPOS.flatMap(g => {
