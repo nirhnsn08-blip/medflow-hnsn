@@ -27,7 +27,8 @@
 -- ── PARTE 1 — as políticas passam a olhar `faturamento` ─────
 do $mudar$
 declare
-  t text;
+  t   text;
+  pol record;
   alvos text[] := array['at_contas','at_conta_itens','at_glosas','at_repasses','at_precos'];
 begin
   foreach t in array alvos loop
@@ -38,8 +39,18 @@ begin
       continue;
     end if;
 
-    -- Leitura
-    execute format('drop policy if exists %I on public.%I', t || '_leitura', t);
+    -- ── Leitura ──
+    -- 🔴 APAGA TODA POLÍTICA DE SELECT, não só a do nome esperado. Políticas
+    -- permissivas se SOMAM (OR): uma sobra antiga apontando 'atendimento'
+    -- continuaria liberando, e a separação não teria efeito nenhum — sem
+    -- erro, sem aviso, e só se descobriria vendendo o módulo separado.
+    -- É o que o `gerar-rls.mjs` faz, pelo mesmo motivo.
+    for pol in
+      select polname from pg_policy
+       where polrelid = ('public.' || t)::regclass and polcmd = 'r'
+    loop
+      execute format('drop policy %I on public.%I', pol.polname, t);
+    end loop;
     execute format(
       'create policy %I on public.%I for select to authenticated using (public.pode_ver_algum(''faturamento''))',
       t || '_leitura', t);
