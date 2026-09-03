@@ -35,6 +35,15 @@ import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS, TIPOS as NSP_TIPOS, ST
          acaoAtrasada, resumoAcoes, incidentesAguardandoRca,
          rotuloTipo, rotuloClasse, rotuloGrau, rotuloStatus } from "./nsp.js";
 import { loadIncidentes, loadLppAdquiridas, registrarIncidente, atualizarStatusIncidente, loadRcas, loadAcoes, registrarRca, registrarAcao, atualizarAcao, loadMetaFaixas, loadMetaMedicoes, salvarMetaFaixa, registrarMetaMedicao, loadProtocolos, salvarProtocolo, loadCapacitacoes, salvarCapacitacao, loadComunicados, salvarComunicado } from "./nsp-dados.js";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
+// números abaixo são zero por falta de configuração — não por falta de
+// movimento, que é como um painel zerado se lê. Ver `ui/primeiro-uso.js`.
+const BASE_NSP = [
+  { o: "setores", tabela: "setores", onde: "Giro de Leitos → Mapa de leitos" },
+];
 
 // ═══════════════════════════════════════════════════════════
 // NSP — Núcleo de Segurança do Paciente (Fase 2a)
@@ -422,6 +431,7 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
       </nav>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <PrimeiroUso checagens={useChecagens(sb, BASE_NSP)} />
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 20, fontWeight: 700 }}>{navAtual.label}</div>
           <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Núcleo de Segurança do Paciente · RDC 36/2013 · PNSP</div>

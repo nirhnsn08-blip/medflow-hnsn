@@ -42,6 +42,15 @@ import { MANCHESTER, PS_ADM_CATEGORIAS, PS_ADM_MOTIVOS, PS_ADM_STATUS, PS_AREAS,
 import { addPsAdministracao, addPsAtendimentoRemote, addPsPrescricaoItens, addPsRegistroRemote, addPsSinalRemote, deletePsProtocoloRemote, deletePsSalaRemote, loadPsAdministracoes, loadPsAdministracoesByAtendimentos, loadPsAtendimentos, loadPsAtendimentosPeriodo, loadPsExamesPendentes, loadPsExamesPeriodo, loadPsFinalizadosHoje, loadPsPrescricaoItens, loadPsPrescricaoItensByAtendimentos, loadPsProtocolos, loadPsRegistros, loadPsSalas, loadPsSinais, patchPsAtendimentoDireto, updatePsAtendimentoRemote, updatePsRegistroRemote, upsertPsProtocoloRemote, upsertPsSalaRemote } from "./dados.js";
 import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
+// números abaixo são zero por falta de configuração — não por falta de
+// movimento, que é como um painel zerado se lê. Ver `ui/primeiro-uso.js`.
+const BASE_PS = [
+  { o: "salas do PS", tabela: "ps_salas", onde: "Pronto-Socorro → Leitos detalhados" },
+];
 
 // Rótulos dos tipos de alerta (para filtrar prescrições)
 const freqDia = label => { const f = PS_FREQUENCIAS.find(x => x.label === label); return f ? f.dia : null; };
@@ -1273,6 +1282,7 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
 
       {/* CONTEÚDO */}
       <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <PrimeiroUso checagens={useChecagens(sb, BASE_PS)} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>

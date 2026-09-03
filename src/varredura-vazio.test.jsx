@@ -173,3 +173,39 @@ describe.runIf(import.meta.env.MODE === "varredura")("relatório do estado vazio
     expect(linhas.length).toBeGreaterThan(25);
   }, 120000);
 });
+
+// ═══════════════════════════════════════════════════════════
+// E O LADO SILENCIOSO: o painel que mostra zeros sem dizer por quê
+//
+// A varredura por expressão regular acima pega a AFIRMAÇÃO tranquilizadora.
+// Não pega o silêncio — e o silêncio foi o achado maior de 03/09/2026:
+// sete painéis abriam com "Solicitações a preparar 0", "Requisições
+// aguardando 0", que num hospital novo lê-se como um dia tranquilo.
+//
+// Estes sete recebem a faixa de `ui/PrimeiroUso.jsx`. A lista abaixo é
+// escrita à mão de propósito: painel novo não entra sozinho, e é bom que
+// não entre — quem criar o oitavo tem de decidir qual cadastro o sustenta,
+// que é uma pergunta de produto, não de código.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 os painéis explicam o próprio zero", () => {
+  const PAINEIS = [
+    "atendimento/FaturamentoSus.jsx",
+    "clinico/SegurancaPaciente.jsx",
+    "farmacia/FarmaciaPage.jsx",
+    "pacientes/Paciente360.jsx",
+    "protocolos/ProtocolosPage.jsx",
+    "ps/PsPage.jsx",
+    "suprimentos/SuprimentosPage.jsx",
+  ];
+
+  for (const nome of PAINEIS) {
+    it(nome, async () => {
+      const texto = await textoDaTela("/src/" + nome);
+      expect(texto, "a tela sumiu ou deixou de ter export default").not.toBe(null);
+      expect(texto).toMatch(/Falta cadastrar/);
+      // 🔴 A segunda frase é a que importa: sem ela a pessoa lê o aviso,
+      // fecha, e continua olhando os zeros como medida do hospital dela.
+      expect(texto).toMatch(/não porque o movimento do hospital foi zero/);
+    });
+  }
+});

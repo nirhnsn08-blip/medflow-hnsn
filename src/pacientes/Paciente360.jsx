@@ -23,6 +23,14 @@ import { loadFarmIncompatY, loadFarmInteracoes, loadFarmMedicamentos } from "../
 import { registrarAuditoria } from "../auditoria/dados.js";
 import { HOSPITAL_NOME, HOSPITAL_SIGLA, VX, btnContorno } from "../ui/base.jsx";
 import { fmtDataBR, horaFmt, nowISO } from "../util/datas.js";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta esta tela. Sem paciente nenhum, a busca não acha
+// nada — e "não achei" é indistinguível de "ninguém foi cadastrado ainda".
+const BASE_PACIENTES = [
+  { o: "pacientes", tabela: "pacientes", onde: "Atendimento → Recepção" },
+];
 
 export default function PacientePage({ sb, currentUser, canEdit }) {
   const [busca, setBusca] = useState("");
@@ -126,6 +134,8 @@ export default function PacientePage({ sb, currentUser, canEdit }) {
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
       <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>Paciente 360 — Registro Clínico Integrado</div>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: "1.25rem" }}>Linha do tempo automática de todos os módulos + evoluções da equipe. Registro imutável: evoluções não podem ser editadas nem apagadas.</div>
+
+      <PrimeiroUso checagens={useChecagens(sb, BASE_PACIENTES)} />
 
       {/* BUSCA */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>

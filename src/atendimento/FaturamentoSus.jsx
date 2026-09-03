@@ -43,6 +43,19 @@ import ReceitasView from "./ReceitasView.jsx";
 import ConveniosView from "./ConveniosView.jsx";
 import PrevisoesView from "./PrevisoesView.jsx";
 import AssistenteView from "./AssistenteView.jsx";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta este módulo inteiro. Sem convênio, toda conta sai
+// precificada pela tabela do SUS — e o painel mostra zeros que parecem
+// "mês parado" em vez de "sistema não configurado".
+const BASE_FATURAMENTO = [
+  // `ativo=is.true` para bater com o que `carregarCatalogos` lê: convênio
+  // desativado não aparece em seletor nenhum, então para esta tela ele não
+  // existe. Contar a tabela inteira faria a faixa calar exatamente quando
+  // ela é mais necessária.
+  { o: "convênios", tabela: "at_convenios", filtro: "ativo=is.true", onde: "Atendimento → Tabelas" },
+];
 
 const TEAL = "#2dd4bf";
 const VIA_LABEL = { aih: "AIH", apac: "APAC", bpa: "BPA" };
@@ -1295,6 +1308,10 @@ export default function FaturamentoPage({ sb, currentUser, canEdit, onIrPara }) 
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: "22px 26px 40px" }}>
+        {/* Aqui a faixa vira BOTÃO: este módulo sabe navegar (`onIrPara`), e
+            instrução escrita faz a pessoa achar o menu sozinha. */}
+        <PrimeiroUso checagens={useChecagens(sb, BASE_FATURAMENTO).map(c =>
+          onIrPara ? { ...c, ir: () => onIrPara("atendimento", "tabelas") } : c)} />
         {sub === "visao" && <VisaoExecutiva sb={sb} sigtapRows={rows} currentUser={currentUser} canEdit={canEdit} />}
         {sub === "pendentes" && <ContaDoProntuario sb={sb} sigtapRows={rows} canEdit={canEdit} currentUser={currentUser} />}
         {sub === "sigtap" && <SigtapView rows={rows} carregando={carregando} />}

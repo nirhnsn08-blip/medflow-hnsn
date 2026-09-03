@@ -40,6 +40,16 @@ import { carregarAlcada, salvarAlcada } from "./parametros.js";
 import { casarComCatalogo, ehSetorNovo } from "./setores.js";
 import { useEffect, useRef, useState } from "react";
 import ConciliacaoKardex from "./ConciliacaoKardex.jsx";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
+// números abaixo são zero por falta de configuração — não por falta de
+// movimento, que é como um painel zerado se lê. Ver `ui/primeiro-uso.js`.
+const BASE_SUPRIMENTOS = [
+  { o: "materiais", tabela: "sup_itens", onde: "Suprimentos → Estoque → + Novo item" },
+  { o: "fornecedores", tabela: "sup_fornecedores", onde: "Suprimentos → Fornecedores → + Novo fornecedor" },
+];
 
 // Barra lateral interna (Fases B e C acrescentam requisições, compras e BI)
 // Ordenado pelo FLUXO do almoxarife. Dois itens estavam no lugar errado:
@@ -439,6 +449,7 @@ export default function SuprimentosPage({ sb, sbCru, currentUser, canEdit }) {
 
       {/* CONTEÚDO */}
       <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <PrimeiroUso checagens={useChecagens(sb, BASE_SUPRIMENTOS)} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
