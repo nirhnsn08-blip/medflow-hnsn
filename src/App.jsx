@@ -855,6 +855,17 @@ export default function App() {
   const [sessaoExpirou, setSessaoExpirou] = useState(false);
   const [db, setDb] = useState(() => loadDB());
   const [active, setActive] = useState("overview");
+  // 🔴 ATALHO ENTRE MÓDULOS, para a tela que SENTE a falta poder levar até
+  // onde se cadastra. Isto existe porque o produto é vendido a vários
+  // hospitais: todo cliente novo abre o sistema com tudo vazio, e "cadastre
+  // em Atendimento → Tabelas" escrito num aviso obriga a pessoa a achar o
+  // caminho sozinha, no primeiro minuto de uso.
+  //
+  // ⚠️ A aba é DE UM USO SÓ. Se ficasse guardada, o próximo clique em
+  // "Atendimento" na barra lateral cairia em Tabelas em vez de Recepção —
+  // por isso `navegar` zera a aba, e é ela que a barra lateral chama.
+  const [abaAtendimento, setAbaAtendimento] = useState(null);
+  const navegar = (id, aba = null) => { setAbaAtendimento(aba); setActive(id); };
   const [ambOpen, setAmbOpen] = useState(true);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("hnsn_theme") || "dark"; } catch { return "dark"; } });
   useEffect(() => { document.title = `Valentrax · ${HOSPITAL_SIGLA}`; }, []);
@@ -1219,7 +1230,7 @@ export default function App() {
                   {ambOpen && item.children.map(c => {
                     const isActive = active === c.id;
                     return (
-                      <button key={c.id} onClick={() => setActive(c.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "var(--surface)" : "transparent" }}>
+                      <button key={c.id} onClick={() => navegar(c.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "var(--surface)" : "transparent" }}>
                         <span style={{ width: 7, height: 7, borderRadius: 99, background: c.color || "var(--text-muted)", flexShrink: 0 }} />{c.label}
                       </button>
                     );
@@ -1230,7 +1241,7 @@ export default function App() {
 
             const isActive = active === item.id;
             return (
-              <button key={item.id} onClick={() => setActive(item.id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
+              <button key={item.id} onClick={() => navegar(item.id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
                 <Icon name={item.icon} />{item.label}
                 {item.aviso && <span title={`${item.aviso.n} aguardando leito${item.aviso.maiorMin ? ` · mais antigo há ${fmtDur(item.aviso.maiorMin)}` : ""}`} style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#fff", background: item.aviso.cor || "var(--text-muted)", borderRadius: 99, minWidth: 18, textAlign: "center", padding: "0 6px", lineHeight: "17px" }}>{item.aviso.n}</span>}
               </button>
@@ -1251,7 +1262,7 @@ export default function App() {
           }>
           {active === "overview"  && <Overview sb={SB()} db={db} currentUser={currentUser} canEdit={canLaunch} perms={perms} onNav={setActive} />}
           {currentSpec            && <EspecialidadePage sb={SB()} spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
-          {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} abaInicial={abaAtendimento} />}
           {active === "ps"        && <PSPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "bloco"     && <BlocoPage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "leitos"    && <LeitosPage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
@@ -1268,7 +1279,7 @@ export default function App() {
               maior que o de fechar por engano — então falha FECHADO. */}
           {active === "farmacia"  && <FarmaciaPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} />}
           {active === "suprimentos" && <SuprimentosPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
-          {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} />}
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}

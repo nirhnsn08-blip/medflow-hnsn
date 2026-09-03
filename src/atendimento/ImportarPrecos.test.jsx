@@ -180,3 +180,34 @@ describe("🔴 gravar manda tudo de uma vez", () => {
     expect(document.querySelector("textarea").value).toContain("10101012");
   });
 });
+
+describe("🔴 hospital sem convênio nenhum — o primeiro minuto de todo cliente novo", () => {
+  // O produto é vendido a vários hospitais. Ninguém sabe com quais
+  // operadoras cada um trabalha, então TODO cliente abre esta tela com o
+  // seletor vazio. É a primeira impressão, não um caso de canto.
+  it("diz que não há convênio, em vez de só mostrar um seletor vazio", () => {
+    abrir({ convenios: [] });
+    const aviso = screen.getByText(/Não há convênio cadastrado/i);
+    expect(aviso.closest("[role=alert]")).toBeTruthy();
+  });
+
+  it("🔴 leva até o cadastro, não manda procurar", () => {
+    const onCadastrarConvenio = vi.fn();
+    abrir({ convenios: [], onCadastrarConvenio });
+    fireEvent.click(botao("Ir para o cadastro de convênios"));
+    expect(onCadastrarConvenio).toHaveBeenCalled();
+  });
+
+  it("sem o atalho disponível, ainda diz onde fica", () => {
+    // A tela pode ser montada sem quem saiba navegar (teste, ou outro
+    // lugar do sistema). Aí a instrução escrita é melhor que nada.
+    abrir({ convenios: [] });
+    expect(screen.getByText(/Atendimento → Tabelas/)).toBeTruthy();
+    expect(botao("Ir para o cadastro de convênios")).toBeUndefined();
+  });
+
+  it("com convênio cadastrado, o aviso não aparece", () => {
+    abrir();
+    expect(screen.queryByText(/Não há convênio cadastrado/i)).toBeNull();
+  });
+});

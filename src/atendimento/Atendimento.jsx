@@ -26,8 +26,10 @@ const ABAS = [
   { chave: "tabelas",  label: "Tabelas",  dica: "Convênios, planos, procedimentos e as listas da ficha." },
 ];
 
-export default function Atendimento({ sb, currentUser, canEdit }) {
-  const [aba, setAba] = useState("recepcao");
+export default function Atendimento({ sb, currentUser, canEdit, abaInicial }) {
+  // ⚠️ Só o valor INICIAL. Depois de montada, quem manda na aba é quem está
+  // olhando a tela — não o clique que trouxe ela para cá.
+  const [aba, setAba] = useState(abaInicial || "recepcao");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
