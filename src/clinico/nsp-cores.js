@@ -9,7 +9,7 @@
 // inteiro para o primeiro carregamento. Ver `NotificacaoRapida.jsx`.
 // ═══════════════════════════════════════════════════════════
 
-import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS } from "./nsp.js";
+import { CLASSES as NSP_CLASSES, GRAUS_DANO as NSP_GRAUS } from "./nsp-catalogo.js";
 
 export const NSP_COR = { verde: "#34d399", amarelo: "#f5b301", laranja: "#fb923c", vermelho: "#f43f5e", azul: "#38bdf8" };
 export const nspCorClasse = c => NSP_COR[(NSP_CLASSES.find(x => x.v === c) || {}).nivel] || "#8891a5";
