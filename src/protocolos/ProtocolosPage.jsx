@@ -19,6 +19,16 @@ import { loadSetoresFromSupabase } from "../leitos/dados.js";
 import { Icon, VX } from "../ui/base.jsx";
 import { checarPassoProt, encerrarAtivacaoProt, loadProtAtivacoes, loadProtCatalogo, loadProtItens, loadProtSetores, patchCatalogoProt, registrarAtivacaoProt, upsertProtSetorRemote } from "./dados.js";
 import { useEffect, useState } from "react";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
+// números abaixo são zero por falta de configuração — não por falta de
+// movimento, que é como um painel zerado se lê. Ver `ui/primeiro-uso.js`.
+const BASE_PROTOCOLOS = [
+  { o: "protocolos", tabela: "prot_catalogo", onde: "Protocolos → Catálogo & setores" },
+  { o: "setores", tabela: "setores", onde: "Giro de Leitos → Mapa de leitos" },
+];
 
 const PROT_NAV = [
   { key: "visao",       label: "Visão geral",        icon: "shield" },
@@ -211,6 +221,7 @@ export default function ProtocolosPage({ sb, currentUser, canEdit }) {
       </nav>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <PrimeiroUso checagens={useChecagens(sb, BASE_PROTOCOLOS)} />
         <div style={{ marginBottom: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>{navAtual.label}</div>

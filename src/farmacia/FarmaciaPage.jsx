@@ -38,6 +38,15 @@ import { useEffect, useRef, useState } from "react";
 // 🔴 A MESMA view do almoxarifado, com a chave trocada: contagem cega, curva
 // ABC, acuracidade e conciliação são a mesma regra nos dois módulos.
 import { SupInventarioView } from "../suprimentos/SuprimentosPage.jsx";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
+import { useChecagens } from "../ui/usar-checagens.js";
+
+// O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
+// números abaixo são zero por falta de configuração — não por falta de
+// movimento, que é como um painel zerado se lê. Ver `ui/primeiro-uso.js`.
+const BASE_FARMACIA = [
+  { o: "medicamentos", tabela: "farm_medicamentos", onde: "Farmácia → Estoque → + Novo medicamento" },
+];
 
 // Movimento de estoque: retorna { ok, erro } — o trigger pode barrar (estoque insuficiente),
 // e como o sb engole erros, aqui fazemos o fetch direto para capturar a mensagem.
@@ -318,6 +327,7 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
 
       {/* CONTEÚDO */}
       <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem 1.5rem", minWidth: 0 }}>
+        <PrimeiroUso checagens={useChecagens(sb, BASE_FARMACIA)} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>{navAtual.label}</div>
