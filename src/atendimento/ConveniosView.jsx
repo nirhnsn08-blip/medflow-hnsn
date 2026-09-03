@@ -27,7 +27,7 @@ import {
 } from "./precos.js";
 import { carregarPrecos, itensComConvenio, salvarPreco, carregarCatalogos } from "./dados.js";
 import { reais, centavos } from "./faturamento.js";
-import { naoDeuParaLer, avisoDeFalha } from "../util/leitura.js";
+import { naoDeuParaLer, avisoDeFalha, listaLida } from "../util/leitura.js";
 import ImportarPrecos from "./ImportarPrecos.jsx";
 
 const brl = v => reais(centavos(v));
@@ -147,6 +147,9 @@ export default function ConveniosView({ sb, currentUser, canEdit }) {
   }
 
   const falhou = naoDeuParaLer(precos) || naoDeuParaLer(itens);
+  // ⚠️ "Nenhum item faturado" e "nenhuma lacuna" NÃO são a mesma notícia.
+  // A leitura precisa ter dado certo para isto significar alguma coisa.
+  const semItens = !falhou && listaLida(itens).length === 0;
 
   return (
     <div>
@@ -196,7 +199,18 @@ export default function ConveniosView({ sb, currentUser, canEdit }) {
             </div>
             {lacunas.length === 0 ? (
               <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-                {falhou ? "Não foi possível ler." : "Todo item faturado tem preço vigente para o convênio dele."}
+                {/* 🔴 TRÊS MOTIVOS PARA A LISTA ESTAR VAZIA, e eles mandam a
+                    pessoa a lugares diferentes. Antes só havia dois, e o
+                    terceiro caía no elogio: num hospital que ainda não
+                    faturou nada, a tela dizia "todo item faturado tem preço"
+                    — que é verdade no vácuo e falso como notícia. Foi visto
+                    no banco do hospital em 03/09/2026, com as tabelas de
+                    conta ainda zeradas. Ver `util/leitura.js`. */}
+                {falhou
+                  ? "Não foi possível ler."
+                  : semItens
+                    ? "Ainda não há item faturado para conferir. Esta lista não diz que está tudo certo — diz que não há o que comparar."
+                    : "Todo item faturado tem preço vigente para o convênio dele."}
               </p>
             ) : (
               <div style={{ overflowX: "auto" }}>
