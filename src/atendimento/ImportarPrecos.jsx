@@ -95,6 +95,18 @@ export default function ImportarPrecos({ sb, currentUser, precos, convenios, onP
         <strong> Nada é gravado antes de você conferir.</strong>
       </div>
 
+      {/* 🔴 Sem convênio cadastrado, esta tela é um beco: o seletor abre com
+          uma opção só ("Escolha…") e nada explica por quê. Visto no banco do
+          hospital em 03/09/2026, com `at_convenios` zerada. O cadastro não
+          mora aqui de propósito — duplicá-lo faria dois cadastros divergirem
+          —, então o que cabe é dizer ONDE ele mora. */}
+      {(convenios || []).length === 0 && (
+        <div role="alert" style={{ ...cx.aviso, marginBottom: 14 }}>
+          <strong>Não há convênio cadastrado.</strong> Preço é sempre de alguém, então não há o que importar ainda.
+          Cadastre as operadoras em <strong>Atendimento → Tabelas</strong> e volte aqui.
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 14 }}>
         <label>
           <div style={cx.rotulo}>Convênio</div>
