@@ -23,7 +23,6 @@ import { avaliarObstetrica, obstetricasValidadas } from "../clinico/obstetricia.
 import { avaliarSinaisVitaisPediatrico, faixasValidadas } from "../clinico/pediatria.js";
 import { FARM_CLASSES } from "../farmacia/catalogo.js";
 import { loadFarmIncompatY, loadFarmInteracoes, loadFarmLotes, loadFarmMedicamentos, loadFarmSaidasByAtendimento } from "../farmacia/dados.js";
-import { saldoDoMedicamento } from "../farmacia/estoque.js";
 import { idadeMesesParaTriagem } from "../pacientes/identidade.js";
 import { VX, btnContorno, rotuloCampo } from "../ui/base.jsx";
 import { diffMin, fmtDataBR, fmtDur, horaFmt, isoToLocal, localToIso, nowISO } from "../util/datas.js";
@@ -31,6 +30,7 @@ import { MANCHESTER, PS_ADM_CATEGORIAS, PS_ADM_MOTIVOS, PS_ADM_STATUS, PS_AREAS,
 import { addPsAdministracao, addPsPrescricaoItens, addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loadPsPrescricaoItens, loadPsProtocolos, loadPsRegistros, loadPsSinais, patchPsAtendimentoDireto, updatePsRegistroRemote, upsertPsProtocoloRemote } from "./dados.js";
 import { useEffect, useRef, useState } from "react";
 import { freqDia, psContaCenso, psDosesDadas, saveFaixaObstetrica, saveFaixaPediatrica } from "./apoio.js";
+import { dispensadoDoItem as dispensado, estoqueSinal as sinalDeEstoque, pendentesDeChecagem, semChecagem as semChecagemDoItem, similaresComEstoque as similaresDisponiveis } from "./prescricao.js";
 
 // Biblioteca de protocolos do PS — abrir e cadastrar
 export function PsProtocolosModal({ sb, currentUser, canEdit, isMaster, onClose }) {
@@ -645,24 +645,9 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   // sinal: sem estoque / estoque baixo — e oferece similares que têm saldo).
   const [presLotes, setPresLotes] = useState([]);
   const [verSimilares, setVerSimilares] = useState(null);   // medicamento sem estoque
-  const estoqueSinal = med => {
-    if (!med) return null;
-    const saldo = saldoDoMedicamento(med.id, presLotes);
-    const min = Number(med.estoque_minimo || 0);
-    if (saldo <= 0) return { key: "zerado", label: "SEM ESTOQUE", cor: "#f43f5e" };
-    if (min > 0 && saldo <= min) return { key: "baixo", label: "estoque baixo", cor: "#d97706" };
-    return null;                                            // com estoque: sem ruído na tela
-  };
+  const estoqueSinal = med => sinalDeEstoque(med, presLotes);
   // Similares COM saldo: mesmo princípio ativo primeiro, depois mesma classe
-  const similaresComEstoque = med => {
-    if (!med) return [];
-    const pa = normTxt(med.principio_ativo);
-    const temSaldo = m => saldoDoMedicamento(m.id, presLotes) > 0;
-    const ativos = catalogo.filter(m => m.ativo !== false && m.id !== med.id && temSaldo(m));
-    const mesmoPA = pa ? ativos.filter(m => normTxt(m.principio_ativo) === pa) : [];
-    const mesmaClasse = ativos.filter(m => (m.classe || "") === (med.classe || "") && !mesmoPA.some(x => x.id === m.id));
-    return [...mesmoPA.map(m => ({ m, motivo: "mesmo princípio ativo" })), ...mesmaClasse.map(m => ({ m, motivo: "mesma classe" }))].slice(0, 12);
-  };
+  const similaresComEstoque = med => similaresDisponiveis(med, catalogo, presLotes);
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
@@ -736,11 +721,11 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
     setPresItens([]); setPresObs(""); setBusy(false);
     carregarRegistros(); carregarPrescricao(); onChanged?.();
   }
-  const dispensadoDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  const dispensadoDoItem = itemId => dispensado(itemId, saidas);
   // Item ainda sem nenhuma checagem (nem administrado, nem justificado)
-  const semChecagem = it => !adms.some(a => String(a.prescricao_item_id) === String(it.id));
+  const semChecagem = it => semChecagemDoItem(it, adms);
   // A farmácia entregou e ninguém registrou o que foi feito com o medicamento
-  const itensPendentesChecagem = presItensSalvos.filter(it => dispensadoDoItem(it.id) > 0 && semChecagem(it));
+  const itensPendentesChecagem = pendentesDeChecagem(presItensSalvos, saidas, adms);
   // Abre a checagem de um item. A hora vem preenchida com agora, mas é editável:
   // à beira do leito a enfermagem administra primeiro e registra depois.
   function abrirChecagem(it) {
