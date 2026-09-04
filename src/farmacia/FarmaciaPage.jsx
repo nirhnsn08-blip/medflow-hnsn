@@ -19,6 +19,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { alergiasDoPaciente, contextoClinico } from "../clinico/contexto.js";
+import { useAlergiasDosAtendimentos } from "../clinico/usar-alergias.js";
 import { FARM_GRAV, FARM_SCORE_COR, analisarPrescricaoClinica, farmFmtQtd, normTxt, scoreItemClinico, scorePrescricao } from "../clinico/alertas.js";
 import { MANCHESTER, PS_DOSE_UNID, PS_PRIORIDADE } from "../ps/catalogo.js";
 import { loadPsAtendimentos, loadPsPrescricaoItensByAtendimentos, loadPsPrescricoesByAtendimentos } from "../ps/dados.js";
@@ -812,6 +814,9 @@ function FarmKardexModal({ sb, sbCru, med, currentUser, canEdit, onClose }) {
 // Dispensação — fila do PS (prescrição estruturada) + avulsa, com baixa de estoque
 function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
   const [atends, setAtends] = useState([]);
+  // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
+  // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
+  const idxAlergias = useAlergiasDosAtendimentos(sb, atends);
   const [itens, setItens] = useState([]);
   const [saidas, setSaidas] = useState([]);
   const [lotes, setLotes] = useState([]);
@@ -856,7 +861,7 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
   const todas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
     const pend = its.filter(i => { if (!i.medicamento_id) return false; const q = Number(i.quantidade || 0); const d = dispDoItem(i.id); return q > 0 ? d < q : d <= 0; });
-    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades };
+    const ctx = contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario));
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
     const tipos = new Set(alertas.map(x => x.tipo));
     const temControlado = its.some(i => medById[i.medicamento_id]?.controlado);
@@ -1411,6 +1416,9 @@ function FarmIndicadoresView({ sb }) {
 // Análise clínica — roda o motor de alertas por paciente do PS
 function FarmAnaliseView({ sb, currentUser, canEdit }) {
   const [atends, setAtends] = useState([]);
+  // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
+  // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
+  const idxAlergias = useAlergiasDosAtendimentos(sb, atends);
   const [itens, setItens] = useState([]);
   const [meds, setMeds] = useState([]);
   const [interacoes, setInteracoes] = useState([]);
@@ -1440,8 +1448,8 @@ function FarmAnaliseView({ sb, currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const linhas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
-    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades };
-    return { at: a, itens: its, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
+    const ctx = contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario));
+    return { at: a, ctx, itens: its, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
   }).filter(x => x.itens.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
   const totalAlertas = linhas.reduce((s, l) => s + l.alertas.length, 0);
   const comAlerta = linhas.filter(l => l.alertas.length > 0);
@@ -1468,9 +1476,15 @@ function FarmAnaliseView({ sb, currentUser, canEdit }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {l.at.iniciais}{l.at.prontuario ? ` · reg. ${l.at.prontuario}` : ""}
-                      {l.at.alergias && <span style={{ fontSize: 9.5, fontWeight: 800, color: "#f43f5e", background: "#f43f5e14", border: "1px solid #f43f5e66", borderRadius: 99, padding: "1px 7px", textTransform: "uppercase" }}>⚠ Alérgico: {l.at.alergias}</span>}
+                      {/* 🔴 A tarja lê o contexto FUNDIDO, não o campo livre do atendimento.
+                        Antes ela sumia para quem tinha alergia só em `pep_alergias` —
+                        a mesma que sai na pulseira — e a ausência da tarja é lida
+                        como paciente sem alergia. */}
+                      {l.ctx.alergiasIncertas
+                        ? <span style={{ fontSize: 9.5, fontWeight: 800, color: "#f43f5e", background: "#f43f5e14", border: "1px solid #f43f5e66", borderRadius: 99, padding: "1px 7px", textTransform: "uppercase" }}>⚠ Alergia NÃO conferida</span>
+                        : l.ctx.alergias ? <span style={{ fontSize: 9.5, fontWeight: 800, color: "#f43f5e", background: "#f43f5e14", border: "1px solid #f43f5e66", borderRadius: 99, padding: "1px 7px", textTransform: "uppercase" }}>⚠ Alérgico: {l.ctx.alergias}</span> : null}
                     </div>
-                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{l.itens.length} item(ns) · {ctxResumo(l.at)}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{l.itens.length} item(ns) · {ctxResumo(l.ctx)}</div>
                   </div>
                   <span title={`Score da prescrição: ${scorePrescricao(l.itens, l.alertas)}/3`} style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[scorePrescricao(l.itens, l.alertas)], borderRadius: 6, padding: "1px 8px", whiteSpace: "nowrap" }}>score {scorePrescricao(l.itens, l.alertas)}</span>
                   {l.alertas.length === 0 ? <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>sem alertas</span> : (
@@ -1615,6 +1629,9 @@ function FarmInteracoesModal({ sb, interacoes, incompatY, currentUser, canEdit, 
 // Quadro de preparo: aguardando → em preparo → pronto → retirado (com bipe/notificação)
 function FarmPreparoView({ sb, sbCru, currentUser, canEdit }) {
   const [atends, setAtends] = useState([]);
+  // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
+  // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
+  const idxAlergias = useAlergiasDosAtendimentos(sb, atends);
   const [prescricoes, setPrescricoes] = useState([]);
   const [preparo, setPreparo] = useState([]);
   const [itens, setItens] = useState([]);
@@ -1661,7 +1678,7 @@ function FarmPreparoView({ sb, sbCru, currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const prepByReg = {}; preparo.forEach(p => prepByReg[p.registro_id] = p);
   const atSet = new Set(atends.map(a => a.id));
-  const scoreDe = atId => { const its = itens.filter(i => i.atendimento_id === atId); const a = atendById[atId] || {}; const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return scorePrescricao(its, analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY)); };
+  const scoreDe = atId => { const its = itens.filter(i => i.atendimento_id === atId); const a = atendById[atId] || {}; const ctx = contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario)); return scorePrescricao(its, analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY)); };
 
   const cards = prescricoes.filter(r => atSet.has(r.atendimento_id)).map(r => ({ reg: r, prep: prepByReg[r.id], status: prepByReg[r.id] ? prepByReg[r.id].status : "aguardando", at: atendById[r.atendimento_id], nItens: itens.filter(i => i.registro_id === r.id).length, score: scoreDe(r.atendimento_id),
     separacao: podeMarcarPronto({ registro: r, itens, saidas }) }));
@@ -1755,7 +1772,7 @@ function FarmPreparoView({ sb, sbCru, currentUser, canEdit }) {
         </div>
       )}
 
-      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }, medById, interacoes, incompatY); })()} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
+      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario)), medById, interacoes, incompatY); })()} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
     </div>
   );
 }
@@ -1982,6 +1999,9 @@ function FarmNaoPadronizadosView({ sb, currentUser, canEdit }) {
 // Intervenção farmacêutica (estilo NoHarm): identifica o problema, propõe conduta, acompanha o desfecho
 function FarmIntervencaoView({ sb, currentUser, canEdit }) {
   const [atends, setAtends] = useState([]);
+  // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
+  // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
+  const idxAlergias = useAlergiasDosAtendimentos(sb, atends);
   const [itens, setItens] = useState([]);
   const [meds, setMeds] = useState([]);
   const [interacoes, setInteracoes] = useState([]);
@@ -2006,7 +2026,7 @@ function FarmIntervencaoView({ sb, currentUser, canEdit }) {
   const medById = {}; meds.forEach(m => medById[m.id] = m);
   const comAlerta = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
-    const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades };
+    const ctx = contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario));
     return { at: a, alertas: analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY) };
   }).filter(x => x.alertas.length > 0).sort((a, b) => b.alertas.length - a.alertas.length);
 
@@ -2164,6 +2184,9 @@ function FarmIntervencaoModal({ prefill, onClose, onSave }) {
 // Dashboard da Farmácia — visão geral com atalhos
 function FarmDashboardView({ sb, onNav }) {
   const [ats, setAts] = useState([]);
+  // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
+  // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
+  const idxAlergias = useAlergiasDosAtendimentos(sb, ats);
   const [pres, setPres] = useState([]);
   const [prep, setPrep] = useState([]);
   const [itens, setItens] = useState([]);
@@ -2199,7 +2222,7 @@ function FarmDashboardView({ sb, onNav }) {
   const aguardando = pres.filter(r => atSet.has(r.atendimento_id) && !prepByReg[r.id]).length;
   const emPreparo = prep.filter(p => p.status === "preparo").length;
   const prontos = prep.filter(p => p.status === "pronto").length;
-  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; }).length;
+  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario)); return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; }).length;
   const intervPend = intervs.filter(i => i.status === "pendente").length;
   const ativos = meds.filter(m => m.ativo !== false);
   const rupturas = ativos.filter(m => farmStatusEstoque(m, lotes).key === "zerado").length;
@@ -2288,6 +2311,9 @@ function FarmAssistenteView({ sb }) {
   const [saidas30, setSaidas30] = useState([]);
   const [movsMes, setMovsMes] = useState([]);
   const [ats, setAts] = useState([]);
+  // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
+  // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
+  const idxAlergias = useAlergiasDosAtendimentos(sb, ats);
   const [itens, setItens] = useState([]);
   const [pres, setPres] = useState([]);
   const [prep, setPrep] = useState([]);
@@ -2321,7 +2347,7 @@ function FarmAssistenteView({ sb }) {
   const aguardando = pres.filter(r => atSet.has(r.atendimento_id) && !prepByReg[r.id]).length;
   const emPreparo = prep.filter(p => p.status === "preparo").length;
   const prontos = prep.filter(p => p.status === "pronto").length;
-  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = { idade: a.idade, peso: a.peso, clearance_renal: a.clearance_renal, funcao_hepatica: a.funcao_hepatica, alergias: a.alergias, em_sonda: a.em_sonda, gestante: a.gestante, comorbidades: a.comorbidades }; return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; });
+  const comAlerta = ats.filter(a => { const its = itens.filter(i => i.atendimento_id === a.id); const ctx = contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario)); return analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY).length > 0; });
   const intervPend = intervs.filter(i => i.status === "pendente").length;
   const iA = intervs.filter(i => i.status === "aceita").length, iN = intervs.filter(i => i.status === "nao_aceita").length;
   const intervTaxa = (iA + iN) ? (iA / (iA + iN)) * 100 : null;

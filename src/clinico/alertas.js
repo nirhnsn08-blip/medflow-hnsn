@@ -157,6 +157,15 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
   // medicamentos não existe par possível, e avisar ali seria ruído em toda
   // prescrição de item único. Alarme que toca à toa é alarme que se aprende
   // a ignorar — e este precisa ser lido.
+  // 🔴 ALERGIA QUE NÃO DEU PARA LER.
+  // Diferente do bloco de interações abaixo, aqui basta UM medicamento para
+  // o alerta valer: interação precisa de par, alergia não. Um único
+  // medicamento é suficiente para matar quem tem alergia conhecida a ele, e
+  // conferir contra uma lista que não carregou é não conferir.
+  if (ctx?.alergiasIncertas && comMed.length >= 1) {
+    push("base_indisponivel", "alta", "Alergias NÃO conferidas",
+      `Não foi possível ler o registro de alergias do paciente. ${comMed.length === 1 ? "Este medicamento NÃO foi checado" : `Os ${comMed.length} medicamentos desta prescrição NÃO foram checados`} contra alergia — confirme com o paciente ou com o prontuário antes de administrar.`, []);
+  }
   if (interacoes === null) {
     if (comMed.length >= 2) {
       push("base_indisponivel", "alta", "Interações NÃO conferidas",
