@@ -5,7 +5,6 @@
 // no meio do JSX, e nenhuma tinha teste. Elas decidem o que a enfermagem lê
 // sobre uma dose:
 //
-//   `sinalDeDispensacao`      se o medicamento saiu da farmácia, e quanto
 //   `dosesAdministradas`      quantas entraram no paciente
 //   `itemPendenteDeChecagem`  saiu da farmácia e ninguém registrou o destino
 //   `validarChecagem`         o que impede o registro de ser gravado
@@ -17,10 +16,12 @@
 // Todas puras: recebem o que precisam e não leem estado nem rede.
 // ═══════════════════════════════════════════════════════════
 
-import { farmFmtQtd } from "../clinico/alertas.js";
+// ⚠️ `sinalDeDispensacao` MUDOU DE CASA em 04/09/2026, para `prescricao.js`.
+// A aba de Prescrição tinha a QUARTA cópia da mesma regra, com rótulos
+// diferentes ("pendente" onde aqui dizia "não dispensado"), e as duas abas
+// do mesmo modal discordavam sobre a mesma linha.
+export { sinalDeDispensacao } from "./prescricao.js";
 import { dispensadoDoItem, semChecagem } from "./prescricao.js";
-
-const CINZA = "#8d99ab", VERDE = "#34d399", AMBAR = "#d97706";
 
 /**
  * Quantas doses ENTRARAM no paciente.
@@ -41,30 +42,6 @@ export function dosesNaoAdministradas(itemId, adms) {
   return (Array.isArray(adms) ? adms : [])
     .filter(a => String(a?.prescricao_item_id) === String(itemId) && a?.status === "nao_administrado")
     .length;
-}
-
-/**
- * O que a farmácia já entregou deste item, dito em uma linha.
- *
- * 🔴 SEM QUANTIDADE PRESCRITA NÃO EXISTE "PARCIAL". Item prescrito sem
- * quantidade (uso condicional, dose única a critério) não tem denominador:
- * qualquer entrega é a entrega. Calcular percentual em cima de zero mostraria
- * "dispensado 2/0", e um número sem sentido em tela clínica é lido como erro
- * do sistema — ou pior, como falta de medicamento.
- */
-export function sinalDeDispensacao(item, saidas) {
-  const previsto = Number(item?.quantidade || 0);
-  const entregue = dispensadoDoItem(item?.id, saidas);
-  if (previsto <= 0) {
-    return entregue > 0
-      ? { key: "dispensado", label: "dispensado", cor: VERDE }
-      : { key: "sem_dispensacao", label: "sem dispensação", cor: CINZA };
-  }
-  if (entregue >= previsto) return { key: "dispensado", label: "dispensado", cor: VERDE };
-  if (entregue > 0) {
-    return { key: "parcial", label: `dispensado parcial ${farmFmtQtd(entregue)}/${farmFmtQtd(previsto)}`, cor: AMBAR };
-  }
-  return { key: "nao_dispensado", label: "não dispensado", cor: CINZA };
 }
 
 /**

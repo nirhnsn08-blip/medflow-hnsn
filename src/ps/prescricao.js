@@ -14,8 +14,10 @@
 // é o que permite testá-las por fronteira.
 // ═══════════════════════════════════════════════════════════
 
-import { normTxt } from "../clinico/alertas.js";
+import { farmFmtQtd, normTxt } from "../clinico/alertas.js";
 import { saldoDoMedicamento } from "../farmacia/estoque.js";
+
+const CINZA = "#8d99ab", VERDE = "#34d399", AMBAR = "#d97706";
 
 /**
  * O sinal de estoque na hora de prescrever.
@@ -101,4 +103,28 @@ export function semChecagem(item, adms) {
 export function pendentesDeChecagem(itensSalvos, saidas, adms) {
   return (Array.isArray(itensSalvos) ? itensSalvos : [])
     .filter(it => dispensadoDoItem(it?.id, saidas) > 0 && semChecagem(it, adms));
+}
+
+/**
+ * O que a farmácia já entregou deste item, dito em uma linha.
+ *
+ * 🔴 SEM QUANTIDADE PRESCRITA NÃO EXISTE "PARCIAL". Item prescrito sem
+ * quantidade (uso condicional, dose única a critério) não tem denominador:
+ * qualquer entrega é a entrega. Calcular percentual em cima de zero mostraria
+ * "dispensado 2/0", e um número sem sentido em tela clínica é lido como erro
+ * do sistema — ou pior, como falta de medicamento.
+ */
+export function sinalDeDispensacao(item, saidas) {
+  const previsto = Number(item?.quantidade || 0);
+  const entregue = dispensadoDoItem(item?.id, saidas);
+  if (previsto <= 0) {
+    return entregue > 0
+      ? { key: "dispensado", label: "dispensado", cor: VERDE }
+      : { key: "sem_dispensacao", label: "sem dispensação", cor: CINZA };
+  }
+  if (entregue >= previsto) return { key: "dispensado", label: "dispensado", cor: VERDE };
+  if (entregue > 0) {
+    return { key: "parcial", label: `dispensado parcial ${farmFmtQtd(entregue)}/${farmFmtQtd(previsto)}`, cor: AMBAR };
+  }
+  return { key: "nao_dispensado", label: "não dispensado", cor: CINZA };
 }

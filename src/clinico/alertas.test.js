@@ -16,7 +16,7 @@
 import { describe, it, expect } from "vitest";
 import {
   analisarPrescricaoClinica, checarAlergia, parseAlergias,
-  scoreItemClinico, scorePrescricao, normTxt,
+  scoreItemClinico, scorePrescricao, normTxt, administracoesNoDia,
 } from "./alertas.js";
 
 // ── Catálogo mínimo, espelhando os campos reais do farm_medicamentos ──
@@ -340,5 +340,62 @@ describe("base indisponível", () => {
     const dup = [item(1), { medicamento_id: 1, medicamento_nome: "Varfarina", via: "VO" }];
     const a = analisarPrescricaoClinica(dup, {}, MED, null, null);
     expect(tipos(a)).toContain("duplicidade");
+  });
+});
+
+describe("🔴 administracoesNoDia — Dose única é UMA vez, não zero", () => {
+  it("frequência normal passa direto", () => {
+    expect(administracoesNoDia(3)).toBe(3);
+    expect(administracoesNoDia(1)).toBe(1);
+  });
+
+  it("🔴 ZERO (Dose única) vira 1", () => {
+    // `freqDia("Dose única")` devolve 0, e 0 é falsy: a conferência de dose
+    // máxima diária era pulada inteira. E mesmo passando, `dose × 0` daria
+    // zero e nunca estouraria o teto.
+    expect(administracoesNoDia(0)).toBe(1);
+    expect(administracoesNoDia("0")).toBe(1);
+  });
+
+  it("🔴 `null` (Se necessário) continua sendo NÃO SEI", () => {
+    // Inventar 1 daria um total diário que ninguém prescreveu.
+    expect(administracoesNoDia(null)).toBe(null);
+    expect(administracoesNoDia(undefined)).toBe(null);
+    expect(administracoesNoDia("")).toBe(null);
+  });
+
+  it("lixo não vira número", () => {
+    for (const v of ["abc", NaN, -1, Infinity]) expect(administracoesNoDia(v), String(v)).toBe(null);
+  });
+});
+
+describe("🔴 dose máxima diária — a dose única não escapa mais", () => {
+  const remedio = { id: 900, nome: "Paracetamol teto", dose_maxima_dia: 4000, dose_maxima_unid: "mg" };
+  const catalogo = { 900: remedio };
+  const item = extra => ({ medicamento_id: 900, medicamento_nome: remedio.nome, dose_valor: 8000, dose_unidade: "mg", ...extra });
+  const tipos = itens => analisarPrescricaoClinica(itens, {}, catalogo, [], []).map(a => a.tipo);
+
+  it("🔴 8.000 mg em DOSE ÚNICA (teto 4.000/dia) agora dispara", () => {
+    // Era o buraco: frequencia_dia = 0 pulava a conferência inteira.
+    expect(tipos([item({ frequencia_dia: 0 })])).toContain("dose_maxima");
+  });
+
+  it("dose única DENTRO do teto não dispara", () => {
+    expect(tipos([item({ dose_valor: 1000, frequencia_dia: 0 })])).not.toContain("dose_maxima");
+  });
+
+  it("a fronteira: exatamente o teto não dispara, um a mais dispara", () => {
+    expect(tipos([item({ dose_valor: 4000, frequencia_dia: 0 })])).not.toContain("dose_maxima");
+    expect(tipos([item({ dose_valor: 4001, frequencia_dia: 0 })])).toContain("dose_maxima");
+  });
+
+  it("frequência normal continua multiplicando", () => {
+    expect(tipos([item({ dose_valor: 1000, frequencia_dia: 5 })])).toContain("dose_maxima");
+    expect(tipos([item({ dose_valor: 1000, frequencia_dia: 4 })])).not.toContain("dose_maxima");
+  });
+
+  it("⚠️ Se necessário (frequência nula) continua SEM conferência", () => {
+    // Quantas vezes o paciente vai precisar é desconhecido.
+    expect(tipos([item({ frequencia_dia: null })])).not.toContain("dose_maxima");
   });
 });

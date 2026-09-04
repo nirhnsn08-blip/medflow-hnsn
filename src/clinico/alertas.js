@@ -66,6 +66,27 @@ export function checarAlergia(med, termos) {
 
 // Analisa a lista de itens da prescrição contra a base clínica + contexto do paciente.
 // APOIO À DECISÃO — não substitui o julgamento do farmacêutico. Base sujeita a validação local.
+/**
+ * Quantas vezes esta prescrição é administrada num dia.
+ *
+ * 🔴 "DOSE ÚNICA" É UMA ADMINISTRAÇÃO, NÃO ZERO. `freqDia("Dose única")`
+ * devolve 0, e 0 é falsy: a conferência de dose máxima diária era pulada
+ * INTEIRA para dose única, e mesmo se não fosse, `dose × 0` daria zero e
+ * nunca passaria do teto. Paracetamol 8.000 mg em dose única (máximo 4.000
+ * mg/dia) entrava sem uma palavra — e dose única alta é exatamente o erro de
+ * prescrição que uma dose máxima existe para pegar.
+ *
+ * ⚠️ "SE NECESSÁRIO (SN)" DEVOLVE `null`, e continua sem conferência de
+ * propósito: quantas vezes o paciente vai precisar é desconhecido, e inventar
+ * 1 daria um total diário que ninguém prescreveu.
+ */
+export function administracoesNoDia(frequenciaDia) {
+  if (frequenciaDia == null || frequenciaDia === "") return null;
+  const n = Number(frequenciaDia);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n === 0 ? 1 : n;
+}
+
 export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], incompatY = []) {
   const alertas = [];
   const push = (tipo, gravidade, titulo, detalhe, refs) => alertas.push({ tipo, gravidade, titulo, detalhe, itens: refs || [] });
@@ -90,8 +111,9 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
     const med = medById[i.medicamento_id];
     const nome = i.medicamento_nome;
     // 2) Dose máxima diária (quando a unidade prescrita bate com a da base)
-    if (med.dose_maxima_dia && i.dose_valor && i.frequencia_dia && med.dose_maxima_unid && (i.dose_unidade || "").toLowerCase() === (med.dose_maxima_unid || "").toLowerCase()) {
-      const diaria = Number(i.dose_valor) * Number(i.frequencia_dia);
+    const vezes = administracoesNoDia(i.frequencia_dia);
+    if (med.dose_maxima_dia && i.dose_valor && vezes != null && med.dose_maxima_unid && (i.dose_unidade || "").toLowerCase() === (med.dose_maxima_unid || "").toLowerCase()) {
+      const diaria = Number(i.dose_valor) * vezes;
       if (diaria > Number(med.dose_maxima_dia)) push("dose_maxima", "alta", "Dose acima da máxima diária", `${nome}: ${farmFmtQtd(diaria)} ${med.dose_maxima_unid}/dia prescritos — máximo ${farmFmtQtd(med.dose_maxima_dia)} ${med.dose_maxima_unid}/dia.`, [nome]);
     }
     // 3) Tempo de tratamento

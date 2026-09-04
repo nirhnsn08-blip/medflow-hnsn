@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   estoqueSinal, similaresComEstoque, dispensadoDoItem, semChecagem, pendentesDeChecagem,
+  sinalDeDispensacao,
 } from "./prescricao.js";
 
 // Um lote é o que `saldoDoMedicamento` soma: `medicamento_id` + `quantidade`.
@@ -192,5 +193,58 @@ describe("semChecagem", () => {
   });
   it("item nulo não estoura", () => {
     expect(() => semChecagem(null, [])).not.toThrow();
+  });
+});
+
+const saida = (itemId, qtd) => ({ prescricao_item_id: itemId, quantidade: qtd });
+
+describe("🔴 sinalDeDispensacao — o que a farmácia entregou", () => {
+  const item = (id, quantidade) => ({ id, quantidade });
+
+  it("entrega completa é 'dispensado'", () => {
+    expect(sinalDeDispensacao(item(1, 10), [saida(1, 10)])).toMatchObject({ key: "dispensado" });
+    expect(sinalDeDispensacao(item(1, 10), [saida(1, 12)])).toMatchObject({ key: "dispensado" });
+  });
+
+  it("entrega no meio é PARCIAL, e diz quanto de quanto", () => {
+    const s = sinalDeDispensacao(item(1, 10), [saida(1, 4)]);
+    expect(s.key).toBe("parcial");
+    expect(s.label).toContain("4");
+    expect(s.label).toContain("10");
+  });
+
+  it("9 de 10 ainda é parcial — a fronteira é a igualdade", () => {
+    expect(sinalDeDispensacao(item(1, 10), [saida(1, 9)]).key).toBe("parcial");
+  });
+
+  it("nada entregue é 'não dispensado'", () => {
+    expect(sinalDeDispensacao(item(1, 10), []).key).toBe("nao_dispensado");
+    expect(sinalDeDispensacao(item(1, 10), [saida(2, 5)]).key).toBe("nao_dispensado");
+  });
+
+  it("🔴 SEM quantidade prescrita não existe parcial — qualquer entrega é a entrega", () => {
+    // Item de uso condicional não tem denominador. "dispensado 2/0" seria
+    // lido como erro do sistema, ou pior, como falta de medicamento.
+    expect(sinalDeDispensacao(item(1, 0), [saida(1, 2)]).key).toBe("dispensado");
+    expect(sinalDeDispensacao(item(1, null), [saida(1, 2)]).key).toBe("dispensado");
+    expect(sinalDeDispensacao(item(1, 0), [saida(1, 2)]).label).not.toMatch(/parcial|\//);
+  });
+
+  it("sem quantidade e sem entrega é 'sem dispensação'", () => {
+    expect(sinalDeDispensacao(item(1, 0), []).key).toBe("sem_dispensacao");
+  });
+
+  it("⚠️ todo sinal tem rótulo e cor, e o parcial nunca é verde", () => {
+    for (const s of [sinalDeDispensacao(item(1, 10), [saida(1, 4)]), sinalDeDispensacao(item(1, 10), [])]) {
+      expect(s.label).toBeTruthy();
+      expect(s.cor).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+    expect(sinalDeDispensacao(item(1, 10), [saida(1, 4)]).cor)
+      .not.toBe(sinalDeDispensacao(item(1, 10), [saida(1, 10)]).cor);
+  });
+
+  it("item nulo não estoura", () => {
+    expect(() => sinalDeDispensacao(null, [])).not.toThrow();
+    expect(() => sinalDeDispensacao(undefined, null)).not.toThrow();
   });
 });
