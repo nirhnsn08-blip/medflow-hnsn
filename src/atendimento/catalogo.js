@@ -23,6 +23,9 @@ import { DOMINIOS } from "./ficha.js";
 // catálogo pode importá-lo: `faturamento.js` não conhece este arquivo, então
 // não há ciclo.
 import { centavos } from "./faturamento.js";
+// A mesma normalização que o painel usa para comparar — uma fonte, para o
+// `painel_id` gerado aqui casar com o que o painel procura.
+import { chaveEspecialidade as chaveDeEspecialidade } from "../ambulatorio/especialidades.js";
 
 /** Os tipos de convênio que o sistema entende. */
 export const TIPOS_DE_CONVENIO = [
@@ -289,6 +292,43 @@ export function corpoDoCatalogo(chave, dados = {}) {
   if (chave === "tipo_atendimento") {
     const cc = CONTA_COMO.some(c => c.chave === dados.conta_como) ? dados.conta_como : null;
     corpo.extras = cc ? { ...(dados.extras || {}), conta_como: cc } : (dados.extras || {});
+  }
+
+  // ── ESPECIALIDADE: as metas da pactuação ──────────────────
+  // 🔴 A META É DE CADA HOSPITAL. Até 03/09/2026 as cinco do HNSN estavam
+  // cravadas no código, e todo cliente via a pactuação de outro. Agora
+  // moram aqui, editáveis por quem pactuou.
+  if (chave === "especialidade") {
+    // ⚠️ VAZIO É `null`, NUNCA ZERO. Meta zero significaria "pactuamos não
+    // atender ninguém", e o painel calcularia 100% de cumprimento sobre
+    // ela — elogio para quem não fez nada.
+    //
+    // 🔴 E "NÃO TOCADO" NÃO É "APAGADO". O formulário lê de `extras`, mas só
+    // devolve o campo que a pessoa mexeu — os outros chegam `undefined`.
+    // Tratá-los como vazio fazia editar a meta MENSAL apagar a anual e a de
+    // primeiras, calado. Achado caminhando no demo: a meta anual do Cirurgia
+    // Geral foi de 4320 para `null` ao salvar só a mensal.
+    //
+    //   undefined → não tocou  → mantém o que estava
+    //   ""        → limpou     → apaga de propósito
+    const meta = (v, atual) => {
+      if (v === undefined) return atual ?? null;
+      const s = String(v).trim();
+      if (!s) return null;
+      const n = Number(s.replace(",", "."));
+      return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+    };
+    corpo.extras = {
+      ...(dados.extras || {}),
+      // 🔴 `painel_id` NUNCA vem do formulário. É a chave por onde a produção
+      // histórica está gravada em `atendimentos.especialidade`; deixar alguém
+      // editá-la orfanaria o histórico em silêncio. Só se cria.
+      painel_id: dados.extras?.painel_id || chaveDeEspecialidade(dados.codigo || dados.nome),
+      meta_mensal:    meta(dados.meta_mensal,    dados.extras?.meta_mensal),
+      meta_anual:     meta(dados.meta_anual,     dados.extras?.meta_anual),
+      meta_primeiras: meta(dados.meta_primeiras, dados.extras?.meta_primeiras),
+      cor: String(dados.cor || "").trim() || dados.extras?.cor || null,
+    };
   }
   return corpo;
 }

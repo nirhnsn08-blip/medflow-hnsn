@@ -22,10 +22,12 @@ import { useEffect, useState } from "react";
 import { Area, Bar, BarChart, Cell, ComposedChart, Line, ReferenceLine,
          ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import ChecklistImplantacao from "../implantacao/ChecklistImplantacao.jsx";
+import PrimeiroUso from "../ui/PrimeiroUso.jsx";
 import { K, loadDB, saveDB, saveRecord } from "./dados.js";
 import { aggregateAno, aggregateMes, calcAlertas, comparativo, ocupacaoSetor } from "./agregados.js";
 import { DeltaBadge, RingGauge, SemaforoMeta, StatCard } from "./widgets.jsx";
-import { ESPECIALIDADES as SPECS } from "../ambulatorio/especialidades.js";
+// ⚠️ A lista NÃO é importada: vem do cadastro do hospital, por prop.
+// Enquanto era import, todo cliente via as cinco do HNSN.
 import { addSolicitacaoRemote, loadLeitos, loadLeitosFromSupabase, loadSaidas,
          loadSetoresFromSupabase, loadSetoresLocal, loadSolicitacoes,
          updateSolicitacaoRemote } from "../leitos/dados.js";
@@ -36,9 +38,9 @@ import { HOSPITAL_NOME, HOSPITAL_SIGLA, Icon, MONTHS, MONTHS_FULL,
 import { diffMin, fmtDur, nowISO, todayStr } from "../util/datas.js";
 import { fmt } from "../util/formato.js";
 
-export function AlertBanner({ db }) {
+export function AlertBanner({ db, especialidades = [] }) {
   const [open, setOpen] = useState(false);
-  const alerts = calcAlertas(db);
+  const alerts = calcAlertas(db, especialidades);
   const crits  = alerts.filter(a => a.level === "critical").length;
   const warns  = alerts.filter(a => a.level === "warning").length;
   if (alerts.length === 0) return null;
@@ -386,7 +388,8 @@ export function EspecialidadePage({ sb, spec, db, onSave, readOnly = false, curr
     </div>
   );
 }
-export function Overview({ sb, db, currentUser, canEdit, perms, onNav }) {
+export function Overview({ sb, db, currentUser, canEdit, perms, onNav, especialidades = null }) {
+  const SPECS = especialidades || [];
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
@@ -546,7 +549,18 @@ export function Overview({ sb, db, currentUser, canEdit, perms, onNav }) {
         )}
       </div>
 
-      {/* ESPECIALIDADES — META x REALIZADO */}
+      {/* ESPECIALIDADES — META x REALIZADO
+          🔴 TRÊS ESTADOS. `null` é "ainda estou lendo" e não autoriza dizer
+          nada; `[]` é "li e não há nenhuma", que manda cadastrar; com lista,
+          desenha. Até 03/09/2026 este bloco desenhava as cinco do HNSN em
+          qualquer hospital — inclusive num que nunca as teve. */}
+      {especialidades === null ? null : SPECS.length === 0 ? (
+        <PrimeiroUso checagens={[{
+          o: "especialidades",
+          quantos: 0,
+          onde: "Atendimento → Tabelas → Especialidade",
+        }]} />
+      ) : (<>
       <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 }}>Ambulatório — meta mensal × realizado ({MONTHS[mes]})</div>
       <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: 12 }}>
         {/* 🔴 CADA LINHA É A PORTA DA ESPECIALIDADE. Até 03/09/2026 o
@@ -575,10 +589,12 @@ export function Overview({ sb, db, currentUser, canEdit, perms, onNav }) {
           </div>
         ))}
       </div>
+      </>)}
     </div>
   );
 }
-export function PrintDashboard({ db }) {
+export function PrintDashboard({ db, especialidades = [] }) {
+  const SPECS = especialidades;
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
@@ -710,7 +726,12 @@ export function PrintDashboard({ db }) {
     </div>
   );
 }
-export function ImportPage({ sb, onImport, currentUser }) {
+export function ImportPage({ sb, onImport, currentUser, especialidades = [] }) {
+  // ⚠️ A importação de CSV recusa linha de especialidade que o hospital não
+  // tem cadastrada. Com a lista vazia ela recusa tudo — e é o certo: gravar
+  // produção numa chave que nenhuma tela lê é o defeito que esta conferência
+  // existe para impedir.
+  const SPECS = especialidades;
   const [msg, setMsg] = useState("");
   function handleFile(e) {
     const file = e.target.files[0]; if (!file) return;

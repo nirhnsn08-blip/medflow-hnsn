@@ -96,7 +96,7 @@ import {  corEsperaFila } from "./clinico/leitos.js";
 
 const Atendimento = lazy(() => import("./atendimento/Atendimento.jsx"));
 const FaturamentoPage = lazy(() => import("./atendimento/FaturamentoSus.jsx"));
-import { ESPECIALIDADES } from "./ambulatorio/especialidades.js";
+import { especialidadesDoCadastro } from "./ambulatorio/especialidades.js";
 
 
 // "Atendimento aberto" mora em ciclo.js. Antes o conceito estava repetido
@@ -324,7 +324,10 @@ async function sbFetch(path, opts = {}, _jaRenovou = false) {
 // chave gravar a produção apurada. Duas cópias fariam uma ganhar
 // especialidade nova e a outra não — e o número gravado sumiria numa chave
 // que nenhuma tela lê.
-const SPECS = ESPECIALIDADES;
+// 🔴 A lista deixou de ser constante de módulo em 03/09/2026: ela é do
+// HOSPITAL, vem de `at_dominios` e muda por cadastro. Enquanto era
+// constante, todo cliente via as cinco do HNSN com as metas do HNSN.
+// Carregada em `especialidades` (estado, abaixo).
 // ═══════════════════════════════════════════════════════════
 // MARCA VALENTRAX — Healthcare Operations
 // Símbolo: hub radial de correntes curvas convergindo no núcleo
@@ -855,8 +858,44 @@ export default function App() {
   // Sessão expirada de vez (refresh também venceu): mostra UM aviso no login,
   // em vez da enxurrada de "JWT expired" por tabela.
   const [sessaoExpirou, setSessaoExpirou] = useState(false);
-  const [db, setDb] = useState(() => loadDB());
+  // ⚠️ DECLARADO AQUI EM CIMA de propósito: a carga das especialidades
+  // depende de `active` para reler a cada navegação, e `const` tem zona
+  // morta — referenciá-lo antes desta linha derruba o app inteiro com
+  // "Cannot access before initialization", tela branca e sem pista.
+  // Aconteceu em 03/09/2026, e só a caminhada viu: os 2.864 testes
+  // passaram verdes, porque nenhum deles monta o `App`.
   const [active, setActive] = useState("overview");
+  const [db, setDb] = useState(() => loadDB());
+
+  // As especialidades do ambulatório, do CADASTRO do hospital.
+  // ⚠️ Começa vazia e não com um palpite: enquanto a consulta não volta, o
+  // painel mostra "carregando", não cinco especialidades que podem não ser
+  // deste hospital. Ver `ambulatorio/especialidades.js`.
+  // 🔴 `null` = ainda não li (ou a leitura falhou). `[]` = li e não há
+  // nenhuma cadastrada. São notícias diferentes: a primeira não autoriza
+  // dizer nada ao gestor; a segunda manda cadastrar.
+  const [especialidades, setEspecialidades] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const sb = SB();
+      if (!sb) return;
+      const r = await sb("at_dominios?dominio=eq.especialidade&ativo=is.true&select=*&order=ordem,nome")
+        .catch(() => null);
+      // ⚠️ `null` (falha de leitura) NÃO vira lista vazia: fica como está,
+      // e o painel continua mostrando o que já tinha. Zerar por causa de
+      // rede caída faria o gestor achar que perdeu o cadastro.
+      if (vivo && Array.isArray(r)) setEspecialidades(especialidadesDoCadastro(r));
+    })();
+    return () => { vivo = false; };
+    // 🔴 RELÊ A CADA NAVEGAÇÃO. A meta é editada em Atendimento → Tabelas e
+    // lida no Centro de Monitoramento — duas telas. Carregando só na
+    // montagem, quem mudasse a meta e fosse olhar o painel veria o número
+    // ANTIGO e concluiria que não salvou. É uma consulta de meia dúzia de
+    // linhas; a alternativa (avisar de uma tela para a outra) é mais código
+    // para o mesmo efeito, e quebra em silêncio quando alguém esquece.
+  }, [currentUser, active]);
+  const SPECS = especialidades || [];
   // 🔴 ATALHO ENTRE MÓDULOS, para a tela que SENTE a falta poder levar até
   // onde se cadastra. Isto existe porque o produto é vendido a vários
   // hospitais: todo cliente novo abre o sistema com tudo vazio, e "cadastre
@@ -1225,7 +1264,7 @@ export default function App() {
       </div>
 
       {/* ALERTAS */}
-      <AlertBanner sb={SB()} db={db} />
+      <AlertBanner sb={SB()} db={db} especialidades={especialidades} />
       <NotificacaoRapida sb={SB()} currentUser={currentUser} />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -1283,7 +1322,7 @@ export default function App() {
               Carregando o módulo…
             </div>
           }>
-          {active === "overview"  && <Overview sb={SB()} db={db} currentUser={currentUser} canEdit={canLaunch} perms={perms} onNav={setActive} />}
+          {active === "overview"  && <Overview sb={SB()} db={db} currentUser={currentUser} canEdit={canLaunch} perms={perms} onNav={setActive} especialidades={especialidades} />}
           {currentSpec            && <EspecialidadePage sb={SB()} spec={currentSpec} db={db} onSave={handleSave} readOnly={!canLaunch} currentUser={currentUser} />}
           {active === "atendimento" && <Atendimento sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} abaInicial={abaAtendimento} />}
           {active === "ps"        && <PSPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
@@ -1304,9 +1343,9 @@ export default function App() {
           {active === "suprimentos" && <SuprimentosPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
-          {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} />}
+          {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} especialidades={especialidades} />}
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
-          {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} />}
+          {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} especialidades={especialidades} />}
           {active === "users"     && canUsers    && <UsersPage sb={SB()} adminUsuarios={adminUsuarios} trocarSenha={changeMyPassword} currentUser={currentUser} />}
           </Suspense>
           </LimiteErro>

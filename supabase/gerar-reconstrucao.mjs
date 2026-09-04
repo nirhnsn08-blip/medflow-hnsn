@@ -120,6 +120,10 @@ const ORDEM = [
   // módulo `faturamento`. Rodando antes, as migrações originais recriariam
   // as políticas em `atendimento` por cima e o conserto sumiria.
   "migracao-faturamento-modulo.sql",
+
+  // As especialidades do ambulatório saem do código e vão para o cadastro
+  // (`at_dominios`). Depois do `atendimento-fase2`, que cria a tabela.
+  "migracao-ambulatorio-especialidades.sql",
   "migracao-nsp-capacitacoes.sql",
   "migracao-nsp-comunicados.sql",
   // Módulo Protocolos Clínicos (PR #67 da Laura). Ela criou o arquivo mas não
