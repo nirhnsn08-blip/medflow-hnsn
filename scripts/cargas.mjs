@@ -71,6 +71,18 @@ export function censo(raiz = "src") {
   for (const a of fontes(raiz)) {
     const L = fs.readFileSync(a, "utf8").split("\n");
     L.forEach((l, i) => {
+      // ⚠️ LINHA QUE É SÓ COMENTÁRIO NÃO É CARGA.
+      // Em 04/09/2026 o censo acusou a própria explicação de por que o
+      // padrão é proibido — prosa citando `Array.isArray(x) ? x : []` para
+      // dizer que não se deve escrever isso. Um detector que lê prosa
+      // produz falso positivo, e falso positivo acaba virando lista de
+      // exceção, que é como um detector morre.
+      //
+      // ⚠️ Só pula a linha INTEIRAMENTE comentada. Código com comentário no
+      // fim (`... : []; // legado`) continua sendo lido — ali o colapso é
+      // real.
+      const inicio = l.trim();
+      if (inicio.startsWith("//") || inicio.startsWith("*")) return;
       // ⚠️ TODAS as ocorrências da linha, não só a primeira. Há linha com
       // duas (`saidas: ..., scih: ...`) e contar uma só faria o censo
       // dizer que acabou quando não acabou.

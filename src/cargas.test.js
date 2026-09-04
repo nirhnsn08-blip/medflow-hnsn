@@ -181,3 +181,35 @@ describe("🔴 nenhum atalho de colapso em arquivo que lê da rede", () => {
     }
   });
 });
+
+describe("🔴 o censo lê código, não prosa", () => {
+  // Em 04/09/2026 o censo acusou a própria explicação de por que o padrão é
+  // proibido. Um detector que lê prosa gera falso positivo, e falso positivo
+  // acaba virando lista de exceção — que é como um detector morre.
+
+  const varrer = trecho => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "censo-"));
+    fs.writeFileSync(path.join(dir, "alvo.js"), trecho);
+    try { return censo(dir); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  };
+
+  it("🔴 linha que é SÓ comentário não vira achado", () => {
+    const r = varrer([
+      "// nunca escreva Array.isArray(x) ? x : [] aqui",
+      " * o padrão Array.isArray(y) ? y : [] destrói a diferença",
+      "const bom = listaLida(rows);",
+    ].join("\n"));
+    expect(r).toEqual([]);
+  });
+
+  it("🔴 mas CÓDIGO com comentário no fim continua sendo pego", () => {
+    // Ali o colapso é real — só a explicação está ao lado.
+    const r = varrer("const x = Array.isArray(rows) ? rows : [];   // legado");
+    expect(r.length).toBe(1);
+    expect(r[0].v).toBe("rows");
+  });
+
+  it("código normal continua sendo pego", () => {
+    expect(varrer("const x = Array.isArray(rows) ? rows : [];").length).toBe(1);
+  });
+});

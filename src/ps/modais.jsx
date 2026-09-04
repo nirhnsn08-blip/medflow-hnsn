@@ -16,6 +16,7 @@ import { avisoDeCatalogo, filtrarProcedimentos, opcoesDeProcedimento, viaDaEscol
 import { avisoDeConta, convenioSugerido, geraConta, valoresIniciais } from "../atendimento/faturavel.js";
 import { PS_VIAS_TRANSF } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { carregarAlergias } from "../clinico/alergias-dados.js";
 import { AbaPrescricao } from "./AbaPrescricao.jsx";
 import { AbaChecagem } from "./AbaChecagem.jsx";
 import { AbaExames } from "./AbaExames.jsx";
@@ -643,6 +644,12 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const catById = {}; catalogo.forEach(m => catById[m.id] = m);
   // Disponibilidade em estoque na hora de prescrever (não mostra saldo — só o
   // sinal: sem estoque / estoque baixo — e oferece similares que têm saldo).
+  // 🔴 ALERGIA É DO PACIENTE, NÃO DA PASSAGEM. Vem de `pep_alergias`, a
+  // mesma fonte que imprime a pulseira — e que até 04/09/2026 NÃO chegava
+  // aqui: o PS lia só o texto livre do atendimento, que quase sempre está em
+  // branco. `null` até a consulta voltar, para a tela não decidir nada com
+  // "sem alergia" antes de saber.
+  const [alergiasPep, setAlergiasPep] = useState(null);
   const [presLotes, setPresLotes] = useState([]);
   const recRef = useRef(null);
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -651,6 +658,7 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const carregarPrescricao = () => { loadPsPrescricaoItens(sb, paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(sb, paciente.id).then(setSaidas); loadPsAdministracoes(sb, paciente.id).then(setAdms); };
   useEffect(() => { carregarRegistros(); }, []);
   useEffect(() => { loadFarmMedicamentos(sb).then(setCatalogo); loadFarmLotes(sb).then(setPresLotes); loadFarmInteracoes(sb).then(setInteracoes); loadFarmIncompatY(sb).then(setIncompatY); carregarPrescricao(); }, []);
+  useEffect(() => { carregarAlergias(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
   useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
@@ -734,7 +742,7 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
 
         {aba === "prescricao" && (
           <AbaPrescricao sb={sb} sbCru={sbCru} paciente={paciente} currentUser={currentUser}
-            dados={{ catalogo, catById, lotes: presLotes, interacoes, incompatY, prescricoes, itensSalvos: presItensSalvos, saidas }}
+            dados={{ catalogo, catById, lotes: presLotes, interacoes, incompatY, prescricoes, itensSalvos: presItensSalvos, saidas, alergiasPep }}
             rascunho={rascunho} busy={busy} setBusy={setBusy}
             onAssinou={() => { carregarRegistros(); carregarPrescricao(); onChanged?.(); }} />
         )}

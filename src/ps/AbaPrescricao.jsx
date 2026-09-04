@@ -21,6 +21,8 @@ import { useState } from "react";
 import { registrarAuditoria } from "../auditoria/dados.js";
 import { FARM_GRAV, analisarPrescricaoClinica, checarAlergia, farmFmtQtd, parseAlergias } from "../clinico/alertas.js";
 import { COMORBIDADES } from "../clinico/comorbidades.js";
+import { situacaoAlergica } from "../clinico/alergias.js";
+import { contextoClinico } from "../clinico/contexto.js";
 import { AvisoLeitura, VX } from "../ui/base.jsx";
 import { horaFmt, nowISO } from "../util/datas.js";
 import { PS_DOSE_UNID, PS_FREQUENCIAS, PS_VIAS } from "./catalogo.js";
@@ -34,7 +36,7 @@ const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", 
 const rot = { fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, display: "block", marginBottom: 3 };
 
 export function AbaPrescricao({ sb, sbCru, paciente, currentUser, dados, rascunho, busy, setBusy, onAssinou }) {
-  const { catalogo, catById, lotes, interacoes, incompatY, prescricoes, itensSalvos, saidas } = dados;
+  const { catalogo, catById, lotes, interacoes, incompatY, prescricoes, itensSalvos, saidas, alergiasPep } = dados;
   const { itens, setItens, form, setForm, obs, setObs, ctx, setCtx } = rascunho;
   const [ctxAberto, setCtxAberto] = useState(false);
   const [ctxBusy, setCtxBusy] = useState(false);
@@ -43,7 +45,27 @@ export function AbaPrescricao({ sb, sbCru, paciente, currentUser, dados, rascunh
 
   const sinal = med => estoqueSinal(med, lotes);
   const similares = med => similaresComEstoque(med, catalogo, lotes);
-  const alertas = analisarPrescricaoClinica([...itensSalvos, ...itens], ctx, catById, interacoes, incompatY);
+
+  // 🔴 O CONTEXTO QUE VAI AO MOTOR NÃO É O DO FORMULÁRIO.
+  // `ctx` é o que o médico digita nesta tela, e o campo de alergia dele é o
+  // TEXTO LIVRE do atendimento — o único que era conferido até 04/09/2026.
+  // `contextoClinico` funde esse texto com `pep_alergias`, o registro do
+  // PACIENTE, que é o que sai na pulseira. O formulário continua editando só
+  // o campo legado: gravar o registro estruturado de volta nele duplicaria o
+  // dado e congelaria uma cópia que envelhece.
+  //
+  // ⚠️ `alergiasPep` é `null` enquanto a consulta não voltou, e `FALHA` se
+  // ela não voltou. Nos dois casos o contexto sai marcado como incerto e o
+  // motor emite "Alergias NÃO conferidas" — em vez de conferir contra nada.
+  const ctxMotor = contextoClinico({ ...ctx, alergias: ctx.alergias }, alergiasPep);
+  // ⚠️ `situacao` só existe quando a leitura VOLTOU. Escrever
+  // `Array.isArray(x) ? x : []` aqui destruiria a diferença entre "não li" e
+  // "não há" — a mesma linha que a catraca de `cargas.test.js` existe para
+  // impedir. Os ramos de "carregando" e "não deu para ler" vêm antes na tela
+  // e não consultam esta variável.
+  const leituraVoltou = Array.isArray(alergiasPep) && !ctxMotor.alergiasIncertas;
+  const situacao = leituraVoltou ? situacaoAlergica(alergiasPep, ctx.alergias) : null;
+  const alertas = analisarPrescricaoClinica([...itensSalvos, ...itens], ctxMotor, catById, interacoes, incompatY);
 
   async function salvarContexto() {
     setCtxBusy(true); setCtxMsg("");
@@ -60,7 +82,8 @@ export function AbaPrescricao({ sb, sbCru, paciente, currentUser, dados, rascunh
     const med = catalogo.find(m => String(m.id) === String(form.medId));
     if (!med) { alert("Escolha um medicamento do catálogo."); return; }
     // Bloqueio por alergia / reatividade cruzada (permite override consciente)
-    const al = checarAlergia(med, parseAlergias(ctx.alergias));
+    // Confere contra as DUAS fontes fundidas, não só contra o campo digitado.
+    const al = checarAlergia(med, parseAlergias(ctxMotor.alergias));
     if (al.match === "direta" && !confirm(`⚠ ALERGIA DECLARADA\n\nO paciente é alérgico a "${al.termo}"${al.grupo ? ` (${al.grupo})` : ""}.\n${med.nome} é CONTRAINDICADO.\n\nPrescrever mesmo assim, sob responsabilidade do prescritor?`)) return;
     if (al.match === "cruzada" && !confirm(`⚠ REATIVIDADE CRUZADA\n\nAlergia a "${al.termo}" pode reagir com ${med.nome} (${al.grupo}).\n\nPrescrever mesmo assim?`)) return;
     setItens(p => [...p, montarItem(med, form)]);
@@ -165,9 +188,41 @@ export function AbaPrescricao({ sb, sbCru, paciente, currentUser, dados, rascunh
         )}
       </div>
 
-      {ctx.alergias && ctx.alergias.trim() && (
-        <div style={{ background: "#f43f5e14", border: "1px solid #f43f5e66", borderLeft: "4px solid #f43f5e", borderRadius: 8, padding: "9px 13px", marginBottom: 12, fontSize: 12.5, color: "var(--text)", fontWeight: 600 }}>
-          ⚠ Paciente alérgico a <strong style={{ color: "#f43f5e" }}>{ctx.alergias}</strong> — não prescrever os compostos relacionados.
+      {/*
+        🔴 TRÊS ESTADOS, NÃO DOIS. "Ninguém perguntou" não é "não tem": a
+        faixa antiga só aparecia quando havia texto, e a sua ausência era
+        lida como paciente sem alergia. Agora o silêncio tem nome, e cada
+        termo diz se veio do registro do paciente ou do texto do atendimento.
+      */}
+      {alergiasPep == null ? (
+        <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 13px", marginBottom: 12, fontSize: 12.5, color: "var(--text-muted)" }}>
+          Lendo o registro de alergias do paciente…
+        </div>
+      ) : ctxMotor.alergiasIncertas ? (
+        <div role="alert" style={{ background: "#f43f5e14", border: "1px solid #f43f5e66", borderLeft: "4px solid #f43f5e", borderRadius: 8, padding: "9px 13px", marginBottom: 12, fontSize: 12.5, color: "var(--text)", fontWeight: 600 }}>
+          ⚠ NÃO foi possível ler o registro de alergias deste paciente. As prescrições abaixo <strong>não estão sendo conferidas</strong> contra alergia — confirme com o paciente ou com o prontuário antes de prescrever.
+        </div>
+      ) : situacao?.estado === "com_alergia" ? (
+        <div role="alert" style={{ background: "#f43f5e14", border: "1px solid #f43f5e66", borderLeft: "4px solid #f43f5e", borderRadius: 8, padding: "9px 13px", marginBottom: 12, fontSize: 12.5, color: "var(--text)", fontWeight: 600 }}>
+          ⚠ Paciente alérgico a{" "}
+          {situacao.itens.map((a, i) => (
+            <span key={a.chave}>
+              {i > 0 ? ", " : ""}
+              <strong style={{ color: "#f43f5e" }}>{a.rotulo}</strong>
+              <span style={{ fontWeight: 500, color: "var(--text-muted)", fontSize: 11 }}>
+                {a.fonte === "registro" ? " (registro do paciente)" : " (anotado neste atendimento)"}
+              </span>
+            </span>
+          ))}
+          {" "}— não prescrever os compostos relacionados.
+        </div>
+      ) : situacao?.estado === "nenhuma" ? (
+        <div style={{ background: "#34d39914", border: "1px solid #34d39955", borderRadius: 8, padding: "8px 13px", marginBottom: 12, fontSize: 12, color: "var(--text-2)" }}>
+          Alergias perguntadas e negadas pelo paciente no registro.
+        </div>
+      ) : (
+        <div style={{ background: "#d9770614", border: "1px solid #d9770655", borderLeft: "4px solid #d97706", borderRadius: 8, padding: "9px 13px", marginBottom: 12, fontSize: 12.5, color: "var(--text)" }}>
+          <strong>Sem registro de alergia para este paciente.</strong> Ninguém perguntou ainda — isso não é o mesmo que não ter. Pergunte antes de prescrever.
         </div>
       )}
 
