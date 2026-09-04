@@ -20,16 +20,15 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState, useEffect } from "react";
+import { HOSPITAL_NOME, HOSPITAL_SIGLA } from "../ui/base.jsx";
 import { producaoDoMes } from "./producao.js";
 import { carregarAgendamentosDoPeriodo, carregarBloqueios } from "./dados.js";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
                "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
-const HOSPITAL = {
-  sigla: import.meta.env?.VITE_HOSPITAL_SIGLA || "HNSN",
-  nome: import.meta.env?.VITE_HOSPITAL_NOME || "Hospital Nossa Senhora de Navegantes",
-};
+// De `ui/base.jsx` — ver a nota lá sobre por que o nome não mora no código.
+const HOSPITAL = { sigla: HOSPITAL_SIGLA, nome: HOSPITAL_NOME };
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" };

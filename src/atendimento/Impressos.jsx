@@ -20,6 +20,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
+import { HOSPITAL_NOME, HOSPITAL_SIGLA } from "../ui/base.jsx";
 import {
   dadosDaPulseira, dadosDaFicha, declaracaoDeComparecimento, comprovanteDeAgendamento,
   documentosDoEpisodio,
@@ -27,13 +28,11 @@ import {
 
 const AREA = "impresso-print";
 
-// Lido daqui, e não recebido por prop, para não abrir mais um ponto de
-// alteração no `App.jsx` — que é território compartilhado e já tem 15 mil
-// linhas. É a mesma origem que os relatórios do PS e da farmácia usam.
-const HOSPITAL_PADRAO = {
-  sigla: import.meta.env?.VITE_HOSPITAL_SIGLA || "HNSN",
-  nome: import.meta.env?.VITE_HOSPITAL_NOME || "Hospital Nossa Senhora de Navegantes",
-};
+// 🔴 DE `ui/base.jsx`, não da variável de ambiente direto. Este arquivo lia
+// `import.meta.env` por conta própria, com a SUA cópia do fallback — e o
+// mesmo em `RelatorioAmbulatorio.jsx` e em `ui/base.jsx`. Três lugares para
+// trocar o nome do hospital, e quem trocasse dois não veria erro nenhum.
+const HOSPITAL_PADRAO = { sigla: HOSPITAL_SIGLA, nome: HOSPITAL_NOME };
 
 // A tira: 180mm de comprimento é o que fecha num pulso adulto com folga de
 // sobreposição, e cabe na largura útil de um A4 retrato.
