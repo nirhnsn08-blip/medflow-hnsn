@@ -136,9 +136,33 @@ export async function addPsRegistroRemote(sb, reg, user) {
   return await sb("ps_registros", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
 }
 
+/**
+ * Altera um registro do PS (hoje: lançar resultado de exame e marcar visto).
+ *
+ * 🔴 CONFERE O RETORNO, não o status. Sem `return=representation` o PostgREST
+ * responde 204 SEM CORPO a um PATCH que alterou ZERO linha — e é exatamente
+ * isso que a RLS faz quando o perfil não tem escrita no módulo. A versão
+ * anterior desta função dava `await` e seguia: o médico digitava o resultado
+ * do exame, a caixa fechava, a lista recarregava mostrando "Aguardando
+ * resultado", e o texto sumia sem uma palavra.
+ *
+ * Devolve `{ ok, linha }` ou `{ ok: false, erro }` — quem chama decide o que
+ * fazer, mas não pode mais confundir "gravou" com "não deu erro".
+ */
 export async function updatePsRegistroRemote(sb, id, campos) {
-  if (!sb) return;
-  await sb(`ps_registros?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(campos) });
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const linhas = await sb(`ps_registros?id=eq.${id}`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify(campos),
+  });
+  // `null` é falha de rede/permissão já anotada pelo `sbFetch`; `[]` é a
+  // gravação recusada em silêncio. As duas são "não gravou".
+  if (linhas == null) return { ok: false, erro: "A gravação não chegou ao banco. Tente de novo." };
+  if (!Array.isArray(linhas) || linhas.length === 0) {
+    return { ok: false, erro: "Nada foi gravado — pode faltar permissão de escrita neste módulo." };
+  }
+  return { ok: true, linha: linhas[0] };
 }
 
 export async function addPsPrescricaoItens(sb, itens, user) {

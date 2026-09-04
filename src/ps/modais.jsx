@@ -16,6 +16,7 @@ import { avisoDeCatalogo, filtrarProcedimentos, opcoesDeProcedimento, viaDaEscol
 import { avisoDeConta, convenioSugerido, geraConta, valoresIniciais } from "../atendimento/faturavel.js";
 import { PS_VIAS_TRANSF } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { AbaExames } from "./AbaExames.jsx";
 import { avaliarSinaisVitais } from "../clinico/adulto.js";
 import { FARM_GRAV, analisarPrescricaoClinica, checarAlergia, farmFmtQtd, normTxt, parseAlergias } from "../clinico/alertas.js";
 import { COMORBIDADES } from "../clinico/comorbidades.js";
@@ -26,8 +27,8 @@ import { loadFarmIncompatY, loadFarmInteracoes, loadFarmLotes, loadFarmMedicamen
 import { idadeMesesParaTriagem } from "../pacientes/identidade.js";
 import { VX, btnContorno, rotuloCampo } from "../ui/base.jsx";
 import { diffMin, fmtDataBR, fmtDur, horaFmt, isoToLocal, localToIso, nowISO } from "../util/datas.js";
-import { MANCHESTER, PS_ADM_CATEGORIAS, PS_ADM_MOTIVOS, PS_ADM_STATUS, PS_AREAS, PS_CONSCIENCIA, PS_DESFECHOS, PS_DOSE_UNID, PS_EVOL_CATEGORIAS, PS_EXAME_CATEGORIAS, PS_FREQUENCIAS, PS_SALA_STATUS, PS_VIAS, fmtSinaisVitais } from "./catalogo.js";
-import { addPsAdministracao, addPsPrescricaoItens, addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loadPsPrescricaoItens, loadPsProtocolos, loadPsRegistros, loadPsSinais, patchPsAtendimentoDireto, updatePsRegistroRemote, upsertPsProtocoloRemote } from "./dados.js";
+import { MANCHESTER, PS_ADM_CATEGORIAS, PS_ADM_MOTIVOS, PS_ADM_STATUS, PS_AREAS, PS_CONSCIENCIA, PS_DESFECHOS, PS_DOSE_UNID, PS_EVOL_CATEGORIAS, PS_FREQUENCIAS, PS_SALA_STATUS, PS_VIAS, fmtSinaisVitais } from "./catalogo.js";
+import { addPsAdministracao, addPsPrescricaoItens, addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loadPsPrescricaoItens, loadPsProtocolos, loadPsRegistros, loadPsSinais, patchPsAtendimentoDireto, upsertPsProtocoloRemote } from "./dados.js";
 import { useEffect, useRef, useState } from "react";
 import { freqDia, psContaCenso, psDosesDadas, saveFaixaObstetrica, saveFaixaPediatrica } from "./apoio.js";
 import { dispensadoDoItem as dispensado, estoqueSinal as sinalDeEstoque, pendentesDeChecagem, semChecagem as semChecagemDoItem, similaresComEstoque as similaresDisponiveis } from "./prescricao.js";
@@ -620,9 +621,7 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const [aba, setAba] = useState(abaInicial || "evolucao"); // evolucao | prescricao | checagem | exames
   const [texto, setTexto] = useState("");
   const [gravando, setGravando] = useState(false);
-  const [exForm, setExForm] = useState({ categoria: "laboratorial", nome: "" });
   const [evolCat, setEvolCat] = useState("medica");   // quem está evoluindo
-  const [resultadoDe, setResultadoDe] = useState(null); // { id, texto }
   const [busy, setBusy] = useState(false);
   // Prescrição estruturada (Farmácia Fase B) + farmácia clínica (Fase 1)
   const [catalogo, setCatalogo] = useState([]);
@@ -752,31 +751,12 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
     loadPsAdministracoes(sb, paciente.id).then(setAdms);
     onChanged?.();
   }
-  async function solicitarExame() {
-    if (!exForm.nome.trim()) { alert("Informe o nome do exame."); return; }
-    setBusy(true);
-    await addPsRegistroRemote(sb, { atendimento_id: paciente.id, tipo: "exame", categoria: exForm.categoria, texto: exForm.nome.trim(), status: "solicitado", criado_em: nowISO() }, currentUser);
-    registrarAuditoria(sb, currentUser, "PS: solicitar exame", `${paciente.iniciais} · ${exForm.nome.trim()}`, {});
-    setExForm(p => ({ ...p, nome: "" })); setBusy(false); carregarRegistros(); onChanged?.();
-  }
-  async function lancarResultado() {
-    if (!resultadoDe?.texto?.trim()) { alert("Cole ou descreva o resultado."); return; }
-    await updatePsRegistroRemote(sb, resultadoDe.id, { status: "resultado_disponivel", resultado: resultadoDe.texto.trim(), resultado_em: nowISO() });
-    registrarAuditoria(sb, currentUser, "PS: resultado de exame", paciente.iniciais, {});
-    setResultadoDe(null); carregarRegistros(); onChanged?.();
-  }
-  async function marcarVisto(reg) {
-    await updatePsRegistroRemote(sb, reg.id, { status: "visto" });
-    registrarAuditoria(sb, currentUser, "PS: exame visto", `${paciente.iniciais} · ${reg.texto}`, {});
-    carregarRegistros(); onChanged?.();
-  }
 
   const evolucoes = registros.filter(r => r.tipo === "evolucao");
   const prescricoes = registros.filter(r => r.tipo === "prescricao");
   const exames = registros.filter(r => r.tipo === "exame");
   const alertasClinicos = analisarPrescricaoClinica([...presItensSalvos, ...presItens], ctx, catById, interacoes, incompatY);
   const abaBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
-  const EX_STATUS = { solicitado: { label: "Aguardando resultado", cor: "#d97706" }, resultado_disponivel: { label: "Resultado disponível", cor: "#3b82f6" }, visto: { label: "Visto pelo médico", cor: "#34d399" } };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
@@ -1146,46 +1126,8 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
         )}
 
         {aba === "exames" && (
-          <>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-              <select value={exForm.categoria} onChange={e => setExForm(p => ({ ...p, categoria: e.target.value }))} style={{ ...inp, width: 150 }}>
-                {Object.entries(PS_EXAME_CATEGORIAS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-              <input value={exForm.nome} onChange={e => setExForm(p => ({ ...p, nome: e.target.value }))} onKeyDown={e => e.key === "Enter" && solicitarExame()} placeholder="Ex.: Hemograma completo, RX de tórax PA…" style={{ ...inp, flex: 1, minWidth: 200 }} />
-              <button onClick={solicitarExame} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "+ Solicitar"}</button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {exames.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhum exame solicitado.</div>}
-              {exames.map(r => {
-                const st = EX_STATUS[r.status] || EX_STATUS.solicitado;
-                return (
-                  <div key={r.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${st.cor}`, borderRadius: 8, padding: "10px 13px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <strong style={{ fontSize: 13 }}>{r.texto}</strong>
-                      <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{PS_EXAME_CATEGORIAS[r.categoria] || r.categoria}</span>
-                      <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: st.cor }}>{st.label}</span>
-                    </div>
-                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace", marginTop: 2 }}>Solicitado {horaFmt(r.criado_em)}{r.resultado_em ? ` · resultado ${horaFmt(r.resultado_em)}` : ""}</div>
-                    {r.resultado && <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap", marginTop: 6, background: "var(--input-bg)", borderRadius: 6, padding: "8px 10px" }}>{r.resultado}</div>}
-                    {resultadoDe?.id === r.id ? (
-                      <div style={{ marginTop: 8 }}>
-                        <textarea value={resultadoDe.texto} onChange={e => setResultadoDe(p => ({ ...p, texto: e.target.value }))} rows={3} placeholder="Cole ou descreva o resultado do exame." style={{ ...inp, resize: "vertical", lineHeight: 1.5, marginBottom: 6 }} />
-                        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                          <button onClick={() => setResultadoDe(null)} style={btnContorno("var(--text-muted)")}>Cancelar</button>
-                          <button onClick={lancarResultado} style={btnContorno("#3b82f6")}>Salvar resultado</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                        {r.status === "solicitado" && <button onClick={() => setResultadoDe({ id: r.id, texto: "" })} style={btnContorno("#3b82f6")}>Lançar resultado</button>}
-                        {r.status === "resultado_disponivel" && <button onClick={() => marcarVisto(r)} style={btnContorno("#34d399")}>Marcar como visto</button>}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </>
+          <AbaExames sb={sb} paciente={paciente} currentUser={currentUser} exames={exames}
+            busy={busy} setBusy={setBusy} onMudou={() => { carregarRegistros(); onChanged?.(); }} />
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>

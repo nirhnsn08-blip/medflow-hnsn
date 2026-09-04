@@ -36,6 +36,7 @@ import { diffMin, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { fmt } from "../util/formato.js";
 import { MANCHESTER, PS_AREAS, PS_DESFECHOS, PS_DISCRIMINADORES, PS_PRIORIDADE, PS_PROTOCOLO, PS_SALA_STATUS, fmtSinaisVitais } from "./catalogo.js";
 import { addPsAtendimentoRemote, addPsSinalRemote, deletePsSalaRemote, loadPsAdministracoesByAtendimentos, loadPsAtendimentos, loadPsAtendimentosPeriodo, loadPsExamesPendentes, loadPsExamesPeriodo, loadPsFinalizadosHoje, loadPsPrescricaoItensByAtendimentos, loadPsSalas, updatePsAtendimentoRemote, upsertPsSalaRemote } from "./dados.js";
+import { contarExames } from "./exames.js";
 import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import PrimeiroUso from "../ui/PrimeiroUso.jsx";
@@ -535,8 +536,15 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
       setFila(r);
       const ids = r.filter(p => p.status === "em_atendimento").map(p => p.id);
       loadPsExamesPendentes(sb, ids).then(list => {
+        // A separação entre "ainda não voltou" e "voltou e ninguém leu" vem de
+        // `contarExames`, a mesma régua da aba de exames. Era a terceira cópia.
+        const porAtend = {};
+        list.forEach(x => (porAtend[x.atendimento_id] = porAtend[x.atendimento_id] || []).push(x));
         const m = {};
-        list.forEach(x => { m[x.atendimento_id] = m[x.atendimento_id] || { aguardando: 0, prontos: 0 }; if (x.status === "resultado_disponivel") m[x.atendimento_id].prontos++; else m[x.atendimento_id].aguardando++; });
+        for (const [id, exs] of Object.entries(porAtend)) {
+          const c = contarExames(exs);
+          m[id] = { aguardando: c.aguardando, prontos: c.prontos };
+        }
         setExamesPend(m);
       });
       // Medicação já dispensada pela farmácia e ainda sem checagem à beira do leito
