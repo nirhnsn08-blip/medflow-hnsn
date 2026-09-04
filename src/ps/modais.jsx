@@ -16,6 +16,7 @@ import { avisoDeCatalogo, filtrarProcedimentos, opcoesDeProcedimento, viaDaEscol
 import { avisoDeConta, convenioSugerido, geraConta, valoresIniciais } from "../atendimento/faturavel.js";
 import { PS_VIAS_TRANSF } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { AbaChecagem } from "./AbaChecagem.jsx";
 import { AbaExames } from "./AbaExames.jsx";
 import { avaliarSinaisVitais } from "../clinico/adulto.js";
 import { FARM_GRAV, analisarPrescricaoClinica, checarAlergia, farmFmtQtd, normTxt, parseAlergias } from "../clinico/alertas.js";
@@ -26,12 +27,12 @@ import { FARM_CLASSES } from "../farmacia/catalogo.js";
 import { loadFarmIncompatY, loadFarmInteracoes, loadFarmLotes, loadFarmMedicamentos, loadFarmSaidasByAtendimento } from "../farmacia/dados.js";
 import { idadeMesesParaTriagem } from "../pacientes/identidade.js";
 import { VX, btnContorno, rotuloCampo } from "../ui/base.jsx";
-import { diffMin, fmtDataBR, fmtDur, horaFmt, isoToLocal, localToIso, nowISO } from "../util/datas.js";
-import { MANCHESTER, PS_ADM_CATEGORIAS, PS_ADM_MOTIVOS, PS_ADM_STATUS, PS_AREAS, PS_CONSCIENCIA, PS_DESFECHOS, PS_DOSE_UNID, PS_EVOL_CATEGORIAS, PS_FREQUENCIAS, PS_SALA_STATUS, PS_VIAS, fmtSinaisVitais } from "./catalogo.js";
-import { addPsAdministracao, addPsPrescricaoItens, addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loadPsPrescricaoItens, loadPsProtocolos, loadPsRegistros, loadPsSinais, patchPsAtendimentoDireto, upsertPsProtocoloRemote } from "./dados.js";
+import { diffMin, fmtDataBR, fmtDur, horaFmt, nowISO } from "../util/datas.js";
+import { MANCHESTER, PS_AREAS, PS_CONSCIENCIA, PS_DESFECHOS, PS_DOSE_UNID, PS_EVOL_CATEGORIAS, PS_FREQUENCIAS, PS_SALA_STATUS, PS_VIAS, fmtSinaisVitais } from "./catalogo.js";
+import { addPsPrescricaoItens, addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loadPsPrescricaoItens, loadPsProtocolos, loadPsRegistros, loadPsSinais, patchPsAtendimentoDireto, upsertPsProtocoloRemote } from "./dados.js";
 import { useEffect, useRef, useState } from "react";
-import { freqDia, psContaCenso, psDosesDadas, saveFaixaObstetrica, saveFaixaPediatrica } from "./apoio.js";
-import { dispensadoDoItem as dispensado, estoqueSinal as sinalDeEstoque, pendentesDeChecagem, semChecagem as semChecagemDoItem, similaresComEstoque as similaresDisponiveis } from "./prescricao.js";
+import { freqDia, psContaCenso, saveFaixaObstetrica, saveFaixaPediatrica } from "./apoio.js";
+import { dispensadoDoItem as dispensado, estoqueSinal as sinalDeEstoque, pendentesDeChecagem, similaresComEstoque as similaresDisponiveis } from "./prescricao.js";
 
 // Biblioteca de protocolos do PS — abrir e cadastrar
 export function PsProtocolosModal({ sb, currentUser, canEdit, isMaster, onClose }) {
@@ -633,8 +634,6 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const [presItensSalvos, setPresItensSalvos] = useState([]); // itens já assinados neste atendimento
   const [saidas, setSaidas] = useState([]);                   // dispensações deste atendimento
   const [adms, setAdms] = useState([]);                       // checagens de medicação deste atendimento
-  const [checando, setChecando] = useState(null);             // item aberto para checar
-  const [chkForm, setChkForm] = useState({ status: "administrado", motivo: "", observacao: "", categoria: "enfermagem", quando: "" });
   const [ctx, setCtx] = useState({ idade: paciente.idade ?? "", peso: paciente.peso ?? "", clearance_renal: paciente.clearance_renal ?? "", funcao_hepatica: paciente.funcao_hepatica ?? "", alergias: paciente.alergias ?? "", em_sonda: !!paciente.em_sonda, gestante: !!paciente.gestante, comorbidades: Array.isArray(paciente.comorbidades) ? paciente.comorbidades : [] });
   const [ctxAberto, setCtxAberto] = useState(false);
   const [ctxBusy, setCtxBusy] = useState(false);
@@ -721,36 +720,8 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
     carregarRegistros(); carregarPrescricao(); onChanged?.();
   }
   const dispensadoDoItem = itemId => dispensado(itemId, saidas);
-  // Item ainda sem nenhuma checagem (nem administrado, nem justificado)
-  const semChecagem = it => semChecagemDoItem(it, adms);
   // A farmácia entregou e ninguém registrou o que foi feito com o medicamento
   const itensPendentesChecagem = pendentesDeChecagem(presItensSalvos, saidas, adms);
-  // Abre a checagem de um item. A hora vem preenchida com agora, mas é editável:
-  // à beira do leito a enfermagem administra primeiro e registra depois.
-  function abrirChecagem(it) {
-    setChecando(it);
-    setChkForm(f => ({ status: "administrado", motivo: "", observacao: "", categoria: f.categoria || "enfermagem", quando: isoToLocal(nowISO()) }));
-  }
-  async function confirmarChecagem() {
-    const it = checando;
-    if (!it) return;
-    if (chkForm.status === "nao_administrado" && !chkForm.motivo) { alert("Informe o motivo de a dose não ter sido administrada."); return; }
-    const quandoIso = chkForm.quando ? localToIso(chkForm.quando) : nowISO();
-    if (new Date(quandoIso) > new Date()) { alert("A hora da administração não pode estar no futuro."); return; }
-    const rotulo = chkForm.status === "administrado" ? "administrado" : "NÃO administrado";
-    if (!confirm(`Registrar ${it.medicamento_nome} como ${rotulo} em ${horaFmt(quandoIso)}?\n\nÉ um registro clínico: NÃO poderá ser editado nem apagado depois.`)) return;
-    setBusy(true);
-    await addPsAdministracao(sb, {
-      atendimento_id: paciente.id, prescricao_item_id: it.id, medicamento_id: it.medicamento_id || null,
-      medicamento_nome: it.medicamento_nome, dose: it.dose || null, via: it.via || null,
-      status: chkForm.status, motivo: chkForm.status === "nao_administrado" ? chkForm.motivo : null,
-      observacao: chkForm.observacao.trim() || null, categoria: chkForm.categoria, administrado_em: quandoIso,
-    }, currentUser);
-    registrarAuditoria(sb, currentUser, `PS: checagem de medicação (${rotulo})`, `${paciente.iniciais} · ${it.medicamento_nome}`, {});
-    setChecando(null); setBusy(false);
-    loadPsAdministracoes(sb, paciente.id).then(setAdms);
-    onChanged?.();
-  }
 
   const evolucoes = registros.filter(r => r.tipo === "evolucao");
   const prescricoes = registros.filter(r => r.tipo === "prescricao");
@@ -1014,115 +985,10 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
         )}
 
         {aba === "checagem" && (
-          <>
-            <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px", marginBottom: 12, fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.55 }}>
-              <strong>Dispensado</strong> significa que o medicamento saiu da farmácia. <strong>Checado</strong> significa que ele foi administrado ao paciente — com hora e responsável. São coisas diferentes: só a checagem fecha o ciclo.
-            </div>
-
-            {presItensSalvos.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "1.5rem", border: "1px dashed var(--border)", borderRadius: 10 }}>Nenhum medicamento prescrito neste atendimento.</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {presItensSalvos.map(it => {
-                  const qtd = Number(it.quantidade || 0);
-                  const disp = dispensadoDoItem(it.id);
-                  const dadas = psDosesDadas(it.id, adms);
-                  const previstas = Number(it.frequencia_dia || 0);
-                  const naoDadas = adms.filter(a => String(a.prescricao_item_id) === String(it.id) && a.status === "nao_administrado").length;
-                  const dispSt = qtd <= 0 ? (disp > 0 ? { c: "#34d399", t: "dispensado" } : { c: "#8d99ab", t: "sem dispensação" })
-                    : disp >= qtd ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `dispensado parcial ${farmFmtQtd(disp)}/${farmFmtQtd(qtd)}` } : { c: "#8d99ab", t: "não dispensado" };
-                  const pendente = disp > 0 && semChecagem(it);
-                  const aberto = checando?.id === it.id;
-                  return (
-                    <div key={it.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${pendente ? "#d97706" : dadas > 0 ? "#34d399" : "var(--border-2)"}`, borderRadius: 8, padding: "10px 13px" }}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                        <span style={{ flex: 1, fontSize: 13, color: "var(--text)", minWidth: 180 }}>
-                          <strong>{it.medicamento_nome}</strong>{it.dose ? ` — ${it.dose}` : ""} <span style={{ color: "var(--text-muted)" }}>{it.via || ""}</span>
-                        </span>
-                        <span style={{ fontSize: 10.5, color: dispSt.c, fontWeight: 700, whiteSpace: "nowrap" }}>{dispSt.t}</span>
-                        {!aberto && <button onClick={() => abrirChecagem(it)} style={btnContorno(pendente ? "#d97706" : "#22d3ee")}>Checar</button>}
-                        {aberto && <button onClick={() => setChecando(null)} style={btnContorno("#8d99ab")}>Fechar</button>}
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                        <span style={{ color: dadas > 0 ? "#34d399" : "var(--text-muted)", fontWeight: dadas > 0 ? 700 : 500 }}>
-                          {dadas} dose(s) administrada(s){previstas > 0 ? ` de ${previstas} previstas por dia` : ""}
-                        </span>
-                        {naoDadas > 0 && <span style={{ color: "#f43f5e", fontWeight: 700 }}>{naoDadas} não administrada(s)</span>}
-                        {pendente && <span style={{ color: "#d97706", fontWeight: 700 }}>aguardando checagem</span>}
-                      </div>
-
-                      {aberto && (
-                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-                          <div style={{ display: "flex", gap: 6, marginBottom: 9, flexWrap: "wrap" }}>
-                            {Object.entries(PS_ADM_STATUS).map(([k, v]) => (
-                              <button key={k} onClick={() => setChkForm(f => ({ ...f, status: k, motivo: k === "administrado" ? "" : f.motivo }))}
-                                style={{ background: chkForm.status === k ? v.cor : "transparent", color: chkForm.status === k ? "#000" : "var(--text-3)", border: `1px solid ${chkForm.status === k ? v.cor : "var(--border)"}`, borderRadius: 99, padding: "5px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{v.label}</button>
-                            ))}
-                          </div>
-
-                          {chkForm.status === "nao_administrado" && (
-                            <div style={{ marginBottom: 9 }}>
-                              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Motivo (obrigatório)</div>
-                              <select value={chkForm.motivo} onChange={e => setChkForm(f => ({ ...f, motivo: e.target.value }))} style={inp}>
-                                <option value="">Selecione o motivo…</option>
-                                {PS_ADM_MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
-                              </select>
-                            </div>
-                          )}
-
-                          <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Quem administrou</div>
-                          <div style={{ display: "flex", gap: 6, marginBottom: 9, flexWrap: "wrap" }}>
-                            {Object.entries(PS_ADM_CATEGORIAS).map(([k, v]) => (
-                              <button key={k} onClick={() => setChkForm(f => ({ ...f, categoria: k }))}
-                                style={{ background: chkForm.categoria === k ? v.cor : "transparent", color: chkForm.categoria === k ? "#fff" : "var(--text-3)", border: `1px solid ${chkForm.categoria === k ? v.cor : "var(--border)"}`, borderRadius: 99, padding: "4px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{v.curto}</button>
-                            ))}
-                          </div>
-
-                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 9 }}>
-                            <div style={{ flex: "1 1 200px" }}>
-                              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Hora da administração</div>
-                              <input type="datetime-local" value={chkForm.quando} onChange={e => setChkForm(f => ({ ...f, quando: e.target.value }))} style={inp} />
-                            </div>
-                            <div style={{ flex: "2 1 260px" }}>
-                              <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 700, marginBottom: 4 }}>Observação (opcional)</div>
-                              <input value={chkForm.observacao} onChange={e => setChkForm(f => ({ ...f, observacao: e.target.value }))} placeholder="Ex.: reação no local, dose fracionada…" style={inp} />
-                            </div>
-                          </div>
-
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>Registro permanente, assinado como <strong>{currentUser?.name || "—"}</strong>.</span>
-                            <button onClick={confirmarChecagem} disabled={busy} style={{ marginLeft: "auto", background: chkForm.status === "administrado" ? "#34d399" : "#f43f5e", color: chkForm.status === "administrado" ? "#000" : "#fff", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar checagem"}</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".04em", margin: "16px 0 8px" }}>Histórico de administrações</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {adms.map(a => { const st = PS_ADM_STATUS[a.status] || PS_ADM_STATUS.administrado; const cat = PS_ADM_CATEGORIAS[a.categoria] || PS_ADM_CATEGORIAS.outro; return (
-                <div key={a.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${st.cor}`, borderRadius: 8, padding: "8px 12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 9.5, fontWeight: 800, color: st.cor, border: `1px solid ${st.cor}55`, borderRadius: 99, padding: "0 7px", textTransform: "uppercase" }}>{st.label}</span>
-                    <strong style={{ fontSize: 12.5, color: "var(--text)" }}>{a.medicamento_nome}</strong>
-                    {a.dose && <span style={{ fontSize: 11.5, color: "var(--text-3)" }}>{a.dose}</span>}
-                    {a.via && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{a.via}</span>}
-                    <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--text-muted)", fontFamily: "JetBrains Mono, monospace" }}>{horaFmt(a.administrado_em)} · {cat.curto} · {a.usuario || "?"}</span>
-                  </div>
-                  {(a.motivo || a.observacao) && (
-                    <div style={{ fontSize: 11.5, color: "var(--text-2)", marginTop: 3 }}>
-                      {a.motivo ? <span style={{ color: "#f43f5e", fontWeight: 600 }}>{a.motivo}</span> : null}{a.motivo && a.observacao ? " · " : ""}{a.observacao || ""}
-                    </div>
-                  )}
-                </div>
-              ); })}
-              {adms.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "8px 0" }}>Nenhuma medicação checada ainda.</div>}
-            </div>
-            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 10 }}>A checagem é um registro clínico append-only: cada dose fica gravada com hora, categoria profissional e responsável. Não pode ser editada nem apagada.</div>
-          </>
+          <AbaChecagem sb={sb} paciente={paciente} currentUser={currentUser}
+            itensSalvos={presItensSalvos} saidas={saidas} adms={adms}
+            busy={busy} setBusy={setBusy}
+            onChecou={() => { loadPsAdministracoes(sb, paciente.id).then(setAdms); onChanged?.(); }} />
         )}
 
         {aba === "exames" && (

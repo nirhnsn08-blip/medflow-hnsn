@@ -7,9 +7,8 @@
 // que foi exatamente como `SuprimentosPage.jsx` acabou sendo importado
 // pela Farmácia.
 //
-// ⚠️ `psDosesDadas` só conta o que foi EFETIVAMENTE administrado. Dose
-// prescrita e dose dada são coisas diferentes, e somar as duas faria a
-// tela dizer que o paciente recebeu o que ainda está na bandeja.
+// ⚠️ A contagem de doses dadas saiu daqui em 04/09/2026 para `checagem.js`,
+// junto com as outras regras da beira do leito — e ganhou teste na mudança.
 // ═══════════════════════════════════════════════════════════
 
 import { PS_FREQUENCIAS } from "./catalogo.js";
@@ -56,8 +55,6 @@ export const psContaCenso = s => s.conta_censo !== false;
 // Por que a dose prescrita e dispensada não foi dada — vira indicador de segurança
 // Quem administra à beira do leito
 // Doses já dadas de um item (só as efetivamente administradas contam)
-export const psDosesDadas = (itemId, adms) => adms.filter(a => String(a.prescricao_item_id) === String(itemId) && a.status !== "nao_administrado").length;
-
 export async function saveFaixaObstetrica(sb, regra, user) {
   await sb("ps_faixas_obstetricas?on_conflict=chave", {
     method: "POST", headers: { "Prefer": "resolution=merge-duplicates" },
