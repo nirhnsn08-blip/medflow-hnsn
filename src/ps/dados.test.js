@@ -117,7 +117,7 @@ describe("as escritas carimbam quem fez", () => {
   });
 
   it("updatePsAtendimentoRemote altera pelo id", async () => {
-    const sb = espiao([]);
+    const sb = espiao([{ id: 7 }]);
     await updatePsAtendimentoRemote(sb, 7, { status: "em_atendimento" });
     expect(sb.chamadas[0].caminho).toContain("id=eq.7");
     expect(sb.chamadas[0].opts.method).toBe("PATCH");
@@ -131,10 +131,9 @@ describe("as escritas carimbam quem fez", () => {
   });
 
   it("⚠️ sem banco nenhuma escrita acontece, e nenhuma estoura", async () => {
-    for (const chamar of [
-      () => updatePsAtendimentoRemote(null, 1, {}),
-      () => deletePsSalaRemote(null, 1),
-    ]) await expect(chamar()).resolves.toBeUndefined();
+    await expect(deletePsSalaRemote(null, 1)).resolves.toBeUndefined();
+    // A alteração do atendimento faz mais que não estourar: DIZ que não gravou.
+    await expect(updatePsAtendimentoRemote(null, 1, {})).resolves.toMatchObject({ ok: false });
   });
 });
 
@@ -223,5 +222,58 @@ describe("🔴 updatePsRegistroRemote — 2xx NÃO é gravou", () => {
       expect(typeof r.erro, String(resp)).toBe("string");
       expect(r.erro.length, String(resp)).toBeGreaterThan(10);
     }
+  });
+});
+
+describe("🔴 updatePsAtendimentoRemote — o estado do paciente na fila", () => {
+  // Esta função grava as quatro transições do episódio: triagem, reavaliação,
+  // início do atendimento e desfecho. Até 04/09/2026 dava `await` e seguia.
+  // A tela chamava `refresh()` logo depois: a triagem "acontecia", a lista
+  // recarregava, e o paciente reaparecia sem classificação — sem uma palavra.
+
+  it("pede a linha de volta — sem isso não há o que conferir", async () => {
+    const sb = espiao([{ id: 7, status: "em_atendimento" }]);
+    await updatePsAtendimentoRemote(sb, 7, { status: "em_atendimento" });
+    expect(sb.chamadas[0].opts.headers.Prefer).toBe("return=representation");
+  });
+
+  it("carimba `updated_at` sozinha", async () => {
+    const sb = espiao([{ id: 7 }]);
+    await updatePsAtendimentoRemote(sb, 7, { status: "finalizado" });
+    expect(corpo(sb.chamadas[0]).updated_at).toBeTruthy();
+  });
+
+  it("linha de volta é sucesso, e devolve a linha", async () => {
+    const r = await updatePsAtendimentoRemote(espiao([{ id: 7, classificacao: "laranja" }]), 7, {});
+    expect(r).toEqual({ ok: true, linha: { id: 7, classificacao: "laranja" } });
+  });
+
+  it("🔴 lista VAZIA é recusa da RLS, não sucesso", async () => {
+    const r = await updatePsAtendimentoRemote(espiao([]), 7, {});
+    expect(r.ok).toBe(false);
+    expect(r.erro).toMatch(/permiss/i);
+  });
+
+  it("🔴 `null` do sbFetch (rede ou erro do banco) também é recusa", async () => {
+    const r = await updatePsAtendimentoRemote(espiao(null), 7, {});
+    expect(r.ok).toBe(false);
+    expect(r.erro).toBeTruthy();
+  });
+
+  it("⚠️ o erro é sempre TEXTO para a tela mostrar", async () => {
+    for (const resp of [[], null, undefined]) {
+      const r = await updatePsAtendimentoRemote(espiao(resp), 7, {});
+      expect(typeof r.erro, String(resp)).toBe("string");
+      expect(r.erro.length, String(resp)).toBeGreaterThan(10);
+    }
+  });
+
+  it("⚠️ as duas alterações do módulo têm o MESMO contrato", async () => {
+    // `updatePsRegistroRemote` e `updatePsAtendimentoRemote` passam pelo
+    // mesmo conferidor. Contratos diferentes fariam uma tela conferir e a
+    // outra não, e ninguém compara as duas.
+    const a = await updatePsAtendimentoRemote(espiao([]), 1, {});
+    const b = await updatePsRegistroRemote(espiao([]), 1, {});
+    expect(a).toEqual(b);
   });
 });
