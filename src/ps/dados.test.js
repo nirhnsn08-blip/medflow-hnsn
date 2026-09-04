@@ -20,7 +20,7 @@ import {
   loadPsAdministracoes, loadPsAdministracoesByAtendimentos,
   addPsAtendimentoRemote, updatePsAtendimentoRemote, patchPsAtendimentoDireto,
   addPsSinalRemote, addPsRegistroRemote, addPsPrescricaoItens, addPsAdministracao,
-  upsertPsSalaRemote, deletePsSalaRemote,
+  upsertPsSalaRemote, deletePsSalaRemote, updatePsRegistroRemote,
 } from "./dados.js";
 
 const USER = { name: "Ana Souza" };
@@ -174,6 +174,54 @@ describe("🔴 o PATCH que devolve o MOTIVO da recusa", () => {
     const fonte = patchPsAtendimentoDireto.toString();
     for (const proibido of ["SUPABASE_URL", "SUPABASE_KEY", "AUTH_TOKEN", "apikey", "fetch("]) {
       expect(fonte, `${proibido} voltou para o módulo`).not.toContain(proibido);
+    }
+  });
+});
+
+describe("🔴 updatePsRegistroRemote — 2xx NÃO é gravou", () => {
+  // Este é o caminho do resultado de exame. Antes de 04/09/2026 a função
+  // dava `await` e não olhava nada: o PostgREST responde 204 sem corpo a um
+  // PATCH que alterou ZERO linha, e é isso que a RLS faz quando o perfil não
+  // tem escrita no módulo. O médico digitava o resultado, a caixa fechava, e
+  // o texto sumia sem uma palavra.
+
+  it("pede a linha de volta — sem isso não há o que conferir", async () => {
+    const sb = espiao([{ id: 7, status: "visto" }]);
+    await updatePsRegistroRemote(sb, 7, { status: "visto" });
+    expect(sb.chamadas[0].opts.headers.Prefer).toBe("return=representation");
+    expect(sb.chamadas[0].opts.method).toBe("PATCH");
+    expect(sb.chamadas[0].caminho).toContain("id=eq.7");
+  });
+
+  it("linha de volta é sucesso, e devolve a linha", async () => {
+    const r = await updatePsRegistroRemote(espiao([{ id: 7, status: "visto" }]), 7, { status: "visto" });
+    expect(r).toEqual({ ok: true, linha: { id: 7, status: "visto" } });
+  });
+
+  it("🔴 lista VAZIA é recusa da RLS, não sucesso", async () => {
+    const r = await updatePsRegistroRemote(espiao([]), 7, { status: "visto" });
+    expect(r.ok).toBe(false);
+    expect(r.erro).toMatch(/permiss/i);
+  });
+
+  it("🔴 `null` do sbFetch (rede ou erro do banco) também é recusa", async () => {
+    const r = await updatePsRegistroRemote(espiao(null), 7, { status: "visto" });
+    expect(r.ok).toBe(false);
+    expect(r.erro).toBeTruthy();
+  });
+
+  it("sem banco não estoura e não mente", async () => {
+    for (const sb of [null, undefined]) {
+      const r = await updatePsRegistroRemote(sb, 7, { status: "visto" });
+      expect(r.ok, String(sb)).toBe(false);
+    }
+  });
+
+  it("⚠️ o erro é sempre TEXTO para a tela mostrar — nunca só `false`", async () => {
+    for (const resp of [[], null, undefined]) {
+      const r = await updatePsRegistroRemote(espiao(resp), 7, {});
+      expect(typeof r.erro, String(resp)).toBe("string");
+      expect(r.erro.length, String(resp)).toBeGreaterThan(10);
     }
   });
 });

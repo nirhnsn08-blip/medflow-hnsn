@@ -12,15 +12,14 @@
 // Função pura (sem React, sem rede): é a régua do BI, e é o que dá para testar.
 // ═══════════════════════════════════════════════════════════
 
-export const EXAME_CATEGORIAS = [
-  { chave: "laboratorial", label: "Laboratorial" },
-  { chave: "imagem",       label: "Imagem" },
-  { chave: "outro",        label: "Outro" },
-];
+// 🔴 AS CATEGORIAS E O QUE CONTA COMO "COM RESULTADO" NÃO MORAM AQUI. Eram
+// duas cópias — uma lista de categorias redigitada e um `Set` de estados —
+// que concordavam com o Pronto-Socorro por sorte. Um estado novo no banco
+// faria o BI contar diferente da tela, e ninguém compara as duas.
+export { EXAME_CATEGORIAS } from "../ps/exames.js";
+import { EXAME_CATEGORIAS as CATS, temResultado } from "../ps/exames.js";
 
-const CHAVES = new Set(EXAME_CATEGORIAS.map(c => c.chave));
-// Estados em que o resultado já existe.
-const TEM_RESULTADO = new Set(["resultado_disponivel", "visto"]);
+const CHAVES = new Set(CATS.map(c => c.chave));
 
 // Minutos entre solicitação e resultado. null se faltar data ou vier invertido.
 function minutosAteResultado(e) {
@@ -33,7 +32,7 @@ function minutosAteResultado(e) {
 
 function agrega(lista) {
   const n = lista.length;
-  const comResultado = lista.filter(e => TEM_RESULTADO.has(e.status)).length;
+  const comResultado = lista.filter(e => temResultado(e.status)).length;
   const tempos = lista.map(minutosAteResultado).filter(v => v != null);
   const tempoMedioMin = tempos.length ? Math.round(tempos.reduce((a, b) => a + b, 0) / tempos.length) : null;
   return {
@@ -56,7 +55,7 @@ export function resumoExamesPorCategoria(exames = []) {
     ...e,
     _cat: CHAVES.has(e?.categoria) ? e.categoria : "outro",
   }));
-  const porCategoria = EXAME_CATEGORIAS.map(cat => ({
+  const porCategoria = CATS.map(cat => ({
     ...cat,
     ...agrega(lista.filter(e => e._cat === cat.chave)),
   }));
