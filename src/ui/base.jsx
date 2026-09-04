@@ -24,8 +24,36 @@ export const VX = { turquesa: "#2dd4bf", azul: "#38bdf8", royal: "#1d4ed8", prat
 
 // Identidade do hospital — vem do ambiente para o mesmo código servir a
 // mais de uma casa, e cai no HNSN quando não há variável definida.
-export const HOSPITAL_NOME  = import.meta.env?.VITE_HOSPITAL_NOME  || "Hospital Nossa Senhora de Navegantes";
-export const HOSPITAL_SIGLA = import.meta.env?.VITE_HOSPITAL_SIGLA || "HNSN";
+// ═══════════════════════════════════════════════════════════
+// A IDENTIDADE DO HOSPITAL — de configuração, nunca do código
+//
+// 🔴 O FALLBACK ERA O NOME DO PRIMEIRO CLIENTE, escrito por extenso aqui.
+// Faz sentido num sistema de um hospital só; num produto vendido a vários é
+// um defeito com consequência jurídica: um cliente cujo deploy esqueça a
+// variável emite
+// DECLARAÇÃO DE COMPARECIMENTO com o nome de outra instituição. O papel sai
+// bonito, assinado, e atesta presença num hospital onde a pessoa nunca
+// esteve.
+//
+// ⚠️ FALHAR VISÍVEL É MELHOR QUE FALHAR BONITO. Sem configuração, o nome que
+// aparece é um aviso: ninguém confunde com instituição real, e quem imprimir
+// vai atrás de configurar. O contrário — herdar o nome do primeiro cliente —
+// só se descobre quando um documento errado já circulou.
+//
+// ⚠️ E O VALOR VEM DAQUI, de um lugar só. `Impressos.jsx` e
+// `RelatorioAmbulatorio.jsx` liam a variável por conta própria, cada um com
+// a sua cópia do fallback — três lugares para trocar, e quem trocasse dois
+// não veria erro nenhum.
+// ═══════════════════════════════════════════════════════════
+
+const SEM_NOME  = "Hospital não configurado";
+const SEM_SIGLA = "—";
+
+export const HOSPITAL_NOME  = String(import.meta.env?.VITE_HOSPITAL_NOME  || "").trim() || SEM_NOME;
+export const HOSPITAL_SIGLA = String(import.meta.env?.VITE_HOSPITAL_SIGLA || "").trim() || SEM_SIGLA;
+
+/** A instalação declarou quem ela é? Use para avisar antes de imprimir. */
+export const HOSPITAL_CONFIGURADO = HOSPITAL_NOME !== SEM_NOME;
 
 export const MONTHS_FULL = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 export const MONTHS      = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
