@@ -858,6 +858,13 @@ export default function App() {
   // Sessão expirada de vez (refresh também venceu): mostra UM aviso no login,
   // em vez da enxurrada de "JWT expired" por tabela.
   const [sessaoExpirou, setSessaoExpirou] = useState(false);
+  // ⚠️ DECLARADO AQUI EM CIMA de propósito: a carga das especialidades
+  // depende de `active` para reler a cada navegação, e `const` tem zona
+  // morta — referenciá-lo antes desta linha derruba o app inteiro com
+  // "Cannot access before initialization", tela branca e sem pista.
+  // Aconteceu em 03/09/2026, e só a caminhada viu: os 2.864 testes
+  // passaram verdes, porque nenhum deles monta o `App`.
+  const [active, setActive] = useState("overview");
   const [db, setDb] = useState(() => loadDB());
 
   // As especialidades do ambulatório, do CADASTRO do hospital.
@@ -881,9 +888,14 @@ export default function App() {
       if (vivo && Array.isArray(r)) setEspecialidades(especialidadesDoCadastro(r));
     })();
     return () => { vivo = false; };
-  }, [currentUser]);
+    // 🔴 RELÊ A CADA NAVEGAÇÃO. A meta é editada em Atendimento → Tabelas e
+    // lida no Centro de Monitoramento — duas telas. Carregando só na
+    // montagem, quem mudasse a meta e fosse olhar o painel veria o número
+    // ANTIGO e concluiria que não salvou. É uma consulta de meia dúzia de
+    // linhas; a alternativa (avisar de uma tela para a outra) é mais código
+    // para o mesmo efeito, e quebra em silêncio quando alguém esquece.
+  }, [currentUser, active]);
   const SPECS = especialidades || [];
-  const [active, setActive] = useState("overview");
   // 🔴 ATALHO ENTRE MÓDULOS, para a tela que SENTE a falta poder levar até
   // onde se cadastra. Isto existe porque o produto é vendido a vários
   // hospitais: todo cliente novo abre o sistema com tudo vazio, e "cadastre

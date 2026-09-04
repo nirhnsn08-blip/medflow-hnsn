@@ -212,6 +212,55 @@ export default function Tabelas({ sb, currentUser, canEdit }) {
                   </div>
                 )}
 
+                {/* ESPECIALIDADE — a pactuação do hospital.
+                    🔴 A META É DE CADA UM. Até 03/09/2026 as cinco do HNSN
+                    estavam cravadas no código, com as metas dele: todo
+                    cliente via a pactuação de outro hospital. */}
+                {chave === "especialidade" && (
+                  <>
+                    <div>
+                      <label style={lbl}>Meta mensal</label>
+                      <input inputMode="numeric" value={edit.meta_mensal ?? edit.extras?.meta_mensal ?? ""}
+                        onChange={e => set("meta_mensal", e.target.value)} style={inp} placeholder="ex.: 360" />
+                      <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+                        Consultas pactuadas por mês. Em branco, o painel mostra a produção <strong>sem</strong> comparar
+                        com meta — que é melhor do que comparar com uma meta inventada.
+                      </div>
+                    </div>
+                    <div>
+                      <label style={lbl}>Meta anual</label>
+                      <input inputMode="numeric" value={edit.meta_anual ?? edit.extras?.meta_anual ?? ""}
+                        onChange={e => set("meta_anual", e.target.value)} style={inp} placeholder="ex.: 4320" />
+                    </div>
+                    <div>
+                      <label style={lbl}>Meta de 1ªs consultas (ano)</label>
+                      <input inputMode="numeric" value={edit.meta_primeiras ?? edit.extras?.meta_primeiras ?? ""}
+                        onChange={e => set("meta_primeiras", e.target.value)} style={inp} placeholder="ex.: 1320" />
+                    </div>
+                    <div>
+                      <label style={lbl}>Cor no painel</label>
+                      <input type="color" value={edit.cor ?? edit.extras?.cor ?? "#0d9488"}
+                        onChange={e => set("cor", e.target.value)} style={{ ...inp, padding: 3, height: 38 }} />
+                    </div>
+
+                    {/* 🔴 A CHAVE DO HISTÓRICO, MOSTRADA E NÃO EDITÁVEL.
+                        A produção está gravada em `atendimentos.especialidade`
+                        com este valor. Trocá-lo desconectaria todo o histórico
+                        desta especialidade do painel — sem erro, sem aviso. */}
+                    {edit.id && (
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={lbl}>Chave do histórico</label>
+                        <input value={edit.extras?.painel_id || "—"} readOnly disabled
+                          style={{ ...inp, opacity: .6, fontFamily: "ui-monospace, monospace" }} />
+                        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.35 }}>
+                          É por esta chave que a produção já lançada está gravada. Não muda pela tela:
+                          trocá-la desligaria o histórico desta especialidade do painel.
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
                 {chave === "procedimentos" && (
                   <>
                     <div>

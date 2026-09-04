@@ -16,6 +16,8 @@
 //      recepção sem nunca poder ser preenchido.
 // ═══════════════════════════════════════════════════════════
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   CATALOGOS, CATALOGO_POR_CHAVE, TIPOS_DE_CONVENIO, TABELAS_DE_PROCEDIMENTO,
@@ -292,5 +294,100 @@ describe("conta_como — o que faz o tipo aparecer na coluna certa", () => {
   it("conta_como inválido não vira extras", () => {
     const t = corpoDoCatalogo("tipo_atendimento", { codigo: "X", nome: "X", conta_como: "xpto" });
     expect(t.extras).toEqual({});
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 A CHAVE DO CATÁLOGO EXISTE?
+//
+// `corpoDoCatalogo` decide campos por `if (chave === "…")`. Uma chave
+// escrita errada não dá erro: o bloco nunca roda, os campos daquele
+// catálogo não são gravados, e a tela salva sem reclamar.
+//
+// Aconteceu em 03/09/2026: escrevi `"especialidades"` (plural) e a chave é
+// `"especialidade"`. As metas do ambulatório simplesmente não iriam para o
+// banco — e o sintoma seria o gestor editando a meta, salvando, e o número
+// voltando ao anterior na próxima abertura.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 toda chave testada em corpoDoCatalogo existe no catálogo", () => {
+  const fonte = readFileSync(
+    join(process.cwd(), "src", "atendimento", "catalogo.js"), "utf8");
+  const validas = new Set(CATALOGOS.map(c => c.chave));
+
+  const usadas = [...fonte.matchAll(/chave === "([a-z_]+)"/g)].map(m => m[1]);
+
+  it("⚠️ e a busca acha alguma (senão o teste é decorativo)", () => {
+    expect(usadas.length).toBeGreaterThan(2);
+  });
+
+  for (const chave of [...new Set(usadas)]) {
+    it(`"${chave}"`, () => {
+      expect(validas.has(chave),
+        `"${chave}" não é chave de catálogo — o bloco nunca roda e os campos não são gravados. Válidas: ${[...validas].join(", ")}`
+      ).toBe(true);
+    });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 EDITAR UMA META NÃO PODE APAGAR AS OUTRAS
+//
+// Achado caminhando no demo em 03/09/2026: mudei a meta MENSAL do Cirurgia
+// Geral de 360 para 400, salvei, e a meta ANUAL foi de 4320 para `null`.
+//
+// A causa é a assimetria entre ler e gravar: o formulário lê de `extras`,
+// mas só devolve o campo que a pessoa mexeu — os outros chegam `undefined`.
+// Tratar `undefined` como vazio apaga o que estava lá, sem erro nenhum.
+//
+//   undefined → não tocou  → mantém
+//   ""        → limpou     → apaga de propósito
+// ═══════════════════════════════════════════════════════════
+describe("🔴 as metas da especialidade", () => {
+  const linha = extras => ({ codigo: "CIRURGIA_GERAL", nome: "Cirurgia Geral", extras });
+  const atuais = { painel_id: "cirurgia_geral", meta_mensal: 360, meta_anual: 4320, meta_primeiras: 1320 };
+
+  it("editar só a mensal PRESERVA a anual e a de primeiras", () => {
+    const c = corpoDoCatalogo("especialidade", { ...linha(atuais), meta_mensal: "400" });
+    expect(c.extras.meta_mensal).toBe(400);
+    expect(c.extras.meta_anual, "a anual foi apagada por não ter sido tocada").toBe(4320);
+    expect(c.extras.meta_primeiras).toBe(1320);
+  });
+
+  it("⚠️ mas limpar o campo APAGA — vazio é decisão, não descuido", () => {
+    const c = corpoDoCatalogo("especialidade", { ...linha(atuais), meta_anual: "" });
+    expect(c.extras.meta_anual).toBe(null);
+    expect(c.extras.meta_mensal, "a mensal não foi tocada").toBe(360);
+  });
+
+  it("🔴 meta vazia é `null`, NUNCA zero", () => {
+    // Zero significaria "pactuamos não atender ninguém", e o painel
+    // calcularia 100% de cumprimento sobre ela.
+    const c = corpoDoCatalogo("especialidade", { ...linha({}), meta_mensal: "" });
+    expect(c.extras.meta_mensal).toBe(null);
+    expect(c.extras.meta_mensal).not.toBe(0);
+  });
+
+  it("zero digitado de propósito continua zero", () => {
+    const c = corpoDoCatalogo("especialidade", { ...linha({}), meta_mensal: "0" });
+    expect(c.extras.meta_mensal).toBe(0);
+  });
+
+  it("texto que não é número não vira meta", () => {
+    const c = corpoDoCatalogo("especialidade", { ...linha({}), meta_mensal: "muitas" });
+    expect(c.extras.meta_mensal).toBe(null);
+  });
+
+  it("🔴 o `painel_id` NUNCA vem do formulário — ele amarra o histórico", () => {
+    // Trocá-lo desconectaria a produção já gravada em
+    // `atendimentos.especialidade`, sem erro em lugar nenhum.
+    const c = corpoDoCatalogo("especialidade", {
+      ...linha(atuais), painel_id: "outra_coisa", codigo: "MUDEI",
+    });
+    expect(c.extras.painel_id).toBe("cirurgia_geral");
+  });
+
+  it("especialidade NOVA ganha painel_id derivado do código", () => {
+    const c = corpoDoCatalogo("especialidade", { codigo: "CARDIOLOGIA", nome: "Cardiologia" });
+    expect(c.extras.painel_id).toBe("cardiologia");
   });
 });
