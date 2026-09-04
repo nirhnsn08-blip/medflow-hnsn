@@ -60,7 +60,13 @@ export const SUP_REQ_STATUS = {
 // Painel executivo — visão financeira do estoque (almoxarifado + Farmácia).
 // Critérios transparentes: valores pelo custo unitário cadastrado; "economia" =
 // variação vs mês anterior; "capital liberável" = excesso acima de 30d + mínimo.
-export const SUP_EXEC_COBERTURA_ALVO = 30; // dias de cobertura considerados necessários
+// 🔴 PADRÃO, NÃO VERDADE. Este número decide o "capital liberável" que a
+// diretoria lê no painel executivo, e ele é POLÍTICA DE ABASTECIMENTO: quem
+// repõe em três dias tem capital parado com trinta; quem repõe em quinze
+// pode ter pouco. Desde 04/09/2026 o valor de verdade vem de
+// `sup_parametros` (ver `suprimentos/parametros.js`); isto é só o que se usa
+// enquanto o hospital não definiu o dele — e a tela DIZ quando é este aqui.
+export const SUP_EXEC_COBERTURA_ALVO = 30;
 
 // Inventário cíclico — contagem cega rotativa (curva ABC) + acuracidade
 export const SUP_INV_INTERVALO = { A: 7, B: 30, C: 90 };   // dias entre contagens por classe

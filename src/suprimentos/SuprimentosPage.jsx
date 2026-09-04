@@ -36,7 +36,7 @@ import { comprarParaConsumo, consumoParaCompra, custoPorUnidadeCompra, custoPorU
 import { addSupCotacaoRemote, addSupInventarioRemote, addSupMovimentoRemote, addSupPedidoRemote, addSupRequisicaoRemote, atualizarSupCotacaoRemote, atualizarSupPedidoRemote, atualizarSupReqRemote, deleteSupFornecedorRemote, deleteSupItemRemote, loadSupCotacoes, loadSupEntradasComForn, loadSupFornecedores, loadSupInventarios, loadSupItens, loadSupLotes, loadSupMovimentos, loadSupMovimentosPeriodo, loadSupPedidos, loadSupRequisicoes, loadSupSaidasDesde, setSupItemCustoRemote, upsertSupFornecedorRemote, upsertSupItemRemote } from "./dados.js";
 import { MOTIVO_AJUSTE, descreverPlano, documentoDaContagem, idsJaEstornados, movimentoDeEstorno, planejarAjuste, podeEstornar } from "./inventario.js";
 import { SUP_LEAD_PADRAO, SUP_MARGEM_SEG, custoMedioPonderado, supLeadTimeMap, supPedidoTotal, supPrazoReposicao, supSaldoTotal } from "./kardex.js";
-import { carregarAlcada, salvarAlcada } from "./parametros.js";
+import { carregarAlcada, salvarAlcada, carregarCobertura, salvarCobertura } from "./parametros.js";
 import { casarComCatalogo, ehSetorNovo } from "./setores.js";
 import { useEffect, useRef, useState } from "react";
 import ConciliacaoKardex from "./ConciliacaoKardex.jsx";
@@ -164,6 +164,11 @@ export default function SuprimentosPage({ sb, sbCru, currentUser, canEdit }) {
   const [cotacoes, setCotacoes] = useState([]);
   const [setoresCat, setSetoresCat] = useState([]);
   const [alcada, setAlcada] = useState(null);   // limite em R$; null = desligada
+  // 🔴 O ALVO DE COBERTURA vem do banco. Era `30` cravado no código, e
+  // trinta dias não é verdade universal: capital repõe em três dias, interior
+  // em quinze. É esse número que decide o "capital liberável" que a diretoria
+  // lê no painel executivo. `padrao: true` diz que ninguém configurou ainda.
+  const [cobertura, setCobertura] = useState({ dias: null, padrao: true });
   function refresh() {
     if (!sb) return;
     loadSupItens(sb).then(setItens);
@@ -179,6 +184,7 @@ export default function SuprimentosPage({ sb, sbCru, currentUser, canEdit }) {
     // texto livre e o consumo por setor se fragmenta por grafia.
     loadSetoresFromSupabase(sb).then(r => r && setSetoresCat(r));
     carregarAlcada(sb).then(setAlcada);
+    carregarCobertura(sb).then(setCobertura);
   }
   const leadMap = supLeadTimeMap(entradasForn, forns);   // item_id → prazo de entrega (dias)
   useEffect(() => {
@@ -501,10 +507,10 @@ export default function SuprimentosPage({ sb, sbCru, currentUser, canEdit }) {
 
       {sub === "cotacoes" && <SupCotacoesView sb={sb} currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} forns={forns.filter(f => f.ativo !== false)} cotacoes={cotacoes} onChanged={refresh} />}
       {sub === "compras" && <SupComprasView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} materiais={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} forns={forns.filter(f => f.ativo !== false)} pedidos={pedidos} leadMap={leadMap} onChanged={refresh} />}
-      {sub === "aprovacoes" && <SupAprovacoesView sb={sb} currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} pedidos={pedidos} alcada={alcada} onAlcada={setAlcada} onChanged={refresh} />}
+      {sub === "aprovacoes" && <SupAprovacoesView sb={sb} currentUser={currentUser} canEdit={canEdit} isMaster={isMaster} pedidos={pedidos} alcada={alcada} onAlcada={setAlcada} onChanged={refresh} cobertura={cobertura} onCobertura={setCobertura} />}
 
       {sub === "acoes" && <SupAcoesView itens={itens} lotes={lotes} saidasHist={saidasHist} reqs={reqs} pedidos={pedidos} invs={invs} leadMap={leadMap} onNav={setSub} />}
-      {sub === "executivo" && <SupExecutivoView sb={sb} itens={itens} lotes={lotes} reqs={reqs} invs={invs} />}
+      {sub === "executivo" && <SupExecutivoView sb={sb} itens={itens} lotes={lotes} reqs={reqs} invs={invs} cobertura={cobertura} />}
       {sub === "inventario" && <SupInventarioView sb={sb} currentUser={currentUser} canEdit={canEdit} itens={itens.filter(i => i.ativo !== false)} lotes={lotes} saidasHist={saidasHist} invs={invs} onSave={salvarInventario} />}
       {sub === "preditivo" && <SupPreditivoView sb={sb} itens={itens} lotes={lotes} saidasHist={saidasHist} leadMap={leadMap} />}
       {sub === "vencimentos" && <SupVencimentosView sb={sb} itens={itens} lotes={lotes} saidasHist={saidasHist} />}
@@ -1472,7 +1478,11 @@ function SupComprasView({ sb, sbCru, currentUser, canEdit, materiais, lotes, sai
 // Aprovação de pedidos de compra pela matriz. Kanban de 3 colunas:
 // Aguardando aprovação | Aprovado | Negado. A ação (aprovar/negar) só aparece
 // para o perfil "matriz" ou o ADM Master; os demais acompanham em leitura.
-function SupAprovacoesView({ sb, currentUser, canEdit, isMaster, pedidos, alcada = null, onAlcada, onChanged }) {
+function SupAprovacoesView({ sb, currentUser, canEdit, isMaster, pedidos, alcada = null, onAlcada, onChanged,
+  cobertura = null, onCobertura }) {
+  const [editandoCob, setEditandoCob] = useState(false);
+  const [cobTxt, setCobTxt] = useState("");
+  const [msgCob, setMsgCob] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [editandoAlcada, setEditandoAlcada] = useState(false);
   const [limiteTxt, setLimiteTxt] = useState(alcada == null ? "" : String(alcada));
@@ -1604,6 +1614,48 @@ function SupAprovacoesView({ sb, currentUser, canEdit, isMaster, pedidos, alcada
           </div>
         )}
         {msgAlcada && <div style={{ width: "100%", fontSize: 11.5, color: "#fb7185" }}>{msgAlcada.texto}</div>}
+      </div>
+
+      {/* 🔴 ALVO DE COBERTURA — mora aqui porque é parâmetro do módulo, na
+          mesma mesa da alçada. Era `30` cravado no código, e é ele que decide
+          o "capital liberável" que a diretoria lê no painel executivo. Trinta
+          dias não é verdade universal: capital repõe em três, interior em
+          quinze. */}
+      <div style={{ fontSize: 12, color: "var(--text-3)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", marginBottom: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ color: cobertura?.padrao !== false ? "#d97706" : "var(--text-2)" }}>
+          {cobertura?.padrao !== false
+            ? `Alvo de cobertura: ${cobertura?.dias ?? "—"} dias — PADRÃO NOSSO, ninguém definiu ainda.`
+            : `Alvo de cobertura: ${cobertura.dias} dias, definido por este hospital.`}
+        </span>
+        {isMaster && !editandoCob && (
+          <button onClick={() => { setEditandoCob(true); setMsgCob(null); setCobTxt(String(cobertura?.dias ?? "")); }}
+            style={{ background: "transparent", color: VX.turquesa, border: `1px solid ${VX.turquesa}55`, borderRadius: 6, padding: "4px 11px", fontSize: 11.5, cursor: "pointer", marginLeft: "auto" }}>
+            {cobertura?.padrao !== false ? "Definir" : "Alterar"}
+          </button>
+        )}
+        {isMaster && editandoCob && (
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
+            <input value={cobTxt} onChange={e => setCobTxt(e.target.value)} inputMode="numeric" placeholder="dias"
+              style={{ ...campoTexto, width: 90, padding: "5px 8px", fontSize: 12 }} autoFocus />
+            <button disabled={busyId === "cobertura"} onClick={async () => {
+              setBusyId("cobertura"); setMsgCob(null);
+              const r = await salvarCobertura(sb, cobTxt, currentUser);
+              setBusyId(null);
+              if (!r.ok) { setMsgCob({ texto: r.erro }); return; }
+              const dias = Math.round(Number(cobTxt));
+              onCobertura && onCobertura({ dias, padrao: false });
+              registrarAuditoria(sb, currentUser, "configurar alvo de cobertura", `${dias} dias`, {});
+              setEditandoCob(false);
+            }} style={{ background: VX.turquesa, color: "#062a26", border: "none", borderRadius: 6, padding: "5px 13px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              {busyId === "cobertura" ? "…" : "Salvar"}
+            </button>
+            <button onClick={() => { setEditandoCob(false); setMsgCob(null); }}
+              style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "5px 11px", fontSize: 12, cursor: "pointer" }}>
+              Cancelar
+            </button>
+          </div>
+        )}
+        {msgCob && <div style={{ width: "100%", fontSize: 11.5, color: "#fb7185" }}>{msgCob.texto}</div>}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, alignItems: "start" }}>
         {colunas.map(col => {
@@ -2133,7 +2185,12 @@ function SupAcoesView({ itens, lotes, saidasHist, reqs, pedidos, invs, leadMap =
   );
 }
 
-function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [] }) {
+function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [], cobertura = null }) {
+  // ⚠️ Enquanto a leitura não volta, usa o padrão — a conta precisa de um
+  // número para existir. O que NÃO se faz é esconder que é o padrão: a faixa
+  // abaixo diz quando ninguém configurou.
+  const alvoDias = cobertura?.dias ?? SUP_EXEC_COBERTURA_ALVO;
+  const alvoEhPadrao = cobertura?.padrao !== false;
   const [simGrupo, setSimGrupo] = useState("");
   const [simPct, setSimPct] = useState(30);
   const [meds, setMeds] = useState([]);
@@ -2250,7 +2307,7 @@ function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [] }) {
     return base.map(x => {
       const media = (cons[x.id] || 0) / FARM_PREV_JANELA;
       if (media <= 0 || !custoUnit(x)) return null;                     // só itens com giro e preço
-      const necessario = media * SUP_EXEC_COBERTURA_ALVO + Number(x.estoque_minimo || 0);
+      const necessario = media * alvoDias + Number(x.estoque_minimo || 0);
       const exc = saldoFn(x.id) - necessario;
       return exc > 0 ? { nome: x.nome, exc, valor: exc * custoUnit(x), cobertura: saldoFn(x.id) / media } : null;
     }).filter(Boolean).sort((a, b) => b.valor - a.valor);
@@ -2291,6 +2348,24 @@ function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [] }) {
 
   return (
     <div>
+      {/* 🔴 O ALVO DE COBERTURA É POLÍTICA DO HOSPITAL, e a faixa diz quando
+          ninguém a definiu. Sem isto, a diretoria lê "capital liberável"
+          contra um alvo de 30 dias que nós escolhemos — e trinta dias não é
+          verdade universal: capital repõe em três dias e trinta significa
+          dinheiro parado; interior repõe em quinze e trinta pode ser pouco.
+          O número aparece do mesmo jeito (a conta precisa dele), mas dizendo
+          de quem ele é. */}
+      {alvoEhPadrao && (
+        <div role="status" style={{
+          background: "#78350f22", border: "1px solid #f59e0b66", borderRadius: 10,
+          padding: "10px 14px", marginBottom: 14, color: "#fcd34d", fontSize: 12.5, lineHeight: 1.5,
+        }}>
+          <strong>O alvo de cobertura ainda não foi definido.</strong> Os números abaixo usam {alvoDias} dias,
+          que é sugestão nossa e não a política deste hospital — quem repõe em três dias tem capital parado
+          com trinta; quem repõe em quinze pode ter pouco. Ajuste em <strong>Aprovações</strong>.
+        </div>
+      )}
+
       {/* SELO DE CONFIANÇA DOS DADOS */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${confCor(confMedia)}`, borderRadius: 10 }}>
         <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>Confiança dos dados</span>
@@ -2307,7 +2382,7 @@ function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [] }) {
         <KPI destaque label="Capital parado no estoque" valor={fmtReais(capTotal)} cor={VX.turquesa}
           sub={`${fmtReais(capMat)} almoxarifado · ${fmtReais(capMed)} farmácia${semPreco ? ` · ${semPreco} item(ns) com saldo sem preço` : ""}`} />
         <KPI destaque label="Capital liberável p/ compras" valor={fmtReais(capLiberavel)} cor={capLiberavel > 0 ? "#34d399" : "var(--border)"}
-          sub={`estoque acima de ${SUP_EXEC_COBERTURA_ALVO} dias de cobertura + mínimo — dá para consumir antes de recomprar`} />
+          sub={`estoque acima de ${alvoDias} dias de cobertura + mínimo — dá para consumir antes de recomprar`} />
         <KPI destaque label={economia >= 0 ? "Economia vs mês anterior" : "Gasto a mais vs mês anterior"} valor={fmtReais(Math.abs(economia))} cor={economia >= 0 ? "#34d399" : "#f43f5e"}
           sub={`compras: ${fmtReais(gastoAtual)} neste mês · ${fmtReais(gastoAnt)} no anterior`} />
         <KPI destaque label="Perdas por vencimento" valor={fmtReais(perdasAtual)} cor={perdasAtual > 0 ? "#f43f5e" : "#34d399"}
@@ -2363,7 +2438,7 @@ function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [] }) {
           )}
         </Painel>
 
-        <Painel titulo={`Onde está o capital liberável (cobertura > ${SUP_EXEC_COBERTURA_ALVO}d)`}>
+        <Painel titulo={`Onde está o capital liberável (cobertura > ${alvoDias}d)`}>
           {excTop.length === 0 ? <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Nenhum item com excesso de estoque relevante. Capital bem dimensionado. 👍</div> : (
             <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
               {excTop.slice(0, 8).map((x, i) => (
@@ -2485,7 +2560,7 @@ function SupExecutivoView({ sb, itens, lotes, reqs = [], invs = [] }) {
       <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.6, border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 14px" }}>
         <strong>Critérios do painel</strong> · Valores pelo <strong>custo unitário cadastrado</strong> em cada material/medicamento (itens sem preço ficam de fora dos R$).
         · <strong>Economia</strong> compara as compras (entradas) deste mês com o mês anterior.
-        · <strong>Capital liberável</strong> = valor do estoque acima de {SUP_EXEC_COBERTURA_ALVO} dias de cobertura + estoque mínimo, considerando o consumo médio dos últimos {FARM_PREV_JANELA} dias — itens sem giro não entram.
+        · <strong>Capital liberável</strong> = valor do estoque acima de {alvoDias} dias de cobertura + estoque mínimo, considerando o consumo médio dos últimos {FARM_PREV_JANELA} dias — itens sem giro não entram.
         · <strong>Rupturas</strong> usam a mesma previsão de demanda do Estoque.
         · Painel local e gratuito: nada é enviado para fora.
       </div>
