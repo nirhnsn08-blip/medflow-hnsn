@@ -212,6 +212,60 @@ describe("procedimento principal", () => {
   });
 });
 
+// ── PREÇO POR CONVÊNIO (a via decide a tabela) ──────────────
+describe("preço por convênio", () => {
+  const CONV_ID = { id: 7, tipo: "convenio" }; // via TISS
+  const preco = (over = {}) => ({
+    id: 1, convenio_id: 7, codigo: "0303010037", valor: 950.0,
+    vigencia_inicio: "2026-01-01", vigencia_fim: null, ativo: true, ...over,
+  });
+  const montarConv = (precos) => montarContaDoProntuario({
+    atendimento: atend(), convenio: CONV_ID,
+    procedimentos: [catProc({ valor_sus: 850.0 })],          // catálogo do hospital: R$ 850
+    sigtapProcs: [sigProc({ valor_sh: 103796, valor_sp: 7222 })], // SIGTAP: R$ 1.110,18
+    precos,
+  });
+
+  it("convênio com preço vigente → usa a tabela do convênio, não o SUS", () => {
+    const r = montarConv([preco({ valor: 950.0 })]);
+    const p = r.itens.find((i) => i.tipo === "procedimento");
+    expect(p.valor_unitario).toBe(950.0); // nem 850 (catálogo) nem 1110,18 (SIGTAP)
+    expect(p.fonteValor).toBe("tabela do convênio");
+  });
+
+  it("convênio SEM preço (ausente) → item sem preço + aviso p/ cadastrar (NÃO cai no SUS)", () => {
+    const r = montarConv([]);
+    const p = r.itens.find((i) => i.tipo === "procedimento");
+    expect(p.valor_unitario).toBeNull(); // não inventa o valor do SUS
+    expect(r.avisos.some((a) => /sem preço de convênio cadastrado/i.test(a))).toBe(true);
+  });
+
+  it("convênio com preço vencido → item sem preço + aviso p/ pedir aditivo", () => {
+    const r = montarConv([preco({ vigencia_inicio: "2026-01-01", vigencia_fim: "2026-03-31" })]);
+    const p = r.itens.find((i) => i.tipo === "procedimento");
+    expect(p.valor_unitario).toBeNull();
+    expect(r.avisos.some((a) => /venceu|aditivo/i.test(a))).toBe(true);
+  });
+
+  it("conta do SUS ignora at_precos (usa catálogo/SIGTAP mesmo com preços passados)", () => {
+    const r = montarContaDoProntuario({
+      atendimento: atend(), convenio: SUS,
+      procedimentos: [catProc({ valor_sus: 850.0 })], sigtapProcs: [sigProc()],
+      precos: [preco({ valor: 950.0 })],
+    });
+    const p = r.itens.find((i) => i.tipo === "procedimento");
+    expect(p.valor_unitario).toBe(850.0);
+    expect(p.fonteValor).toBe("catálogo do hospital");
+  });
+
+  it("a glosa de valor (× SIGTAP) NÃO dispara em conta de convênio", () => {
+    // preço do convênio (950) diverge do SIGTAP (1110,18); no SUS isso acenderia,
+    // mas o cotejo SIGTAP não se aplica a convênio — seria alarme falso.
+    const r = montarConv([preco({ valor: 950.0 })]);
+    expect(r.glosa.map((g) => g.regra)).not.toContain("valor");
+  });
+});
+
 // ── PERMANÊNCIA / DIÁRIAS ───────────────────────────────────
 describe("permanência", () => {
   it("AIH com admissão e alta → diária com quantidade = dias, sem preço inventado", () => {

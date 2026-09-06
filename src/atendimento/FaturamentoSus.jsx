@@ -33,7 +33,7 @@ import { reais, centavos, STATUS_CONTA, VIAS } from "./faturamento.js";
 import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, carregarWorklistFaturamento,
-  carregarProducaoFaturavel, contasDaCompetencia, registrarTransmissao,
+  carregarProducaoFaturavel, contasDaCompetencia, registrarTransmissao, carregarPrecos,
 } from "./dados.js";
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
 import { listaLida } from "../util/leitura.js";
@@ -871,10 +871,14 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
       // Catálogos e medicação administrada numa ida só. As administrações
       // vêm vazias (sem erro) enquanto a migração de leitura não tiver rodado
       // neste banco — a conta se monta assim mesmo, só sem a linha de remédio.
-      const [cat, administracoes, leitos] = await Promise.all([
+      // Os preços do convênio (só quando há convênio) alimentam o preço por
+      // via: uma conta TISS passa a ser precificada pela tabela da operadora,
+      // não pela do SUS.
+      const [cat, administracoes, leitos, precos] = await Promise.all([
         carregarCatalogos(sb),
         carregarAdministracoes(sb, atendimento.id),
         carregarLeitosDoEpisodio(sb, { atendimentoId: atendimento.id, prontuario: atendimento.prontuario }),
+        atendimento.convenio_id ? carregarPrecos(sb, { convenioId: atendimento.convenio_id }) : Promise.resolve([]),
       ]);
       const convenio = (cat.convenios || []).find((c) => String(c.id) === String(atendimento.convenio_id)) || null;
       // A permanência vem do LEITO (estadia real); só na falta dele o motor
@@ -885,6 +889,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         convenio,
         procedimentos: cat.procedimentos || [],
         sigtapProcs: sigtapRows || [],
+        precos,
         administracoes,
         internacao,
       });

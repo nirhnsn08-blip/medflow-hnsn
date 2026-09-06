@@ -47,6 +47,7 @@ import {
   codigoLimpo, codigoFormatado, montarProcedimento, viaDoProcedimento, viaPorGrupo,
   permanenciaEmDias, avaliarPermanencia, avaliarGlosa, temImpedimento,
 } from "./sigtap.js";
+import { precoDe, SITUACAO } from "./precos.js";
 
 // ── item proposto (o formato do camposDoItem + a origem para a tela) ──
 
@@ -127,8 +128,17 @@ export function resolverVia({ convenio, atendimento, procCatalogo, sigtapProc } 
  * oficial). Se o código não está em nenhum, o item entra assim mesmo — com
  * o código, sem nome e sem preço — porque sumir com o procedimento seria pior
  * que mostrá-lo incompleto.
+ *
+ * O PREÇO SEGUE A VIA:
+ *   • Convênio (TISS) → a TABELA DO CONVÊNIO (`at_precos`, via `precoDe`), no
+ *     dia do atendimento. Falta de preço é SILÊNCIO, não o valor do SUS: o
+ *     item entra sem preço e a conta diz o porquê (vencido = pedir aditivo;
+ *     ausente = cadastrar). Cobrar o valor do SUS de um convênio é o defeito
+ *     que `at_precos` existe para consertar.
+ *   • SUS (AIH/BPA/APAC) e particular → o catálogo do hospital manda; na
+ *     falta, o SIGTAP (SH+SP das AIHs reais).
  */
-function itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow }) {
+function itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow, via, convenio, precos = [], dia = null }) {
   const avisos = [];
   if (!codPrinc) {
     avisos.push("Atendimento sem procedimento principal — é ele que nomeia a conta e, na AIH, justifica a internação.");
@@ -136,26 +146,44 @@ function itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow
   }
 
   const nome = procCatalogo?.nome || sigRow?.nome || null;
+  const rotulo = codigoFormatado(codPrinc) || codPrinc;
 
-  // Preço: o catálogo do hospital manda; na falta, o valor do SIGTAP —
-  // SH+SP, dos valores reais das AIHs do SUS. É o valor-base do ato; a
-  // diária segue informativa, sem duplicar, porque o SH já cobre a
-  // permanência padrão (só o que passa da média é diária a maior).
-  let valor = procCatalogo?.valor_sus ?? null; // em reais
-  let fonteValor = valor != null ? "catálogo do hospital" : null;
-  if (valor == null) {
-    const sh = numOuNull(sigRow?.valor_sh);
-    const sp = numOuNull(sigRow?.valor_sp);
-    if (sh != null || sp != null) {
-      valor = ((sh ?? 0) + (sp ?? 0)) / 100; // centavos → reais
-      fonteValor = "SIGTAP (SH+SP)";
+  let valor = null;      // em reais
+  let fonteValor = null;
+
+  if (via === "tiss") {
+    // Convênio: quem paga é a tabela DELE. Sem preço, a conta não cai no SUS.
+    const r = precoDe(precos, { convenioId: convenio?.id, codigo: codPrinc, dia });
+    if (r.situacao === SITUACAO.ACHADO) {
+      valor = numOuNull(r.preco?.valor);
+      fonteValor = "tabela do convênio";
+    } else if (r.situacao === SITUACAO.VENCIDO) {
+      const ate = r.ultimoVencido?.vigencia_fim;
+      avisos.push(`Preço do convênio para ${rotulo} venceu${ate ? ` em ${ate}` : ""} — pedir aditivo à operadora; o item entra sem preço.`);
+    } else if (r.situacao === SITUACAO.SEM_LEITURA) {
+      avisos.push(`Não consegui ler os preços do convênio para ${rotulo} — o item entra sem preço; confira a aba Convênios & contratos.`);
+    } else { // AUSENTE
+      avisos.push(`Sem preço de convênio cadastrado para ${rotulo} — cadastrar na aba Convênios & contratos; o item entra sem preço.`);
     }
-  }
-
-  if (!procCatalogo && !sigRow) {
-    avisos.push(`Procedimento ${codigoFormatado(codPrinc) || codPrinc} não está em nenhum catálogo (nem no do hospital, nem no SIGTAP) — entra sem nome e sem preço.`);
-  } else if (valor == null) {
-    avisos.push(`Procedimento ${codigoFormatado(codPrinc) || codPrinc} ainda sem valor — o SIGTAP não trouxe SH/SP para ele, então o total sai menor do que é.`);
+  } else {
+    // SUS e particular: o catálogo do hospital manda; na falta, o SIGTAP —
+    // SH+SP, dos valores reais das AIHs. É o valor-base do ato; a diária segue
+    // informativa, sem duplicar, porque o SH já cobre a permanência padrão.
+    valor = procCatalogo?.valor_sus ?? null;
+    fonteValor = valor != null ? "catálogo do hospital" : null;
+    if (valor == null) {
+      const sh = numOuNull(sigRow?.valor_sh);
+      const sp = numOuNull(sigRow?.valor_sp);
+      if (sh != null || sp != null) {
+        valor = ((sh ?? 0) + (sp ?? 0)) / 100; // centavos → reais
+        fonteValor = "SIGTAP (SH+SP)";
+      }
+    }
+    if (!procCatalogo && !sigRow) {
+      avisos.push(`Procedimento ${rotulo} não está em nenhum catálogo (nem no do hospital, nem no SIGTAP) — entra sem nome e sem preço.`);
+    } else if (valor == null) {
+      avisos.push(`Procedimento ${rotulo} ainda sem valor — o SIGTAP não trouxe SH/SP para ele, então o total sai menor do que é.`);
+    }
   }
 
   return {
@@ -386,6 +414,7 @@ export function montarContaDoProntuario({
   convenio = null,
   procedimentos = [],
   sigtapProcs = [],
+  precos = [],
   administracoes = [],
   paciente = null,
   internacao = null,
@@ -413,8 +442,9 @@ export function montarContaDoProntuario({
 
   const itens = [];
 
-  // 1) Procedimento principal.
-  const prc = itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow });
+  // 1) Procedimento principal — o preço segue a via (convênio → at_precos).
+  const dia = soData(atendimento?.chegada_em);
+  const prc = itemProcedimentoPrincipal({ atendimento, codPrinc, procCatalogo, sigRow, via, convenio, precos, dia });
   if (prc.item) itens.push(prc.item);
   avisos.push(...prc.avisos);
 
@@ -443,14 +473,16 @@ export function montarContaDoProntuario({
   }
 
   // Pré-glosa: o que anteciparia uma recusa (permanência, sexo, idade, CID, valor).
-  // O valor cobrado do ato principal (catálogo do hospital, se houver) vai à glosa
-  // para bater com a referência SIGTAP — no SUS quem paga é a tabela.
+  // A glosa de VALOR compara o cobrado com a referência SIGTAP — e isso só faz
+  // sentido no SUS. Numa conta de convênio o preço é o da operadora, que diverge
+  // do SUS por definição; passar o valorCobrado ali só produziria alarme falso.
+  const ehSus = via === "aih" || via === "bpa" || via === "apac";
   const glosa = avaliarGlosa({
     proc: sigProc,
     paciente: { sexo: paciente?.sexo ?? null, idade: numOuNull(atendimento?.idade) ?? numOuNull(paciente?.idade) },
     cidPrincipal: cid,
     permanenciaDias: perm.permanencia?.dias ?? null,
-    valorCobrado: centavos(prc.item?.valor_unitario ?? null),
+    valorCobrado: ehSus ? centavos(prc.item?.valor_unitario ?? null) : null,
   });
   const impedida = temImpedimento(glosa);
 
