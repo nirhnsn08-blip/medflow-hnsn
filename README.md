@@ -1,4 +1,4 @@
-# Valentrax — MedFlow HNSN
+# Valentrax — HNSN
 ### Plataforma de gestão hospitalar com prontuário eletrônico (PEP)
 Hospital Nossa Senhora de Navegantes
 
@@ -41,7 +41,8 @@ Depois abra o **Pull Request** no GitHub. A Vercel cria automaticamente uma **UR
 preview** (cópia do site com o seu código, isolada da produção) e o CI valida o build.
 Teste no preview, espere o `build ✅`, e só então faça o **merge**.
 
-Em ~1 min após o merge a Vercel publica em https://medflow-hnsn.vercel.app
+Em ~1 min após o merge a Vercel publica em https://valentrax.com.br
+(o endereço `medflow-hnsn.vercel.app` continua funcionando).
 
 ### ⚠️ Três regras para não quebrar nada
 

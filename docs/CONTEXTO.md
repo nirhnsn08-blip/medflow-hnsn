@@ -1,4 +1,4 @@
-# 📄 Contexto do Projeto — Valentrax / MedFlow HNSN
+# 📄 Contexto do Projeto — Valentrax — HNSN
 
 > Resumo de referência para onboarding rápido de novos colaboradores (humanos ou IA).
 > Atualizado em 2026-08-01 (módulo Atendimento completo; NSP Fase 2d).

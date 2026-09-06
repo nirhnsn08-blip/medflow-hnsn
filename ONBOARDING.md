@@ -1,6 +1,6 @@
 # Adicionar um novo hospital (multi-hospital)
 
-O MedFlow usa **1 código-fonte** (este repositório) que atende **vários hospitais**,
+O Valentrax usa **1 código-fonte** (este repositório) que atende **vários hospitais**,
 cada um com **banco de dados totalmente separado** — isolamento físico, nenhum
 hospital enxerga o dado do outro. É o modelo mais seguro e adequado à **LGPD**.
 
@@ -20,7 +20,7 @@ próprias variáveis). Os dados nunca se misturam porque cada um tem seu banco.
 ## Checklist para cada hospital novo (~15 min)
 
 ### 1) Criar o banco (Supabase)
-1. **supabase.com → New project**. Dê um nome (ex.: `medflow-hospitalX`).
+1. **supabase.com → New project**. Dê um nome (ex.: `valentrax-hospitalX`).
 2. **Região:** prefira **South America (São Paulo)** — mantém os dados no Brasil (LGPD).
 3. Guarde a senha do banco. Aguarde provisionar (~2 min).
 
@@ -51,7 +51,7 @@ próprias variáveis). Os dados nunca se misturam porque cada um tem seu banco.
    | `VITE_HOSPITAL_SIGLA` | ex.: `HSCX` |
    | `VITE_HOSPITAL_NOME`  | ex.: `Hospital Santa Casa X` |
 
-3. **Deploy.** A URL fica como `medflow-hospitalX.vercel.app` (ou domínio próprio).
+3. **Deploy.** A URL fica como `valentrax-hospitalX.vercel.app` (ou domínio próprio).
 
 ### 6) Pronto
 Entregue a URL + os logins ao hospital. O banco é exclusivo deles.
