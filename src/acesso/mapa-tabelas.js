@@ -236,6 +236,13 @@ export const MAPA_TABELAS = {
   // Fila de internação: nasce no PS, é trabalhada pelo NIR no Giro.
   solicitacoes:             ["ps", "leitos"],
 
+  // ── Maternidade (Fase 0 — fundação) ───────────────────────
+  // O episódio obstétrico e a admissão são parte do prontuário da gestante:
+  // quem tem o Paciente 360 lê. Quando a Fase 1 criar o módulo `maternidade`
+  // próprio, ele entra nesta lista (sem tirar o `paciente`).
+  mat_episodios:            ["paciente"],
+  mat_admissoes:            ["paciente"],
+
   // ── SCIH ──────────────────────────────────────────────────
   scih_casos:               ["scih", "paciente"],
   // Indicadores mensais agregados — sem paciente.
@@ -302,6 +309,7 @@ export const SENSIVEIS = new Set([
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
   "farm_intervencoes", "farm_movimentos", "farm_nao_padronizados", "farm_preparo",
   "leitos", "leitos_saidas",
+  "mat_admissoes", "mat_episodios",
   "nsp_acoes", "nsp_incidente_eventos", "nsp_incidentes", "nsp_rca",
   "pacientes",
   "pep_acessos", "pep_administracoes", "pep_alergias", "pep_anamneses",

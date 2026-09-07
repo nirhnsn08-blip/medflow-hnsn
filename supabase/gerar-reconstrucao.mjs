@@ -238,6 +238,11 @@ const ORDEM = [
   // vazia; sem o seed a tela não sugere isolamento nem marca multirresistente.
   // Idempotente — não sobrescreve o que a CCIH já tiver editado.
   "migracao-scih-germes-seed.sql",
+  // Maternidade — Fase 0 (fundação, 07/09): cria mat_episodios + mat_admissoes
+  // e as políticas inline delas. Depois de `pacientes`/`ps_atendimentos` (FK) e
+  // das funções pode_ver_algum/pode_editar_algum; antes do rls-leitura, que
+  // reescreve a leitura pelos mesmos nomes.
+  "migracao-maternidade-fase0.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
