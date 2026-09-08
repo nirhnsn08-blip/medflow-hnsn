@@ -47,7 +47,9 @@ function Placeholder({ aba }) {
   );
 }
 
-export default function MaternidadePage({ sb, currentUser, canEdit, onIrPara }) {
+// As props (sb, currentUser, canEdit, onIrPara) chegam do App.jsx e entram
+// na fatia da Admissão — a casca ainda não as usa, por isso não as declara.
+export default function MaternidadePage() {
   const [abaId, setAbaId] = useState("admissao");
   const aba = ABAS.find(a => a.id === abaId) || ABAS[0];
 
