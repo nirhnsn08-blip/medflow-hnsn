@@ -41,19 +41,26 @@ on conflict (perfil_chave, modulo) do nothing;
 
 
 -- ═══════════════════════════════════════════════════════════
--- CONFERÊNCIA — rode junto. Esperado: 7 linhas, "situacao" toda ✅.
+-- CONFERÊNCIA — rode o arquivo INTEIRO (Run), não um trecho.
+--
+-- A 1ª linha diz QUAL BANCO é este (o arquivo antes não dizia, e rodar no
+-- banco errado passou batido). As 7 seguintes têm que sair TODAS "✅ escrita"
+-- — se aparecer "❌ ficou de fora", o INSERT acima não rodou (rode tudo).
 -- ═══════════════════════════════════════════════════════════
-select pa.chave as perfil,
-       pa.nome,
-       coalesce(pp.nivel, '(sem acesso)') as maternidade,
-       case when pp.nivel is null then '❌ ficou de fora' else '✅ ok' end as situacao,
-       (select count(*) from public.profiles pr where pr.perfil = pa.chave) as pessoas
-  from public.perfis_acesso pa
-  left join public.perfis_permissoes pp
-    on pp.perfil_chave = pa.chave and pp.modulo = 'maternidade'
- where pa.chave in ('medico','enfermeiro','tecnico_enfermagem','diretor_tecnico',
-                    'gestao','ti','provisorio')
- order by situacao desc, pa.chave;
+select item, resultado from (
+  select 0 as ord, '🔎 BANCO' as item,
+         case when (select count(*) from public.pacientes) >= 40
+              then '🟠 DEMO (banco de teste) — pode rodar aqui'
+              else '🔴 PRINCIPAL (HNSN) — produção' end as resultado
+  union all
+  select 1, 'perfil ' || pa.chave,
+         case when pp.nivel is null then '❌ ficou de fora' else '✅ ' || pp.nivel end
+    from public.perfis_acesso pa
+    left join public.perfis_permissoes pp
+      on pp.perfil_chave = pa.chave and pp.modulo = 'maternidade'
+   where pa.chave in ('medico','enfermeiro','tecnico_enfermagem','diretor_tecnico',
+                      'gestao','ti','provisorio')
+) t order by ord, item;
 
 
 insert into public.migracoes_aplicadas (arquivo)
