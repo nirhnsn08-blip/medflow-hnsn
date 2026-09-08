@@ -243,6 +243,10 @@ const ORDEM = [
   // das funções pode_ver_algum/pode_editar_algum; antes do rls-leitura, que
   // reescreve a leitura pelos mesmos nomes.
   "migracao-maternidade-fase0.sql",
+  // Maternidade — casca (Fase 1): a Maternidade entra nos perfis, senão o
+  // módulo fica invisível no menu (o app lê os grants do BANCO). Só insere
+  // grants — não toca em RLS de tabela. Depende só de perfis_permissoes existir.
+  "migracao-perfis-maternidade.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

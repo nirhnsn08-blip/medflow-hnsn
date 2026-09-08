@@ -25,7 +25,7 @@
 --                        só não pode ser surpresa.
 --
 -- Resultado ideal: nenhuma linha ❌ e nenhuma ⚠️ inesperada.
--- Cobertura: 162 grants em 18 perfis.
+-- Cobertura: 168 grants em 18 perfis.
 -- ============================================================
 
 with esperado(perfil, modulo, nivel) as (values
@@ -47,6 +47,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('diretor_tecnico','farmacia','leitura'),
   ('diretor_tecnico','faturamento','leitura'),
   ('diretor_tecnico','leitos','leitura'),
+  ('diretor_tecnico','maternidade','escrita'),
   ('diretor_tecnico','nsp','escrita'),
   ('diretor_tecnico','overview','leitura'),
   ('diretor_tecnico','paciente','escrita'),
@@ -70,6 +71,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('enfermeiro','farmacia','leitura'),
   ('enfermeiro','faturamento','escrita'),
   ('enfermeiro','leitos','escrita'),
+  ('enfermeiro','maternidade','escrita'),
   ('enfermeiro','nsp','escrita'),
   ('enfermeiro','overview','leitura'),
   ('enfermeiro','paciente','escrita'),
@@ -106,6 +108,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('gestao','farmacia','leitura'),
   ('gestao','faturamento','leitura'),
   ('gestao','leitos','leitura'),
+  ('gestao','maternidade','leitura'),
   ('gestao','nsp','leitura'),
   ('gestao','overview','leitura'),
   ('gestao','print','leitura'),
@@ -121,6 +124,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('medico','farmacia','leitura'),
   ('medico','faturamento','leitura'),
   ('medico','leitos','escrita'),
+  ('medico','maternidade','escrita'),
   ('medico','nsp','escrita'),
   ('medico','overview','leitura'),
   ('medico','paciente','escrita'),
@@ -167,6 +171,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('tecnico_enfermagem','atendimento','leitura'),
   ('tecnico_enfermagem','faturamento','leitura'),
   ('tecnico_enfermagem','leitos','escrita'),
+  ('tecnico_enfermagem','maternidade','escrita'),
   ('tecnico_enfermagem','nsp','escrita'),
   ('tecnico_enfermagem','overview','leitura'),
   ('tecnico_enfermagem','paciente','escrita'),
@@ -182,6 +187,7 @@ with esperado(perfil, modulo, nivel) as (values
   ('ti','faturamento','escrita'),
   ('ti','import','escrita'),
   ('ti','leitos','escrita'),
+  ('ti','maternidade','escrita'),
   ('ti','nsp','escrita'),
   ('ti','overview','escrita'),
   ('ti','paciente','escrita'),
