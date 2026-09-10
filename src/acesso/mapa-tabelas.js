@@ -242,6 +242,7 @@ export const MAPA_TABELAS = {
   // próprio, ele entra nesta lista (sem tirar o `paciente`).
   mat_episodios:            ["paciente"],
   mat_admissoes:            ["paciente"],
+  mat_trabalho_parto:       ["paciente"],
 
   // ── SCIH ──────────────────────────────────────────────────
   scih_casos:               ["scih", "paciente"],
@@ -309,7 +310,7 @@ export const SENSIVEIS = new Set([
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
   "farm_intervencoes", "farm_movimentos", "farm_nao_padronizados", "farm_preparo",
   "leitos", "leitos_saidas",
-  "mat_admissoes", "mat_episodios",
+  "mat_admissoes", "mat_episodios", "mat_trabalho_parto",
   "nsp_acoes", "nsp_incidente_eventos", "nsp_incidentes", "nsp_rca",
   "pacientes",
   "pep_acessos", "pep_administracoes", "pep_alergias", "pep_anamneses",

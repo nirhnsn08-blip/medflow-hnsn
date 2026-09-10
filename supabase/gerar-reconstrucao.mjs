@@ -247,6 +247,9 @@ const ORDEM = [
   // módulo fica invisível no menu (o app lê os grants do BANCO). Só insere
   // grants — não toca em RLS de tabela. Depende só de perfis_permissoes existir.
   "migracao-perfis-maternidade.sql",
+  // Partograma (Fase 1): os toques ao longo do parto. Depois de mat_episodios
+  // (FK) e das funcoes pode_ver/editar; antes do rls-leitura (que a reescreve).
+  "migracao-maternidade-partograma.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
