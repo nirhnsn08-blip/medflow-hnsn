@@ -9,10 +9,10 @@
 // examina. Ao salvar, o registro é append-only (nova admissão = nova linha).
 // ═══════════════════════════════════════════════════════════
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { igEntre, dppDe, imc, bishop, formatarGtpal, gtpalIncoerencias } from "./obstetricia.js";
 import { calcularMeows, NIVEL } from "./meows.js";
-import { buscarPacientes, episodioAtivoDaGestante, salvarAdmissao } from "./dados.js";
+import { buscarPacientes, episodioAtivoDaGestante, salvarAdmissao, cadastrarGestante } from "./dados.js";
 
 const TURQ = "#2dd4bf";
 const COR_NIVEL = { [NIVEL.VERDE]: "#22c55e", [NIVEL.AMARELO]: "#f59e0b", [NIVEL.VERMELHO]: "#ef4444" };
@@ -82,13 +82,18 @@ const OPC_CONSULTAS = [{ v: "", l: "—" }, { v: "nao_lembra", l: "Não lembra" 
   { v: "0", l: "0" }, { v: "1", l: "1" }, { v: "2", l: "2" }, { v: "3", l: "3" }, { v: "4", l: "4" },
   { v: "5", l: "5" }, { v: "6", l: "6" }, { v: "7", l: "7" }, { v: "8", l: "8" }, { v: "9", l: "9" }, { v: "10+", l: "10 ou mais" }];
 
-export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
+export default function AdmissaoObstetrica({ sb, currentUser, canEdit, pacienteInicial }) {
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState(null);
   const [buscando, setBuscando] = useState(false);
   const [gestante, setGestante] = useState(null);
   const [episodioId, setEpisodioId] = useState(null);
   const [avisoEpisodio, setAvisoEpisodio] = useState(null);
+
+  // Cadastro ao admitir: quando a fila entrega uma paciente sem prontuário.
+  const [cadastro, setCadastro] = useState({ nome_completo: "", data_nascimento: "", cpf: "", cns: "" });
+  const [cadastrando, setCadastrando] = useState(false);
+  const [erroCadastro, setErroCadastro] = useState("");
 
   const [ep, setEp] = useState(EP0);
   const [pn, setPn] = useState(PN0);
@@ -136,9 +141,33 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
     }
   }
 
-  function trocar() { setGestante(null); setEpisodioId(null); setAvisoEpisodio(null); setResultado(null); }
+  function trocar() {
+    setGestante(null); setEpisodioId(null); setAvisoEpisodio(null); setResultado(null);
+    setCadastro({ nome_completo: "", data_nascimento: "", cpf: "", cns: "" }); setErroCadastro("");
+  }
 
-  const podeSalvar = gestante && !gtpalErros.length && canEdit && !salvando;
+  // A fila obstétrica entrega a gestante já escolhida: pula a busca.
+  useEffect(() => {
+    if (pacienteInicial && (pacienteInicial.prontuario || pacienteInicial.iniciais)) escolher(pacienteInicial);
+  }, [pacienteInicial]);
+
+  // Gestante sem prontuário (veio do PS/leito só com iniciais): gera o cadastro
+  // e o prontuário, e segue a admissão na MESMA paciente.
+  async function cadastrar() {
+    if (cadastrando) return;
+    setCadastrando(true); setErroCadastro("");
+    // Religa a fonte que trouxe a paciente (leito/PS) ao prontuário emitido.
+    const vinculo = { leito: gestante?._fila?.leito ?? null, psId: gestante?._fila?.psId ?? null };
+    const r = await cadastrarGestante(sb, cadastro, currentUser, vinculo);
+    setCadastrando(false);
+    if (!r.ok) { setErroCadastro(r.motivo); return; }
+    setGestante(r.paciente);   // agora com prontuário — o formulário destrava
+    const aberto = await episodioAtivoDaGestante(sb, r.paciente.prontuario).catch(() => null);
+    if (aberto) { setEpisodioId(aberto.id); setAvisoEpisodio(`Já existe um episódio aberto desta gestante (nº ${aberto.id}). A admissão vai pendurar nele.`); }
+  }
+
+  const semProntuario = !!gestante && !gestante.prontuario;
+  const podeSalvar = gestante && gestante.prontuario && !gtpalErros.length && canEdit && !salvando;
 
   async function salvar() {
     if (!podeSalvar) return;
@@ -224,6 +253,30 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
 
       {avisoEpisodio && <div style={{ background: "#0e364433", border: "1px solid #38bdf855", borderRadius: 8, padding: "9px 13px", marginBottom: 14, fontSize: 12.5, color: "#7dd3fc" }}>{avisoEpisodio}</div>}
 
+      {semProntuario ? (
+        <section style={cx.card}>
+          <div style={cx.h}>Cadastro da paciente — gerar prontuário</div>
+          <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
+            Essa paciente entrou só com iniciais{gestante?.iniciais ? ` (${gestante.iniciais})` : ""} — pelo PS ou por um leito. Para admitir na maternidade ela precisa de prontuário: preencha o nome e o sistema emite o número. Assim o partograma, a SAE, o bebê e a conta ficam todos ligados a ela.
+          </p>
+          <div style={cx.grid}>
+            <Campo label="Nome completo" obrig span={2}><Txt value={cadastro.nome_completo} onChange={e => setCadastro(c => ({ ...c, nome_completo: e.target.value }))} placeholder="Nome da gestante" autoFocus /></Campo>
+            <Campo label="Data de nascimento"><Txt type="date" value={cadastro.data_nascimento} onChange={e => setCadastro(c => ({ ...c, data_nascimento: e.target.value }))} /></Campo>
+            <Campo label="CPF"><Txt value={cadastro.cpf} onChange={e => setCadastro(c => ({ ...c, cpf: e.target.value }))} placeholder="só números" /></Campo>
+            <Campo label="CNS (cartão SUS)"><Txt value={cadastro.cns} onChange={e => setCadastro(c => ({ ...c, cns: e.target.value }))} /></Campo>
+          </div>
+          <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center" }}>
+            <button onClick={cadastrar} disabled={!cadastro.nome_completo.trim() || cadastrando} style={{
+              background: (!cadastro.nome_completo.trim() || cadastrando) ? "var(--surface-3)" : TURQ,
+              color: (!cadastro.nome_completo.trim() || cadastrando) ? "var(--text-muted)" : "#062a26",
+              border: "none", borderRadius: 9, padding: "10px 22px", fontWeight: 700,
+              cursor: (!cadastro.nome_completo.trim() || cadastrando) ? "default" : "pointer", fontSize: 13.5,
+            }}>{cadastrando ? "Gerando prontuário…" : "Cadastrar e continuar"}</button>
+            {erroCadastro && <span style={{ color: "#fca5a5", fontSize: 12.5 }}>{erroCadastro}</span>}
+          </div>
+        </section>
+      ) : (
+      <>
       <Secao num="1" titulo="Admissão">
         <div style={cx.grid}>
           <Campo label="Origem" obrig><Seg valor={ad.origem} onChange={v => cad("origem", v)} opcoes={[{ v: "espontanea", l: "Espontânea" }, { v: "pre_natal", l: "Do pré-natal" }, { v: "transferencia", l: "Transferência" }]} /></Campo>
@@ -364,6 +417,8 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
             ? <><strong>Admissão gravada.</strong> Episódio nº {resultado.episodioId}. A gestante está internada e o dossiê está aberto.</>
             : <><strong>Não gravei.</strong> {resultado.motivo}</>}
         </div>
+      )}
+      </>
       )}
     </div>
   );

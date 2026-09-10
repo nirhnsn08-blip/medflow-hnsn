@@ -9,7 +9,7 @@
 // quem assiste. Cada toque é append-only.
 // ═══════════════════════════════════════════════════════════
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { avaliarPartograma, ZONA } from "./partograma.js";
 import { buscarPacientes, episodioAtivoDaGestante, carregarTrabalhoParto, salvarRegistroTP } from "./dados.js";
 
@@ -96,7 +96,7 @@ function Partografo({ avaliacao }) {
 
 const NOVO0 = () => ({ data_hora: "", dilatacao: "", descida_delee: "", bcf: "", contracoes_freq: "", contracoes_dur: "", bolsa: "", liquido: "", ocitocina: "", observacao: "" });
 
-export default function PartogramaView({ sb, currentUser, canEdit }) {
+export default function PartogramaView({ sb, currentUser, canEdit, pacienteInicial }) {
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState(null);
   const [buscando, setBuscando] = useState(false);
@@ -131,6 +131,12 @@ export default function PartogramaView({ sb, currentUser, canEdit }) {
   }
 
   function trocar() { setGestante(null); setEpisodio(undefined); setRegistros([]); setNovo(NOVO0()); setErro(""); }
+
+  // A fila obstétrica entrega a paciente já escolhida: pula a busca e abre o
+  // partograma dela direto. (Sem react-hooks/exhaustive-deps neste projeto.)
+  useEffect(() => {
+    if (pacienteInicial && (pacienteInicial.prontuario || pacienteInicial.iniciais)) escolher(pacienteInicial);
+  }, [pacienteInicial]);
 
   async function lancar() {
     if (!episodio || !canEdit || salvando) return;
