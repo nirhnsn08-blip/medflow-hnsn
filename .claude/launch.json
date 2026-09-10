@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "preview", "--port", "4173", "--strictPort"],
       "port": 4173
+    },
+    {
+      "name": "medflow-demo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--mode", "demo", "--port", "5174", "--strictPort"],
+      "port": 5174
     }
   ]
 }

@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 101 tabelas, 1602 colunas.
+-- Cobertura atual: 102 tabelas, 1619 colunas.
 -- ============================================================
 
 with
@@ -59,6 +59,7 @@ tabelas(nome, origem) as (values
   ('leitos_turnover','schema'),
   ('mat_admissoes','maternidade-fase0'),
   ('mat_episodios','maternidade-fase0'),
+  ('mat_trabalho_parto','maternidade-partograma'),
   ('migracoes_aplicadas','registro-de-migracoes'),
   ('nsp_acoes','nsp-rca-plano'),
   ('nsp_capacitacoes','nsp-capacitacoes'),
@@ -713,6 +714,23 @@ colunas(tabela, coluna, origem) as (values
   ('mat_episodios','tipo_sanguineo','maternidade-fase0'),
   ('mat_episodios','updated_at','maternidade-fase0'),
   ('mat_episodios','usuario','maternidade-fase0'),
+  ('mat_trabalho_parto','analgesia','maternidade-partograma'),
+  ('mat_trabalho_parto','bcf','maternidade-partograma'),
+  ('mat_trabalho_parto','bolsa','maternidade-partograma'),
+  ('mat_trabalho_parto','contracoes_dur','maternidade-partograma'),
+  ('mat_trabalho_parto','contracoes_freq','maternidade-partograma'),
+  ('mat_trabalho_parto','criado_em','maternidade-partograma'),
+  ('mat_trabalho_parto','data_hora','maternidade-partograma'),
+  ('mat_trabalho_parto','descida_delee','maternidade-partograma'),
+  ('mat_trabalho_parto','dilatacao','maternidade-partograma'),
+  ('mat_trabalho_parto','episodio_id','maternidade-partograma'),
+  ('mat_trabalho_parto','id','maternidade-partograma'),
+  ('mat_trabalho_parto','liquido','maternidade-partograma'),
+  ('mat_trabalho_parto','observacao','maternidade-partograma'),
+  ('mat_trabalho_parto','ocitocina','maternidade-partograma'),
+  ('mat_trabalho_parto','profissional','maternidade-partograma'),
+  ('mat_trabalho_parto','usuario','maternidade-partograma'),
+  ('mat_trabalho_parto','vitais','maternidade-partograma'),
   ('migracoes_aplicadas','aplicada_em','registro-de-migracoes'),
   ('migracoes_aplicadas','aplicada_por','registro-de-migracoes'),
   ('migracoes_aplicadas','arquivo','registro-de-migracoes'),

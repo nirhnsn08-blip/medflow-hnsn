@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import AdmissaoObstetrica from "./AdmissaoObstetrica.jsx";
+import PartogramaView from "./PartogramaView.jsx";
 
 const ABAS = [
   { id: "admissao",    label: "Admissão obstétrica" },
@@ -92,6 +93,8 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
         <div style={{ flex: 1, minWidth: 0, overflowY: "auto", paddingRight: 6, paddingBottom: 20 }}>
           {abaId === "admissao"
             ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} />
+            : abaId === "trabalho"
+            ? <PartogramaView sb={sb} currentUser={currentUser} canEdit={canEdit} />
             : <Placeholder aba={aba} />}
         </div>
       </div>

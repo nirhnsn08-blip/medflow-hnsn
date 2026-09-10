@@ -60,3 +60,28 @@ export async function salvarAdmissao(sb, { episodio, admissao, episodioId = null
 
   return { ok: true, episodioId: epId, admissao: rad[0] };
 }
+
+// ── Partograma: os toques ao longo do trabalho de parto ──────
+
+/** A série de toques deste episódio, na ordem do tempo (o que o gráfico usa). */
+export async function carregarTrabalhoParto(sb, episodioId) {
+  if (!sb || !episodioId) return [];
+  const r = await sb(
+    `mat_trabalho_parto?episodio_id=eq.${encodeURIComponent(episodioId)}&select=*&order=data_hora`
+  ).catch(() => null);
+  return listaLida(r);
+}
+
+/**
+ * Grava um toque (append-only). Confere o RETORNO, não o status: sem isso,
+ * "gravou" seria mentira e o ponto sumiria do partograma sem aviso.
+ */
+export async function salvarRegistroTP(sb, registro, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const r = await sb("mat_trabalho_parto", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...registro, usuario: user?.name || null }),
+  }).catch(() => null);
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Não gravei o registro (o banco recusou a dilatação/De Lee fora de faixa?)." };
+  return { ok: true, registro: r[0] };
+}
