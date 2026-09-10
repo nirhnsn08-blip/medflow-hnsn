@@ -96,6 +96,7 @@ import {  corEsperaFila } from "./clinico/leitos.js";
 
 const Atendimento = lazy(() => import("./atendimento/Atendimento.jsx"));
 const FaturamentoPage = lazy(() => import("./atendimento/FaturamentoSus.jsx"));
+const MaternidadePage = lazy(() => import("./maternidade/MaternidadePage.jsx"));
 import { especialidadesDoCadastro } from "./ambulatorio/especialidades.js";
 
 
@@ -1185,6 +1186,7 @@ export default function App() {
     { id: "bloco", icon: "scissors", label: "Bloco Cirúrgico", ver: verModulo("bloco") },
     { id: "leitos", icon: "bed", label: "Giro de Leitos", ver: verModulo("leitos"), aviso: filaAviso.n ? filaAviso : null },
     { id: "paciente", icon: "record", label: "Paciente 360", ver: verModulo("paciente") },
+    { id: "maternidade", icon: "activity", label: "Maternidade", ver: verModulo("maternidade") },
 
     // Ordenados por TEMPO ATÉ AGIR, não por hierarquia: protocolo tem
     // relógio contando, notificação é do dia, vigilância é de meses.
@@ -1343,6 +1345,7 @@ export default function App() {
           {active === "suprimentos" && <SuprimentosPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "maternidade" && <MaternidadePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} especialidades={especialidades} />}
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
           {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} especialidades={especialidades} />}
