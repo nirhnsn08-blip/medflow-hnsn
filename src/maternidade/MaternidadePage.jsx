@@ -13,9 +13,10 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useState } from "react";
+import AdmissaoObstetrica from "./AdmissaoObstetrica.jsx";
 
 const ABAS = [
-  { id: "admissao",    label: "Admissão obstétrica",  proxima: true },
+  { id: "admissao",    label: "Admissão obstétrica" },
   { id: "trabalho",    label: "Trabalho de parto" },
   { id: "partos",      label: "Partos & cesáreas" },
   { id: "rn",          label: "Recém-nascidos" },
@@ -47,9 +48,7 @@ function Placeholder({ aba }) {
   );
 }
 
-// As props (sb, currentUser, canEdit, onIrPara) chegam do App.jsx e entram
-// na fatia da Admissão — a casca ainda não as usa, por isso não as declara.
-export default function MaternidadePage() {
+export default function MaternidadePage({ sb, currentUser, canEdit }) {
   const [abaId, setAbaId] = useState("admissao");
   const aba = ABAS.find(a => a.id === abaId) || ABAS[0];
 
@@ -88,7 +87,9 @@ export default function MaternidadePage() {
 
         {/* Painel */}
         <div style={{ flex: 1, minWidth: 300 }}>
-          <Placeholder aba={aba} />
+          {abaId === "admissao"
+            ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} />
+            : <Placeholder aba={aba} />}
         </div>
       </div>
     </div>
