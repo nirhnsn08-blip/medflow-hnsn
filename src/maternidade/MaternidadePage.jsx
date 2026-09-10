@@ -53,9 +53,12 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
   const aba = ABAS.find(a => a.id === abaId) || ABAS[0];
 
   return (
-    <div>
+    // Altura cheia + scroll no painel: o app dá aos módulos uma coluna de
+    // altura fixa com overflow:hidden (App.jsx), então cada módulo rola por
+    // dentro — mesmo desenho do Faturamento. Sem isto, um form alto é cortado.
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       {/* Cabeçalho do módulo — a identidade do Maternity Center */}
-      <div style={{ marginBottom: 18 }}>
+      <div style={{ flexShrink: 0, marginBottom: 14 }}>
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: TURQ }}>
           Valentrax Maternity Center
         </div>
@@ -65,9 +68,9 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
         </p>
       </div>
 
-      <div style={{ display: "flex", gap: 18, alignItems: "flex-start", flexWrap: "wrap" }}>
-        {/* Sub-navegação lateral (padrão NSP/Faturamento) */}
-        <nav style={{ ...cx.card, padding: 8, width: 250, flexShrink: 0 }}>
+      <div style={{ display: "flex", flex: 1, minHeight: 0, gap: 18 }}>
+        {/* Sub-navegação lateral (padrão NSP/Faturamento) — scroll próprio */}
+        <nav style={{ ...cx.card, padding: 8, width: 250, flexShrink: 0, alignSelf: "flex-start", maxHeight: "100%", overflowY: "auto" }}>
           {ABAS.map(a => {
             const on = a.id === abaId;
             return (
@@ -85,8 +88,8 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
           })}
         </nav>
 
-        {/* Painel */}
-        <div style={{ flex: 1, minWidth: 300 }}>
+        {/* Painel — o form rola AQUI (overflow próprio) */}
+        <div style={{ flex: 1, minWidth: 0, overflowY: "auto", paddingRight: 6, paddingBottom: 20 }}>
           {abaId === "admissao"
             ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} />
             : <Placeholder aba={aba} />}
