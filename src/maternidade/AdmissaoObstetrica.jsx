@@ -72,6 +72,16 @@ const EX0 = { altura_uterina: "", dinamica: "", bcf: "", situacao: "longitudinal
 const TQ0 = { dilatacao: "", apagamento: "", delee: "", colo_consistencia: "", colo_posicao: "", bolsa: "integra", liquido: "", sangramento: "" };
 const ANT0 = { doencas: "", cirurgias: "", alergias: "", medicacoes: "", obstetricos: "", habitos: "", familiares: "" };
 
+// Pré-natal particular × atenção primária (SUS) — e a saída honesta quando
+// não se sabe. "Não informado" é diferente de "não fez": guarda a incerteza
+// em vez de fingir um dado.
+const OPC_LOCAL_PN = [{ v: "atencao_primaria", l: "Atenção primária" }, { v: "particular", l: "Particular" }, { v: "nao_informado", l: "Não informado" }];
+// Consultas por seleção, com "Não lembra": a gestante nem sempre lembra, e um
+// campo em branco viraria "zero consultas" na análise — que é outra coisa.
+const OPC_CONSULTAS = [{ v: "", l: "—" }, { v: "nao_lembra", l: "Não lembra" },
+  { v: "0", l: "0" }, { v: "1", l: "1" }, { v: "2", l: "2" }, { v: "3", l: "3" }, { v: "4", l: "4" },
+  { v: "5", l: "5" }, { v: "6", l: "6" }, { v: "7", l: "7" }, { v: "8", l: "8" }, { v: "9", l: "9" }, { v: "10+", l: "10 ou mais" }];
+
 export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState(null);
@@ -253,8 +263,8 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
       <Secao num="4" titulo="Pré-natal">
         <div style={cx.grid}>
           <Campo label="Fez pré-natal?"><Seg valor={pn.fez} onChange={v => cpn("fez", v)} opcoes={[{ v: "sim", l: "Sim" }, { v: "nao", l: "Não" }]} /></Campo>
-          <Campo label="Nº de consultas"><Txt type="number" min="0" value={pn.consultas} onChange={e => cpn("consultas", e.target.value)} /></Campo>
-          <Campo label="Local"><Txt value={pn.local} onChange={e => cpn("local", e.target.value)} /></Campo>
+          <Campo label="Nº de consultas"><Sel value={pn.consultas} onChange={e => cpn("consultas", e.target.value)} opcoes={OPC_CONSULTAS} /></Campo>
+          <Campo label="Local do pré-natal" span={2}><Seg valor={pn.local} onChange={v => cpn("local", v)} opcoes={OPC_LOCAL_PN} /></Campo>
           <Campo label="Risco no pré-natal"><Seg valor={pn.risco_pn} onChange={v => cpn("risco_pn", v)} opcoes={[{ v: "habitual", l: "Habitual" }, { v: "alto", l: "Alto risco" }]} /></Campo>
           <Campo label="GBS (estreptococo B)" dica="Positivo → lembra profilaxia intraparto."><Seg valor={pn.gbs} onChange={v => cpn("gbs", v)} opcoes={[{ v: "negativo", l: "Negativo" }, { v: "positivo", l: "Positivo" }, { v: "desconhecido", l: "Desconhecido" }]} /></Campo>
           <Campo label="Sorologias / exames" span={2}><Txt value={pn.sorologias} onChange={e => cpn("sorologias", e.target.value)} placeholder="HIV, VDRL, HBsAg, Hb, glicemia…" /></Campo>
