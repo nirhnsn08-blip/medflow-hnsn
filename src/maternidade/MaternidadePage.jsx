@@ -15,8 +15,11 @@
 import { useState } from "react";
 import AdmissaoObstetrica from "./AdmissaoObstetrica.jsx";
 import PartogramaView from "./PartogramaView.jsx";
+import FilaObstetrica from "./FilaObstetrica.jsx";
+import { ESTADO } from "./fila.js";
 
 const ABAS = [
+  { id: "fila",        label: "Fila obstétrica" },
   { id: "admissao",    label: "Admissão obstétrica" },
   { id: "trabalho",    label: "Trabalho de parto" },
   { id: "partos",      label: "Partos & cesáreas" },
@@ -50,8 +53,21 @@ function Placeholder({ aba }) {
 }
 
 export default function MaternidadePage({ sb, currentUser, canEdit }) {
-  const [abaId, setAbaId] = useState("admissao");
+  const [abaId, setAbaId] = useState("fila");
   const aba = ABAS.find(a => a.id === abaId) || ABAS[0];
+
+  // Paciente escolhida na fila, entregue à aba de destino como `pacienteInicial`.
+  // Trocar de aba PELA MÃO (nav) limpa a seleção — só a fila pré-seleciona.
+  const [selecao, setSelecao] = useState(null);   // { paciente, tab } | null
+
+  function aoEscolherDaFila(item) {
+    const paciente = { prontuario: item.prontuario, iniciais: item.iniciais, nome_completo: null, _fila: item };
+    const tab = item.estado === ESTADO.ADMITIDA ? "trabalho" : "admissao";
+    setSelecao({ paciente, tab });
+    setAbaId(tab);
+  }
+  function irParaAba(id) { setSelecao(null); setAbaId(id); }
+  const inicialPara = tab => (selecao?.tab === tab ? selecao.paciente : undefined);
 
   return (
     // Altura cheia + scroll no painel: o app dá aos módulos uma coluna de
@@ -75,7 +91,7 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
           {ABAS.map(a => {
             const on = a.id === abaId;
             return (
-              <button key={a.id} onClick={() => setAbaId(a.id)} style={{
+              <button key={a.id} onClick={() => irParaAba(a.id)} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                 width: "100%", textAlign: "left", border: "none", borderRadius: 9, cursor: "pointer",
                 padding: "9px 12px", marginBottom: 2, fontSize: 13, fontFamily: "inherit",
@@ -91,10 +107,12 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
 
         {/* Painel — o form rola AQUI (overflow próprio) */}
         <div style={{ flex: 1, minWidth: 0, overflowY: "auto", paddingRight: 6, paddingBottom: 20 }}>
-          {abaId === "admissao"
-            ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} />
+          {abaId === "fila"
+            ? <FilaObstetrica sb={sb} onEscolher={aoEscolherDaFila} />
+            : abaId === "admissao"
+            ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("admissao")} />
             : abaId === "trabalho"
-            ? <PartogramaView sb={sb} currentUser={currentUser} canEdit={canEdit} />
+            ? <PartogramaView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("trabalho")} />
             : <Placeholder aba={aba} />}
         </div>
       </div>
