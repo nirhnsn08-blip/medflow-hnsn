@@ -12,7 +12,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { igEntre, dppDe, imc, bishop, formatarGtpal, gtpalIncoerencias } from "./obstetricia.js";
 import { calcularMeows, NIVEL } from "./meows.js";
-import { buscarPacientes, episodioAtivoDaGestante, salvarAdmissao, cadastrarGestante } from "./dados.js";
+import { buscarPacientes, carregarPaciente, episodioAtivoDaGestante, salvarAdmissao, cadastrarGestante } from "./dados.js";
 
 const TURQ = "#2dd4bf";
 const COR_NIVEL = { [NIVEL.VERDE]: "#22c55e", [NIVEL.AMARELO]: "#f59e0b", [NIVEL.VERMELHO]: "#ef4444" };
@@ -146,10 +146,22 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit, pacienteI
     setCadastro({ nome_completo: "", data_nascimento: "", cpf: "", cns: "" }); setErroCadastro("");
   }
 
-  // A fila obstétrica entrega a gestante já escolhida: pula a busca.
+  // A fila entrega a gestante já escolhida: pula a busca. Mas o "prontuário"
+  // que veio do leito/PS pode ser só um NÚMERO digitado, sem cadastro de
+  // verdade — foi exatamente o buraco que a Laura achou. Aí a admissão trata
+  // como sem cadastro e completa, em vez de seguir com um prontuário fantasma.
   useEffect(() => {
-    if (pacienteInicial && (pacienteInicial.prontuario || pacienteInicial.iniciais)) escolher(pacienteInicial);
+    if (pacienteInicial) selecionarDaFila(pacienteInicial);
   }, [pacienteInicial]);
+
+  async function selecionarDaFila(item) {
+    if (item.prontuario) {
+      const real = await carregarPaciente(sb, item.prontuario).catch(() => null);
+      escolher(real || { ...item, prontuario: null });   // número sem cadastro → completar
+    } else {
+      escolher(item);
+    }
+  }
 
   // Gestante sem prontuário (veio do PS/leito só com iniciais): gera o cadastro
   // e o prontuário, e segue a admissão na MESMA paciente.
@@ -257,7 +269,7 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit, pacienteI
         <section style={cx.card}>
           <div style={cx.h}>Cadastro da paciente — gerar prontuário</div>
           <p style={{ margin: "0 0 14px", fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.6 }}>
-            Essa paciente entrou só com iniciais{gestante?.iniciais ? ` (${gestante.iniciais})` : ""} — pelo PS ou por um leito. Para admitir na maternidade ela precisa de prontuário: preencha o nome e o sistema emite o número. Assim o partograma, a SAE, o bebê e a conta ficam todos ligados a ela.
+            Essa paciente{gestante?.iniciais ? ` (${gestante.iniciais})` : ""} veio do PS ou de um leito e ainda <b style={{ color: "var(--text-2)" }}>não tem cadastro</b> no sistema (só iniciais, ou um número que não é prontuário de verdade). Para admitir na maternidade ela precisa de prontuário: preencha o nome e o sistema emite o número. Assim o partograma, a SAE, o bebê e a conta ficam todos ligados a ela.
           </p>
           <div style={cx.grid}>
             <Campo label="Nome completo" obrig span={2}><Txt value={cadastro.nome_completo} onChange={e => setCadastro(c => ({ ...c, nome_completo: e.target.value }))} placeholder="Nome da gestante" autoFocus /></Campo>
