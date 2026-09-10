@@ -64,7 +64,10 @@ function Secao({ num, titulo, children }) {
 const EP0 = { gesta: "", termo: "", prematuro: "", abortos: "", vivos: "", partos_vaginais: "", cesareas: "", dum: "", ig_usg_sem: "", ig_usg_dias: "", tipo_sanguineo: "", rh: "", gestacao_multipla: false, n_fetos: "1", risco: "" };
 const PN0 = { fez: "sim", consultas: "", local: "", risco_pn: "", gbs: "", sorologias: "", vacinas: "", obs: "" };
 const AD0 = { origem: "espontanea", motivo: "trabalho_de_parto", queixa: "", inicio_sintomas: "", acompanhante: "", acompanhante_vinculo: "", plano: "internar_tp", via_prevista: "vaginal", classificacao_risco: "", sinais_alerta: "" };
-const VIT0 = { pa_sis: "", pa_dia: "", fc: "", fr: "", temp: "", sato2: "", dor: "", peso: "", altura: "", consciencia: "alerta" };
+// consciencia NÃO vem pré-preenchida de propósito: um "alerta" default faria
+// o MEOWS pintar verde antes de qualquer vital medido — o falso-verde que o
+// motor existe para evitar. A enfermeira marca o nível de consciência.
+const VIT0 = { pa_sis: "", pa_dia: "", fc: "", fr: "", temp: "", sato2: "", dor: "", peso: "", altura: "", consciencia: "" };
 const EX0 = { altura_uterina: "", dinamica: "", bcf: "", situacao: "longitudinal", apresentacao: "cefalica", dorso: "", mov_fetais: "presentes" };
 const TQ0 = { dilatacao: "", apagamento: "", delee: "", colo_consistencia: "", colo_posicao: "", bolsa: "integra", liquido: "", sangramento: "" };
 const ANT0 = { doencas: "", cirurgias: "", alergias: "", medicacoes: "", obstetricos: "", habitos: "", familiares: "" };
@@ -281,7 +284,7 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit }) {
           <Campo label="Temperatura" obrig><Txt type="number" step="0.1" value={vit.temp} onChange={e => cv("temp", e.target.value)} placeholder="°C" /></Campo>
           <Campo label="SatO₂"><Txt type="number" value={vit.sato2} onChange={e => cv("sato2", e.target.value)} placeholder="%" /></Campo>
           <Campo label="Dor (0–10)"><Txt type="number" min="0" max="10" value={vit.dor} onChange={e => cv("dor", e.target.value)} /></Campo>
-          <Campo label="Consciência"><Sel value={vit.consciencia} onChange={e => cv("consciencia", e.target.value)} opcoes={[{ v: "alerta", l: "Alerta" }, { v: "resposta_voz", l: "Resp. à voz" }, { v: "resposta_dor", l: "Resp. à dor" }, { v: "irresponsivo", l: "Irresponsivo" }]} /></Campo>
+          <Campo label="Consciência"><Sel value={vit.consciencia} onChange={e => cv("consciencia", e.target.value)} opcoes={[{ v: "", l: "—" }, { v: "alerta", l: "Alerta" }, { v: "resposta_voz", l: "Resp. à voz" }, { v: "resposta_dor", l: "Resp. à dor" }, { v: "irresponsivo", l: "Irresponsivo" }]} /></Campo>
           <Campo label="Peso (kg)"><Txt type="number" step="0.1" value={vit.peso} onChange={e => cv("peso", e.target.value)} /></Campo>
           <Campo label="Altura (m)" dica={imcV != null ? `IMC ${imcV}` : ""}><Txt type="number" step="0.01" value={vit.altura} onChange={e => cv("altura", e.target.value)} /></Campo>
         </div>
