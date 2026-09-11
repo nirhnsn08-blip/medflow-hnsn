@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 102 tabelas, 1619 colunas.
+-- Cobertura atual: 103 tabelas, 1644 colunas.
 -- ============================================================
 
 with
@@ -59,6 +59,7 @@ tabelas(nome, origem) as (values
   ('leitos_turnover','schema'),
   ('mat_admissoes','maternidade-fase0'),
   ('mat_episodios','maternidade-fase0'),
+  ('mat_partos','maternidade-parto'),
   ('mat_trabalho_parto','maternidade-partograma'),
   ('migracoes_aplicadas','registro-de-migracoes'),
   ('nsp_acoes','nsp-rca-plano'),
@@ -714,6 +715,31 @@ colunas(tabela, coluna, origem) as (values
   ('mat_episodios','tipo_sanguineo','maternidade-fase0'),
   ('mat_episodios','updated_at','maternidade-fase0'),
   ('mat_episodios','usuario','maternidade-fase0'),
+  ('mat_partos','anestesia','maternidade-parto'),
+  ('mat_partos','apgar_1','maternidade-parto'),
+  ('mat_partos','apgar_5','maternidade-parto'),
+  ('mat_partos','apresentacao','maternidade-parto'),
+  ('mat_partos','complicacoes','maternidade-parto'),
+  ('mat_partos','criado_em','maternidade-parto'),
+  ('mat_partos','data_hora','maternidade-parto'),
+  ('mat_partos','episodio_id','maternidade-parto'),
+  ('mat_partos','id','maternidade-parto'),
+  ('mat_partos','indicacao','maternidade-parto'),
+  ('mat_partos','inicio_trabalho','maternidade-parto'),
+  ('mat_partos','laceracao','maternidade-parto'),
+  ('mat_partos','n_nascidos','maternidade-parto'),
+  ('mat_partos','observacao','maternidade-parto'),
+  ('mat_partos','ocitocina_profilatica','maternidade-parto'),
+  ('mat_partos','perda_sangue_ml','maternidade-parto'),
+  ('mat_partos','placenta','maternidade-parto'),
+  ('mat_partos','placenta_completa','maternidade-parto'),
+  ('mat_partos','profissional','maternidade-parto'),
+  ('mat_partos','rn_peso_g','maternidade-parto'),
+  ('mat_partos','rn_sexo','maternidade-parto'),
+  ('mat_partos','rn_vivo','maternidade-parto'),
+  ('mat_partos','robson','maternidade-parto'),
+  ('mat_partos','usuario','maternidade-parto'),
+  ('mat_partos','via','maternidade-parto'),
   ('mat_trabalho_parto','analgesia','maternidade-partograma'),
   ('mat_trabalho_parto','bcf','maternidade-partograma'),
   ('mat_trabalho_parto','bolsa','maternidade-partograma'),

@@ -15,6 +15,7 @@
 import { useState } from "react";
 import AdmissaoObstetrica from "./AdmissaoObstetrica.jsx";
 import PartogramaView from "./PartogramaView.jsx";
+import PartoView from "./PartoView.jsx";
 import FilaObstetrica from "./FilaObstetrica.jsx";
 import { ESTADO } from "./fila.js";
 
@@ -113,6 +114,8 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
             ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("admissao")} />
             : abaId === "trabalho"
             ? <PartogramaView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("trabalho")} />
+            : abaId === "partos"
+            ? <PartoView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("partos")} />
             : <Placeholder aba={aba} />}
         </div>
       </div>

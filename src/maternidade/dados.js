@@ -177,3 +177,28 @@ async function religarFonte(sb, vinculo, prontuario) {
     if (vinculo?.psId)  await sb(`ps_atendimentos?id=eq.${encodeURIComponent(vinculo.psId)}`, opt);
   } catch { /* best-effort: a admissão não depende disto */ }
 }
+
+// ── Parto & cesárea: o registro do nascimento ────────────────
+
+/** Os partos deste episódio, na ordem do tempo. */
+export async function carregarPartos(sb, episodioId) {
+  if (!sb || !episodioId) return [];
+  const r = await sb(
+    `mat_partos?episodio_id=eq.${encodeURIComponent(episodioId)}&select=*&order=data_hora`
+  ).catch(() => null);
+  return listaLida(r);
+}
+
+/**
+ * Grava um parto (append-only). Confere o RETORNO, não o status: sem isso
+ * "gravou" seria mentira e o parto sumiria do dossiê sem aviso.
+ */
+export async function salvarParto(sb, registro, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const r = await sb("mat_partos", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...registro, usuario: user?.name || null }),
+  }).catch(() => null);
+  if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Não gravei o parto (o banco recusou algum valor fora de faixa?)." };
+  return { ok: true, parto: r[0] };
+}
