@@ -8,7 +8,7 @@
 
 import { listaLida, algumaFalhou } from "../util/leitura.js";
 import { montarFilaObstetrica } from "./fila.js";
-import { emitirProntuario } from "../atendimento/dados.js";
+import { emitirProntuario, cadastrarRecemNascido } from "../atendimento/dados.js";
 // Reuso deliberado: uma segunda busca de paciente divergiria da primeira.
 export { buscarPacientes, carregarPaciente } from "../atendimento/dados.js";
 
@@ -201,4 +201,47 @@ export async function salvarParto(sb, registro, user) {
   }).catch(() => null);
   if (!Array.isArray(r) || !r.length) return { ok: false, motivo: "Não gravei o parto (o banco recusou algum valor fora de faixa?)." };
   return { ok: true, parto: r[0] };
+}
+
+// ── Recém-nascido: identidade (reuso) + avaliação clínica ────
+
+/** As avaliações de RN deste episódio, na ordem do tempo. */
+export async function carregarRecemNascidos(sb, episodioId) {
+  if (!sb || !episodioId) return [];
+  const r = await sb(
+    `mat_recem_nascidos?episodio_id=eq.${encodeURIComponent(episodioId)}&select=*&order=data_hora`
+  ).catch(() => null);
+  return listaLida(r);
+}
+
+/**
+ * Registra um RN: cria o CADASTRO do bebê (prontuário próprio ligado à mãe,
+ * reusando `cadastrarRecemNascido`) e grava a AVALIAÇÃO clínica ligada a ele.
+ *
+ * Dois passos: se o cadastro vai mas a avaliação falha, o bebê JÁ EXISTE — o
+ * retorno diz isso (com o prontuário) para não recadastrar e virar gêmeo falso.
+ */
+export async function salvarRecemNascido(sb, { mae, dados, avaliacao, episodioId, partoId }, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+
+  const rc = await cadastrarRecemNascido(sb, { mae, dados }, user);
+  if (!rc.ok) return rc;   // { ok:false, motivo }
+
+  const registro = {
+    ...avaliacao,
+    episodio_id: episodioId,
+    parto_id: partoId || null,
+    prontuario_rn: rc.paciente.prontuario,
+    sexo: avaliacao?.sexo || dados?.sexo || null,
+    usuario: user?.name || null,
+  };
+  const r = await sb("mat_recem_nascidos", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify(registro),
+  }).catch(() => null);
+
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, paciente: rc.paciente, motivo: `O bebê foi cadastrado (prontuário ${rc.paciente.prontuario}), mas não gravei a avaliação clínica. Busque o bebê e lance a avaliação de novo — NÃO recadastre.` };
+  }
+  return { ok: true, paciente: rc.paciente, avaliacao: r[0] };
 }

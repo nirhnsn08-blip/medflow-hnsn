@@ -253,6 +253,9 @@ const ORDEM = [
   // Parto & cesárea: o registro do nascimento (mat_partos) + o grupo de Robson
   // gravado no parto. Depois de mat_episodios (FK); antes do rls-leitura.
   "migracao-maternidade-parto.sql",
+  // Recém-nascido: a avaliação do berço (mat_recem_nascidos). Depois de
+  // mat_episodios e mat_partos (FK); antes do rls-leitura.
+  "migracao-maternidade-recem-nascido.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
