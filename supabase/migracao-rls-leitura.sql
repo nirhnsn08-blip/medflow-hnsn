@@ -213,7 +213,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 102 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 103 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -282,6 +282,7 @@ begin
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
       ('mat_admissoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('mat_episodios', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('mat_partos', 'public.pode_ver_algum(''paciente'')'),                                          -- paciente
       ('mat_trabalho_parto', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
       ('migracoes_aplicadas', 'true'),                                                                -- todos os autenticados
       ('nsp_acoes', 'public.pode_ver_algum(''nsp'')'),                                                -- nsp
@@ -462,6 +463,7 @@ begin
       ('leitos_turnover', 'public.pode_editar_algum(''leitos'', ''overview'', ''print'')'),           -- leitos, overview, print
       ('mat_admissoes', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
       ('mat_episodios', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
+      ('mat_partos', 'public.pode_editar_algum(''paciente'')'),                                       -- paciente
       ('mat_trabalho_parto', 'public.pode_editar_algum(''paciente'')'),                               -- paciente
       ('nsp_acoes', 'public.pode_editar_algum(''nsp'')'),                                             -- nsp
       ('nsp_capacitacoes', 'public.pode_editar_algum(''nsp'')'),                                      -- nsp

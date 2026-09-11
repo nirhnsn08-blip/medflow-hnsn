@@ -250,6 +250,9 @@ const ORDEM = [
   // Partograma (Fase 1): os toques ao longo do parto. Depois de mat_episodios
   // (FK) e das funcoes pode_ver/editar; antes do rls-leitura (que a reescreve).
   "migracao-maternidade-partograma.sql",
+  // Parto & cesárea: o registro do nascimento (mat_partos) + o grupo de Robson
+  // gravado no parto. Depois de mat_episodios (FK); antes do rls-leitura.
+  "migracao-maternidade-parto.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
