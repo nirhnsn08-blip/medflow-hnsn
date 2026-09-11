@@ -245,3 +245,21 @@ export async function salvarRecemNascido(sb, { mae, dados, avaliacao, episodioId
   }
   return { ok: true, paciente: rc.paciente, avaliacao: r[0] };
 }
+
+// ── Indicadores: lê partos e RNs para agregar (sem migração) ──
+
+/**
+ * Lê os partos e as avaliações de RN para os indicadores. `incompleto:true`
+ * se alguma leitura falhou — a tela avisa em vez de mostrar taxa de banco
+ * meio-lido. A agregação (Robson etc.) é do motor puro (indicadores.js); o
+ * recorte por período é da tela.
+ */
+export async function carregarIndicadores(sb) {
+  if (!sb) return { partos: [], rns: [], incompleto: true };
+  const [pR, rR] = await Promise.all([
+    sb("mat_partos?select=robson,via,perda_sangue_ml,rn_vivo,data_hora&order=data_hora.desc&limit=2000").catch(() => null),
+    sb("mat_recem_nascidos?select=peso_g,ig_capurro_semanas,apgar_5,data_hora&order=data_hora.desc&limit=2000").catch(() => null),
+  ]);
+  const partos = listaLida(pR), rns = listaLida(rR);
+  return { partos, rns, incompleto: algumaFalhou(partos, rns) };
+}

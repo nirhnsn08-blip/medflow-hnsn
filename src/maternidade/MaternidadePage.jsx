@@ -17,6 +17,7 @@ import AdmissaoObstetrica from "./AdmissaoObstetrica.jsx";
 import PartogramaView from "./PartogramaView.jsx";
 import PartoView from "./PartoView.jsx";
 import RecemNascidosView from "./RecemNascidosView.jsx";
+import IndicadoresView from "./IndicadoresView.jsx";
 import FilaObstetrica from "./FilaObstetrica.jsx";
 import { ESTADO } from "./fila.js";
 
@@ -119,6 +120,8 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
             ? <PartoView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("partos")} />
             : abaId === "rn"
             ? <RecemNascidosView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("rn")} />
+            : abaId === "indicadores"
+            ? <IndicadoresView sb={sb} />
             : <Placeholder aba={aba} />}
         </div>
       </div>
