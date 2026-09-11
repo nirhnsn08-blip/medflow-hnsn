@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 103 tabelas, 1644 colunas.
+-- Cobertura atual: 104 tabelas, 1667 colunas.
 -- ============================================================
 
 with
@@ -60,6 +60,7 @@ tabelas(nome, origem) as (values
   ('mat_admissoes','maternidade-fase0'),
   ('mat_episodios','maternidade-fase0'),
   ('mat_partos','maternidade-parto'),
+  ('mat_recem_nascidos','maternidade-recem-nascido'),
   ('mat_trabalho_parto','maternidade-partograma'),
   ('migracoes_aplicadas','registro-de-migracoes'),
   ('nsp_acoes','nsp-rca-plano'),
@@ -740,6 +741,29 @@ colunas(tabela, coluna, origem) as (values
   ('mat_partos','robson','maternidade-parto'),
   ('mat_partos','usuario','maternidade-parto'),
   ('mat_partos','via','maternidade-parto'),
+  ('mat_recem_nascidos','aleitamento_1a_hora','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','apgar_1','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','apgar_10','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','apgar_5','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','capurro_pontos','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','comprimento_cm','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','criado_em','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','data_hora','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','episodio_id','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','id','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','ig_capurro_semanas','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','observacao','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','parto_id','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','perimetro_cefalico_cm','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','peso_g','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','profilaxia_ocular','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','profissional','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','prontuario_rn','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','reanimacao','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','sexo','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','triagem','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','usuario','maternidade-recem-nascido'),
+  ('mat_recem_nascidos','vitamina_k','maternidade-recem-nascido'),
   ('mat_trabalho_parto','analgesia','maternidade-partograma'),
   ('mat_trabalho_parto','bcf','maternidade-partograma'),
   ('mat_trabalho_parto','bolsa','maternidade-partograma'),
