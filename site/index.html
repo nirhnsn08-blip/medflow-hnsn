@@ -1,0 +1,1373 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a2740">
+<meta name="description" content="A Valentrax integra pessoas, processos e dados do pronto-socorro à alta: pronto-socorro, giro de leitos, maternidade, farmácia, faturamento SUS e segurança do paciente em uma plataforma só.">
+<link rel="canonical" href="https://valentrax.com.br/">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72'><defs><g id='r'><path d='M45 35.4C51 34.6 55.5 32.6 59 29.6' stroke='%232dd4bf' stroke-width='3.4' fill='none' stroke-linecap='round'/><circle cx='60.6' cy='28.2' r='3' fill='%232dd4bf'/></g><g id='b'><path d='M45 35.4C51 34.6 55.5 32.6 59 29.6' stroke='%2338bdf8' stroke-width='2.6' fill='none' stroke-linecap='round'/><circle cx='60.6' cy='28.2' r='2.3' fill='%2338bdf8'/></g></defs><rect width='72' height='72' rx='18' fill='%23101c30'/><use href='%23r'/><use href='%23r' transform='rotate(90 36 36)'/><use href='%23r' transform='rotate(180 36 36)'/><use href='%23r' transform='rotate(270 36 36)'/><use href='%23b' transform='rotate(45 36 36)'/><use href='%23b' transform='rotate(135 36 36)'/><use href='%23b' transform='rotate(225 36 36)'/><use href='%23b' transform='rotate(315 36 36)'/><circle cx='36' cy='36' r='8.4' fill='%232dd4bf'/></svg>">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Valentrax Healthcare Operations">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:url" content="https://valentrax.com.br/">
+<meta property="og:title" content="Valentrax — inteligência para o fluxo hospitalar">
+<meta property="og:description" content="Uma plataforma inteligente para um hospital mais seguro, eficiente e conectado. Do pronto-socorro à alta, em um prontuário só.">
+<meta property="og:image" content="https://valentrax.com.br/hero-clinica.png">
+<meta property="og:image:width" content="1712">
+<meta property="og:image:height" content="959">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Valentrax — inteligência para o fluxo hospitalar">
+<meta name="twitter:description" content="Uma plataforma inteligente para um hospital mais seguro, eficiente e conectado.">
+<meta name="twitter:image" content="https://valentrax.com.br/hero-clinica.png">
+
+<title>Valentrax — Inteligência para o fluxo hospitalar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --paper:#ffffff; --mist:#f4f8fc; --ice:#e8f1f9; --line:#dce8f2; --line-2:#c7dcec;
+    --navy:#0a2740; --navy-2:#12466e;
+    --ink:#0a2740; --ink-2:#3d5f7d; --ink-3:#6d8aa3;
+    --azure:#0a9ad6; --azure-deep:#0a6f9e; --azure-soft:#e2f3fb;
+    --turq:#17bfae; --amber:#e9922c; --red:#dc4b4b; --green:#22a06b;
+    --maxw:1180px;
+    --sans:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif;
+    --display:"Sora",var(--sans);
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+    --sh-sm:0 1px 2px rgba(10,39,64,.06), 0 4px 12px -6px rgba(10,39,64,.10);
+    --sh-md:0 2px 6px rgba(10,39,64,.06), 0 18px 40px -22px rgba(10,39,64,.28);
+    --sh-lg:0 30px 70px -35px rgba(10,39,64,.42), 0 2px 8px rgba(10,39,64,.05);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:var(--sans); font-size:16px; line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 26px}
+  h1,h2,h3{font-family:var(--display); font-weight:700; line-height:1.1; letter-spacing:-.025em; text-wrap:balance; margin:0; color:var(--ink)}
+  p{margin:0}
+  a{color:inherit; text-decoration:none}
+  .eyebrow{font-family:var(--mono); font-weight:700; font-size:11.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--azure)}
+  .lede{color:var(--ink-2); font-size:1.06rem; line-height:1.62}
+
+  /* ── brand ────────────────────────────────── */
+  .brand{display:inline-flex; align-items:center; gap:12px}
+  .brand .mark{flex:none; display:block}
+  .brand .wm{font-family:var(--display); font-weight:700; font-size:20px; letter-spacing:.16em; line-height:1; color:var(--ink)}
+  .brand .wmsub{display:block; font-family:var(--mono); font-weight:500; font-size:7.6px; letter-spacing:.4em; color:var(--ink-3); margin-top:5px}
+  .brand .wm b{color:var(--azure); font-weight:700}
+  .brand.on-dark .wm{color:#fff} .brand.on-dark .wmsub{color:#8fb3cc}
+  .brand.on-dark .wm b{color:#4fd6e8}
+
+  /* ── buttons ──────────────────────────────── */
+  .btn{font-family:var(--sans); font-weight:600; font-size:14.5px; border-radius:999px; padding:11px 22px; cursor:pointer;
+    border:1.5px solid transparent; display:inline-flex; align-items:center; gap:9px; white-space:nowrap;
+    transition:transform .14s cubic-bezier(.2,.8,.3,1), box-shadow .14s, background .14s, border-color .14s}
+  .btn svg{width:15px; height:15px; flex:none}
+  .btn-primary{background:linear-gradient(135deg,var(--azure),#0b86bd); color:#fff; box-shadow:0 8px 22px -10px rgba(10,154,214,.75)}
+  .btn-primary:hover{transform:translateY(-2px); box-shadow:0 14px 30px -12px rgba(10,154,214,.85)}
+  .btn-outline{border-color:var(--line-2); color:var(--ink); background:var(--paper)}
+  .btn-outline:hover{border-color:var(--azure); color:var(--azure-deep); transform:translateY(-2px)}
+  .btn-ghost-d{border-color:rgba(255,255,255,.28); color:#fff; background:transparent}
+  .btn-ghost-d:hover{border-color:#fff; background:rgba(255,255,255,.08)}
+
+  /* ── header ───────────────────────────────── */
+  header{position:sticky; top:0; z-index:40; background:rgba(255,255,255,.86); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border-bottom:1px solid var(--line)}
+  header .wrap{display:flex; align-items:center; gap:26px; height:76px}
+  nav.main{margin-left:auto; display:flex; align-items:center; gap:30px}
+  nav.main a.nl{font-size:14.5px; font-weight:500; color:var(--ink-2); position:relative; padding:4px 0}
+  nav.main a.nl:hover{color:var(--ink)}
+  nav.main a.nl::after{content:""; position:absolute; left:0; right:0; bottom:-2px; height:2px; background:var(--azure); transform:scaleX(0); transition:transform .18s; border-radius:2px}
+  nav.main a.nl:hover::after{transform:scaleX(1)}
+
+  .btn .short{display:none}
+  /* Cabeçalho no celular: a marca encolhe e o botão vira "Entrar", senão o
+     conjunto passa da largura da tela e a página rola de lado. */
+  @media (max-width:680px){
+    header .wrap{gap:12px; height:62px}
+    .brand{gap:9px}
+    .brand .mark{width:30px; height:30px}
+    .brand .wm{font-size:15.5px; letter-spacing:.12em}
+    .brand .wmsub{display:none}
+    nav.main{gap:0}
+    nav.main .btn{padding:9px 15px; font-size:13.5px}
+    .btn .full{display:none}
+    .btn .short{display:inline}
+    #filme .fctrl{flex-wrap:wrap; gap:8px}
+    #filme .fctrl .fcap{margin-left:0; width:100%; text-align:left}
+  }
+  /* ── hero ─────────────────────────────────── */
+  .hero{position:relative; overflow:hidden; padding:76px 0 88px;
+    background:
+      radial-gradient(60% 55% at 88% 12%, rgba(10,154,214,.13), transparent 62%),
+      radial-gradient(48% 45% at 6% 88%, rgba(23,191,174,.10), transparent 62%),
+      linear-gradient(168deg, var(--paper) 0%, var(--mist) 46%, var(--ice) 100%);}
+  .hero .vghost{position:absolute; right:-130px; top:-60px; width:620px; opacity:.055; pointer-events:none}
+  .hero-grid{position:relative; display:grid; grid-template-columns:minmax(0,.92fr) minmax(0,1.08fr); gap:54px; align-items:center}
+  .hero h1{font-size:clamp(2.25rem,4.3vw,3.5rem); font-weight:800; letter-spacing:-.035em}
+  .hero h1 .hl{background:linear-gradient(120deg,var(--azure),#22bfe0 60%,var(--turq)); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .hero .eyebrow{display:block; margin-bottom:20px}
+  .hero .lede{margin-top:20px; max-width:44ch; font-size:1.08rem}
+  .hero .acts{display:flex; gap:14px; flex-wrap:wrap; margin-top:32px; align-items:center}
+  .hero .acts .btn{padding:13px 26px; font-size:15px}
+  .chips{display:flex; gap:8px 20px; flex-wrap:wrap; margin-top:30px}
+  .chip{display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); font-size:11.5px; letter-spacing:.02em; color:var(--ink-3)}
+  .chip i{width:7px; height:7px; border-radius:7px; background:var(--turq); flex:none}
+
+  /* ── dashboard mock ───────────────────────── */
+  .mock{border-radius:18px; background:var(--paper); border:1px solid var(--line); box-shadow:var(--sh-lg); overflow:hidden}
+  .mock-bar{display:flex; align-items:center; gap:11px; padding:9px 14px; border-bottom:1px solid var(--line); background:linear-gradient(var(--paper),var(--mist))}
+  .mock-bar .lamps{display:flex; gap:6px}
+  .mock-bar .lamps i{width:9px; height:9px; border-radius:9px; background:var(--line-2)}
+  .mock-bar .ttl{font-family:var(--mono); font-size:11px; color:var(--ink-3); letter-spacing:.02em}
+  .mock-bar .live{margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10px; color:var(--green); letter-spacing:.08em}
+  .mock-bar .live i{width:6px; height:6px; border-radius:6px; background:var(--green)}
+  .mock-body{padding:16px; display:grid; gap:12px}
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:10px}
+  .kpi{background:var(--mist); border:1px solid var(--line); border-radius:12px; padding:11px 12px}
+  .kpi .k{font-family:var(--mono); font-size:9px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); line-height:1.35}
+  .kpi .v{font-family:var(--display); font-weight:700; font-size:22px; margin-top:5px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; color:var(--ink)}
+  .kpi.hi{background:linear-gradient(160deg,var(--azure-soft),#f2fbfe); border-color:#c3e6f6}
+  .kpi.hi .v{color:var(--azure-deep)}
+  .panes{display:grid; grid-template-columns:1fr 1.25fr; gap:12px}
+  .pane{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:13px}
+  .pane .ph{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); margin-bottom:10px}
+  .donut{display:flex; align-items:center; gap:12px}
+  .donut svg{flex:none}
+  .donut .big{font-family:var(--display); font-weight:800; font-size:26px; letter-spacing:-.02em; color:var(--ink); line-height:1}
+  .donut .sm{font-size:11px; color:var(--ink-3); margin-top:3px}
+  .bars{display:flex; align-items:flex-end; gap:6px; height:66px}
+  .bars i{flex:1; border-radius:4px 4px 2px 2px; background:linear-gradient(180deg,#4fc3e8,var(--azure)); display:block}
+  .bars i:nth-child(6){background:linear-gradient(180deg,#5fd6c8,var(--turq))}
+  .barx{display:flex; gap:6px; margin-top:7px; font-family:var(--mono); font-size:8.5px; color:var(--ink-3)}
+  .barx span{flex:1; text-align:center}
+  .alerts{display:grid; gap:7px}
+  .al{display:flex; align-items:center; gap:9px; font-size:11.5px; color:var(--ink-2); background:var(--mist); border:1px solid var(--line); border-radius:9px; padding:7px 10px}
+  .al b{width:6px; height:6px; border-radius:6px; flex:none}
+  .al time{margin-left:auto; font-family:var(--mono); font-size:9.5px; color:var(--ink-3)}
+  .mat{display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:12px; background:linear-gradient(120deg,#0a2740,#124b6e); color:#fff}
+  .mat .ic{width:30px; height:30px; border-radius:9px; background:rgba(255,255,255,.14); display:grid; place-items:center; flex:none}
+  .mat .t{font-size:12px; font-weight:700} .mat .s{font-size:10.5px; color:#9fc4dc}
+
+  /* ── hero: a foto inteira, com o painel logo abaixo ──
+     A imagem aparece completa (a moldura tem a mesma proporção do arquivo,
+     então "cover" não corta nada). O painel é irmão, não fica por cima. */
+  .heroviz{display:grid; gap:14px}
+  /* No painel do hero os indicadores ficam em coluna ao lado do partograma:
+     empilhado, o cartão ficava mais alto que a foto e desequilibrava. */
+  .heroviz .mock-body{grid-template-columns:150px 1fr; align-items:start}
+  .heroviz .kpis{grid-template-columns:1fr; gap:8px}
+  .heroviz .mat{grid-column:1 / -1}
+  /* No estreito volta a empilhar: em duas colunas o partograma espremia e o
+     título quebrava em três linhas. (Precisa vir DEPOIS da regra acima.) */
+  @media (max-width:680px){
+    .heroviz .mock-body{grid-template-columns:1fr}
+    .heroviz .kpis{grid-template-columns:repeat(3,1fr); gap:10px}
+  }
+  .shot{position:relative; aspect-ratio:1712/959; border-radius:20px; overflow:hidden;
+    background-color:#0a2740;
+    background-image:url("hero-clinica.png");
+    background-size:cover; background-position:center; background-repeat:no-repeat;
+    border:1px solid var(--line); box-shadow:var(--sh-md)}
+  .pgh{display:flex; align-items:center; gap:8px; margin-bottom:9px}
+  .pgh .ph{margin:0}
+  .pgh .ac{margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.08em; padding:3px 7px;
+    border-radius:6px; color:#b6382f; background:#fdeceb; border:1px solid #f3c3bf; white-space:nowrap}
+  .pane .pg{width:100%; height:auto; display:block; aspect-ratio:420/224}
+
+  /* ── linha tecnológica dos módulos ────────── */
+  .strip{border-bottom:1px solid var(--line); background:var(--paper); padding:62px 0 66px}
+  .railhead{text-align:center; margin-bottom:44px}
+  .railhead .eyebrow{display:block; margin-bottom:11px}
+  .railhead h2{font-size:clamp(1.35rem,2.4vw,1.75rem); font-weight:700; letter-spacing:-.02em; text-wrap:balance}
+  .rail{position:relative; display:grid; grid-template-columns:repeat(6,1fr); gap:12px}
+  .railline{position:absolute; left:8%; right:8%; top:27px; height:2px; z-index:0; border-radius:2px;
+    background:linear-gradient(90deg, transparent, var(--azure) 10%, var(--turq) 90%, transparent)}
+  .railline::after{content:""; position:absolute; inset:-1px 0; border-radius:3px; opacity:.55;
+    background:linear-gradient(90deg, transparent, var(--turq), transparent); filter:blur(4px)}
+  .node{position:relative; z-index:1; text-align:center; padding:0 4px}
+  .node .ic{width:54px; height:54px; margin:0 auto 15px; border-radius:999px; display:grid; place-items:center;
+    background:var(--paper); border:2px solid #cfe8f6; color:var(--azure-deep);
+    box-shadow:0 0 0 6px var(--paper), 0 8px 20px -10px rgba(10,154,214,.55);
+    transition:transform .18s cubic-bezier(.2,.8,.3,1), border-color .18s, color .18s}
+  .node:hover .ic{transform:translateY(-4px); border-color:var(--azure); color:var(--azure)}
+  .node .ic svg{width:22px; height:22px}
+  .node h3{font-family:var(--sans); font-weight:700; font-size:13px; letter-spacing:-.01em; line-height:1.32; text-wrap:balance}
+  .node p{font-size:11.5px; color:var(--ink-3); margin-top:6px; line-height:1.45}
+
+  /* ── sections ─────────────────────────────── */
+  section{padding:92px 0}
+  .sec-head{max-width:62ch; margin-bottom:44px}
+  .sec-head .eyebrow{display:block; margin-bottom:15px}
+  .sec-head h2{font-size:clamp(1.85rem,3.6vw,2.7rem); font-weight:700}
+  .sec-head p{margin-top:15px; font-size:1.05rem; color:var(--ink-2)}
+
+  /* modules */
+  .mods{display:grid; grid-template-columns:repeat(3,1fr); gap:18px}
+  .mod{position:relative; background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:24px; transition:transform .16s, box-shadow .16s, border-color .16s}
+  .mod:hover{transform:translateY(-4px); box-shadow:var(--sh-md); border-color:var(--line-2)}
+  .mod .ic{width:42px; height:42px; border-radius:12px; display:grid; place-items:center; background:linear-gradient(150deg,var(--azure-soft),#eefaff); color:var(--azure-deep); margin-bottom:15px}
+  .mod .ic svg{width:21px; height:21px}
+  .mod h3{font-family:var(--sans); font-weight:700; font-size:1.05rem; letter-spacing:-.015em}
+  .mod p{font-size:13.5px; color:var(--ink-2); margin-top:8px; line-height:1.56}
+  .mod .tags{margin-top:14px; display:flex; flex-wrap:wrap; gap:6px}
+  .tag{font-family:var(--mono); font-size:10px; letter-spacing:.02em; color:var(--azure-deep); background:var(--azure-soft); border-radius:6px; padding:3px 8px}
+
+  /* essence (dark) */
+  .essence{position:relative; overflow:hidden; background:linear-gradient(140deg,#07203a 0%,#0a2740 42%,#0d3a5c 100%); color:#fff}
+  .essence .vghost{position:absolute; right:-90px; bottom:-120px; width:520px; opacity:.09; pointer-events:none}
+  .essence .wrap{position:relative; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.88fr); gap:56px; align-items:center}
+  .essence h2{color:#fff; font-size:clamp(1.9rem,3.6vw,2.7rem)}
+  .essence h2 .hl{background:linear-gradient(110deg,#4fd6e8,var(--turq)); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .essence p.lede{color:#b3cfe2; margin-top:18px; max-width:46ch}
+  .essence .eyebrow{color:#4fd6e8; display:block; margin-bottom:15px}
+  .pillars{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:32px}
+  .pil{display:flex; gap:11px; align-items:flex-start}
+  .pil .ic{width:34px; height:34px; border-radius:10px; background:rgba(79,214,232,.14); color:#4fd6e8; display:grid; place-items:center; flex:none}
+  .pil .ic svg{width:17px; height:17px}
+  .pil b{display:block; font-size:13.5px; font-weight:700; color:#fff}
+  .pil span{font-size:12px; color:#9fc4dc; line-height:1.45}
+  .facts{display:grid; gap:14px}
+  .fct{display:flex; align-items:center; gap:16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.10); border-radius:14px; padding:16px 18px}
+  .fct .n{font-family:var(--display); font-weight:800; font-size:30px; letter-spacing:-.03em; color:#4fd6e8; line-height:1; min-width:78px; font-variant-numeric:tabular-nums}
+  .fct .t{font-size:13px; font-weight:700; color:#fff; line-height:1.3}
+  .fct .s{font-size:11.5px; color:#9fc4dc; margin-top:2px; line-height:1.4}
+
+  /* brasil */
+  .br{display:grid; grid-template-columns:repeat(4,1fr); gap:18px}
+  .brc{padding:22px; border-radius:14px; background:var(--paper); border:1px solid var(--line); border-top:3px solid var(--azure)}
+  .brc h3{font-family:var(--sans); font-size:14.5px; font-weight:700}
+  .brc p{font-size:12.5px; color:var(--ink-2); margin-top:8px; line-height:1.55}
+
+  /* cta */
+  .cta{text-align:center; padding:100px 0; background:linear-gradient(170deg,var(--paper),var(--mist))}
+  .cta h2{font-size:clamp(2rem,4.2vw,3rem)}
+  .cta p{margin:18px auto 0; max-width:48ch; font-size:1.08rem; color:var(--ink-2)}
+  .cta .acts{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:34px}
+  .cta .acts .btn{padding:14px 30px; font-size:15px}
+  .cta .contact{margin-top:24px; font-family:var(--mono); font-size:13px; color:var(--ink-3)}
+  .cta .contact a{color:var(--azure-deep); font-weight:700}
+  .cta .contact a:hover{text-decoration:underline}
+
+  /* footer */
+  footer{background:var(--navy); color:#fff; padding:40px 0}
+  footer .wrap{display:flex; align-items:center; gap:28px; flex-wrap:wrap}
+  footer .tag{background:none; color:#7ba6c4; font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; padding:0; margin:0 auto; text-align:center}
+  footer .fl{display:flex; gap:22px; font-size:13px; color:#9fc4dc}
+  footer .fl a:hover{color:#fff}
+  .fbot{border-top:1px solid rgba(255,255,255,.10); margin-top:26px; padding-top:18px; font-family:var(--mono); font-size:11px; color:#6f96b3; display:flex; gap:14px; flex-wrap:wrap}
+  .fbot span{margin-left:auto}
+
+  /* motion */
+  @keyframes rise{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
+  @keyframes draw{from{stroke-dashoffset:302} to{stroke-dashoffset:48}}
+  @keyframes grow{from{transform:scaleY(.15); opacity:.3} to{transform:none; opacity:1}}
+  .an{animation:rise .7s cubic-bezier(.2,.75,.3,1) both}
+  .an-1{animation-delay:.06s}.an-2{animation-delay:.14s}.an-3{animation-delay:.22s}.an-4{animation-delay:.3s}
+  .donut circle.val{stroke-dasharray:302; stroke-dashoffset:48; animation:draw 1.4s .35s cubic-bezier(.2,.75,.3,1) both}
+  .bars i{transform-origin:bottom; animation:grow .8s cubic-bezier(.2,.8,.3,1) both}
+  .bars i:nth-child(1){animation-delay:.30s}.bars i:nth-child(2){animation-delay:.37s}.bars i:nth-child(3){animation-delay:.44s}
+  .bars i:nth-child(4){animation-delay:.51s}.bars i:nth-child(5){animation-delay:.58s}.bars i:nth-child(6){animation-delay:.65s}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important; transition:none!important}
+    .donut circle.val{stroke-dashoffset:48}}
+
+  /* ══════════ FILME EMBUTIDO (tudo escopado em #filme) ══════════ */
+  .filmsec{background:linear-gradient(180deg,var(--mist),var(--paper)); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+  #filme{width:100%; max-width:980px; margin:0 auto;
+    --fink:#eaf3fa; --fdim:#9fc0d8; --ffaint:#6a8ba6; --fcyan:#4fd6e8; --fturq:#2dd4bf; --famber:#f0a63c; --fgreen:#3ec98b}
+  /* O palco é um "canvas" 16:9: TUDO lá dentro é medido em cqw (% da largura
+     do palco), então o conteúdo encolhe junto com ele e nunca corta. */
+  /* O palco é um canvas 16:9: tudo lá dentro é medido em cqw (% da largura do
+     palco), então conteúdo e moldura encolhem juntos e nada é cortado. */
+  #filme .stage{position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; border-radius:16px; container-type:inline-size;
+    border:1px solid #16334f; color:var(--fink); font-family:var(--sans);
+    background:
+      linear-gradient(rgba(79,214,232,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(79,214,232,.05) 1px, transparent 1px),
+      radial-gradient(80% 70% at 50% 0%, #0e3554 0%, #0a2740 46%, #061a2e 100%);
+    background-size:3.52cqw 3.52cqw, 3.52cqw 3.52cqw, auto;
+    box-shadow:0 40px 90px -48px rgba(4,20,36,.85)}
+  #filme .stage::after{content:""; position:absolute; inset:0; pointer-events:none; z-index:2;
+    background:radial-gradient(120% 110% at 50% 42%, transparent 50%, rgba(2,10,20,.66) 100%)}
+  #filme .vgh{position:absolute; right:-6%; bottom:-22%; width:52%; opacity:.06; pointer-events:none}
+
+  #filme .scene{position:absolute; inset:0; display:grid; place-content:center; justify-items:center;
+    text-align:center; padding:0 7% 8%; opacity:0; visibility:hidden; transition:opacity .5s ease}
+  #filme .scene.on{opacity:1; visibility:visible}
+  #filme .scene:not(.on) .a{animation:none!important}
+  #filme .a{animation:fup .9s cubic-bezier(.16,.84,.28,1) both}
+  @keyframes fup{from{opacity:0; transform:translateY(2cqw)} to{opacity:1; transform:none}}
+  @keyframes fpop{from{opacity:0; transform:scale(.84)} to{opacity:1; transform:none}}
+  @keyframes fdraw{to{stroke-dashoffset:0}}
+  @keyframes fwipeR{from{clip-path:inset(0 100% 0 0)} to{clip-path:inset(0 0 0 0)}}
+  @keyframes fgrow{from{transform:scaleX(0)} to{transform:none}}
+  @keyframes fpulse{0%,100%{opacity:.2; transform:scale(1)} 50%{opacity:.48; transform:scale(1.09)}}
+  @keyframes fslide{from{transform:translateX(0)} to{transform:translateX(74cqw)}}
+
+  /* tipografia do filme */
+  #filme .eyeb{font-family:var(--mono); font-size:1.11cqw; letter-spacing:.34em; text-transform:uppercase; color:var(--fcyan)}
+  #filme .big{font-family:var(--display); font-weight:800; letter-spacing:-.035em; line-height:1.06; color:var(--fink);
+       font-size:4.26cqw; text-wrap:balance}
+  #filme .med{font-family:var(--display); font-weight:700; letter-spacing:-.028em; line-height:1.12; color:var(--fink);
+       font-size:3.15cqw; text-wrap:balance}
+  #filme .sm{font-family:var(--display); font-weight:700; letter-spacing:-.022em; line-height:1.15; color:var(--fink);
+       font-size:2.4cqw; text-wrap:balance}
+  #filme .sub{color:var(--fdim); font-size:1.57cqw; line-height:1.55; max-width:48ch; margin-top:1.3cqw}
+  #filme .hl{background:linear-gradient(105deg,var(--fcyan),var(--fturq)); -webkit-background-clip:text; background-clip:text; color:transparent}
+
+  /* marca */
+  #filme .lock{display:flex; align-items:center; gap:1.85cqw}
+  #filme .lock svg{width:7.41cqw; height:auto; flex:none}
+  #filme .fwm{font-family:var(--display); font-weight:700; font-size:4.26cqw; letter-spacing:.17em; line-height:1; color:#fff}
+  #filme .fwm b{color:#38bdf8; font-weight:700}
+  #filme .fwms{display:block; font-family:var(--mono); font-size:.93cqw; letter-spacing:.46em; color:var(--fdim); margin-top:.83cqw}
+
+  /* chips de dado (sobrescreve os chips claros do topo do site) */
+  #filme .chips{display:flex; flex-wrap:wrap; gap:.83cqw; justify-content:center; margin-top:1.85cqw}
+  #filme .chip{display:inline-flex; align-items:center; gap:.46cqw;
+    font-family:var(--mono); font-size:1.02cqw; letter-spacing:.05em; color:var(--fdim);
+    border:1px solid rgba(79,214,232,.26); border-radius:.56cqw; padding:.46cqw .93cqw;
+    background:rgba(37,169,224,.08); animation:fpop .55s both}
+  #filme .chip b{color:var(--fcyan); font-weight:700}
+
+  /* 1 — traçado de sinais vitais */
+  #filme .ecg{width:min(100%,74cqw); margin-top:1.5cqw}
+  #filme .ecg svg{width:100%; height:auto; display:block; aspect-ratio:900/200}
+  #filme .ecg .ln{fill:none; stroke:var(--fturq); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;
+    stroke-dasharray:1500; stroke-dashoffset:1500}
+  #filme .scene.on .ecg .ln{animation:fdraw 3.4s 1.6s ease-out both}
+  #filme .ecg .base{stroke:#1b3e5c; stroke-width:1}
+
+  /* 2 — moldura da plataforma */
+  #filme .ui{width:min(100%,60cqw); margin-top:1.85cqw; border:1px solid rgba(79,214,232,.2); border-radius:1.02cqw;
+    background:rgba(7,28,47,.66); overflow:hidden}
+  #filme .uib{display:flex; align-items:center; gap:.56cqw; padding:.65cqw .93cqw; border-bottom:1px solid rgba(79,214,232,.14)}
+  #filme .uib i{width:.65cqw; height:.65cqw; border-radius:.65cqw; background:#1d4160; display:block}
+  #filme .uib span{font-family:var(--mono); font-size:.83cqw; letter-spacing:.1em; color:var(--ffaint); margin-left:.46cqw}
+  #filme .uik{display:grid; grid-template-columns:repeat(4,1fr); gap:.65cqw; padding:.83cqw}
+  #filme .uik div{background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); border-radius:.65cqw;
+    padding:.65cqw; animation:fpop .5s both}
+  #filme .uik b{display:block; font-family:var(--display); font-weight:800; font-size:1.85cqw; line-height:1; color:#fff}
+  #filme .uik span{display:block; font-family:var(--mono); font-size:.74cqw; color:var(--ffaint); margin-top:.37cqw; letter-spacing:.06em}
+
+  /* 3 — a jornada */
+  #filme .track{position:relative; width:min(100%,80cqw); margin-top:2.2cqw}
+  #filme .trl{position:absolute; left:2%; right:2%; top:50%; height:.19cqw; border-radius:.19cqw; transform:translateY(-50%);
+    background:linear-gradient(90deg,transparent,#25a9e0 8%,var(--fturq) 92%,transparent); opacity:.5}
+  #filme .chain{position:relative; display:flex; align-items:center; gap:.93cqw; flex-wrap:wrap; justify-content:center}
+  #filme .nd{font-family:var(--mono); font-size:1.11cqw; letter-spacing:.05em; color:var(--fink); white-space:nowrap;
+    border:1px solid rgba(79,214,232,.34); border-radius:999px; padding:.65cqw 1.2cqw;
+    background:linear-gradient(180deg,rgba(14,53,84,.95),rgba(10,39,64,.95)); animation:fpop .5s both}
+  #filme .ar{color:var(--fcyan); font-size:1.2cqw; animation:fpop .5s both}
+
+  /* consoles dos módulos (4–7) */
+  #filme .con{width:min(100%,64cqw); margin-top:1.6cqw; border:1px solid rgba(79,214,232,.2); border-radius:1.11cqw;
+    background:rgba(7,28,47,.74); padding:.93cqw 1.11cqw 1.02cqw; text-align:left;
+    box-shadow:0 2cqw 4cqw -2cqw rgba(2,12,24,.9)}
+  #filme .conh{display:flex; align-items:center; gap:.65cqw; margin-bottom:.83cqw}
+  #filme .conh .dt{width:.65cqw; height:.65cqw; border-radius:.65cqw; background:var(--fturq); flex:none}
+  #filme .conh .tt{font-family:var(--mono); font-size:.9cqw; letter-spacing:.12em; text-transform:uppercase; color:var(--fdim)}
+  #filme .conh .st{margin-left:auto; font-family:var(--mono); font-size:.83cqw; letter-spacing:.08em; color:var(--fcyan)}
+
+  /* 4 — fila do PS */
+  #filme .q{display:grid; gap:.42cqw}
+  #filme .qr{display:grid; grid-template-columns:.46cqw 7.5cqw 1fr auto auto; align-items:center; gap:.83cqw;
+    background:rgba(255,255,255,.045); border:1px solid rgba(255,255,255,.075); border-radius:.56cqw;
+    padding:.46cqw .74cqw; animation:fup .5s both}
+  #filme .qr .mc{width:.46cqw; height:1.6cqw; border-radius:.28cqw}
+  #filme .qr .nm{font-size:1.02cqw; font-weight:700; color:#fff; white-space:nowrap}
+  #filme .qr .sx{font-family:var(--mono); font-size:.83cqw; color:var(--ffaint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  #filme .qr .tm{font-family:var(--mono); font-size:.88cqw; color:var(--fdim); font-variant-numeric:tabular-nums}
+  #filme .qr .bd{font-family:var(--mono); font-size:.78cqw; letter-spacing:.06em; padding:.24cqw .6cqw; border-radius:.42cqw; white-space:nowrap}
+  #filme .kline{display:flex; gap:1.85cqw; margin-bottom:.83cqw}
+  #filme .kline div{display:flex; align-items:baseline; gap:.46cqw}
+  #filme .kline b{font-family:var(--display); font-weight:800; font-size:1.85cqw; line-height:1; color:#fff}
+  #filme .kline span{font-family:var(--mono); font-size:.78cqw; letter-spacing:.08em; color:var(--ffaint); text-transform:uppercase}
+
+  /* 5 — leitos */
+  #filme .bf{display:grid; grid-template-columns:auto 1fr; gap:1.5cqw; align-items:center}
+  #filme .dn{display:flex; align-items:center; gap:.93cqw}
+  #filme .dn svg{width:7.4cqw; height:7.4cqw; flex:none}
+  #filme .dn .val{stroke-dasharray:302; stroke-dashoffset:302}
+  #filme .scene.on .dn .val{animation:fdraw 1.5s .5s cubic-bezier(.2,.8,.3,1) forwards}
+  #filme .dn b{display:block; font-family:var(--display); font-weight:800; font-size:2.6cqw; line-height:1; color:#fff}
+  #filme .dn span{display:block; font-family:var(--mono); font-size:.83cqw; color:var(--ffaint); margin-top:.37cqw}
+  #filme .beds{display:grid; grid-template-columns:repeat(12,1fr); gap:.32cqw}
+  #filme .beds i{aspect-ratio:1; border-radius:.24cqw; display:block; width:auto; height:auto; animation:fpop .4s both}
+  #filme .beds i.o{background:rgba(37,169,224,.85)}
+  #filme .beds i.l{background:rgba(255,255,255,.11)}
+  #filme .beds i.h{background:rgba(240,166,60,.9)}
+  #filme .beds i.a{background:rgba(23,191,174,.9)}
+  #filme .lgd{display:flex; gap:1.11cqw; margin-top:.83cqw; font-family:var(--mono); font-size:.78cqw; color:var(--ffaint)}
+  #filme .lgd em{display:inline-block; width:.65cqw; height:.65cqw; border-radius:.2cqw; margin-right:.37cqw; vertical-align:middle}
+
+  /* 6 — farmácia */
+  #filme .steps{display:flex; align-items:center; gap:.56cqw; justify-content:space-between}
+  #filme .sp{flex:1; display:flex; align-items:center; gap:.56cqw; background:rgba(255,255,255,.05);
+    border:1px solid rgba(62,201,139,.3); border-radius:.56cqw; padding:.56cqw .74cqw; animation:fpop .45s both}
+  #filme .sp i{width:1.3cqw; height:1.3cqw; border-radius:1.3cqw; background:rgba(62,201,139,.18); color:var(--fgreen);
+    display:grid; place-items:center; flex:none}
+  #filme .sp i svg{width:.83cqw; height:.83cqw}
+  #filme .sp b{font-size:.93cqw; font-weight:700; color:#fff; white-space:nowrap}
+  #filme .sarr{color:var(--ffaint); font-size:1cqw; flex:none}
+  #filme .trow{display:flex; align-items:center; gap:.74cqw; margin-top:.74cqw; padding:.56cqw .74cqw; border-radius:.56cqw;
+    background:rgba(240,166,60,.12); border:1px solid rgba(240,166,60,.4); animation:fup .5s both}
+  #filme .trow .tg{font-family:var(--mono); font-size:.78cqw; letter-spacing:.08em; color:var(--famber); white-space:nowrap;
+    border:1px solid rgba(240,166,60,.5); border-radius:.42cqw; padding:.2cqw .56cqw}
+  #filme .trow p{margin:0; font-size:.93cqw; color:#ffd9a3}
+  #filme .fmono{font-family:var(--mono); font-size:.83cqw; color:var(--ffaint); margin-top:.74cqw; letter-spacing:.06em}
+
+  /* 7 — centro cirúrgico */
+  #filme .sch{display:grid; gap:.56cqw}
+  #filme .srow{display:grid; grid-template-columns:5.5cqw 1fr; gap:.83cqw; align-items:center}
+  #filme .srow .rm{font-family:var(--mono); font-size:.88cqw; color:var(--fdim); letter-spacing:.06em}
+  #filme .tl{position:relative; height:1.66cqw; background:rgba(255,255,255,.05); border-radius:.42cqw; overflow:hidden}
+  #filme .blk{position:absolute; top:0; bottom:0; border-radius:.42cqw; display:grid; place-items:center;
+    font-family:var(--mono); font-size:.72cqw; color:#04212e; font-weight:700; transform-origin:left;
+    animation:fgrow .55s both}
+  #filme .blk.b1{background:linear-gradient(180deg,#5fd6ea,#25a9e0)}
+  #filme .blk.b2{background:linear-gradient(180deg,#5fd6c8,#17bfae)}
+  #filme .blk.b3{background:linear-gradient(180deg,#ffc46b,#f0a63c)}
+  #filme .hrs{display:grid; grid-template-columns:5.5cqw 1fr; gap:.83cqw; margin-top:.46cqw}
+  #filme .hrs div{display:flex; justify-content:space-between; font-family:var(--mono); font-size:.72cqw; color:var(--ffaint)}
+
+  /* 8 — o ecossistema */
+  #filme .rg{width:min(100%,76cqw); margin-top:1.5cqw}
+  #filme .rg svg{width:100%; height:auto; display:block; aspect-ratio:900/300}
+  #filme .rg .lb{font-family:var(--mono); font-size:13px; letter-spacing:.04em; fill:var(--fdim); opacity:0}
+  #filme .scene.on .rg .lb{animation:fpop .45s both}
+  #filme .rg .dot{opacity:0}
+  #filme .scene.on .rg .dot{animation:fpop .4s both}
+  #filme .rg .ln{fill:none; stroke-width:1.5; stroke-linecap:round; stroke-dasharray:300; stroke-dashoffset:300}
+  #filme .scene.on .rg .ln{animation:fdraw 1.1s ease-out both}
+  #filme .rg .hub{opacity:0}
+  #filme .scene.on .rg .hub{animation:fpop .6s 4.4s both}
+  #filme .rg .halo{transform-origin:450px 150px}
+  #filme .scene.on .rg .halo{animation:fpulse 2.8s 5s ease-in-out infinite}
+
+  /* 9 — a inteligência */
+  #filme .dz{display:grid; grid-template-columns:1.3fr 1fr; gap:1.5cqw; align-items:center; width:min(100%,76cqw); margin-top:1.5cqw}
+  #filme .pgbox{border:1px solid rgba(79,214,232,.2); border-radius:1.02cqw; background:rgba(7,28,47,.74); padding:.83cqw .93cqw .65cqw}
+  #filme .pgbox svg{width:100%; height:auto; display:block; aspect-ratio:420/224}
+  #filme .pg-lines{clip-path:inset(0 100% 0 0)}
+  #filme .scene.on .pg-lines{animation:fwipeR 1.1s .8s ease-out both}
+  #filme .pg-curve{stroke-dasharray:430; stroke-dashoffset:430}
+  #filme .scene.on .pg-curve{animation:fdraw 2.4s 1.6s ease-out both}
+  #filme .pg-pt{opacity:0}
+  #filme .scene.on .pg-pt{animation:fpop .42s both}
+  #filme .alerts{display:grid; gap:.65cqw; text-align:left}
+  #filme .al{display:flex; align-items:flex-start; gap:.74cqw; border-radius:.74cqw; padding:.74cqw .83cqw;
+    border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.05); animation:fup .55s both}
+  #filme .al em{width:.65cqw; height:.65cqw; border-radius:.65cqw; flex:none; margin-top:.46cqw}
+  #filme .al b{display:block; width:auto; height:auto; border-radius:0; flex:initial;
+    font-size:.98cqw; font-weight:700; color:#fff; line-height:1.3}
+  #filme .al span{display:block; font-family:var(--mono); font-size:.78cqw; color:var(--ffaint); margin-top:.28cqw}
+  #filme .al.r{border-color:rgba(232,88,95,.42); background:rgba(232,88,95,.12)}
+  #filme .al.m{border-color:rgba(240,166,60,.42); background:rgba(240,166,60,.1)}
+  #filme .al.c{border-color:rgba(79,214,232,.4); background:rgba(79,214,232,.1)}
+
+  /* 10 — command center */
+  #filme .cmd{width:min(100%,78cqw); margin-top:1.5cqw; border:1px solid rgba(79,214,232,.24); border-radius:1.11cqw;
+    background:linear-gradient(180deg,rgba(14,53,84,.72),rgba(7,28,47,.82)); padding:1.02cqw; position:relative; overflow:hidden}
+  #filme .cmd .sweep{position:absolute; top:0; bottom:0; left:-8cqw; width:8cqw; pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(79,214,232,.16),transparent)}
+  #filme .scene.on .cmd .sweep{animation:fslide 3.2s 1.2s ease-in-out infinite}
+  #filme .cmdg{display:grid; grid-template-columns:repeat(5,1fr); gap:.74cqw; position:relative}
+  #filme .mp{background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09); border-radius:.74cqw;
+    padding:.74cqw; text-align:left; animation:fpop .5s both}
+  #filme .mp u{display:block; font-family:var(--mono); font-size:.7cqw; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ffaint); text-decoration:none}
+  #filme .mp b{display:block; width:auto; height:auto; border-radius:0; flex:initial;
+    font-family:var(--display); font-weight:800; font-size:1.66cqw; line-height:1; color:#fff; margin-top:.37cqw}
+  #filme .mp .bars{display:flex; align-items:flex-end; gap:.19cqw; height:1.85cqw; margin-top:.46cqw}
+  #filme .mp .bars i{flex:1; border-radius:.14cqw .14cqw 0 0; background:linear-gradient(180deg,#5fd6ea,#25a9e0);
+    display:block; width:auto; animation:none}
+  #filme .mp .dots{display:flex; gap:.24cqw; margin-top:.56cqw; flex-wrap:wrap}
+  #filme .mp .dots i{width:.56cqw; height:.56cqw; border-radius:.56cqw; display:block; flex:none; animation:none}
+
+  /* legenda falada */
+  #filme .cc{position:absolute; left:8%; right:8%; bottom:2.2cqw; z-index:4; text-align:center; pointer-events:none;
+    font-size:1.28cqw; line-height:1.45; color:#d4e8f5; min-height:3.8cqw;
+    text-shadow:0 .09cqw .28cqw rgba(2,10,20,.95), 0 0 .74cqw rgba(2,10,20,.8)}
+  #filme .cc.off{display:none}
+  /* poster + controles */
+  #filme .poster{position:absolute; inset:0; z-index:6; display:grid; place-items:center; cursor:pointer;
+    background:rgba(6,26,46,.5); transition:opacity .35s}
+  #filme.playing .poster{opacity:0; pointer-events:none}
+  #filme .playbtn{width:76px; height:76px; border-radius:999px; border:0; cursor:pointer; display:grid; place-items:center;
+    background:linear-gradient(140deg,var(--fcyan),var(--fturq)); color:#053330;
+    box-shadow:0 16px 44px -12px rgba(79,214,232,.75); transition:transform .16s}
+  #filme .poster:hover .playbtn{transform:scale(1.08)}
+  #filme .plabel{position:absolute; bottom:12%; font-family:var(--mono); font-size:11px; letter-spacing:.24em; text-transform:uppercase; color:#bcd9ea}
+  #filme .fbar{height:3px; background:#dbe8f3; border-radius:3px; overflow:hidden; margin-top:14px}
+  #filme .fbar i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--azure),var(--fcyan),var(--fturq)); border-radius:3px}
+  #filme .fctrl{display:flex; align-items:center; gap:11px; margin-top:12px}
+  #filme .fctrl button{font-family:var(--sans); font-weight:600; font-size:13px; color:var(--ink); cursor:pointer;
+    background:var(--paper); border:1px solid var(--line-2); border-radius:999px; padding:8px 16px}
+  #filme .fctrl button:hover{border-color:var(--azure); color:var(--azure-deep)}
+  #filme .fctrl .fcap{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-left:auto; text-align:right}
+
+  /* ── celular ──────────────────────────────────
+     Rede de segurança para navegador sem container queries (iOS 15 e
+     anteriores): o palco deixa de ser 16:9 fixo, a cena ocupa a altura que
+     precisar e os tamanhos passam a ser medidos na largura da tela. Fica
+     mais simples, mas nada corta. */
+  @supports not (container-type: inline-size){
+    #filme .stage{aspect-ratio:auto}
+    #filme .scene{position:static; display:none; padding:7vw 6vw 6vw; opacity:1; visibility:visible}
+    #filme .scene.on{display:grid}
+    #filme .eyeb{font-size:2.6vw} #filme .big{font-size:6.4vw} #filme .med{font-size:4.8vw}
+    #filme .sm{font-size:3.6vw} #filme .sub{font-size:2.6vw}
+    #filme .cc{position:static; margin-top:4vw; font-size:2.4vw; min-height:0; left:auto; right:auto; bottom:auto}
+  }
+  /* Dedo não é mouse: alvo maior onde não há hover. */
+  @media (hover:none){
+    #filme .fctrl button{padding:11px 18px; font-size:14px}
+    .btn{padding:13px 24px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    #filme .a,#filme .chip,#filme .nd,#filme .ar,#filme .qr,#filme .sp,#filme .trow,
+    #filme .beds i,#filme .blk,#filme .mp,#filme .al,#filme .uik div{animation:none!important}
+    #filme .ecg .ln,#filme .pg-curve,#filme .rg .ln{stroke-dashoffset:0!important}
+    #filme .pg-lines{clip-path:none!important}
+    #filme .rg .hub,#filme .rg .lb,#filme .rg .dot,#filme .pg-pt{opacity:1!important}
+    #filme .cmd .sweep{display:none}
+  }
+
+  /* responsive */
+  @media (max-width:1080px){
+    .hero-grid{grid-template-columns:1fr; gap:44px}
+    .essence .wrap{grid-template-columns:1fr; gap:40px}
+    .rail{grid-template-columns:repeat(3,1fr); row-gap:34px}
+    .railline{display:none}
+  }
+  @media (max-width:820px){
+    .mods{grid-template-columns:1fr 1fr}
+    .br{grid-template-columns:1fr 1fr}
+    nav.main a.nl{display:none}
+    .panes{grid-template-columns:1fr}
+    .pillars{grid-template-columns:1fr}
+  }
+  /* No estreito o card sai de cima da foto e desce: uma faixa de foto no topo
+     e o painel logo abaixo, dentro da mesma moldura. Sem isso o card estoura. */
+  @media (max-width:680px){
+  }
+  @media (max-width:600px){
+    .mods{grid-template-columns:1fr}
+    .br{grid-template-columns:1fr}
+    .rail{grid-template-columns:repeat(2,1fr); row-gap:30px}
+    .kpis{grid-template-columns:1fr 1fr}
+    section{padding:64px 0}
+  }
+  :focus-visible{outline:2.5px solid var(--azure); outline-offset:3px; border-radius:8px}
+</style>
+</head>
+<body>
+
+<!-- ══ the Valentrax V, rebuilt in vector ══ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <linearGradient id="vL" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#9cc9e6"/><stop offset=".45" stop-color="#3f86b8"/><stop offset="1" stop-color="#0a2740"/>
+  </linearGradient>
+  <linearGradient id="vR" x1="1" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2fb8e6"/><stop offset=".55" stop-color="#0f8ec4"/><stop offset="1" stop-color="#0a5c88"/>
+  </linearGradient>
+  <linearGradient id="vLd" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#cfe6f5"/><stop offset=".5" stop-color="#5aa3cf"/><stop offset="1" stop-color="#17557f"/>
+  </linearGradient>
+  <linearGradient id="vRd" x1="1" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5fd6ea"/><stop offset=".55" stop-color="#23a3d6"/><stop offset="1" stop-color="#1b7aa8"/>
+  </linearGradient>
+  <g id="vmark">
+    <path d="M5 7 L20.5 7 L37 52.5 L30.5 58 Z" fill="url(#vL)"/>
+    <path d="M59 7 L43.5 7 L27 52.5 L33.5 58 Z" fill="url(#vR)"/>
+    <path d="M30.5 58 L37 52.5 L32 39 L27 52.5 Z" fill="#0a2740" opacity=".55"/>
+  </g>
+  <g id="vmark-d">
+    <path d="M5 7 L20.5 7 L37 52.5 L30.5 58 Z" fill="url(#vLd)"/>
+    <path d="M59 7 L43.5 7 L27 52.5 L33.5 58 Z" fill="url(#vRd)"/>
+    <path d="M30.5 58 L37 52.5 L32 39 L27 52.5 Z" fill="#08304d" opacity=".5"/>
+  </g>
+
+  <!-- ══ a marca oficial da Valentrax: o hub de 8 raios ══ -->
+  <g id="vxr">
+    <path d="M45 35.4C51 34.6 55.5 32.6 59 29.6" stroke="#2dd4bf" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+    <circle cx="60.6" cy="28.2" r="3" fill="#2dd4bf"/>
+  </g>
+  <g id="vxb">
+    <path d="M45 35.4C51 34.6 55.5 32.6 59 29.6" stroke="#38bdf8" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+    <circle cx="60.6" cy="28.2" r="2.3" fill="#38bdf8"/>
+  </g>
+  <g id="vxmark">
+    <use href="#vxr"/><use href="#vxr" transform="rotate(90 36 36)"/>
+    <use href="#vxr" transform="rotate(180 36 36)"/><use href="#vxr" transform="rotate(270 36 36)"/>
+    <use href="#vxb" transform="rotate(45 36 36)"/><use href="#vxb" transform="rotate(135 36 36)"/>
+    <use href="#vxb" transform="rotate(225 36 36)"/><use href="#vxb" transform="rotate(315 36 36)"/>
+    <circle cx="36" cy="36" r="8.4" fill="#2dd4bf"/>
+  </g>
+  <g id="ck"><path d="M20 6 L9 17 L4 12" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g id="wa"><path d="M19.05 4.91A9.82 9.82 0 0 0 12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.86 9.86 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.91-7.02M12.05 20.18h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.39c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.69 8.24-8.23 8.24m4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.79.97-.14.16-.29.18-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.5.11-.11.25-.29.37-.43.13-.15.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.84-.2-.49-.4-.42-.56-.43h-.47c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.08.15-1.18-.06-.1-.22-.17-.47-.29"/></g>
+</defs></svg>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Valentrax — início">
+      <svg class="mark" width="40" height="40" viewBox="0 0 72 72"><use href="#vxmark"/></svg>
+      <span><span class="wm">VALENTRA<b>X</b></span><span class="wmsub">HEALTHCARE&nbsp;OPERATIONS</span></span>
+    </a>
+    <nav class="main">
+      <a class="nl" href="#modulos">Módulos</a>
+      <a class="nl" href="#filmsec">Vídeo</a>
+      <a class="nl" href="#essencia">Essência</a>
+      <a class="nl" href="#contato">Contato</a>
+      <a class="btn btn-primary" href="https://www.valentrax.com.br"><span class="full">Acessar Plataforma</span><span class="short">Entrar</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ══════════ HERO ══════════ -->
+  <section class="hero">
+    <svg class="vghost" viewBox="0 0 64 64" aria-hidden="true"><use href="#vmark"/></svg>
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow an an-1">Tecnologia · Dados · Pessoas</span>
+        <h1 class="an an-2">Uma plataforma <span class="hl">inteligente</span> para um hospital mais seguro, eficiente e conectado.</h1>
+        <p class="lede an an-3">A Valentrax integra pessoas, processos e dados do pronto-socorro à alta — para que a decisão chegue antes do problema.</p>
+        <div class="acts an an-4">
+          <a class="btn btn-primary" href="#contato">Conheça a plataforma
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a>
+          <a class="btn btn-outline" href="#filmsec" data-play>
+            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5.2v13.6L19 12z"/></svg>
+            Assista ao vídeo</a>
+        </div>
+        <div class="chips an an-4">
+          <span class="chip"><i></i>SUS nativo — SIGTAP, AIH e BPA</span>
+          <span class="chip"><i></i>Registro clínico sem rasura</span>
+          <span class="chip"><i></i>Conforme a LGPD</span>
+        </div>
+      </div>
+
+      <!-- a foto inteira e, abaixo dela, o painel do sistema -->
+      <div class="heroviz an an-3">
+        <div class="shot" role="img" aria-label="Profissional de enfermagem acompanhando os indicadores do hospital na Valentrax"></div>
+        <div class="mock" role="img" aria-label="Painel da Valentrax: indicadores do hospital e o partograma da maternidade em acompanhamento. Números ilustrativos.">
+          <div class="mock-bar">
+            <span class="lamps"><i></i><i></i><i></i></span>
+            <span class="ttl">valentrax &middot; centro de monitoramento</span>
+            <span class="live"><i></i>TEMPO REAL</span>
+          </div>
+          <div class="mock-body">
+            <div class="kpis">
+              <div class="kpi hi"><div class="k">Internados</div><div class="v">248</div></div>
+              <div class="kpi"><div class="k">Em trabalho de parto</div><div class="v">6</div></div>
+              <div class="kpi"><div class="k">Aguardando leito</div><div class="v">7</div></div>
+            </div>
+            <div class="pane">
+              <div class="pgh">
+                <span class="ph">Maternidade &middot; partograma &middot; leito 302</span>
+                <span class="ac">A&Ccedil;&Atilde;O</span>
+              </div>
+              <svg class="pg" viewBox="0 0 420 224" role="img" aria-label="Partograma: a curva de dilatação cruzando a linha de ação da OMS">
+                <g stroke="#e2edf5" stroke-width="1">
+                  <line x1="40" y1="200" x2="404" y2="200"/><line x1="40" y1="140" x2="404" y2="140"/>
+                  <line x1="40" y1="80" x2="404" y2="80"/><line x1="40" y1="20" x2="404" y2="20"/>
+                </g>
+                <line x1="40" y1="14" x2="40" y2="200" stroke="#c7dcec" stroke-width="1.2"/>
+                <g fill="#6d8aa3" font-family="JetBrains Mono, monospace" font-size="9.5">
+                  <text x="32" y="203" text-anchor="end">4</text><text x="32" y="143" text-anchor="end">6</text>
+                  <text x="32" y="83" text-anchor="end">8</text><text x="32" y="23" text-anchor="end">10</text>
+                  <text x="40" y="216" text-anchor="middle">0h</text><text x="148" y="216" text-anchor="middle">3h</text>
+                  <text x="256" y="216" text-anchor="middle">6h</text><text x="400" y="216" text-anchor="middle">10h</text>
+                </g>
+                <g class="pgl">
+                  <line x1="40" y1="200" x2="256" y2="20" stroke="#e9922c" stroke-width="2" stroke-dasharray="6 5"/>
+                  <line x1="184" y1="200" x2="400" y2="20" stroke="#dc4b4b" stroke-width="2" stroke-dasharray="6 5"/>
+                </g>
+                <polyline class="pgc" points="40,200 94,140 148,110 238,80 328,65 382,50"
+                          fill="none" stroke="#17bfae" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+                <g>
+                  <circle cx="40"  cy="200" r="4.6" fill="#22a06b"/>
+                  <circle cx="94"  cy="140" r="4.6" fill="#22a06b"/>
+                  <circle cx="148" cy="110" r="4.6" fill="#22a06b"/>
+                  <circle cx="238" cy="80"  r="4.6" fill="#e9922c"/>
+                  <circle cx="328" cy="65"  r="4.6" fill="#e9922c"/>
+                  <circle cx="382" cy="50"  r="6"   fill="#dc4b4b"/>
+                </g>
+              </svg>
+            </div>
+            <div class="mat">
+              <span class="ic"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg></span>
+              <span><span class="t">Maternidade</span><span class="s">M&atilde;e e beb&ecirc;, uma jornada s&oacute;.</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ CAPABILITY STRIP ══════════ -->
+  <div class="strip">
+    <div class="wrap">
+      <div class="railhead">
+        <span class="eyebrow">A plataforma</span>
+        <h2>Uma linha só, da porta do pronto-socorro até a alta.</h2>
+      </div>
+      <div class="rail">
+        <span class="railline" aria-hidden="true"></span>
+
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6M3 14h18M7 10V7h5v3"/></svg></div>
+          <h3>Bedflow Intelligence</h3><p>Leito parado vira leito disponível.</p>
+        </div>
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3h12M9 3v5l-5 8a3 3 0 0 0 2.6 4.5h10.8A3 3 0 0 0 20 16l-5-8V3M6.5 14h11"/></svg></div>
+          <h3>Pharmacy Intelligence</h3><p>Rastreabilidade e dose segura.</p>
+        </div>
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></div>
+          <h3>Emergency Command</h3><p>Triagem de risco e fila sob controle.</p>
+        </div>
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg></div>
+          <h3>Patient Safety</h3><p>Incidente notificado vira ação.</p>
+        </div>
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg></div>
+          <h3>Maternity Center</h3><p>Toda a jornada materno-infantil.</p>
+        </div>
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></div>
+          <h3>Revenue Intelligence</h3><p>Do procedimento ao recebido.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ FILME ══════════ -->
+  <section class="filmsec" id="filmsec">
+    <div class="wrap">
+      <div class="sec-head" style="text-align:center; margin-left:auto; margin-right:auto; margin-bottom:34px">
+        <span class="eyebrow">O filme institucional</span>
+        <h2>O sistema operacional de um hospital.</h2>
+        <p>Pouco mais de um minuto por dentro da plataforma: da emergência ao faturamento, sem sair do mesmo prontuário.</p>
+      </div>
+
+      <div id="filme">
+        <div class="stage">
+          <svg class="vgh" viewBox="0 0 64 64" aria-hidden="true"><use href="#vmark"/></svg>
+
+          <!-- 1 · abertura -->
+          <div class="scene on" data-d="8500"
+               data-say="Um hospital gera milhares de informações todos os dias. A verdadeira inteligência está em transformar esses dados em decisões.">
+            <span class="eyeb a">Todo dia, em cada setor</span>
+            <h3 class="big a" style="animation-delay:.25s; margin-top:1.48cqw">Milhares de informações.<br><span class="hl">Uma decisão de cada vez.</span></h3>
+            <div class="chips">
+              <span class="chip" style="animation-delay:1.1s">FC <b>92</b> bpm</span>
+              <span class="chip" style="animation-delay:1.25s">PA <b>128/84</b></span>
+              <span class="chip" style="animation-delay:1.4s">SpO<sub>2</sub> <b>96</b>%</span>
+              <span class="chip" style="animation-delay:1.55s">T <b>37,8</b> &deg;C</span>
+              <span class="chip" style="animation-delay:1.7s">Leito <b>302</b></span>
+            </div>
+            <div class="ecg a" style="animation-delay:1.3s">
+              <svg viewBox="0 0 900 200" role="img" aria-label="Traçado de sinais vitais atravessando a tela">
+                <line class="base" x1="0" y1="120" x2="900" y2="120"/>
+                <path class="ln" d="M0 120 H120 L134 120 L142 74 L150 166 L158 120 L172 120 H400 L414 120 L422 74 L430 166 L438 120 L452 120 H680 L694 120 L702 74 L710 166 L718 120 L732 120 H900"/>
+              </svg>
+            </div>
+          </div>
+
+          <!-- 2 · apresentação -->
+          <div class="scene" data-d="9500"
+               data-say="Essa é a Valentrax Healthcare Operations: uma plataforma inteligente criada para conectar pessoas, processos, dados e tecnologia em um único ecossistema hospitalar.">
+            <div class="lock a" style="animation-name:fpop; animation-duration:1s">
+              <svg viewBox="0 0 72 72"><use href="#vxmark"/></svg>
+              <span><span class="fwm">VALENTRA<b>X</b></span><span class="fwms">HEALTHCARE&nbsp;OPERATIONS</span></span>
+            </div>
+            <div class="chips">
+              <span class="chip" style="animation-delay:1.5s">Pessoas</span>
+              <span class="chip" style="animation-delay:1.65s">Processos</span>
+              <span class="chip" style="animation-delay:1.8s">Dados</span>
+              <span class="chip" style="animation-delay:1.95s">Tecnologia</span>
+            </div>
+            <div class="ui a" style="animation-delay:2.4s">
+              <div class="uib"><i></i><i></i><i></i><span>valentrax &middot; centro de monitoramento</span></div>
+              <div class="uik">
+                <div style="animation-delay:3.0s"><b>248</b><span>INTERNADOS</span></div>
+                <div style="animation-delay:3.15s"><b>84%</b><span>OCUPAÇÃO</span></div>
+                <div style="animation-delay:3.3s"><b>12</b><span>CIRURGIAS</span></div>
+                <div style="animation-delay:3.45s"><b>6</b><span>EM PARTO</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3 · a jornada -->
+          <div class="scene" data-d="4800"
+               data-say="Da entrada à alta do paciente, a Valentrax acompanha toda a jornada.">
+            <span class="eyeb a">Uma jornada só</span>
+            <h3 class="med a" style="animation-delay:.25s; margin-top:1.3cqw">Da porta de entrada<br>at&eacute; a <span class="hl">alta</span>.</h3>
+            <div class="track">
+              <span class="trl" aria-hidden="true"></span>
+              <div class="chain">
+                <span class="nd" style="animation-delay:.9s">Chegada</span><span class="ar" style="animation-delay:1.05s">&rarr;</span>
+                <span class="nd" style="animation-delay:1.2s">Triagem</span><span class="ar" style="animation-delay:1.35s">&rarr;</span>
+                <span class="nd" style="animation-delay:1.5s">Atendimento</span><span class="ar" style="animation-delay:1.65s">&rarr;</span>
+                <span class="nd" style="animation-delay:1.8s">Leito</span><span class="ar" style="animation-delay:1.95s">&rarr;</span>
+                <span class="nd" style="animation-delay:2.1s">Cirurgia</span><span class="ar" style="animation-delay:2.25s">&rarr;</span>
+                <span class="nd" style="animation-delay:2.4s">Alta</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 · emergency command center -->
+          <div class="scene" data-d="5200"
+               data-say="No Emergency Command Center, organiza o atendimento e a operação da emergência.">
+            <span class="eyeb a">Emergency Command Center</span>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">A emerg&ecirc;ncia com <span class="hl">fila, risco e tempo</span> à vista.</h3>
+            <div class="con a" style="animation-delay:.55s">
+              <div class="conh"><span class="dt"></span><span class="tt">Pronto-socorro &middot; fila de risco</span><span class="st">AO VIVO</span></div>
+              <div class="kline">
+                <div><b>17</b><span>aguardando</span></div>
+                <div><b>9</b><span>em atendimento</span></div>
+                <div><b>24min</b><span>espera m&eacute;dia</span></div>
+              </div>
+              <div class="q">
+                <div class="qr" style="animation-delay:1.1s"><span class="mc" style="background:#e8585f"></span><span class="nm">M. S. Oliveira</span><span class="sx">dor tor&aacute;cica &middot; 58a</span><span class="tm">00:02</span><span class="bd" style="color:#ff9ea3; border:1px solid rgba(232,88,95,.5)">EMERG&Ecirc;NCIA</span></div>
+                <div class="qr" style="animation-delay:1.25s"><span class="mc" style="background:#f0a63c"></span><span class="nm">J. P. Andrade</span><span class="sx">dispneia &middot; 71a</span><span class="tm">00:09</span><span class="bd" style="color:#ffc46b; border:1px solid rgba(240,166,60,.5)">MUITO URGENTE</span></div>
+                <div class="qr" style="animation-delay:1.4s"><span class="mc" style="background:#f2d94e"></span><span class="nm">A. R. Lima</span><span class="sx">gestante 34s &middot; obst&eacute;trica</span><span class="tm">00:21</span><span class="bd" style="color:#f7e58a; border:1px solid rgba(242,217,78,.45)">URGENTE</span></div>
+                <div class="qr" style="animation-delay:1.55s"><span class="mc" style="background:#3ec98b"></span><span class="nm">C. M. Reis</span><span class="sx">ferimento em m&atilde;o &middot; 29a</span><span class="tm">00:47</span><span class="bd" style="color:#8ce3b8; border:1px solid rgba(62,201,139,.45)">POUCO URGENTE</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5 · bedflow intelligence -->
+          <div class="scene" data-d="5800"
+               data-say="No Bedflow Intelligence, monitora leitos, internações, transferências e o giro em tempo real.">
+            <span class="eyeb a">Bedflow Intelligence</span>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Cada leito, <span class="hl">em tempo real</span> — e o giro que ele entrega.</h3>
+            <div class="con a" style="animation-delay:.55s">
+              <div class="conh"><span class="dt"></span><span class="tt">Giro de leitos &middot; mapa do hospital</span><span class="st">251 LEITOS</span></div>
+              <div class="bf">
+                <div class="dn">
+                  <svg viewBox="0 0 110 110" aria-hidden="true">
+                    <circle cx="55" cy="55" r="48" fill="none" stroke="#14405f" stroke-width="13"/>
+                    <circle class="val" cx="55" cy="55" r="48" fill="none" stroke="url(#vR)" stroke-width="13"
+                            stroke-linecap="round" transform="rotate(-90 55 55)" style="stroke-dashoffset:48"/>
+                  </svg>
+                  <span><b>84%</b><span>211 de 251</span></span>
+                </div>
+                <div>
+                  <div class="beds">
+                    <i class="o" style="animation-delay:1.0s"></i><i class="o" style="animation-delay:1.02s"></i><i class="o" style="animation-delay:1.04s"></i><i class="a" style="animation-delay:1.06s"></i><i class="o" style="animation-delay:1.08s"></i><i class="o" style="animation-delay:1.1s"></i><i class="l" style="animation-delay:1.12s"></i><i class="o" style="animation-delay:1.14s"></i><i class="o" style="animation-delay:1.16s"></i><i class="h" style="animation-delay:1.18s"></i><i class="o" style="animation-delay:1.2s"></i><i class="o" style="animation-delay:1.22s"></i>
+                    <i class="o" style="animation-delay:1.24s"></i><i class="l" style="animation-delay:1.26s"></i><i class="o" style="animation-delay:1.28s"></i><i class="o" style="animation-delay:1.3s"></i><i class="o" style="animation-delay:1.32s"></i><i class="a" style="animation-delay:1.34s"></i><i class="o" style="animation-delay:1.36s"></i><i class="o" style="animation-delay:1.38s"></i><i class="o" style="animation-delay:1.4s"></i><i class="o" style="animation-delay:1.42s"></i><i class="h" style="animation-delay:1.44s"></i><i class="o" style="animation-delay:1.46s"></i>
+                    <i class="o" style="animation-delay:1.48s"></i><i class="o" style="animation-delay:1.5s"></i><i class="o" style="animation-delay:1.52s"></i><i class="l" style="animation-delay:1.54s"></i><i class="o" style="animation-delay:1.56s"></i><i class="o" style="animation-delay:1.58s"></i><i class="o" style="animation-delay:1.6s"></i><i class="a" style="animation-delay:1.62s"></i><i class="o" style="animation-delay:1.64s"></i><i class="o" style="animation-delay:1.66s"></i><i class="o" style="animation-delay:1.68s"></i><i class="o" style="animation-delay:1.7s"></i>
+                    <i class="h" style="animation-delay:1.72s"></i><i class="o" style="animation-delay:1.74s"></i><i class="o" style="animation-delay:1.76s"></i><i class="o" style="animation-delay:1.78s"></i><i class="o" style="animation-delay:1.8s"></i><i class="l" style="animation-delay:1.82s"></i><i class="o" style="animation-delay:1.84s"></i><i class="o" style="animation-delay:1.86s"></i><i class="o" style="animation-delay:1.88s"></i><i class="o" style="animation-delay:1.9s"></i><i class="o" style="animation-delay:1.92s"></i><i class="a" style="animation-delay:1.94s"></i>
+                  </div>
+                  <div class="lgd">
+                    <span><em style="background:rgba(37,169,224,.85)"></em>ocupado</span>
+                    <span><em style="background:rgba(23,191,174,.9)"></em>alta prevista</span>
+                    <span><em style="background:rgba(240,166,60,.9)"></em>higieniza&ccedil;&atilde;o</span>
+                    <span><em style="background:rgba(255,255,255,.11)"></em>livre</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6 · pharmacy -->
+          <div class="scene" data-d="4600"
+               data-say="Na Pharmacy, aumenta a segurança e a rastreabilidade da medicação.">
+            <span class="eyeb a">Pharmacy Intelligence</span>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Da prescri&ccedil;&atilde;o &agrave; beira do leito, <span class="hl">com rastro</span>.</h3>
+            <div class="con a" style="animation-delay:.55s">
+              <div class="conh"><span class="dt"></span><span class="tt">Farm&aacute;cia cl&iacute;nica &middot; rastreabilidade da dose</span><span class="st">LOTE CONFERIDO</span></div>
+              <div class="steps">
+                <span class="sp" style="animation-delay:1.0s"><i><svg viewBox="0 0 24 24"><use href="#ck"/></svg></i><b>Prescrito</b></span>
+                <span class="sarr">&rarr;</span>
+                <span class="sp" style="animation-delay:1.2s"><i><svg viewBox="0 0 24 24"><use href="#ck"/></svg></i><b>Dispensado</b></span>
+                <span class="sarr">&rarr;</span>
+                <span class="sp" style="animation-delay:1.4s"><i><svg viewBox="0 0 24 24"><use href="#ck"/></svg></i><b>Conferido</b></span>
+                <span class="sarr">&rarr;</span>
+                <span class="sp" style="animation-delay:1.6s"><i><svg viewBox="0 0 24 24"><use href="#ck"/></svg></i><b>Administrado</b></span>
+              </div>
+              <div class="trow" style="animation-delay:2.1s">
+                <span class="tg">INTERA&Ccedil;&Atilde;O</span>
+                <p>Enoxaparina + AAS &mdash; risco de sangramento. Revisar antes de administrar.</p>
+              </div>
+              <div class="fmono">LOTE 4C2189 &middot; VAL 08/2027 &middot; FEFO &middot; assinado por COREN 123456</div>
+            </div>
+          </div>
+
+          <!-- 7 · surgical command center -->
+          <div class="scene" data-d="6200"
+               data-say="No Surgical Command Center, transforma o centro cirúrgico em uma operação mais previsível, eficiente e segura.">
+            <span class="eyeb a">Surgical Command Center</span>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">O centro cir&uacute;rgico <span class="hl">previs&iacute;vel</span>, sala por sala.</h3>
+            <div class="con a" style="animation-delay:.55s">
+              <div class="conh"><span class="dt"></span><span class="tt">Centro cir&uacute;rgico &middot; mapa do dia</span><span class="st">3 SALAS</span></div>
+              <div class="sch">
+                <div class="srow"><span class="rm">SALA 1</span><span class="tl">
+                  <span class="blk b1" style="left:2%; width:26%; animation-delay:1.0s">COLECISTECTOMIA</span>
+                  <span class="blk b2" style="left:31%; width:30%; animation-delay:1.2s">HERNIORRAFIA</span>
+                  <span class="blk b1" style="left:64%; width:24%; animation-delay:1.4s">ARTROSCOPIA</span>
+                </span></div>
+                <div class="srow"><span class="rm">SALA 2</span><span class="tl">
+                  <span class="blk b2" style="left:2%; width:34%; animation-delay:1.15s">CES&Aacute;REA</span>
+                  <span class="blk b3" style="left:39%; width:28%; animation-delay:1.35s">ATRASO PREVISTO</span>
+                  <span class="blk b1" style="left:70%; width:22%; animation-delay:1.55s">CURETAGEM</span>
+                </span></div>
+                <div class="srow"><span class="rm">SALA 3</span><span class="tl">
+                  <span class="blk b1" style="left:2%; width:20%; animation-delay:1.3s">CATARATA</span>
+                  <span class="blk b1" style="left:24%; width:20%; animation-delay:1.5s">CATARATA</span>
+                  <span class="blk b2" style="left:47%; width:41%; animation-delay:1.7s">RTU DE PR&Oacute;STATA</span>
+                </span></div>
+              </div>
+              <div class="hrs"><span></span><div><span>07h</span><span>09h</span><span>11h</span><span>13h</span><span>15h</span><span>17h</span></div></div>
+            </div>
+          </div>
+
+          <!-- 8 · o ecossistema -->
+          <div class="scene" data-d="9800"
+               data-say="E integra ainda maternidade, UTI, segurança do paciente, suprimentos, faturamento, financeiro, pessoas, diagnóstico, controle de infecção e inteligência clínica.">
+            <span class="eyeb a">Um ecossistema, n&atilde;o uma lista</span>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Todo o hospital ligado ao <span class="hl">mesmo c&eacute;rebro</span>.</h3>
+            <div class="rg a" style="animation-delay:.5s">
+              <svg viewBox="0 0 900 300" role="img" aria-label="Maternidade, UTI, segurança do paciente, suprimentos, faturamento, financeiro, pessoas, diagnóstico, controle de infecção e inteligência clínica ligados a um núcleo central">
+                <path class="ln" style="animation-delay:1.5s" stroke="#25a9e0" d="M200 40 C 280 40, 320 150, 392 150"/>
+                <path class="ln" style="animation-delay:1.65s" stroke="#25a9e0" d="M200 95 C 280 95, 320 150, 392 150"/>
+                <path class="ln" style="animation-delay:1.8s" stroke="#25a9e0" d="M200 150 L 392 150"/>
+                <path class="ln" style="animation-delay:1.95s" stroke="#25a9e0" d="M200 205 C 280 205, 320 150, 392 150"/>
+                <path class="ln" style="animation-delay:2.1s" stroke="#25a9e0" d="M200 260 C 280 260, 320 150, 392 150"/>
+                <path class="ln" style="animation-delay:2.25s" stroke="#17bfae" d="M700 40 C 620 40, 580 150, 508 150"/>
+                <path class="ln" style="animation-delay:2.4s" stroke="#17bfae" d="M700 95 C 620 95, 580 150, 508 150"/>
+                <path class="ln" style="animation-delay:2.55s" stroke="#17bfae" d="M700 150 L 508 150"/>
+                <path class="ln" style="animation-delay:2.7s" stroke="#17bfae" d="M700 205 C 620 205, 580 150, 508 150"/>
+                <path class="ln" style="animation-delay:2.85s" stroke="#17bfae" d="M700 260 C 620 260, 580 150, 508 150"/>
+
+                <circle class="dot" style="animation-delay:1.4s" cx="200" cy="40"  r="3.4" fill="#25a9e0"/>
+                <circle class="dot" style="animation-delay:1.55s" cx="200" cy="95"  r="3.4" fill="#25a9e0"/>
+                <circle class="dot" style="animation-delay:1.7s" cx="200" cy="150" r="3.4" fill="#25a9e0"/>
+                <circle class="dot" style="animation-delay:1.85s" cx="200" cy="205" r="3.4" fill="#25a9e0"/>
+                <circle class="dot" style="animation-delay:2.0s" cx="200" cy="260" r="3.4" fill="#25a9e0"/>
+                <circle class="dot" style="animation-delay:2.15s" cx="700" cy="40"  r="3.4" fill="#17bfae"/>
+                <circle class="dot" style="animation-delay:2.3s" cx="700" cy="95"  r="3.4" fill="#17bfae"/>
+                <circle class="dot" style="animation-delay:2.45s" cx="700" cy="150" r="3.4" fill="#17bfae"/>
+                <circle class="dot" style="animation-delay:2.6s" cx="700" cy="205" r="3.4" fill="#17bfae"/>
+                <circle class="dot" style="animation-delay:2.75s" cx="700" cy="260" r="3.4" fill="#17bfae"/>
+
+                <text class="lb" style="animation-delay:1.35s" x="186" y="45"  text-anchor="end">MATERNIDADE</text>
+                <text class="lb" style="animation-delay:1.5s" x="186" y="100" text-anchor="end">UTI</text>
+                <text class="lb" style="animation-delay:1.65s" x="186" y="155" text-anchor="end">SEGURAN&Ccedil;A DO PACIENTE</text>
+                <text class="lb" style="animation-delay:1.8s" x="186" y="210" text-anchor="end">SUPRIMENTOS</text>
+                <text class="lb" style="animation-delay:1.95s" x="186" y="265" text-anchor="end">FATURAMENTO</text>
+                <text class="lb" style="animation-delay:2.1s" x="714" y="45"  text-anchor="start">FINANCEIRO</text>
+                <text class="lb" style="animation-delay:2.25s" x="714" y="100" text-anchor="start">PESSOAS</text>
+                <text class="lb" style="animation-delay:2.4s" x="714" y="155" text-anchor="start">DIAGN&Oacute;STICO</text>
+                <text class="lb" style="animation-delay:2.55s" x="714" y="210" text-anchor="start">CONTROLE DE INFEC&Ccedil;&Atilde;O</text>
+                <text class="lb" style="animation-delay:2.7s" x="714" y="265" text-anchor="start">INTELIG&Ecirc;NCIA CL&Iacute;NICA</text>
+
+                <g class="hub">
+                  <circle class="halo" cx="450" cy="150" r="62" fill="#4fd6e8" opacity=".2"/>
+                  <circle cx="450" cy="150" r="54" fill="#061a2e" stroke="#4fd6e8" stroke-opacity=".55" stroke-width="1.6"/>
+                  <g transform="translate(414,114) scale(1)"><use href="#vxmark"/></g>
+                </g>
+              </svg>
+            </div>
+          </div>
+
+          <!-- 9 · a inteligência -->
+          <div class="scene" data-d="9000"
+               data-say="Mas a Valentrax vai além de organizar informações. Ela identifica riscos, cruza indicadores, gera alertas e utiliza inteligência para antecipar cenários e apoiar decisões.">
+            <span class="eyeb a">Al&eacute;m de organizar</span>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Cruza indicadores, enxerga o risco <span class="hl">antes</span>.</h3>
+            <div class="dz">
+              <div class="pgbox a" style="animation-delay:.6s">
+                <div class="conh"><span class="dt"></span><span class="tt">Maternidade &middot; partograma &middot; leito 302</span></div>
+                <svg viewBox="0 0 420 224" role="img" aria-label="Partograma: a curva de dilatação cruzando a linha de ação da OMS">
+                  <g stroke="#1b3e5c" stroke-width="1">
+                    <line x1="40" y1="200" x2="404" y2="200"/><line x1="40" y1="140" x2="404" y2="140"/>
+                    <line x1="40" y1="80" x2="404" y2="80"/><line x1="40" y1="20" x2="404" y2="20"/>
+                  </g>
+                  <line x1="40" y1="14" x2="40" y2="200" stroke="#27547a" stroke-width="1.2"/>
+                  <g fill="#6a8ba6" font-family="JetBrains Mono, monospace" font-size="9.5">
+                    <text x="32" y="203" text-anchor="end">4</text><text x="32" y="143" text-anchor="end">6</text>
+                    <text x="32" y="83" text-anchor="end">8</text><text x="32" y="23" text-anchor="end">10</text>
+                    <text x="40" y="216" text-anchor="middle">0h</text><text x="148" y="216" text-anchor="middle">3h</text>
+                    <text x="256" y="216" text-anchor="middle">6h</text><text x="400" y="216" text-anchor="middle">10h</text>
+                  </g>
+                  <g class="pg-lines">
+                    <line x1="40" y1="200" x2="256" y2="20" stroke="#f0a63c" stroke-width="2" stroke-dasharray="6 5"/>
+                    <line x1="184" y1="200" x2="400" y2="20" stroke="#e8585f" stroke-width="2" stroke-dasharray="6 5"/>
+                  </g>
+                  <polyline class="pg-curve" points="40,200 94,140 148,110 238,80 328,65 382,50"
+                            fill="none" stroke="#2dd4bf" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+                  <g>
+                    <circle class="pg-pt" cx="40"  cy="200" r="5"   fill="#3ec98b" style="animation-delay:2.0s"/>
+                    <circle class="pg-pt" cx="94"  cy="140" r="5"   fill="#3ec98b" style="animation-delay:2.4s"/>
+                    <circle class="pg-pt" cx="148" cy="110" r="5"   fill="#3ec98b" style="animation-delay:2.8s"/>
+                    <circle class="pg-pt" cx="238" cy="80"  r="5"   fill="#f0a63c" style="animation-delay:3.2s"/>
+                    <circle class="pg-pt" cx="328" cy="65"  r="5"   fill="#f0a63c" style="animation-delay:3.6s"/>
+                    <circle class="pg-pt" cx="382" cy="50"  r="6.5" fill="#e8585f" style="animation-delay:4.0s"/>
+                  </g>
+                </svg>
+              </div>
+              <div class="alerts">
+                <div class="al r" style="animation-delay:4.3s"><em style="background:#e8585f"></em>
+                  <span><b>Curva cruzou a linha de a&ccedil;&atilde;o</b><span>MATERNIDADE &middot; LEITO 302 &middot; REAVALIAR</span></span></div>
+                <div class="al m" style="animation-delay:4.6s"><em style="background:#f0a63c"></em>
+                  <span><b>UTI chegando a 100%</b><span>PROJE&Ccedil;&Atilde;O EM 3H &middot; ACIONAR NIR</span></span></div>
+                <div class="al c" style="animation-delay:4.9s"><em style="background:#4fd6e8"></em>
+                  <span><b>14 contas com glosa a recorrer</b><span>FATURAMENTO &middot; PRAZO EM 6 DIAS</span></span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 10 · o command center -->
+          <div class="scene" data-d="7200"
+               data-say="Porque um hospital inteligente não é aquele que apenas possui tecnologia. É aquele que consegue transformar informação em ação.">
+            <span class="eyeb a">O hospital, num painel s&oacute;</span>
+            <h3 class="med a" style="animation-delay:.2s; margin-top:1.11cqw">Informa&ccedil;&atilde;o vira <span class="hl">a&ccedil;&atilde;o</span>.</h3>
+            <div class="cmd a" style="animation-delay:.6s">
+              <span class="sweep" aria-hidden="true"></span>
+              <div class="cmdg">
+                <div class="mp" style="animation-delay:1.2s"><u>Emerg&ecirc;ncia</u><b>17</b>
+                  <span class="dots"><i style="background:#e8585f"></i><i style="background:#f0a63c"></i><i style="background:#f2d94e"></i><i style="background:#3ec98b"></i><i style="background:rgba(255,255,255,.14)"></i><i style="background:rgba(255,255,255,.14)"></i></span></div>
+                <div class="mp" style="animation-delay:1.35s"><u>Leitos</u><b>84%</b>
+                  <span class="bars"><i style="height:52%"></i><i style="height:64%"></i><i style="height:58%"></i><i style="height:76%"></i><i style="height:70%"></i><i style="height:88%"></i></span></div>
+                <div class="mp" style="animation-delay:1.5s"><u>Cirurgias</u><b>12</b>
+                  <span class="bars"><i style="height:40%"></i><i style="height:72%"></i><i style="height:56%"></i><i style="height:84%"></i><i style="height:62%"></i><i style="height:48%"></i></span></div>
+                <div class="mp" style="animation-delay:1.65s"><u>Maternidade</u><b>6</b>
+                  <span class="dots"><i style="background:#17bfae"></i><i style="background:#17bfae"></i><i style="background:#f0a63c"></i><i style="background:#17bfae"></i><i style="background:#e8585f"></i><i style="background:#17bfae"></i></span></div>
+                <div class="mp" style="animation-delay:1.8s"><u>Faturamento</u><b>R$ 1,8M</b>
+                  <span class="bars"><i style="height:44%"></i><i style="height:52%"></i><i style="height:68%"></i><i style="height:60%"></i><i style="height:80%"></i><i style="height:92%"></i></span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 11 · assinatura -->
+          <div class="scene" data-d="6000"
+               data-say="Valentrax. One Journey. Two Lives. One Intelligent Command Center.">
+            <div class="lock a" style="animation-name:fpop; animation-duration:1s">
+              <svg viewBox="0 0 72 72"><use href="#vxmark"/></svg>
+              <span><span class="fwm">VALENTRA<b>X</b></span><span class="fwms">HEALTHCARE&nbsp;OPERATIONS</span></span>
+            </div>
+            <p class="med a" style="animation-delay:.9s; margin-top:1.85cqw; font-size:2.22cqw">
+              One Journey. Two Lives.<br><span class="hl">One Intelligent Command Center.</span></p>
+            <div class="chips">
+              <span class="chip" style="animation-delay:1.8s"><svg viewBox="0 0 24 24" width="14" height="14" fill="#3ec98b" style="vertical-align:-2.5px; margin-right:7px"><use href="#wa"/></svg>(51) 99347-6688</span>
+              <span class="chip" style="animation-delay:1.95s">Valentrax.ai@gmail.com</span>
+              <span class="chip" style="animation-delay:2.1s">valentrax.com.br</span>
+            </div>
+          </div>
+
+          <div class="cc" aria-live="polite"></div>
+
+          <div class="poster">
+            <button class="playbtn" type="button" aria-label="Reproduzir o filme de apresenta&ccedil;&atilde;o">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.2v13.6L19 12z"/></svg>
+            </button>
+            <span class="plabel">Assistir</span>
+          </div>
+        </div>
+
+        <div class="fbar"><i class="prog"></i></div>
+        <div class="fctrl">
+          <button class="pp" type="button">&#9658; Reproduzir</button>
+          <button class="rp" type="button">&#8634; Do in&iacute;cio</button>
+          <button class="lg" type="button" aria-pressed="true">&#9744; Legenda</button>
+          <span class="fcap clock">cena 1 / 11 &middot; 00:00</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ MODULES ══════════ -->
+  <section id="modulos">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Soluções</span>
+        <h2>Um módulo para cada frente do hospital — e todos falando a mesma língua.</h2>
+        <p>Nada de reimportar planilha ou redigitar paciente: o dado entra uma vez e serve a todo mundo, do balcão ao faturamento.</p>
+      </div>
+      <div class="mods">
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></div>
+          <h3>Pronto-Socorro</h3>
+          <p>Da chegada ao desfecho: triagem de Manchester por tipo (adulto, obstétrica e pediátrica), fila por risco e checagem de medicação à beira do leito.</p>
+          <div class="tags"><span class="tag">Manchester</span><span class="tag">comorbidades</span><span class="tag">NIR</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6M3 14h18M7 10V7h5v3"/></svg></div>
+          <h3>Giro de Leitos</h3>
+          <p>Ocupação em tempo real, kanban de alta e os tempos entre solicitar, higienizar e ocupar — com metas por setor e sinaleira.</p>
+          <div class="tags"><span class="tag">ocupação</span><span class="tag">kanban de alta</span><span class="tag">turnover</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg></div>
+          <h3>Maternidade</h3>
+          <p>Fila obstétrica que puxa do PS, admissão, partograma com as linhas da OMS, parto classificado por Robson e o recém-nascido com prontuário próprio.</p>
+          <div class="tags"><span class="tag">partograma</span><span class="tag">Robson</span><span class="tag">MEOWS</span><span class="tag">Capurro</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3h12M9 3v5l-5 8a3 3 0 0 0 2.6 4.5h10.8A3 3 0 0 0 20 16l-5-8V3M6.5 14h11"/></svg></div>
+          <h3>Farmácia</h3>
+          <p>Estoque com baixa FEFO, farmácia clínica com alerta de dose e interação, preparo que só fecha se saiu do estoque, e o livro de controlados.</p>
+          <div class="tags"><span class="tag">FEFO</span><span class="tag">interações</span><span class="tag">Portaria 344</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></div>
+          <h3>Faturamento SUS</h3>
+          <p>Do procedimento ao recebido com a tabela SIGTAP: ciclo faturado → glosado → recebido, glosa por valor e o recurso que não deixa dinheiro na mesa.</p>
+          <div class="tags"><span class="tag">SIGTAP</span><span class="tag">AIH · BPA</span><span class="tag">glosa</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg></div>
+          <h3>Segurança do Paciente</h3>
+          <p>Notificação de incidente, matriz de risco, análise de causa e plano de ação — o NSP que a acreditação cobra, sem o caderno de papel.</p>
+          <div class="tags"><span class="tag">NSP</span><span class="tag">RCA</span><span class="tag">protocolos</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></div>
+          <h3>SCIH</h3>
+          <p>Vigilância de infecção por leito, isolamento sinalizado no mapa e base de germes multirresistentes que sugere a precaução certa.</p>
+          <div class="tags"><span class="tag">isolamento</span><span class="tag">vigilância</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7M12 11v10"/></svg></div>
+          <h3>Estoque & Compras</h3>
+          <p>Almoxarifado com saldo confiável, requisição pelos setores, curva ABC, ponto de pedido e alçada de aprovação de compra.</p>
+          <div class="tags"><span class="tag">curva ABC</span><span class="tag">ponto de pedido</span></div></div>
+
+        <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
+          <h3>Paciente 360</h3>
+          <p>Um cadastro para toda a jornada: busca por nome sem acento, unificação de prontuário e o histórico que segue a pessoa entre os setores.</p>
+          <div class="tags"><span class="tag">prontuário único</span><span class="tag">append-only</span></div></div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ ESSENCE (dark) ══════════ -->
+  <section class="essence" id="essencia">
+    <svg class="vghost" viewBox="0 0 64 64" aria-hidden="true"><use href="#vmark-d"/></svg>
+    <div class="wrap">
+      <div>
+        <span class="eyebrow">Nossa essência</span>
+        <h2>Mais que tecnologia,<br>é sobre <span class="hl">pessoas</span>.</h2>
+        <p class="lede">A Valentrax nasceu dentro de um hospital, ao lado de quem cuida — por isso cada tela existe para tirar trabalho de quem está na beira do leito, não para gerar mais um relatório.</p>
+        <div class="pillars">
+          <div class="pil"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg></span>
+            <span><b>Cuidado em todas as fases</b><span>Do primeiro toque no balcão à alta.</span></span></div>
+          <div class="pil"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8h12M6 16h12"/><circle cx="6" cy="8" r="2"/><circle cx="18" cy="16" r="2"/></svg></span>
+            <span><b>Tecnologia que conecta setores</b><span>O dado entra uma vez e serve a todos.</span></span></div>
+          <div class="pil"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></span>
+            <span><b>Mais eficiência para a equipe</b><span>Menos digitação, mais tempo de cuidado.</span></span></div>
+          <div class="pil"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg></span>
+            <span><b>Decisão com rastro</b><span>Quem viu, quem mudou e quando.</span></span></div>
+        </div>
+      </div>
+      <div class="facts">
+        <div class="fct"><span class="n">9</span><span><span class="t">módulos no ar</span><span class="s">Do pronto-socorro ao faturamento, já rodando em produção.</span></span></div>
+        <div class="fct"><span class="n">1</span><span><span class="t">prontuário, a jornada inteira</span><span class="s">A mesma paciente do PS à alta — sem recadastrar.</span></span></div>
+        <div class="fct"><span class="n">10</span><span><span class="t">grupos de Robson auditados</span><span class="s">A taxa de cesárea explicada por grupo, no padrão da OMS.</span></span></div>
+        <div class="fct"><span class="n">0</span><span><span class="t">rasura no registro clínico</span><span class="s">Append-only: correção é anotação nova, nunca apagamento.</span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ BRASIL ══════════ -->
+  <section>
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow">Construído aqui, para cá</span>
+        <h2>Fala a língua do hospital brasileiro.</h2>
+      </div>
+      <div class="br">
+        <div class="brc"><h3>SUS de ponta a ponta</h3><p>SIGTAP, AIH e BPA no faturamento, CBO × procedimento e município IBGE. Não é adaptação — é nativo.</p></div>
+        <div class="brc"><h3>Protocolos reais</h3><p>Manchester, MEOWS, Bishop, Robson, Capurro e os protocolos de IAM, AVC e TEV já embutidos.</p></div>
+        <div class="brc"><h3>LGPD por dentro</h3><p>Acesso por perfil, dado sensível segregado e trilha de auditoria atribuível a quem assinou.</p></div>
+        <div class="brc"><h3>Um banco por hospital</h3><p>Seus dados são só seus. Cada hospital sobe isolado — e o sistema já nasce sabendo lidar com o dia zero.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ CTA ══════════ -->
+  <section class="cta" id="contato">
+    <div class="wrap">
+      <svg width="58" height="58" viewBox="0 0 72 72" style="margin-bottom:16px" aria-hidden="true"><use href="#vxmark"/></svg>
+      <span class="eyebrow" style="display:block; margin-bottom:18px">Leve para o seu hospital</span>
+      <h2>Vamos mostrar a Valentrax<br>rodando com o seu fluxo.</h2>
+      <p>Uma demonstração de 30 minutos, com os módulos que fazem sentido para o seu serviço. Sem compromisso.</p>
+      <div class="acts">
+        <a class="btn btn-primary" href="https://wa.me/5551993476688?text=Ol%C3%A1%21%20Gostaria%20de%20conhecer%20a%20Valentrax%20e%20agendar%20uma%20demonstra%C3%A7%C3%A3o." target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><use href="#wa"/></svg>
+          Agendar pelo WhatsApp</a>
+        <a class="btn btn-outline" href="mailto:Valentrax.ai@gmail.com?subject=Demonstra%C3%A7%C3%A3o%20da%20Valentrax">Enviar e-mail</a>
+      </div>
+      <p class="contact"><a href="mailto:Valentrax.ai@gmail.com">Valentrax.ai@gmail.com</a> &nbsp;·&nbsp; <a href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="#25b366" style="vertical-align:-2.5px; margin-right:5px"><use href="#wa"/></svg>(51) 99347-6688</a></p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand on-dark" href="#top" aria-label="Valentrax">
+      <svg class="mark" width="36" height="36" viewBox="0 0 72 72"><use href="#vxmark"/></svg>
+      <span><span class="wm" style="font-size:17px">VALENTRA<b>X</b></span><span class="wmsub">HEALTHCARE&nbsp;OPERATIONS</span></span>
+    </a>
+    <p class="tag">One journey. Two lives. One intelligent command center.</p>
+    <nav class="fl">
+      <a href="#modulos">Módulos</a><a href="#essencia">Essência</a><a href="#contato">Contato</a>
+      <a href="https://www.valentrax.com.br">Acessar</a>
+    </nav>
+  </div>
+  <div class="wrap"><div class="fbot">
+    <a href="mailto:Valentrax.ai@gmail.com">Valentrax.ai@gmail.com</a>
+    <a href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="13" height="13" fill="#3ec98b" style="vertical-align:-2px; margin-right:5px"><use href="#wa"/></svg>(51) 99347-6688</a>
+    <span>© 2026 Valentrax · valentrax.com.br</span>
+  </div></div>
+</footer>
+
+<script>
+(function(){
+  /* ══════════════════════════════════════════════════════════════
+     LOCUÇÃO — quando houver o MP3 gravado, é só preencher aqui:
+       TRILHA = "narracao.mp3"  (publicado junto com esta página)
+       MARCAS = [0, 8.5, 18, 22.8, ...]  ← segundo em que CADA cena
+                entra, na ordem. Com a trilha, o áudio comanda o filme.
+                Vazio, roda pelos tempos de cada cena.
+     ══════════════════════════════════════════════════════════════ */
+  var TRILHA = "";
+  var MARCAS = null;
+
+  var root = document.getElementById('filme');
+  if (!root) return;
+  var scenes = [].slice.call(root.querySelectorAll('.scene'));
+  var says   = scenes.map(function(s){ return s.getAttribute('data-say') || ''; });
+  var durs   = scenes.map(function(s){ return parseInt(s.getAttribute('data-d'), 10) || 5000; });
+  var cc     = root.querySelector('.cc');
+  var prog   = root.querySelector('.prog');
+  var clock  = root.querySelector('.clock');
+  var pp     = root.querySelector('.pp');
+  var rp     = root.querySelector('.rp');
+  var lg     = root.querySelector('.lg');
+  var poster = root.querySelector('.poster');
+
+  var caption = true;
+  var i = 0, playing = false, done = false, timer = null, tick = null;
+  var sceneAt = 0, left = 0, t0 = 0, elapsed = 0, lastWithin = 0;
+
+  var track = null;
+  if (TRILHA && MARCAS && MARCAS.length === scenes.length){
+    track = new Audio(TRILHA);
+    track.preload = 'auto';
+    track.addEventListener('timeupdate', function(){
+      if (!playing) return;
+      var t = track.currentTime, n = 0;
+      for (var k = 0; k < MARCAS.length; k++){ if (t >= MARCAS[k]) n = k; }
+      if (n !== i) enter(n);
+    });
+    track.addEventListener('ended', finish);
+  }
+
+  function fmt(ms){
+    var s = Math.floor(ms / 1000), m = Math.floor(s / 60);
+    s = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+  function paint(){
+    var within = playing ? Math.min(1, (Date.now() - sceneAt) / durs[i]) : lastWithin;
+    if (playing) lastWithin = within;
+    var pct = done ? 100 : ((i + within) / scenes.length) * 100;
+    prog.style.width = pct.toFixed(2) + '%';
+    clock.textContent = 'cena ' + (i + 1) + ' / ' + scenes.length + ' · ' + fmt(elapsed + (playing ? Date.now() - t0 : 0));
+  }
+  function clearTimers(){ clearTimeout(timer); timer = null; }
+
+  function enter(n, resumeMs){
+    clearTimers();
+    i = n;
+    for (var k = 0; k < scenes.length; k++) scenes[k].classList.remove('on');
+    void scenes[i].offsetWidth;              /* reinicia as animações da cena */
+    scenes[i].classList.add('on');
+    cc.textContent = says[i];
+    sceneAt = Date.now();
+    left = resumeMs || durs[i];
+    if (!playing || track) return;           /* com trilha, quem vira a cena é o áudio */
+    timer = setTimeout(advance, left);
+  }
+  function advance(){
+    if (!playing) return;
+    if (i + 1 < scenes.length){
+      var nx = i + 1;
+      timer = setTimeout(function(){ if (playing) enter(nx); }, 300);
+    } else {
+      finish();
+    }
+  }
+  function finish(){
+    playing = false; clearTimers();
+    done = true;
+    if (track) { try { track.pause(); } catch (e) {} }
+    elapsed += Date.now() - t0;
+    root.classList.remove('playing');
+    poster.querySelector('.plabel').textContent = 'Ver de novo';
+    setBtn(); paint();
+  }
+  function setBtn(){
+    pp.innerHTML = playing ? '&#10074;&#10074; Pausar' : '&#9658; Reproduzir';
+  }
+  function start(){
+    if (playing) return;
+    done = false;
+    playing = true; t0 = Date.now();
+    root.classList.add('playing');
+    setBtn();
+    enter(i, left);
+    if (track) { try { track.play(); } catch (e) {} }
+    if (!tick) tick = setInterval(paint, 250);
+  }
+  function pause(){
+    if (!playing) return;
+    playing = false;
+    elapsed += Date.now() - t0;
+    left = Math.max(600, durs[i] - (Date.now() - sceneAt));
+    clearTimers();
+    if (track) { try { track.pause(); } catch (e) {} }
+    setBtn(); paint();
+  }
+  function restart(){
+    playing = false; clearTimers();
+    i = 0; left = durs[0]; elapsed = 0; lastWithin = 0; done = false;
+    if (track) { try { track.pause(); track.currentTime = 0; } catch (e) {} }
+    poster.querySelector('.plabel').textContent = 'Assistir';
+    start();
+  }
+
+  poster.addEventListener('click', function(){ if (!playing) { done ? restart() : start(); } });
+  pp.addEventListener('click', function(){ playing ? pause() : (done ? restart() : start()); });
+  rp.addEventListener('click', restart);
+  lg.addEventListener('click', function(){
+    caption = !caption;
+    lg.setAttribute('aria-pressed', String(caption));
+    lg.innerHTML = (caption ? '&#9744;' : '&#9746;') + ' Legenda';
+    cc.classList.toggle('off', !caption);
+  });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && playing) pause(); });
+
+  /* botões "Assista ao vídeo" do topo da página */
+  [].slice.call(document.querySelectorAll('[data-play]')).forEach(function(b){
+    b.addEventListener('click', function(e){
+      e.preventDefault();
+      var sec = document.getElementById('filmsec');
+      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(function(){ if (!playing) { done ? restart() : start(); } }, 520);
+    });
+  });
+
+  cc.textContent = says[0];
+  paint();
+})();
+</script>
+</body>
+</html>
