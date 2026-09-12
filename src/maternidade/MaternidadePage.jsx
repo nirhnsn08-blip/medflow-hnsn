@@ -18,6 +18,7 @@ import PartogramaView from "./PartogramaView.jsx";
 import PartoView from "./PartoView.jsx";
 import RecemNascidosView from "./RecemNascidosView.jsx";
 import IndicadoresView from "./IndicadoresView.jsx";
+import SegurancaMaternaView from "./SegurancaMaternaView.jsx";
 import FilaObstetrica from "./FilaObstetrica.jsx";
 import { ESTADO } from "./fila.js";
 
@@ -69,6 +70,15 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
     setSelecao({ paciente, tab });
     setAbaId(tab);
   }
+  // Do painel de segurança para onde os vitais são lançados: o partograma é
+  // quem mede de hora em hora. Ver quem precisa e não poder agir seria meia
+  // funcionalidade.
+  function aoRegistrarVitais(caso) {
+    const paciente = { prontuario: caso.prontuario, iniciais: caso.iniciais, nome_completo: caso.nome || null };
+    setSelecao({ paciente, tab: "trabalho" });
+    setAbaId("trabalho");
+  }
+
   function irParaAba(id) { setSelecao(null); setAbaId(id); }
   const inicialPara = tab => (selecao?.tab === tab ? selecao.paciente : undefined);
 
@@ -122,6 +132,8 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
             ? <RecemNascidosView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("rn")} />
             : abaId === "indicadores"
             ? <IndicadoresView sb={sb} />
+            : abaId === "seguranca"
+            ? <SegurancaMaternaView sb={sb} onRegistrar={aoRegistrarVitais} />
             : <Placeholder aba={aba} />}
         </div>
       </div>

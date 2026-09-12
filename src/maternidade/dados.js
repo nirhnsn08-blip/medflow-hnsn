@@ -8,6 +8,7 @@
 
 import { listaLida, algumaFalhou } from "../util/leitura.js";
 import { montarFilaObstetrica } from "./fila.js";
+import { medidaMaisRecente } from "./vigilancia.js";
 import { emitirProntuario, cadastrarRecemNascido } from "../atendimento/dados.js";
 // Reuso deliberado: uma segunda busca de paciente divergiria da primeira.
 export { buscarPacientes, carregarPaciente } from "../atendimento/dados.js";
@@ -262,4 +263,81 @@ export async function carregarIndicadores(sb) {
   ]);
   const partos = listaLida(pR), rns = listaLida(rR);
   return { partos, rns, incompleto: algumaFalhou(partos, rns) };
+}
+
+// ── Vigilância materna (painel MEOWS) ─────────────────────────
+
+/**
+ * O painel de segurança materna: para cada episódio EM ANDAMENTO, a medida de
+ * sinais vitais mais recente que existe no dossiê.
+ *
+ * Não há tabela nova: os vitais já são gravados em dois lugares — uma vez na
+ * admissão e a cada registro do partograma. O painel só junta os dois e fica
+ * com o mais novo. Quem está em trabalho de parto é medida de hora em hora;
+ * quem está internada e ainda não entrou em trabalho tem a da admissão, que é
+ * exatamente o caso em que o painel precisa gritar que a medida envelheceu.
+ *
+ * 🔴 `incompleto` viaja junto: se alguma leitura falhou, a tela NÃO pode
+ * dizer "nenhuma paciente em risco" — ela não sabe. Leitura que falhou não é
+ * leitura vazia.
+ */
+export async function carregarVigilanciaMaterna(sb) {
+  if (!sb) return { ok: false, casos: [], incompleto: true };
+
+  const epsR = await sb("mat_episodios?status=eq.em_andamento&select=id,prontuario,risco&limit=500")
+    .catch(() => null);
+  const episodios = listaLida(epsR);
+  if (episodios.falhou) return { ok: false, casos: [], incompleto: true };
+  if (!episodios.length) return { ok: true, casos: [], incompleto: false };
+
+  const ids = episodios.map(e => e.id).join(",");
+  const prontuarios = [...new Set(episodios.map(e => e.prontuario).filter(Boolean))]
+    .map(p => `"${p}"`).join(",");
+
+  const [pacR, leitosR, tpR, admR] = await Promise.all([
+    prontuarios
+      ? sb(`pacientes?prontuario=in.(${prontuarios})&select=prontuario,iniciais,nome_completo`).catch(() => null)
+      : Promise.resolve([]),
+    sb("leitos?status=eq.ocupado&select=identificacao,prontuario,setor").catch(() => null),
+    sb(`mat_trabalho_parto?episodio_id=in.(${ids})&select=episodio_id,data_hora,vitais` +
+       "&order=data_hora.desc&limit=2000").catch(() => null),
+    sb(`mat_admissoes?episodio_id=in.(${ids})&select=episodio_id,data_hora,vitais` +
+       "&order=data_hora.desc&limit=500").catch(() => null),
+  ]);
+
+  const pacientes = listaLida(pacR), leitos = listaLida(leitosR);
+  const tps = listaLida(tpR), admissoes = listaLida(admR);
+  const incompleto = algumaFalhou(pacientes, leitos, tps, admissoes);
+
+  const porProntuario = new Map(pacientes.map(p => [p.prontuario, p]));
+  const leitoDe = new Map(leitos.filter(l => l.prontuario).map(l => [l.prontuario, l]));
+  // as listas vêm em ordem decrescente: o primeiro de cada episódio é o mais novo
+  const ultimoTP = new Map(), ultimaAdm = new Map();
+  for (const r of tps) if (!ultimoTP.has(r.episodio_id)) ultimoTP.set(r.episodio_id, r);
+  for (const a of admissoes) if (!ultimaAdm.has(a.episodio_id)) ultimaAdm.set(a.episodio_id, a);
+
+  const casos = episodios.map(e => {
+    const pac = porProntuario.get(e.prontuario) || {};
+    const leito = leitoDe.get(e.prontuario);
+    const tp = ultimoTP.get(e.id), adm = ultimaAdm.get(e.id);
+    const medida = medidaMaisRecente([
+      tp  && { origem: "partograma", vitais: tp.vitais,  medidoEm: tp.data_hora },
+      adm && { origem: "admissao",   vitais: adm.vitais, medidoEm: adm.data_hora },
+    ].filter(Boolean));
+    return {
+      episodioId: e.id,
+      prontuario: e.prontuario,
+      nome: pac.nome_completo || null,
+      iniciais: pac.iniciais || null,
+      risco: e.risco || null,
+      leito: leito?.identificacao || null,
+      setor: leito?.setor || null,
+      vitais: medida?.vitais || null,
+      medidoEm: medida?.medidoEm || null,
+      origem: medida?.origem || null,
+      emTrabalhoDeParto: !!tp,
+    };
+  });
+
+  return { ok: !incompleto, casos, incompleto };
 }
