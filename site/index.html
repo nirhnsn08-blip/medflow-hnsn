@@ -248,7 +248,17 @@
   .cta{text-align:center; padding:100px 0; background:linear-gradient(170deg,var(--paper),var(--mist))}
   .cta h2{font-size:clamp(2rem,4.2vw,3rem)}
   .cta p{margin:18px auto 0; max-width:48ch; font-size:1.08rem; color:var(--ink-2)}
-  .cta .acts{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:34px}
+  /* escolha do idioma da demonstração — o site segue em português; isto só
+     diz em que língua a demo acontece e vai junto na mensagem enviada. */
+  .lang{display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap; margin-top:30px}
+  .lang .lbl{font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3)}
+  .seg{display:inline-flex; background:var(--mist); border:1px solid var(--line); border-radius:999px; padding:3px}
+  .seg button{font-family:var(--sans); font-weight:600; font-size:13.5px; color:var(--ink-2); cursor:pointer;
+    background:none; border:0; border-radius:999px; padding:8px 18px;
+    transition:background .16s, color .16s, box-shadow .16s}
+  .seg button:hover{color:var(--ink)}
+  .seg button.on{background:var(--paper); color:var(--azure-deep); box-shadow:var(--sh-sm)}
+  .cta .acts{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:22px}
   .cta .acts .btn{padding:14px 30px; font-size:15px}
   .cta .contact{margin-top:24px; font-family:var(--mono); font-size:13px; color:var(--ink-3)}
   .cta .contact a{color:var(--azure-deep); font-weight:700}
@@ -1198,11 +1208,18 @@
       <span class="eyebrow" style="display:block; margin-bottom:18px">Leve para o seu hospital</span>
       <h2>Vamos mostrar a Valentrax<br>rodando com o seu fluxo.</h2>
       <p>Uma demonstração de 30 minutos, com os módulos que fazem sentido para o seu serviço. Sem compromisso.</p>
+      <div class="lang" role="group" aria-label="Idioma da demonstração">
+        <span class="lbl">Demonstração em</span>
+        <div class="seg">
+          <button type="button" class="on" data-lang="pt" aria-pressed="true">Português</button>
+          <button type="button" data-lang="en" aria-pressed="false">English</button>
+        </div>
+      </div>
       <div class="acts">
-        <a class="btn btn-primary" href="https://wa.me/5551993476688?text=Ol%C3%A1%21%20Gostaria%20de%20conhecer%20a%20Valentrax%20e%20agendar%20uma%20demonstra%C3%A7%C3%A3o." target="_blank" rel="noopener">
+        <a class="btn btn-primary" id="ctaWa" href="https://wa.me/5551993476688?text=Ol%C3%A1%21%20Gostaria%20de%20conhecer%20a%20Valentrax%20e%20agendar%20uma%20demonstra%C3%A7%C3%A3o." target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><use href="#wa"/></svg>
-          Agendar pelo WhatsApp</a>
-        <a class="btn btn-outline" href="mailto:Valentrax.ai@gmail.com?subject=Demonstra%C3%A7%C3%A3o%20da%20Valentrax">Enviar e-mail</a>
+          <span class="t">Agendar pelo WhatsApp</span></a>
+        <a class="btn btn-outline" id="ctaMail" href="mailto:Valentrax.ai@gmail.com?subject=Demonstra%C3%A7%C3%A3o%20da%20Valentrax">Enviar e-mail</a>
       </div>
       <p class="contact"><a href="mailto:Valentrax.ai@gmail.com">Valentrax.ai@gmail.com</a> &nbsp;·&nbsp; <a href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="#25b366" style="vertical-align:-2.5px; margin-right:5px"><use href="#wa"/></svg>(51) 99347-6688</a></p>
     </div>
@@ -1367,6 +1384,58 @@
 
   cc.textContent = says[0];
   paint();
+})();
+</script>
+
+<script>
+/* Idioma da demonstração. O site continua em português: isto só troca a
+   mensagem que vai no WhatsApp/e-mail e o rótulo dos dois botões, para a
+   pessoa dizer em que língua quer a demo sem ter que escrever nada. */
+(function(){
+  var cta = document.getElementById('contato');
+  if (!cta) return;
+  var botoes = [].slice.call(cta.querySelectorAll('.seg button'));
+  var wa    = document.getElementById('ctaWa');
+  var mail  = document.getElementById('ctaMail');
+  var waTxt = wa && wa.querySelector('.t');
+  if (!botoes.length || !wa || !mail || !waTxt) return;
+
+  var FONE = '5551993476688', EMAIL = 'Valentrax.ai@gmail.com';
+  var idiomas = {
+    pt: {
+      zap:      'Olá! Gostaria de conhecer a Valentrax e agendar uma demonstração.',
+      assunto:  'Demonstração da Valentrax',
+      corpo:    'Olá! Gostaria de agendar uma demonstração da Valentrax, em português.',
+      rotuloZap:'Agendar pelo WhatsApp',
+      rotuloMail:'Enviar e-mail'
+    },
+    en: {
+      zap:      'Hello! I would like to know Valentrax and schedule a demo in English.',
+      assunto:  'Valentrax demo (in English)',
+      corpo:    'Hello! I would like to schedule a Valentrax demo, in English.',
+      rotuloZap:'Schedule on WhatsApp',
+      rotuloMail:'Send an email'
+    }
+  };
+
+  function aplicar(lang){
+    var t = idiomas[lang] || idiomas.pt;
+    wa.href = 'https://wa.me/' + FONE + '?text=' + encodeURIComponent(t.zap);
+    mail.href = 'mailto:' + EMAIL + '?subject=' + encodeURIComponent(t.assunto) +
+                '&body=' + encodeURIComponent(t.corpo);
+    waTxt.textContent = t.rotuloZap;
+    mail.textContent = t.rotuloMail;
+    botoes.forEach(function(b){
+      var ligado = b.getAttribute('data-lang') === lang;
+      b.classList.toggle('on', ligado);
+      b.setAttribute('aria-pressed', String(ligado));
+    });
+  }
+
+  botoes.forEach(function(b){
+    b.addEventListener('click', function(){ aplicar(b.getAttribute('data-lang')); });
+  });
+  aplicar('pt');
 })();
 </script>
 </body>
