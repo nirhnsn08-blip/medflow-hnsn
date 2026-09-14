@@ -646,13 +646,20 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     return out;
   }
   async function triar(p, classificacao, vitais, sugerida, comorbidades, extras) {
-    await updatePsAtendimentoRemote(sb, p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    const r = await updatePsAtendimentoRemote(sb, p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    // 🔴 PARA ANTES DE GRAVAR OS SINAIS. Um registro de sinais vitais para um
+    // paciente que continuou sem classificação é pior que nenhum: ele some da
+    // fila de quem espera triagem e não entra na de quem espera atendimento.
+    if (!r.ok) { alert("A triagem NÃO foi gravada — " + r.erro + "\n\nO paciente continua aguardando triagem. O que você preencheu está na tela; tente de novo."); return; }
     await addPsSinalRemote(sb, { atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     registrarAuditoria(sb, currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
   }
   async function reavaliar(p, classificacao, vitais, sugerida, comorbidades, extras) {
-    await updatePsAtendimentoRemote(sb, p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    const r = await updatePsAtendimentoRemote(sb, p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    // A reavaliação existe para MUDAR a cor de quem piorou na espera. Falhar
+    // em silêncio deixa o paciente na prioridade antiga, que é a errada.
+    if (!r.ok) { alert("A reavaliação NÃO foi gravada — " + r.erro + "\n\nO paciente continua com a classificação anterior. O que você preencheu está na tela; tente de novo."); return; }
     await addPsSinalRemote(sb, { atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     registrarAuditoria(sb, currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
     setReavaliando(null); setTimeout(refresh, 300);
@@ -681,7 +688,8 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     setTimeout(refresh, 300);
   }
   async function iniciarAtendimento(p) {
-    await updatePsAtendimentoRemote(sb, p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
+    const r = await updatePsAtendimentoRemote(sb, p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
+    if (!r.ok) { alert("Não foi possível iniciar o atendimento — " + r.erro + "\n\nO paciente continua na fila de espera."); return; }
     registrarAuditoria(sb, currentUser, "PS: inicio atendimento", p.iniciais, {});
     setTimeout(refresh, 300);
   }
@@ -691,11 +699,19 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     // episódio vira faturável — e o procedimento só se sabe no fim. Sem eles,
     // `carregarProducaoFaturavel` (que filtra procedimento_cod=not.is.null)
     // nunca enxerga este atendimento.
-    await updatePsAtendimentoRemote(sb, p.id, {
+    const r = await updatePsAtendimentoRemote(sb, p.id, {
       desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null,
       observacao: observacao || null, medico: medico || null, status: "finalizado",
       ...dadosDeConta({ convenioId, procedimentoCod, cid }),
     });
+    // 🔴 PARA ANTES DE RESERVAR LEITO E DE ABRIR PEDIDO NO NIR. Seguir com o
+    // episódio ainda aberto deixaria um leito reservado — ou uma solicitação
+    // na fila do NIR — para um paciente que o PS continua mostrando em
+    // atendimento. E tentar de novo criaria a SEGUNDA reserva.
+    if (!r.ok) {
+      alert("O desfecho NÃO foi gravado — " + r.erro + "\n\nNenhum leito foi reservado e nenhum pedido foi aberto. O paciente continua em atendimento; tente de novo.");
+      return;
+    }
     if (desfecho === "internacao") {
       if (leito) {
         // Reserva automática: o leito fica RESERVADO para o paciente até ele subir.
