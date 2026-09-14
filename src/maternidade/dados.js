@@ -6,7 +6,7 @@
 // para bancos sem a coluna de busca — em vez de reinventar uma segunda.
 // ═══════════════════════════════════════════════════════════
 
-import { listaLida, algumaFalhou } from "../util/leitura.js";
+import { listaLida, algumaFalhou, naoDeuParaLer } from "../util/leitura.js";
 import { montarFilaObstetrica } from "./fila.js";
 import { medidaMaisRecente } from "./vigilancia.js";
 import { emitirProntuario, cadastrarRecemNascido } from "../atendimento/dados.js";
@@ -287,16 +287,21 @@ export async function carregarVigilanciaMaterna(sb) {
   const epsR = await sb("mat_episodios?status=eq.em_andamento&select=id,prontuario,risco&limit=500")
     .catch(() => null);
   const episodios = listaLida(epsR);
-  if (episodios.falhou) return { ok: false, casos: [], incompleto: true };
+  // naoDeuParaLer, não `.falhou`: a marca é a IDENTIDADE do array (FALHA),
+  // não uma propriedade. Perguntar pela propriedade dava sempre undefined e
+  // a recusa do banco virava "nenhuma gestante internada".
+  if (naoDeuParaLer(episodios)) return { ok: false, casos: [], incompleto: true };
   if (!episodios.length) return { ok: true, casos: [], incompleto: false };
 
   const ids = episodios.map(e => e.id).join(",");
-  const prontuarios = [...new Set(episodios.map(e => e.prontuario).filter(Boolean))]
-    .map(p => `"${p}"`).join(",");
+  // in.() com texto no formato que o repo já usa em `pep_alergias`
+  // (clinico/alergias-dados.js): sem aspas e codificado. A forma com aspas
+  // também é aceita pelo PostgREST — isto é consistência, não conserto.
+  const prontuarios = [...new Set(episodios.map(e => e.prontuario).filter(Boolean))].join(",");
 
   const [pacR, leitosR, tpR, admR] = await Promise.all([
     prontuarios
-      ? sb(`pacientes?prontuario=in.(${prontuarios})&select=prontuario,iniciais,nome_completo`).catch(() => null)
+      ? sb(`pacientes?prontuario=in.(${encodeURIComponent(prontuarios)})&select=prontuario,iniciais,nome_completo`).catch(() => null)
       : Promise.resolve([]),
     sb("leitos?status=eq.ocupado&select=identificacao,prontuario,setor").catch(() => null),
     sb(`mat_trabalho_parto?episodio_id=in.(${ids})&select=episodio_id,data_hora,vitais` +

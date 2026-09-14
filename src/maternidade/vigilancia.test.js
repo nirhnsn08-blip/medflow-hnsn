@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   montarVigilancia, avaliarCaso, classificarFrescor, minutosDesde,
-  prioridade, medidaMaisRecente, FRESCOR, INTERVALO_PADRAO,
+  prioridade, medidaMaisRecente, vitaisDoRegistro, FRESCOR, INTERVALO_PADRAO,
 } from "./vigilancia.js";
 import { NIVEL } from "./meows.js";
 
@@ -144,5 +144,35 @@ describe("medidaMaisRecente", () => {
     expect(medidaMaisRecente([{ vitais: null, medidoEm: hMin(1) }])).toBeNull();
     expect(medidaMaisRecente([{ vitais: NORMAL, medidoEm: "?" }])).toBeNull();
     expect(medidaMaisRecente([])).toBeNull();
+  });
+});
+
+describe("vitaisDoRegistro", () => {
+  it("formulário em branco NÃO vira medida — devolve null", () => {
+    expect(vitaisDoRegistro({})).toBeNull();
+    expect(vitaisDoRegistro({ pa_sis: "", fc: "  ", consciencia: "" })).toBeNull();
+    expect(vitaisDoRegistro()).toBeNull();
+  });
+
+  it("um toque com só a PA aferida já é medida", () => {
+    expect(vitaisDoRegistro({ pa_sis: "150", dilatacao: "7" })).toEqual({ pa_sis: 150 });
+  });
+
+  it("números viram número e consciência fica texto", () => {
+    expect(vitaisDoRegistro({ pa_sis: "128", temp: "37,0".replace(",", "."), consciencia: "alerta" }))
+      .toEqual({ pa_sis: 128, temp: 37, consciencia: "alerta" });
+  });
+
+  it("ignora o que não é número, em vez de gravar NaN", () => {
+    expect(vitaisDoRegistro({ fc: "abc", fr: "18" })).toEqual({ fr: 18 });
+  });
+
+  it("🔴 o que ele devolve é exatamente o que o painel sabe pontuar", () => {
+    // Se um campo do form não tivesse nome igual ao do chart, o MEOWS o
+    // ignoraria em silêncio e o escore sairia menor do que a paciente está.
+    const v = vitaisDoRegistro({ pa_sis: "165", pa_dia: "95", fc: "88", fr: "18", temp: "36.6", sato2: "98", consciencia: "alerta" });
+    const r = montarVigilancia([{ nome: "X", vitais: v, medidoEm: hMin(5) }], { agora: AGORA });
+    expect(r.linhas[0].meows.faltando).toEqual([]);
+    expect(r.linhas[0].meows.nivel).toBe(NIVEL.VERMELHO);
   });
 });

@@ -160,3 +160,26 @@ export function medidaMaisRecente(candidatas = []) {
   const { _t, ...limpa } = melhor;
   return limpa;
 }
+
+/** Os campos de sinais maternos que um registro de trabalho de parto carrega. */
+export const CAMPOS_VITAIS = ["pa_sis", "pa_dia", "fc", "fr", "temp", "sato2", "consciencia"];
+
+/**
+ * Os vitais de um registro digitado, ou **null** se nenhum foi preenchido.
+ *
+ * 🔴 O null é a regra, não um detalhe: um toque lançado sem aferir nada NÃO
+ * pode contar como medida. Se contasse, o relógio do MEOWS zeraria e o painel
+ * diria "medida recente" sobre uma paciente que ninguém mediu — o falso-verde
+ * de novo, agora com carimbo de hora.
+ */
+export function vitaisDoRegistro(form = {}) {
+  const v = {};
+  for (const c of CAMPOS_VITAIS) {
+    const bruto = String(form?.[c] ?? "").trim();
+    if (bruto === "") continue;
+    if (c === "consciencia") { v[c] = bruto; continue; }
+    const n = Number(bruto);
+    if (Number.isFinite(n)) v[c] = n;
+  }
+  return Object.keys(v).length ? v : null;
+}

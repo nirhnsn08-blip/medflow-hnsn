@@ -11,7 +11,11 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { avaliarPartograma, ZONA } from "./partograma.js";
+import { calcularMeows, NIVEL } from "./meows.js";
+import { vitaisDoRegistro } from "./vigilancia.js";
 import { buscarPacientes, episodioAtivoDaGestante, carregarTrabalhoParto, salvarRegistroTP } from "./dados.js";
+
+const COR_NIVEL = { [NIVEL.VERDE]: "#22c55e", [NIVEL.AMARELO]: "#f59e0b", [NIVEL.VERMELHO]: "#ef4444" };
 
 const TURQ = "#2dd4bf";
 const COR_ZONA = { [ZONA.NORMAL]: "#22c55e", [ZONA.ALERTA]: "#f59e0b", [ZONA.ACAO]: "#ef4444", [ZONA.LATENTE]: "#8fa2bd" };
@@ -94,7 +98,15 @@ function Partografo({ avaliacao }) {
   );
 }
 
-const NOVO0 = () => ({ data_hora: "", dilatacao: "", descida_delee: "", bcf: "", contracoes_freq: "", contracoes_dur: "", bolsa: "", liquido: "", ocitocina: "", observacao: "" });
+const NOVO0 = () => ({
+  data_hora: "", dilatacao: "", descida_delee: "", bcf: "", contracoes_freq: "", contracoes_dur: "",
+  bolsa: "", liquido: "", ocitocina: "", observacao: "",
+  // sinais maternos do momento — vão para `vitais` (jsonb) e alimentam o
+  // painel de Segurança materna. Sem eles, a única medida da paciente seria a
+  // da admissão, envelhecendo para sempre.
+  pa_sis: "", pa_dia: "", fc: "", fr: "", temp: "", sato2: "", consciencia: "",
+});
+
 
 export default function PartogramaView({ sb, currentUser, canEdit, pacienteInicial }) {
   const [busca, setBusca] = useState("");
@@ -107,6 +119,10 @@ export default function PartogramaView({ sb, currentUser, canEdit, pacienteInici
   const [novo, setNovo] = useState(NOVO0());
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+
+  // MEOWS ao vivo do que está sendo digitado — mesmo motivo da Admissão:
+  // quem afere vê o escore antes de gravar, não depois.
+  const meowsNovo = useMemo(() => calcularMeows(vitaisDoRegistro(novo) || {}), [novo]);
 
   const cn = (k, v) => setNovo(x => ({ ...x, [k]: v }));
 
@@ -148,6 +164,7 @@ export default function PartogramaView({ sb, currentUser, canEdit, pacienteInici
       bcf: n(novo.bcf), contracoes_freq: n(novo.contracoes_freq), contracoes_dur: n(novo.contracoes_dur),
       bolsa: novo.bolsa || null, liquido: novo.liquido || null,
       ocitocina: novo.ocitocina || null, observacao: novo.observacao || null,
+      vitais: vitaisDoRegistro(novo),
       profissional: currentUser?.name || null,
     };
     const r = await salvarRegistroTP(sb, registro, currentUser);
@@ -233,6 +250,31 @@ export default function PartogramaView({ sb, currentUser, canEdit, pacienteInici
                 <label><span style={cx.rotulo}>Líquido</span><select value={novo.liquido} onChange={e => cn("liquido", e.target.value)} style={cx.input}><option value="">—</option><option value="claro">Claro</option><option value="meconial">Meconial</option><option value="sanguinolento">Sanguinolento</option></select></label>
                 <label><span style={cx.rotulo}>Ocitocina</span><input value={novo.ocitocina} onChange={e => cn("ocitocina", e.target.value)} style={cx.input} placeholder="ex.: 8 mUI/min" /></label>
                 <label style={{ gridColumn: "1/-1" }}><span style={cx.rotulo}>Observação</span><input value={novo.observacao} onChange={e => cn("observacao", e.target.value)} style={cx.input} /></label>
+              </div>
+
+              {/* Sinais maternos — alimentam o painel de Segurança materna.
+                  Em branco, o registro NÃO conta como medida (vitais = null). */}
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700 }}>Sinais maternos</span>
+                  <span style={{ ...cx.chip, fontSize: 12.5, color: meowsNovo.avaliado ? COR_NIVEL[meowsNovo.nivel] : "var(--text-muted)", borderColor: meowsNovo.avaliado ? COR_NIVEL[meowsNovo.nivel] : "var(--border)" }}>
+                    MEOWS {meowsNovo.avaliado ? `${meowsNovo.total} · ${meowsNovo.nivel.toUpperCase()}` : "—"}
+                  </span>
+                  <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
+                    {meowsNovo.avaliado
+                      ? "1 vermelho ou 2 amarelos = chamar. Apoio, não conduta."
+                      : "Em branco, este toque não conta como medida no painel de segurança."}
+                  </span>
+                </div>
+                <div style={cx.grid}>
+                  <label><span style={cx.rotulo}>PA sistólica</span><input type="number" value={novo.pa_sis} onChange={e => cn("pa_sis", e.target.value)} style={cx.input} placeholder="mmHg" /></label>
+                  <label><span style={cx.rotulo}>PA diastólica</span><input type="number" value={novo.pa_dia} onChange={e => cn("pa_dia", e.target.value)} style={cx.input} placeholder="mmHg" /></label>
+                  <label><span style={cx.rotulo}>FC (bpm)</span><input type="number" value={novo.fc} onChange={e => cn("fc", e.target.value)} style={cx.input} /></label>
+                  <label><span style={cx.rotulo}>FR (irpm)</span><input type="number" value={novo.fr} onChange={e => cn("fr", e.target.value)} style={cx.input} /></label>
+                  <label><span style={cx.rotulo}>Temperatura (°C)</span><input type="number" step="0.1" value={novo.temp} onChange={e => cn("temp", e.target.value)} style={cx.input} /></label>
+                  <label><span style={cx.rotulo}>SatO₂ (%)</span><input type="number" value={novo.sato2} onChange={e => cn("sato2", e.target.value)} style={cx.input} /></label>
+                  <label><span style={cx.rotulo}>Consciência</span><select value={novo.consciencia} onChange={e => cn("consciencia", e.target.value)} style={cx.input}><option value="">—</option><option value="alerta">Alerta</option><option value="resposta_voz">Responde à voz</option><option value="resposta_dor">Responde à dor</option><option value="irresponsivo">Irresponsiva</option></select></label>
+                </div>
               </div>
               <div style={{ marginTop: 14, display: "flex", gap: 12, alignItems: "center" }}>
                 <button onClick={lancar} disabled={salvando} style={{ background: salvando ? "var(--surface-3)" : "#22c55e", color: salvando ? "var(--text-muted)" : "#052e16", border: "none", borderRadius: 9, padding: "10px 22px", fontWeight: 700, cursor: salvando ? "default" : "pointer", fontSize: 13.5 }}>{salvando ? "Gravando…" : "Lançar toque"}</button>
