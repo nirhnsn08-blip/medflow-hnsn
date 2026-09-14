@@ -1,11 +1,10 @@
 // ═══════════════════════════════════════════════════════════
 // VALENTRAX MATERNITY CENTER — a casca do módulo
 //
-// Primeira aparição na barra. Aqui é só o ESQUELETO: a sub-navegação da
-// visão "command center" e os painéis marcados "em construção". Cada aba
-// ganha conteúdo real nas fatias seguintes (a Admissão é a próxima). O padrão
-// é o mesmo do Faturamento (PR #77): registrar o módulo e provar o
-// encanamento — menu, permissão, render — antes de encher a tela.
+// A sub-navegação da visão "command center", no padrão do Faturamento
+// (PR #77). Nasceu como esqueleto com painéis "em construção" e foi ganhando
+// uma aba por fatia; com o Alojamento conjunto, a jornada fecha — da fila
+// obstétrica à alta do binômio — e não há mais placeholder aqui.
 //
 // A leitura/escrita dos dados (mat_episodios/mat_admissoes) já está liberada
 // pelo módulo `paciente` (ver a Fase 0), então quem cuida da gestante alcança
@@ -19,6 +18,7 @@ import PartoView from "./PartoView.jsx";
 import RecemNascidosView from "./RecemNascidosView.jsx";
 import IndicadoresView from "./IndicadoresView.jsx";
 import SegurancaMaternaView from "./SegurancaMaternaView.jsx";
+import AlojamentoView from "./AlojamentoView.jsx";
 import FilaObstetrica from "./FilaObstetrica.jsx";
 import { ESTADO } from "./fila.js";
 
@@ -40,25 +40,8 @@ const cx = {
   rotulo: { fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: "var(--text-muted)" },
 };
 
-function Placeholder({ aba }) {
-  return (
-    <section style={{ ...cx.card, minHeight: 280, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", textAlign: "center", gap: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: aba.proxima ? TURQ : "var(--text-muted)" }}>
-        {aba.proxima ? "Próxima entrega" : "Em construção"}
-      </div>
-      <div style={{ fontSize: 20, fontWeight: 700 }}>{aba.label}</div>
-      <p style={{ margin: 0, maxWidth: 460, color: "var(--text-muted)", fontSize: 13.5, lineHeight: 1.6 }}>
-        {aba.proxima
-          ? "O formulário de admissão obstétrica (padrão FEBRASGO / Ministério da Saúde) já está desenhado e validado, com o motor de cálculo (IG, DPP, IMC, Bishop) e o MEOWS prontos. É a próxima fatia a entrar aqui."
-          : "Esta frente entra em uma fatia futura do módulo, construída em cima da mesma fundação de dados."}
-      </p>
-    </section>
-  );
-}
-
 export default function MaternidadePage({ sb, currentUser, canEdit }) {
   const [abaId, setAbaId] = useState("fila");
-  const aba = ABAS.find(a => a.id === abaId) || ABAS[0];
 
   // Paciente escolhida na fila, entregue à aba de destino como `pacienteInicial`.
   // Trocar de aba PELA MÃO (nav) limpa a seleção — só a fila pré-seleciona.
@@ -112,7 +95,6 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
                 color: on ? TURQ : "var(--text-2)", fontWeight: on ? 700 : 500,
               }}>
                 {a.label}
-                {a.proxima && <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".05em", color: on ? TURQ : "var(--text-muted)", border: `1px solid ${on ? TURQ : "var(--border-2)"}`, borderRadius: 99, padding: "1px 6px" }}>PRÓXIMA</span>}
               </button>
             );
           })}
@@ -120,9 +102,9 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
 
         {/* Painel — o form rola AQUI (overflow próprio) */}
         <div style={{ flex: 1, minWidth: 0, overflowY: "auto", paddingRight: 6, paddingBottom: 20 }}>
-          {abaId === "fila"
-            ? <FilaObstetrica sb={sb} onEscolher={aoEscolherDaFila} />
-            : abaId === "admissao"
+          {/* A fila é o padrão: fecha a cadeia em vez de abrir, para um `abaId`
+              desconhecido cair na porta de entrada do módulo, e não em nada. */}
+          {abaId === "admissao"
             ? <AdmissaoObstetrica sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("admissao")} />
             : abaId === "trabalho"
             ? <PartogramaView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("trabalho")} />
@@ -130,11 +112,13 @@ export default function MaternidadePage({ sb, currentUser, canEdit }) {
             ? <PartoView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("partos")} />
             : abaId === "rn"
             ? <RecemNascidosView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("rn")} />
+            : abaId === "alojamento"
+            ? <AlojamentoView sb={sb} currentUser={currentUser} canEdit={canEdit} pacienteInicial={inicialPara("alojamento")} />
             : abaId === "indicadores"
             ? <IndicadoresView sb={sb} />
             : abaId === "seguranca"
             ? <SegurancaMaternaView sb={sb} onRegistrar={aoRegistrarVitais} />
-            : <Placeholder aba={aba} />}
+            : <FilaObstetrica sb={sb} onEscolher={aoEscolherDaFila} />}
         </div>
       </div>
     </div>

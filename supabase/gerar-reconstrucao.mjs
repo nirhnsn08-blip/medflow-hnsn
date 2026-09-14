@@ -256,6 +256,10 @@ const ORDEM = [
   // Recém-nascido: a avaliação do berço (mat_recem_nascidos). Depois de
   // mat_episodios e mat_partos (FK); antes do rls-leitura.
   "migracao-maternidade-recem-nascido.sql",
+  // Alojamento conjunto: a evolução do binômio depois do parto
+  // (mat_alojamento). Depois de mat_episodios e mat_recem_nascidos (FK);
+  // antes do rls-leitura.
+  "migracao-maternidade-alojamento.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

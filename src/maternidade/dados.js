@@ -247,6 +247,57 @@ export async function salvarRecemNascido(sb, { mae, dados, avaliacao, episodioId
   return { ok: true, paciente: rc.paciente, avaliacao: r[0] };
 }
 
+// ── Alojamento conjunto: a evolução do binômio ───────────────
+
+/** As evoluções do binômio deste episódio, na ordem do tempo. */
+export async function carregarAlojamento(sb, episodioId) {
+  if (!sb || !episodioId) return [];
+  const r = await sb(
+    `mat_alojamento?episodio_id=eq.${encodeURIComponent(episodioId)}&select=*&order=data_hora`
+  ).catch(() => null);
+  return listaLida(r);
+}
+
+/**
+ * Grava uma evolução do binômio (append-only).
+ *
+ * Quando a evolução é a ALTA (`alta_binomio`), encerra o episódio no mesmo
+ * passo — é o que tira a puérpera da fila obstétrica e do painel de segurança.
+ *
+ * A ORDEM IMPORTA: grava a evolução PRIMEIRO, encerra depois. Se fosse ao
+ * contrário e a evolução falhasse, o episódio já estaria encerrado e a alta
+ * teria sumido do dossiê com a paciente fora do painel — a pior combinação.
+ * Assim, o pior caso é um episódio aberto com a alta registrada: visível,
+ * e a tela avisa para encerrar de novo.
+ *
+ * 🔴 CONFERE O RETORNO, não o status: o PostgREST responde 2xx alterando zero
+ * linha. Devolve `{ ok, evolucao, encerrado }` ou `{ ok:false, motivo }`.
+ */
+export async function salvarEvolucaoAlojamento(sb, registro, user) {
+  if (!sb) return { ok: false, motivo: "Sem conexão com o banco." };
+  const r = await sb("mat_alojamento", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...registro, usuario: user?.name || null }),
+  }).catch(() => null);
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, motivo: "Não gravei a evolução (o banco recusou algum valor fora de faixa — peso do RN, zona de Kramer, EVA?)." };
+  }
+
+  let encerrado = false;
+  if (registro?.alta_binomio && registro?.episodio_id) {
+    const up = await sb(`mat_episodios?id=eq.${encodeURIComponent(registro.episodio_id)}`, {
+      method: "PATCH", headers: { Prefer: "return=representation" },
+      body: JSON.stringify({ status: "encerrado", updated_at: new Date().toISOString() }),
+    }).catch(() => null);
+    encerrado = Array.isArray(up) && up.length > 0;
+    if (!encerrado) {
+      return { ok: true, evolucao: r[0], encerrado: false,
+        aviso: "A alta foi registrada, mas o episódio continua ABERTO no sistema (o banco recusou o encerramento). A paciente segue aparecendo na fila e no painel de segurança — avise o suporte." };
+    }
+  }
+  return { ok: true, evolucao: r[0], encerrado };
+}
+
 // ── Indicadores: lê partos e RNs para agregar (sem migração) ──
 
 /**
@@ -271,11 +322,18 @@ export async function carregarIndicadores(sb) {
  * O painel de segurança materna: para cada episódio EM ANDAMENTO, a medida de
  * sinais vitais mais recente que existe no dossiê.
  *
- * Não há tabela nova: os vitais já são gravados em dois lugares — uma vez na
- * admissão e a cada registro do partograma. O painel só junta os dois e fica
- * com o mais novo. Quem está em trabalho de parto é medida de hora em hora;
- * quem está internada e ainda não entrou em trabalho tem a da admissão, que é
- * exatamente o caso em que o painel precisa gritar que a medida envelheceu.
+ * Não há tabela nova: os vitais já são gravados em TRÊS lugares — uma vez na
+ * admissão, a cada registro do partograma e a cada evolução do alojamento
+ * conjunto. O painel junta os três e fica com o mais novo. Quem está em
+ * trabalho de parto é medida de hora em hora; quem está internada e ainda não
+ * entrou em trabalho tem a da admissão, que é exatamente o caso em que o
+ * painel precisa gritar que a medida envelheceu.
+ *
+ * 🔴 O ALOJAMENTO NÃO É O TERCEIRO EM IMPORTÂNCIA — é o primeiro. A hemorragia
+ * pós-parto, primeira causa de morte materna, acontece nas horas seguintes ao
+ * parto, com a puérpera já no alojamento. Sem esta fonte, a última medida dela
+ * seria a do partograma e o painel a mostraria envelhecendo justamente quando
+ * ela está sendo medida de perto.
  *
  * 🔴 `incompleto` viaja junto: se alguma leitura falhou, a tela NÃO pode
  * dizer "nenhuma paciente em risco" — ela não sabe. Leitura que falhou não é
@@ -299,7 +357,7 @@ export async function carregarVigilanciaMaterna(sb) {
   // também é aceita pelo PostgREST — isto é consistência, não conserto.
   const prontuarios = [...new Set(episodios.map(e => e.prontuario).filter(Boolean))].join(",");
 
-  const [pacR, leitosR, tpR, admR] = await Promise.all([
+  const [pacR, leitosR, tpR, admR, alojR] = await Promise.all([
     prontuarios
       ? sb(`pacientes?prontuario=in.(${encodeURIComponent(prontuarios)})&select=prontuario,iniciais,nome_completo`).catch(() => null)
       : Promise.resolve([]),
@@ -308,26 +366,30 @@ export async function carregarVigilanciaMaterna(sb) {
        "&order=data_hora.desc&limit=2000").catch(() => null),
     sb(`mat_admissoes?episodio_id=in.(${ids})&select=episodio_id,data_hora,vitais` +
        "&order=data_hora.desc&limit=500").catch(() => null),
+    sb(`mat_alojamento?episodio_id=in.(${ids})&select=episodio_id,data_hora,vitais` +
+       "&order=data_hora.desc&limit=2000").catch(() => null),
   ]);
 
   const pacientes = listaLida(pacR), leitos = listaLida(leitosR);
-  const tps = listaLida(tpR), admissoes = listaLida(admR);
-  const incompleto = algumaFalhou(pacientes, leitos, tps, admissoes);
+  const tps = listaLida(tpR), admissoes = listaLida(admR), alojamentos = listaLida(alojR);
+  const incompleto = algumaFalhou(pacientes, leitos, tps, admissoes, alojamentos);
 
   const porProntuario = new Map(pacientes.map(p => [p.prontuario, p]));
   const leitoDe = new Map(leitos.filter(l => l.prontuario).map(l => [l.prontuario, l]));
   // as listas vêm em ordem decrescente: o primeiro de cada episódio é o mais novo
-  const ultimoTP = new Map(), ultimaAdm = new Map();
+  const ultimoTP = new Map(), ultimaAdm = new Map(), ultimoAloj = new Map();
   for (const r of tps) if (!ultimoTP.has(r.episodio_id)) ultimoTP.set(r.episodio_id, r);
   for (const a of admissoes) if (!ultimaAdm.has(a.episodio_id)) ultimaAdm.set(a.episodio_id, a);
+  for (const e of alojamentos) if (!ultimoAloj.has(e.episodio_id)) ultimoAloj.set(e.episodio_id, e);
 
   const casos = episodios.map(e => {
     const pac = porProntuario.get(e.prontuario) || {};
     const leito = leitoDe.get(e.prontuario);
-    const tp = ultimoTP.get(e.id), adm = ultimaAdm.get(e.id);
+    const tp = ultimoTP.get(e.id), adm = ultimaAdm.get(e.id), aloj = ultimoAloj.get(e.id);
     const medida = medidaMaisRecente([
-      tp  && { origem: "partograma", vitais: tp.vitais,  medidoEm: tp.data_hora },
-      adm && { origem: "admissao",   vitais: adm.vitais, medidoEm: adm.data_hora },
+      aloj && { origem: "alojamento", vitais: aloj.vitais, medidoEm: aloj.data_hora },
+      tp   && { origem: "partograma", vitais: tp.vitais,   medidoEm: tp.data_hora },
+      adm  && { origem: "admissao",   vitais: adm.vitais,  medidoEm: adm.data_hora },
     ].filter(Boolean));
     return {
       episodioId: e.id,
