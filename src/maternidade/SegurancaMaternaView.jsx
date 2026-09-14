@@ -36,6 +36,12 @@ const ESTILO = {
 };
 const SEM_MEDIDA = { cor: "var(--text-3)", borda: "var(--border-2)", fundo: "transparent", texto: "Sem medida" };
 
+// De onde veio a medida mais recente — a admissão, o partograma ou a evolução
+// do alojamento conjunto. Saber a origem muda a leitura: "medido há 3 h no
+// alojamento" é uma puérpera acompanhada; "há 3 h no partograma" é uma
+// paciente em trabalho de parto sem aferição no prazo.
+const ROTULO_ORIGEM = { partograma: "partograma", alojamento: "alojamento", admissao: "admissão" };
+
 function idade(min) {
   if (min == null) return "—";
   if (min < 1) return "agora";
@@ -82,7 +88,7 @@ function Linha({ l, onRegistrar }) {
         <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3 }}>
           {semMedida
             ? "Nenhum sinal vital lançado neste episódio."
-            : <>Medido {idade(l.minutos)} · {l.origem === "partograma" ? "partograma" : "admissão"} · prazo {l.prazoMin} min</>}
+            : <>Medido {idade(l.minutos)} · {ROTULO_ORIGEM[l.origem] || "admissão"} · prazo {l.prazoMin} min</>}
           {l.emTrabalhoDeParto && !semMedida && " · em trabalho de parto"}
         </div>
         {alterados.length > 0 && (

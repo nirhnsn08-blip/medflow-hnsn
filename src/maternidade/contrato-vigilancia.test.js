@@ -39,6 +39,7 @@ it("a auditoria foi lida (o parser não quebrou em silêncio)", () => {
   expect(COLUNAS.mat_episodios?.has("status")).toBe(true);
   expect(COLUNAS.mat_trabalho_parto?.has("vitais")).toBe(true);
   expect(COLUNAS.mat_admissoes?.has("vitais")).toBe(true);
+  expect(COLUNAS.mat_alojamento?.has("vitais")).toBe(true);
   expect(COLUNAS.pacientes?.has("nome_completo")).toBe(true);
 });
 
@@ -146,6 +147,28 @@ describe("carregarVigilanciaMaterna — a medida que chega na tela", () => {
     });
     const r = await carregarVigilanciaMaterna(sb);
     expect(r.casos[0]).toMatchObject({ origem: "admissao", emTrabalhoDeParto: false });
+  });
+
+  it("🔴 a evolução do alojamento vence o partograma quando é mais nova", async () => {
+    // O caso da hemorragia pós-parto: a puérpera saiu do partograma e está no
+    // alojamento sendo medida. Sem esta fonte, a última medida dela seria a do
+    // parto, envelhecendo no painel enquanto alguém a mede de perto.
+    const { sb } = espiao({
+      mat_episodios: [EPISODIOS[0]],
+      mat_trabalho_parto: [{ episodio_id: 1, data_hora: "2026-09-12T11:00:00Z", vitais: { pa_sis: 130 } }],
+      mat_admissoes: [{ episodio_id: 1, data_hora: "2026-09-12T07:00:00Z", vitais: { pa_sis: 120 } }],
+      mat_alojamento: [{ episodio_id: 1, data_hora: "2026-09-12T14:00:00Z", vitais: { pa_sis: 92, fc: 118 } }],
+    });
+    const r = await carregarVigilanciaMaterna(sb);
+    expect(r.casos[0].origem).toBe("alojamento");
+    expect(r.casos[0].vitais).toEqual({ pa_sis: 92, fc: 118 });
+  });
+
+  it("evolução do alojamento recusada: os casos vêm, marcados como incompletos", async () => {
+    const { sb } = espiao({ mat_episodios: EPISODIOS, mat_alojamento: null });
+    const r = await carregarVigilanciaMaterna(sb);
+    expect(r.incompleto).toBe(true);
+    expect(r.casos).toHaveLength(2);
   });
 
   it("sem nenhuma medida, o caso vem com vitais null (a tela chama de 'sem medida')", async () => {
