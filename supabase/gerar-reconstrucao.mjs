@@ -260,6 +260,10 @@ const ORDEM = [
   // (mat_alojamento). Depois de mat_episodios e mat_recem_nascidos (FK);
   // antes do rls-leitura.
   "migracao-maternidade-alojamento.sql",
+  // Torre de Comando: o módulo `executivo` entra nos perfis. Só grants —
+  // não cria tabela nem toca em RLS (a Torre LÊ tabelas que já existem).
+  // Depende de perfis_acesso/perfis_permissoes existirem.
+  "migracao-perfis-executivo.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

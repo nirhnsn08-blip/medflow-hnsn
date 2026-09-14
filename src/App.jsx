@@ -97,6 +97,7 @@ import {  corEsperaFila } from "./clinico/leitos.js";
 const Atendimento = lazy(() => import("./atendimento/Atendimento.jsx"));
 const FaturamentoPage = lazy(() => import("./atendimento/FaturamentoSus.jsx"));
 const MaternidadePage = lazy(() => import("./maternidade/MaternidadePage.jsx"));
+const TorreDeComando = lazy(() => import("./executivo/TorreDeComando.jsx"));
 import { especialidadesDoCadastro } from "./ambulatorio/especialidades.js";
 
 
@@ -1180,6 +1181,7 @@ export default function App() {
   // grupo cujos itens todos sumiram não desenha cabeçalho órfão.
   const itensDoMenu = [
     { id: "overview", icon: "dashboard", label: "Centro de Monitoramento", ver: verModulo("overview") },
+    { id: "executivo", icon: "dashboard", label: "Torre de Comando", ver: verModulo("executivo") },
 
     { id: "atendimento", icon: "door", label: "Atendimento", ver: verModulo("atendimento") },
     { id: "ps", icon: "activity", label: "Pronto-Socorro", ver: verModulo("ps") },
@@ -1346,6 +1348,7 @@ export default function App() {
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "maternidade" && <MaternidadePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
+          {active === "executivo" && <TorreDeComando sb={SB()} currentUser={currentUser} onNav={navegar} />}
           {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} especialidades={especialidades} />}
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
           {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} especialidades={especialidades} />}

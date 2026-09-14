@@ -59,6 +59,14 @@ export const NIVEL_LABEL = {
  */
 export const MODULOS = [
   { chave: "overview",     label: "Centro de Monitoramento", grupo: "Geral" },
+  // ⚠️ MÓDULO SEPARADO DO `overview` DE PROPÓSITO, e é a decisão que define
+  // esta tela. O Centro de Monitoramento está concedido a 14 perfis — é a
+  // porta de entrada do hospital inteiro. A Torre responde outra pergunta
+  // ("o hospital está indo bem?"), com dado estratégico consolidado, e é da
+  // direção. Reaproveitar a chave `overview` daria a leitura executiva a
+  // quem só precisa saber de leito, ou tiraria a tela de entrada de todos.
+  { chave: "executivo",    label: "Torre de Comando",   grupo: "Geral", clinico: true,
+    nota: "Painel executivo consolidado: ocupação, fluxo cirúrgico, ambulatório e abastecimento do hospital inteiro. Mostra iniciais e prontuário nos cancelamentos cirúrgicos — é dado assistencial identificável." },
   // A porta de entrada. NÃO é marcado como `clinico`: o que se registra
   // aqui é identificação e abertura de atendimento, não ato assistencial —
   // é exatamente o recorte administrativo que a COFEN 754/2024 art. 6º
