@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 105 tabelas, 1707 colunas.
+-- Cobertura atual: 105 tabelas, 1711 colunas.
 -- ============================================================
 
 with
@@ -558,6 +558,8 @@ colunas(tabela, coluna, origem) as (values
   ('farm_medicamentos','created_at','farmacia-faseA'),
   ('farm_medicamentos','custo_unitario','farmacia-custos'),
   ('farm_medicamentos','dose_maxima_dia','farmacia-clinica-fase1'),
+  ('farm_medicamentos','dose_maxima_kg_dia','alertas-peso-gestacao'),
+  ('farm_medicamentos','dose_maxima_kg_unid','alertas-peso-gestacao'),
   ('farm_medicamentos','dose_maxima_unid','farmacia-clinica-fase1'),
   ('farm_medicamentos','duracao_maxima_dias','farmacia-clinica-fase1'),
   ('farm_medicamentos','estoque_minimo','farmacia-faseA'),
@@ -567,6 +569,7 @@ colunas(tabela, coluna, origem) as (values
   ('farm_medicamentos','idade_pediatrica','farmacia-clinica-fase1'),
   ('farm_medicamentos','inapropriado_idoso','farmacia-clinica-fase1'),
   ('farm_medicamentos','inapropriado_pediatrico','farmacia-clinica-fase1'),
+  ('farm_medicamentos','motivo_gestacao','alertas-peso-gestacao'),
   ('farm_medicamentos','motivo_idoso','farmacia-clinica-fase1'),
   ('farm_medicamentos','motivo_pediatrico','farmacia-clinica-fase1'),
   ('farm_medicamentos','nao_triturar','farmacia-clinica-fase1'),
@@ -574,6 +577,7 @@ colunas(tabela, coluna, origem) as (values
   ('farm_medicamentos','obs_clinica','farmacia-clinica-fase1'),
   ('farm_medicamentos','observacao','farmacia-faseA'),
   ('farm_medicamentos','principio_ativo','farmacia-faseA'),
+  ('farm_medicamentos','risco_gestacao','alertas-peso-gestacao'),
   ('farm_medicamentos','unidade','farmacia-faseA'),
   ('farm_medicamentos','updated_at','farmacia-faseA'),
   ('farm_medicamentos','usuario','farmacia-faseA'),
