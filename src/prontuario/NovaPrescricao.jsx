@@ -15,7 +15,6 @@
 
 import { useState, useMemo } from "react";
 import { analisarPrescricaoClinica, FARM_GRAV } from "../clinico/alertas.js";
-import { textoAlergiasParaAlerta } from "../clinico/alergias.js";
 import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js";
 import { assinarPrescricao } from "./dados.js";
 
@@ -34,7 +33,7 @@ const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", 
 const lbl = { fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 };
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px", marginBottom: 14 };
 
-export default function NovaPrescricao({ sb, episodio, currentUser, medById, meds = [], interacoes = [], incompatY = [], alergias = [], condicoes = [], prescricaoAnterior, onPronto, onCancelar }) {
+export default function NovaPrescricao({ sb, episodio, currentUser, medById, meds = [], interacoes = [], incompatY = [], ctx = {}, prescricaoAnterior, onPronto, onCancelar }) {
   const [tipo, setTipo] = useState("medica");
   const [itens, setItens] = useState([]);
   const [obs, setObs] = useState("");
@@ -46,12 +45,10 @@ export default function NovaPrescricao({ sb, episodio, currentUser, medById, med
   const pode = podeClinico(currentUser, ato);
   const assinatura = assinaturaDe(currentUser);
 
-  // Alertas recalculados a cada item adicionado — antes de assinar.
-  const ctx = useMemo(() => ({
-    alergias: textoAlergiasParaAlerta(alergias),
-    em_sonda: condicoes.some(c => /sonda/i.test(c.descricao || "")),
-    idade: null, clearance_renal: null, funcao_hepatica: null,
-  }), [alergias, condicoes]);
+  // Alertas recalculados a cada item adicionado — antes de assinar. O
+  // contexto vem PRONTO de ProntuarioInternado (contextoDoInternado): esta
+  // tela montava o seu próprio, com idade e clearance nulos, e por isso os
+  // alertas de criança, idoso e ajuste renal sumiam justamente aqui.
 
   const alertas = useMemo(() => {
     const paraMotor = itens.map(i => ({ ...i, medicamento_nome: i.descricao }));

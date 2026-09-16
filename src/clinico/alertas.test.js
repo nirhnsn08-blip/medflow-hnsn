@@ -117,6 +117,15 @@ describe("interações medicamentosas", () => {
     expect(tipos(a)).not.toContain("interacao");
   });
 
+  it("🔴 detecta o par em QUALQUER ordem de prescrição", () => {
+    // A base guarda varfarina como `substancia_a` e AINE como `substancia_b`.
+    // Quem prescreve o AINE primeiro não pode escapar da conferência. Até
+    // 16/09/2026 nenhum teste prescrevia na ordem inversa — tirar o segundo
+    // sentido do `hit` passava verde.
+    const a = analisarPrescricaoClinica([item(3), item(2)], {}, MED, INTERACOES);
+    expect(de(a, "interacao")).toBeTruthy();
+  });
+
   it("gera UM alerta por par, não um por sentido", () => {
     const a = analisarPrescricaoClinica([item(2), item(3)], {}, MED, INTERACOES);
     expect(a.filter(x => x.tipo === "interacao")).toHaveLength(1);
