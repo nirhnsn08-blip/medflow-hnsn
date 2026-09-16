@@ -94,6 +94,8 @@ export const MODULOS = [
     nota: "Protocolos gerenciados tempo-dependentes (sepse, IAM, AVC, TEV): gatilho por NEWS/triagem, bundle com relógio e indicadores porta→ação, por setor assistencial." },
   { chave: "paciente",     label: "Paciente 360 / PEP", grupo: "Clínica e assistencial", clinico: true,
     nota: "Prontuário completo. É o módulo de maior sensibilidade do sistema." },
+  { chave: "maternidade",  label: "Maternidade",        grupo: "Clínica e assistencial", clinico: true,
+    nota: "Valentrax Maternity Center: admissão obstétrica, trabalho de parto, parto, RN e puerpério — mãe e recém-nascido como uma jornada. Os dados clínicos moram no módulo Paciente." },
   { chave: "farmacia",     label: "Farmácia",           grupo: "Farmácia" },
   // ⚠️ `semMenu`: é ABA da Farmácia ("Registro e referência" → Controlados),
   // com permissão própria porque o livro de controlados tem regra legal
@@ -187,14 +189,14 @@ export const PERFIS_MODELO = [
     chave: "medico", nome: "Médico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Assistência médica: prescreve, evolui, dá alta.",
     grants: p({ overview: "leitura", atendimento: "leitura", faturamento: "leitura", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
-                leitos: "escrita", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "escrita", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", maternidade: "escrita", farmacia: "leitura",
                 print: "leitura" }),
   },
   {
     chave: "enfermeiro", nome: "Enfermeiro(a)", categoria: "enfermeiro", role: "adm_silver",
     descricao: "Processo de Enfermagem completo, gestão de leitos e do cuidado.",
     grants: p({ overview: "leitura", atendimento: "escrita", faturamento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "leitura",
-                leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", maternidade: "escrita", farmacia: "leitura",
                 suprimentos: "leitura", print: "leitura" }),
   },
   {
@@ -207,7 +209,7 @@ export const PERFIS_MODELO = [
     chave: "tecnico_enfermagem", nome: "Técnico(a) de Enfermagem", categoria: "tecnico_enfermagem", role: "adm_silver",
     descricao: "Anotação de enfermagem, checagem de medicação e sinais vitais. O que pode registrar é limitado pela categoria (COFEN 736/2024).",
     grants: p({ overview: "leitura", atendimento: "leitura", faturamento: "leitura", ambulatorio: "leitura", ps: "escrita", leitos: "escrita",
-                scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita" }),
+                scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", maternidade: "escrita" }),
   },
   {
     chave: "fisioterapeuta", nome: "Fisioterapeuta", categoria: "fisioterapeuta", role: "adm_silver",
@@ -281,14 +283,14 @@ export const PERFIS_MODELO = [
     chave: "gestao", nome: "Gestão / Diretoria", categoria: "administrativo", role: "analista",
     descricao: "Indicadores e BI de todos os módulos. Gestão trabalha com número agregado — não precisa de prontuário individual.",
     grants: p({ overview: "leitura", atendimento: "leitura", faturamento: "leitura", ambulatorio: "leitura", ps: "leitura", bloco: "leitura",
-                leitos: "leitura", scih: "leitura", nsp: "leitura", protocolos: "leitura", farmacia: "leitura", suprimentos: "leitura",
+                leitos: "leitura", scih: "leitura", nsp: "leitura", protocolos: "leitura", maternidade: "leitura", farmacia: "leitura", suprimentos: "leitura",
                 print: "leitura", auditoria: "leitura" }),
   },
   {
     chave: "diretor_tecnico", nome: "Diretor(a) Técnico(a)", categoria: "medico", role: "adm_silver",
     descricao: "Responsável pelo prontuário da instituição (CFM 1.638/2002, art. 2º): acessa tudo do assistencial e a trilha de auditoria.",
     grants: p({ overview: "leitura", atendimento: "leitura", faturamento: "leitura", ambulatorio: "leitura", ps: "escrita", bloco: "leitura",
-                leitos: "leitura", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "leitura",
+                leitos: "leitura", scih: "leitura", nsp: "escrita", protocolos: "escrita", paciente: "escrita", maternidade: "escrita", farmacia: "leitura",
                 controlados: "leitura", suprimentos: "leitura", print: "leitura", auditoria: "leitura" }),
   },
   {
@@ -296,7 +298,7 @@ export const PERFIS_MODELO = [
     descricao: "Administra o sistema: cria usuários, configura perfis, importa e acessa o banco. Não tem competência clínica.",
     sistema: true,   // não pode ser apagado — é a porta de volta
     grants: p({ overview: "escrita", atendimento: "escrita", ambulatorio: "escrita", ps: "escrita", bloco: "escrita",
-                leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", farmacia: "escrita",
+                leitos: "escrita", scih: "escrita", nsp: "escrita", protocolos: "escrita", paciente: "escrita", maternidade: "escrita", farmacia: "escrita",
                 controlados: "escrita", suprimentos: "escrita", print: "escrita",
                 faturamento: "escrita", auditoria: "escrita", import: "escrita", users: "escrita" }),
   },
