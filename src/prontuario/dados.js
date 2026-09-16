@@ -52,11 +52,16 @@ function assinatura(user, campoNome = "profissional_nome") {
  */
 export async function carregarProntuario(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
-  const [episodios, alergias, condicoes] = await Promise.all([
+  const [episodios, alergias, condicoes, pacientes] = await Promise.all([
     sb(`pep_episodios?prontuario=eq.${p}&select=*&order=admissao_em.desc`).catch(() => []),
     sb(`pep_alergias?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_condicoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    // A data de nascimento alimenta as regras de criança e de idoso do motor
+    // de alertas. Sem ela o contexto ia com `idade: null` fixo, e nenhuma das
+    // duas disparava para paciente internado.
+    sb(`pacientes?prontuario=eq.${p}&select=prontuario,data_nascimento&limit=1`).catch(() => null),
   ]);
+  const paciente = listaLida(pacientes)[0] || null;
 
   const eps = listaLida(episodios);
   const ativo = eps.find(e => (e.status || "aberto") === "aberto" && !e.alta_em) || null;
@@ -65,7 +70,7 @@ export async function carregarProntuario(sb, prontuario) {
   const medicamentosUso = await sb(`pep_medicamentos_uso?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []);
 
   if (!ativo) {
-    return { episodios: eps, episodio: null, alergias: alergias || [], condicoes: condicoes || [],
+    return { episodios: eps, episodio: null, paciente, alergias: alergias || [], condicoes: condicoes || [],
              medicamentosUso: listaLida(medicamentosUso),
              prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [],
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
@@ -113,7 +118,7 @@ export async function carregarProntuario(sb, prontuario) {
   // que esta tela pode dizer.
   const arr = listaLida;
   return {
-    episodios: eps, episodio: ativo,
+    episodios: eps, episodio: ativo, paciente,
     alergias: arr(alergias), condicoes: arr(condicoes),
     prescricoes: arr(prescricoes), itens: arr(itens), eventos: arr(eventos),
     administracoes: arr(administracoes), sinais: arr(sinais),

@@ -17,7 +17,8 @@ import {
   horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce,
   timelineEpisodio,
 } from "../clinico/prontuario.js";
-import { situacaoAlergica, textoAlergiasParaAlerta } from "../clinico/alergias.js";
+import { situacaoAlergica } from "../clinico/alergias.js";
+import { contextoDoInternado } from "./contexto-internado.js";
 import { analisarPrescricaoClinica, FARM_GRAV } from "../clinico/alertas.js";
 import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js";
 import {
@@ -87,12 +88,9 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
 
   // O motor de alertas passa a enxergar a alergia do INTERNADO — antes ele
   // só recebia o texto solto do atendimento do PS.
-  const ctx = {
-    idade: null, alergias: textoAlergiasParaAlerta(d.alergias),
-    em_sonda: d.condicoes?.some(c => /sonda/i.test(c.descricao || "")) || false,
-    clearance_renal: ultimo?.clearance_renal ?? null,
-    funcao_hepatica: null,
-  };
+  // Um contexto só, para as duas telas: a prescrição vigente abaixo e a
+  // NovaPrescricao (onde os alertas servem ANTES de assinar).
+  const ctx = contextoDoInternado({ paciente: d.paciente, alergias: d.alergias, condicoes: d.condicoes, clearanceRenal: ultimo?.clearance_renal });
   // O motor de alertas nasceu no PS, onde a coluna se chama
   // `medicamento_nome`. No PEP ela é `descricao`. Sem esta ponte os alertas
   // disparam certo mas exibem "undefined" no lugar do medicamento — e
@@ -172,7 +170,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
         prescrevendo
           ? <NovaPrescricao sb={sb} episodio={ep} currentUser={currentUser}
               medById={medById} meds={Object.values(medById)} interacoes={interacoes} incompatY={incompatY}
-              alergias={d.alergias} condicoes={d.condicoes} prescricaoAnterior={presc}
+              ctx={ctx} prescricaoAnterior={presc}
               onPronto={() => { setPrescrevendo(false); recarregar(); }}
               onCancelar={() => setPrescrevendo(false)} />
           : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep}

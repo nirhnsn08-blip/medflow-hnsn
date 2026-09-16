@@ -87,6 +87,19 @@ export function administracoesNoDia(frequenciaDia) {
   return n === 0 ? 1 : n;
 }
 
+// ── VIA ENDOVENOSA ──────────────────────────────────────────
+// 🔴 O PS grava "IV"; o prontuário de internação grava "EV" (endovenosa, o
+// termo de uso no Brasil). A regra de incompatibilidade em Y comparava só
+// com "IV" — e por isso NUNCA disparou para paciente internado, nem o aviso
+// de "base não conferida". Dois medicamentos incompatíveis na mesma linha
+// passavam calados justamente onde o paciente fica dias com acesso venoso.
+const VIAS_ENDOVENOSAS = new Set(["iv", "ev", "endovenosa", "endovenoso", "intravenosa", "intravenoso"]);
+
+/** A via é endovenosa, qualquer que seja o nome que a tela usou? */
+export function viaEndovenosa(via) {
+  return VIAS_ENDOVENOSAS.has(normTxt(via));
+}
+
 // ── GESTAÇÃO ────────────────────────────────────────────────
 // A categoria é a da BULA brasileira (ANVISA): A, B, C, D, X. Vem do
 // catálogo, preenchida e validada pela farmácia do hospital — o motor não
@@ -230,6 +243,20 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
     else if (porKg?.estado === "sem_peso") push("base_indisponivel", "media", "Dose por kg NÃO conferida", `${nome} tem dose máxima por kg no catálogo, mas o peso do paciente está ausente ou inválido. Informe o peso no contexto clínico.`, [nome]);
   });
 
+  // 🔴 IDADE DESCONHECIDA: dizer quais medicamentos dependiam dela.
+  // As regras de criança e de idoso só leem `idade`. Sem ela, um medicamento
+  // marcado como inapropriado para criança passava sem alerta — e foi assim,
+  // calado, por semanas no prontuário de internação, que mandava `idade: null`
+  // fixo. Só lista o que TEM marcação de faixa etária: medicamento sem
+  // marcação não depende de idade e não precisa de aviso.
+  if (idade == null || !Number.isFinite(idade)) {
+    const dependem = [...new Set(comMed
+      .filter(i => { const m = medById[i.medicamento_id]; return m?.inapropriado_pediatrico || m?.inapropriado_idoso; })
+      .map(i => i.medicamento_nome))];
+    if (dependem.length) push("base_indisponivel", "media", "Faixa etária NÃO conferida",
+      `A idade do paciente não está disponível. ${dependem.length === 1 ? "Este medicamento tem" : "Estes medicamentos têm"} restrição por idade no catálogo e NÃO ${dependem.length === 1 ? "foi conferido" : "foram conferidos"}: ${dependem.join(", ")}.`, dependem);
+  }
+
   // 🔴 GESTANTE SEM BASE: dizer quais medicamentos NÃO foram conferidos.
   // Sem isto, um catálogo sem categoria de risco cadastrada faria toda
   // prescrição de gestante parecer conferida — o silêncio de sempre. Um
@@ -282,18 +309,18 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
   }
   // 9) Incompatibilidade em Y (ambos por via IV)
   // Mesma regra do bloco 8: só avisa se havia par IV para conferir.
-  const iv = comMed.filter(i => (i.via || "").toUpperCase() === "IV");
+  const iv = comMed.filter(i => viaEndovenosa(i.via));
   if (incompatY === null) {
     if (iv.length >= 2) {
       push("base_indisponivel", "alta", "Incompatibilidade em Y NÃO conferida",
-        `Não foi possível ler a base de incompatibilidade em Y. Os ${iv.length} medicamentos IV desta prescrição NÃO foram checados — não infundir na mesma linha sem conferir.`, []);
+        `Não foi possível ler a base de incompatibilidade em Y. Os ${iv.length} medicamentos endovenosos desta prescrição NÃO foram checados — não infundir na mesma linha sem conferir.`, []);
     }
   } else if (incompatY && incompatY.length) {
     for (let x = 0; x < iv.length; x++) for (let y = x + 1; y < iv.length; y++) {
       const a = medById[iv[x].medicamento_id], b = medById[iv[y].medicamento_id];
       for (const it of incompatY) {
         const hit = (matchSub(a, it.substancia_a) && matchSub(b, it.substancia_b)) || (matchSub(a, it.substancia_b) && matchSub(b, it.substancia_a));
-        if (hit) { push("incompat_y", "alta", "Incompatibilidade em Y (IV)", `${iv[x].medicamento_nome} + ${iv[y].medicamento_nome}: ${it.descricao || "incompatíveis na mesma linha"}. Não infundir juntos.`, [iv[x].medicamento_nome, iv[y].medicamento_nome]); break; }
+        if (hit) { push("incompat_y", "alta", "Incompatibilidade em Y (endovenosa)", `${iv[x].medicamento_nome} + ${iv[y].medicamento_nome}: ${it.descricao || "incompatíveis na mesma linha"}. Não infundir juntos.`, [iv[x].medicamento_nome, iv[y].medicamento_nome]); break; }
       }
     }
   }
