@@ -38,9 +38,14 @@ const positivoOuNull = v => {
  */
 export function camposGestacaoPeso(original, form) {
   const f = form || {};
+  const categoria = categoriaGestacao(f.risco_gestacao);
   const valores = {
-    risco_gestacao: categoriaGestacao(f.risco_gestacao),
-    motivo_gestacao: String(f.motivo_gestacao ?? "").trim() || null,
+    risco_gestacao: categoria,
+    // ⚠️ O motivo só existe para D e X. O campo some da tela nas outras
+    // categorias, mas o texto antigo continuava no formulário e era gravado:
+    // invisível, impossível de apagar, e de volta no alerta se alguém marcasse
+    // D depois. Achado na caminhada de 16/09, ao limpar uma categoria X.
+    motivo_gestacao: categoria === "D" || categoria === "X" ? (String(f.motivo_gestacao ?? "").trim() || null) : null,
     dose_maxima_kg_dia: positivoOuNull(f.dose_maxima_kg_dia),
     dose_maxima_kg_unid: f.dose_maxima_kg_unid || null,
   };

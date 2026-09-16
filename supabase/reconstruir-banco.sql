@@ -12778,6 +12778,8 @@ reset valentrax.quem;
 -- Aditiva e idempotente. DEMO primeiro.
 -- ═══════════════════════════════════════════════════════════
 
+set valentrax.quem = 'adauam';
+
 alter table public.farm_medicamentos
   add column if not exists risco_gestacao text
     check (risco_gestacao in ('A', 'B', 'C', 'D', 'X')),
@@ -12798,6 +12800,11 @@ comment on column public.farm_medicamentos.dose_maxima_kg_unid is
 -- O PostgREST guarda o esquema em cache: sem isto as colunas novas só
 -- aparecem para o app depois que o cache expirar.
 notify pgrst, 'reload schema';
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-alertas-peso-gestacao.sql') on conflict do nothing;
+
+reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
@@ -13495,8 +13502,8 @@ select
 --
 -- ⚠️ FALTA UM PASSO: ANOTAR O REGISTRO DE MIGRAÇÕES.
 --
--- Só 21 das 98 migrações acima terminam se anotando em
--- `migracoes_aplicadas`; as outras 77 são anteriores à regra
+-- Só 22 das 98 migrações acima terminam se anotando em
+-- `migracoes_aplicadas`; as outras 76 são anteriores à regra
 -- (27/08/2026) e nunca foram reescritas.
 --
 -- Neste banco o esquema está COMPLETO por construção — ele acabou de nascer

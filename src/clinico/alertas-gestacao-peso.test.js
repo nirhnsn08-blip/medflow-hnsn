@@ -229,6 +229,19 @@ describe("🔴 o salvar do catálogo não quebra antes da migração", () => {
     expect(r.dose_maxima_kg_dia).toBe(null);
   });
 
+  it("🔴 limpar a categoria apaga o motivo — texto escondido não sobrevive", () => {
+    // O campo de motivo some da tela fora de D e X. Antes, o texto antigo ia
+    // gravado assim mesmo e voltava no alerta se alguém marcasse D depois.
+    const r = camposGestacaoPeso(linhaComMigracao, { risco_gestacao: "", motivo_gestacao: "teratogênica" });
+    expect(r.motivo_gestacao).toBe(null);
+  });
+
+  it("motivo só vale para D e X", () => {
+    expect(camposGestacaoPeso(linhaComMigracao, { risco_gestacao: "C", motivo_gestacao: "x" }).motivo_gestacao).toBe(null);
+    expect(camposGestacaoPeso(linhaComMigracao, { risco_gestacao: "D", motivo_gestacao: "x" }).motivo_gestacao).toBe("x");
+    expect(camposGestacaoPeso(linhaComMigracao, { risco_gestacao: "X", motivo_gestacao: "x" }).motivo_gestacao).toBe("x");
+  });
+
   it("número em texto é lido como número", () => {
     expect(camposGestacaoPeso({}, { dose_maxima_kg_dia: "15", dose_maxima_kg_unid: "mg" })).toEqual({ dose_maxima_kg_dia: 15, dose_maxima_kg_unid: "mg" });
   });
