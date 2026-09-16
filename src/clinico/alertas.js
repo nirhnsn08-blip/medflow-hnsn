@@ -87,6 +87,84 @@ export function administracoesNoDia(frequenciaDia) {
   return n === 0 ? 1 : n;
 }
 
+// ── GESTAÇÃO ────────────────────────────────────────────────
+// A categoria é a da BULA brasileira (ANVISA): A, B, C, D, X. Vem do
+// catálogo, preenchida e validada pela farmácia do hospital — o motor não
+// traz lista própria de medicamentos teratogênicos.
+export const CATEGORIAS_GESTACAO = ["A", "B", "C", "D", "X"];
+
+/** Normaliza a categoria gravada. Qualquer coisa fora de A–X é `null`. */
+export function categoriaGestacao(valor) {
+  const c = String(valor ?? "").trim().toUpperCase();
+  return CATEGORIAS_GESTACAO.includes(c) ? c : null;
+}
+
+/**
+ * O alerta de gestação de um medicamento, ou `null`.
+ *
+ * 🔴 SÓ D E X ALERTAM. A categoria C cobre a maior parte dos medicamentos
+ * (faltam estudos em humanos, não há evidência de dano). Alertar em C
+ * dispararia em quase toda prescrição de gestante, e alarme que toca em
+ * tudo é alarme que ninguém lê — inclusive quando o item é X.
+ *
+ * ⚠️ X é "alta" e D é "media", de propósito:
+ *   X — contraindicado: o risco fetal supera qualquer benefício possível.
+ *   D — há evidência de risco fetal, mas o benefício PODE justificar o uso
+ *       (anticonvulsivante numa epiléptica, por exemplo). É decisão clínica
+ *       consciente, não um bloqueio.
+ * Se a farmácia clínica do hospital preferir D como "alta", é esta linha.
+ */
+export function alertaGestacao(med, ctx) {
+  if (!ctx?.gestante || !med) return null;
+  const cat = categoriaGestacao(med.risco_gestacao);
+  const motivo = med.motivo_gestacao ? ` ${String(med.motivo_gestacao).trim()}` : "";
+  if (cat === "X") return { gravidade: "alta", titulo: "Contraindicado na gestação (categoria X)", detalhe: `risco fetal supera qualquer benefício.${motivo}` };
+  if (cat === "D") return { gravidade: "media", titulo: "Risco fetal comprovado (categoria D)", detalhe: `usar só se o benefício justificar o risco.${motivo}` };
+  return null;
+}
+
+// ── DOSE POR KG ─────────────────────────────────────────────
+// Faixa aceita de peso. Fora dela o valor é tratado como erro de digitação
+// (780 no lugar de 78,0), e não como paciente: calcular dose por kg com um
+// peso dez vezes maior esconderia justamente a sobredose.
+export const PESO_MINIMO_KG = 0.3;     // prematuro extremo
+export const PESO_MAXIMO_KG = 400;
+
+/** Peso utilizável para cálculo, ou `null`. */
+export function pesoValido(peso) {
+  if (peso === "" || peso == null) return null;
+  const n = Number(peso);
+  return Number.isFinite(n) && n >= PESO_MINIMO_KG && n <= PESO_MAXIMO_KG ? n : null;
+}
+
+/**
+ * Confere a dose diária por kg de um item.
+ *
+ * Devolve `null` quando não há o que conferir (o medicamento não tem limite
+ * por kg, a dose não foi informada, a frequência é "se necessário" ou a
+ * unidade prescrita é outra), e senão um destes:
+ *   { estado: "ok" | "acima", prescrito, peso }
+ *   { estado: "sem_peso" }
+ *
+ * 🔴 SEM PESO NÃO É "OK". Quando o catálogo diz que o medicamento tem dose
+ * máxima por kg e o peso falta, a resposta é "não conferido" — é exatamente
+ * a criança sem peso anotado que recebe dose de adulto.
+ */
+export function conferirDosePorKg(med, item, peso) {
+  if (!med || !item) return null;
+  const limite = Number(med.dose_maxima_kg_dia);
+  if (!med.dose_maxima_kg_dia || !Number.isFinite(limite) || limite <= 0 || !med.dose_maxima_kg_unid) return null;
+  if (item.dose_valor === "" || item.dose_valor == null || !Number.isFinite(Number(item.dose_valor))) return null;
+  const vezes = administracoesNoDia(item.frequencia_dia);
+  if (vezes == null) return null;
+  if ((item.dose_unidade || "").toLowerCase() !== String(med.dose_maxima_kg_unid).toLowerCase()) return null;
+  const kg = pesoValido(peso);
+  if (kg == null) return { estado: "sem_peso" };
+  const prescrito = (Number(item.dose_valor) * vezes) / kg;
+  // tolerância de arredondamento: 60,0000001 não é "acima" de 60
+  return { estado: prescrito > limite + 1e-9 ? "acima" : "ok", prescrito, peso: kg };
+}
+
 export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], incompatY = []) {
   const alertas = [];
   const push = (tipo, gravidade, titulo, detalhe, refs) => alertas.push({ tipo, gravidade, titulo, detalhe, itens: refs || [] });
@@ -143,7 +221,25 @@ export function analisarPrescricaoClinica(itens, ctx, medById, interacoes = [], 
     let fh = (ctx?.funcao_hepatica || ""), fhMotivo = fh ? `função hepática ${fh}` : "";
     if (!fh && comorb.includes("hepatopatia")) { fh = "grave"; fhMotivo = "hepatopatia"; }
     if ((fh === "moderada" || fh === "grave") && med.ajuste_hepatico) push("ajuste_hepatico", fh === "grave" ? "alta" : "media", "Ajuste pela função hepática", `${nome} (${fhMotivo}): ${med.ajuste_hepatico}`, [nome]);
+    // 10) Gestação — categoria de risco da bula (ANVISA: A, B, C, D, X)
+    const alertaGest = alertaGestacao(med, ctx);
+    if (alertaGest) push("gestacao", alertaGest.gravidade, alertaGest.titulo, `${nome}: ${alertaGest.detalhe}`, [nome]);
+    // 11) Dose máxima por kg de peso por dia
+    const porKg = conferirDosePorKg(med, i, ctx?.peso);
+    if (porKg?.estado === "acima") push("dose_kg", "alta", "Dose acima da máxima por kg", `${nome}: ${farmFmtQtd(porKg.prescrito)} ${med.dose_maxima_kg_unid}/kg/dia prescritos — máximo ${farmFmtQtd(med.dose_maxima_kg_dia)} ${med.dose_maxima_kg_unid}/kg/dia (peso ${farmFmtQtd(porKg.peso)} kg).`, [nome]);
+    else if (porKg?.estado === "sem_peso") push("base_indisponivel", "media", "Dose por kg NÃO conferida", `${nome} tem dose máxima por kg no catálogo, mas o peso do paciente está ausente ou inválido. Informe o peso no contexto clínico.`, [nome]);
   });
+
+  // 🔴 GESTANTE SEM BASE: dizer quais medicamentos NÃO foram conferidos.
+  // Sem isto, um catálogo sem categoria de risco cadastrada faria toda
+  // prescrição de gestante parecer conferida — o silêncio de sempre. Um
+  // aviso só, de gravidade baixa, listando os itens: é a lista de trabalho
+  // da farmácia, não um alarme por medicamento.
+  if (ctx?.gestante) {
+    const semCategoria = [...new Set(comMed.filter(i => !categoriaGestacao(medById[i.medicamento_id]?.risco_gestacao)).map(i => i.medicamento_nome))];
+    if (semCategoria.length) push("base_indisponivel", "baixa", "Risco na gestação NÃO conferido",
+      `Paciente gestante. ${semCategoria.length === 1 ? "Este medicamento não tem" : "Estes medicamentos não têm"} categoria de risco na gestação no catálogo: ${semCategoria.join(", ")}. Confira na bula antes de administrar.`, semCategoria);
+  }
 
   // 8) Interações medicamentosas (pares)
   //

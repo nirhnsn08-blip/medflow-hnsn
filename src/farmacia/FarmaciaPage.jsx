@@ -21,7 +21,8 @@
 import { registrarAuditoria } from "../auditoria/dados.js";
 import { alergiasDoPaciente, contextoClinico } from "../clinico/contexto.js";
 import { useAlergiasDosAtendimentos } from "../clinico/usar-alergias.js";
-import { FARM_GRAV, FARM_SCORE_COR, analisarPrescricaoClinica, farmFmtQtd, normTxt, scoreItemClinico, scorePrescricao } from "../clinico/alertas.js";
+import { analisarPrescricaoClinica, CATEGORIAS_GESTACAO, FARM_GRAV, FARM_SCORE_COR, farmFmtQtd, normTxt, scoreItemClinico, scorePrescricao } from "../clinico/alertas.js";
+import { camposGestacaoPeso } from "./campos-gestacao-peso.js";
 import { MANCHESTER, PS_DOSE_UNID, PS_PRIORIDADE } from "../ps/catalogo.js";
 import { loadPsAtendimentos, loadPsPrescricaoItensByAtendimentos, loadPsPrescricoesByAtendimentos } from "../ps/dados.js";
 import { MOTIVO_AJUSTE, descreverPlano, documentoDaContagem, idsJaEstornados, movimentoDeEstorno, podeEstornar } from "../suprimentos/inventario.js";
@@ -523,6 +524,9 @@ function FarmMedModal({ med, onClose, onSave }) {
       ajuste_renal: f.ajuste_renal?.trim() || null,
       ajuste_hepatico: f.ajuste_hepatico?.trim() || null,
       obs_clinica: f.obs_clinica?.trim() || null,
+      // Gestação e dose por kg: só vão no corpo se a coluna já existe neste
+      // banco ou se alguém preencheu — ver `campos-gestacao-peso.js`.
+      ...camposGestacaoPeso(med, f),
     });
     setBusy(false);
   }
@@ -606,6 +610,13 @@ function FarmMedModal({ med, onClose, onSave }) {
                 <div><label style={rotuloCampo}>Unid.</label><select value={f.dose_maxima_unid || ""} onChange={e => set("dose_maxima_unid", e.target.value)} style={campoTexto}><option value="">—</option>{PS_DOSE_UNID.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
                 <div><label style={rotuloCampo}>Duração máx. (dias)</label><input type="number" min="0" value={f.duracao_maxima_dias ?? ""} onChange={e => set("duracao_maxima_dias", e.target.value)} placeholder="—" style={campoTexto} /></div>
               </div>
+              {/* Dose máxima POR KG — é a que protege a criança: a dose máx./dia
+                  acima é de adulto e não enxerga o peso. */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 8 }}>
+                <div><label style={rotuloCampo}>Dose máx. por kg/dia</label><input type="number" min="0" step="any" value={f.dose_maxima_kg_dia ?? ""} onChange={e => set("dose_maxima_kg_dia", e.target.value)} placeholder="Ex.: 60" style={campoTexto} /></div>
+                <div><label style={rotuloCampo}>Unid. (/kg/dia)</label><select value={f.dose_maxima_kg_unid || ""} onChange={e => set("dose_maxima_kg_unid", e.target.value)} style={campoTexto}><option value="">—</option>{PS_DOSE_UNID.map(u => <option key={u} value={u}>{u}</option>)}</select></div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", alignSelf: "end", paddingBottom: 6 }}>Precisa do peso do paciente no atendimento.</div>
+              </div>
               <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer", marginBottom: 8 }}>
                 <input type="checkbox" checked={!!f.nao_triturar} onChange={e => set("nao_triturar", e.target.checked)} style={{ accentColor: "#d97706", width: 15, height: 15 }} /> Não triturar / contraindicado por sonda
               </label>
@@ -622,6 +633,20 @@ function FarmMedModal({ med, onClose, onSave }) {
                   <input type="number" min="0" value={f.idade_pediatrica ?? ""} onChange={e => set("idade_pediatrica", e.target.value)} placeholder="< anos (12)" style={campoTexto} />
                 </div>
               )}
+              {/* Categoria de risco na gestação, como está na BULA (ANVISA).
+                  Só D e X geram alerta; A, B e C marcam o item como conferido. */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8, marginBottom: 8 }}>
+                <div>
+                  <label style={rotuloCampo}>Risco na gestação (bula)</label>
+                  <select value={f.risco_gestacao || ""} onChange={e => set("risco_gestacao", e.target.value)} style={campoTexto}>
+                    <option value="">— não cadastrado</option>
+                    {CATEGORIAS_GESTACAO.map(c => <option key={c} value={c}>Categoria {c}</option>)}
+                  </select>
+                </div>
+                {(f.risco_gestacao === "D" || f.risco_gestacao === "X") && (
+                  <div><label style={rotuloCampo}>Motivo (aparece no alerta)</label><input value={f.motivo_gestacao || ""} onChange={e => set("motivo_gestacao", e.target.value)} placeholder="Ex.: teratogênico no 1º trimestre" style={campoTexto} /></div>
+                )}
+              </div>
               <div style={{ marginBottom: 8 }}><label style={rotuloCampo}>Ajuste pela função renal (ClCr &lt; 60)</label><input value={f.ajuste_renal || ""} onChange={e => set("ajuste_renal", e.target.value)} placeholder="Ex.: reduzir dose se ClCr < 30; nefrotóxico" style={campoTexto} /></div>
               <div style={{ marginBottom: 8 }}><label style={rotuloCampo}>Ajuste pela função hepática (moderada/grave)</label><input value={f.ajuste_hepatico || ""} onChange={e => set("ajuste_hepatico", e.target.value)} placeholder="Ex.: reduzir dose na hepatopatia" style={campoTexto} /></div>
               <div><label style={rotuloCampo}>Observação clínica (ex.: como administrar por sonda)</label><textarea value={f.obs_clinica || ""} onChange={e => set("obs_clinica", e.target.value)} rows={2} placeholder="Ex.: abrir a cápsula, não triturar os grânulos" style={{ ...campoTexto, resize: "vertical" }} /></div>

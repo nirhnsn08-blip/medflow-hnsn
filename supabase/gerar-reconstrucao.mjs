@@ -260,6 +260,9 @@ const ORDEM = [
   // (mat_alojamento). Depois de mat_episodios e mat_recem_nascidos (FK);
   // antes do rls-leitura.
   "migracao-maternidade-alojamento.sql",
+  // Risco na gestação e dose máxima por kg no catálogo de medicamentos
+  // (farm_medicamentos). Só colunas novas; depois da farmácia clínica fase 1.
+  "migracao-alertas-peso-gestacao.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

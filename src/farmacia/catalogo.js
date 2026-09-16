@@ -55,6 +55,7 @@ export const FARM_ALERTA_TIPOS = {
   dose_maxima: "Dose máxima", duplicidade: "Duplicidade", tempo_tratamento: "Tempo de tratamento",
   sonda: "Sonda / não triturar", idoso: "Inapropriado idoso (Beers)", pediatrico: "Inapropriado criança",
   ajuste_renal: "Ajuste renal", ajuste_hepatico: "Ajuste hepático",
+  gestacao: "Risco na gestação", dose_kg: "Dose por kg",
   // Não é achado clínico: é a conferência que NÃO pôde ser feita.
   base_indisponivel: "Base não conferida",
 };
