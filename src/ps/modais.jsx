@@ -659,7 +659,16 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   useEffect(() => { carregarRegistros(); }, []);
   useEffect(() => { loadFarmMedicamentos(sb).then(setCatalogo); loadFarmLotes(sb).then(setPresLotes); loadFarmInteracoes(sb).then(setInteracoes); loadFarmIncompatY(sb).then(setIncompatY); carregarPrescricao(); }, []);
   useEffect(() => { carregarAlergias(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
-  useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
+  // Trocar de aba DESLIGA o ditado — voz sendo transcrita para uma aba que
+  // não está na tela é texto entrando sem ninguém ver.
+  //
+  // 🔴 MAS NÃO APAGA O TEXTO. Até 04/09/2026 esta linha fazia `setTexto("")`
+  // a cada troca de aba: resto da época em que o mesmo campo servia à
+  // evolução e à prescrição livre, e trocar de aba precisava evitar que um
+  // texto fosse salvo como o outro. A prescrição virou estruturada e o campo
+  // ficou só da evolução — e a limpeza passou a apagar evolução ditada de
+  // quem só foi conferir um exame antes de terminar de escrever.
+  useEffect(() => { if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
     if (gravando) { recRef.current?.stop(); setGravando(false); return; }
@@ -670,14 +679,31 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
     rec.onend = () => setGravando(false); rec.onerror = () => setGravando(false);
     recRef.current = rec; rec.start(); setGravando(true);
   }
-  async function salvarTexto(tipo) {
+  /**
+   * 🔴 O TEXTO SÓ SAI DA TELA DEPOIS QUE O BANCO DEVOLVE A LINHA.
+   *
+   * Até 04/09/2026 esta função gravava sem olhar o retorno e limpava o campo
+   * em seguida. Com a gravação recusada — RLS sem escrita no módulo, sessão
+   * vencida, rede caída — a evolução ditada sumia da tela e nunca chegava ao
+   * prontuário, e o próximo plantão lia um atendimento sem evolução nenhuma.
+   * Ditado é o pior caso: não há rascunho em lugar nenhum para refazer.
+   *
+   * (Chamava-se `salvarTexto(tipo)` e servia também à prescrição livre, que
+   * virou estruturada na `AbaPrescricao`. O ramo de prescrição era morto.)
+   */
+  async function salvarEvolucao() {
     if (!texto.trim()) { alert("Escreva (ou dite) o texto."); return; }
-    if (!confirm(`Salvar esta ${tipo === "evolucao" ? "evolução" : "prescrição"}? Ela NÃO poderá ser editada nem apagada depois (registro clínico).`)) return;
+    if (!confirm("Salvar esta evolução? Ela NÃO poderá ser editada nem apagada depois (registro clínico).")) return;
     setBusy(true);
     if (gravando) { recRef.current?.stop(); setGravando(false); }
-    await addPsRegistroRemote(sb, { atendimento_id: paciente.id, tipo, categoria: tipo === "evolucao" ? evolCat : null, texto: texto.trim(), criado_em: nowISO() }, currentUser);
-    registrarAuditoria(sb, currentUser, `PS: ${tipo === "evolucao" ? (PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução") : "prescrição"}`, paciente.iniciais, {});
-    setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
+    const linhas = await addPsRegistroRemote(sb, { atendimento_id: paciente.id, tipo: "evolucao", categoria: evolCat, texto: texto.trim(), criado_em: nowISO() }, currentUser);
+    setBusy(false);
+    if (!Array.isArray(linhas) || linhas.length === 0) {
+      alert("A evolução NÃO foi gravada — a gravação não chegou ao banco ou falta permissão de escrita neste módulo.\n\nO texto continua na tela. Tente salvar de novo.");
+      return;                                   // texto preservado de propósito
+    }
+    registrarAuditoria(sb, currentUser, `PS: ${PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução"}`, paciente.iniciais, {});
+    setTexto(""); carregarRegistros(); onChanged?.();
   }
   // A farmácia entregou e ninguém registrou o que foi feito com o medicamento
   const itensPendentesChecagem = pendentesDeChecagem(presItensSalvos, saidas, adms);
@@ -722,7 +748,7 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
             <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder={`Escreva a ${(PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução").toLowerCase()} — ou clique em Ditar e fale.`} style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
               {suportaVoz && <button onClick={toggleVoz} style={{ background: gravando ? "#f43f5e" : "transparent", color: gravando ? "#fff" : "var(--text-2)", border: `1px solid ${gravando ? "#f43f5e" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{gravando ? "● Gravando… (parar)" : "Ditar por voz"}</button>}
-              <button onClick={() => salvarTexto("evolucao")} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
+              <button onClick={salvarEvolucao} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {evolucoes.map(r => { const ec = PS_EVOL_CATEGORIAS[r.categoria] || PS_EVOL_CATEGORIAS.medica; return (
