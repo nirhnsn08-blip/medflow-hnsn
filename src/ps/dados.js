@@ -87,9 +87,44 @@ export async function addPsAtendimentoRemote(sb, at, user) {
   return await sb("ps_atendimentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...at, usuario: user?.name || null }) });
 }
 
+/**
+ * 🔴 A ÚNICA FORMA HONESTA DE ALTERAR NESTE MÓDULO.
+ *
+ * Sem `Prefer: return=representation` o PostgREST responde 204 SEM CORPO a
+ * um PATCH que alterou ZERO linha — e 204 é idêntico para "alterou" e para
+ * "a RLS recusou". Dar `await` e seguir é acreditar no status.
+ *
+ * Devolve `{ ok, linha }` ou `{ ok: false, erro }`. Quem chama decide o que
+ * fazer, mas não pode mais confundir "gravou" com "não deu erro".
+ */
+async function patchConferido(sb, recurso, campos) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const linhas = await sb(recurso, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify(campos),
+  });
+  // `null` é falha de rede/permissão já anotada pelo `sbFetch`; `[]` é a
+  // gravação recusada em silêncio. As duas são "não gravou".
+  if (linhas == null) return { ok: false, erro: "A gravação não chegou ao banco. Tente de novo." };
+  if (!Array.isArray(linhas) || linhas.length === 0) {
+    return { ok: false, erro: "Nada foi gravado — pode faltar permissão de escrita neste módulo." };
+  }
+  return { ok: true, linha: linhas[0] };
+}
+
+/**
+ * Altera o atendimento do PS: triagem, reavaliação, início e desfecho.
+ *
+ * 🔴 AS QUATRO COISAS QUE ESTA FUNÇÃO GRAVA SÃO O ESTADO DO PACIENTE NA
+ * FILA. Até 04/09/2026 ela dava `await` e seguia, e a tela chamava
+ * `refresh()` logo depois: a triagem "acontecia", a lista recarregava, e o
+ * paciente reaparecia sem classificação — sem uma palavra. Pior no desfecho,
+ * onde o código seguia reservando leito e abrindo pedido no NIR para um
+ * episódio que continuava aberto.
+ */
 export async function updatePsAtendimentoRemote(sb, id, campos) {
-  if (!sb) return;
-  await sb(`ps_atendimentos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+  return patchConferido(sb, `ps_atendimentos?id=eq.${id}`, { ...campos, updated_at: nowISO() });
 }
 
 /**
@@ -150,19 +185,7 @@ export async function addPsRegistroRemote(sb, reg, user) {
  * fazer, mas não pode mais confundir "gravou" com "não deu erro".
  */
 export async function updatePsRegistroRemote(sb, id, campos) {
-  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
-  const linhas = await sb(`ps_registros?id=eq.${id}`, {
-    method: "PATCH",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify(campos),
-  });
-  // `null` é falha de rede/permissão já anotada pelo `sbFetch`; `[]` é a
-  // gravação recusada em silêncio. As duas são "não gravou".
-  if (linhas == null) return { ok: false, erro: "A gravação não chegou ao banco. Tente de novo." };
-  if (!Array.isArray(linhas) || linhas.length === 0) {
-    return { ok: false, erro: "Nada foi gravado — pode faltar permissão de escrita neste módulo." };
-  }
-  return { ok: true, linha: linhas[0] };
+  return patchConferido(sb, `ps_registros?id=eq.${id}`, campos);
 }
 
 export async function addPsPrescricaoItens(sb, itens, user) {
