@@ -263,6 +263,10 @@ const ORDEM = [
   // Risco na gestação e dose máxima por kg no catálogo de medicamentos
   // (farm_medicamentos). Só colunas novas; depois da farmácia clínica fase 1.
   "migracao-alertas-peso-gestacao.sql",
+  // Farmácia do hospital (17/09): lê a prescrição da internação, validação
+  // farmacêutica, devolução do setor e controlados por lista da Portaria 344.
+  // Precisa de pep_* (fase 1), de farm_intervencoes e do estorno — todos acima.
+  "migracao-farmacia-hospital.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

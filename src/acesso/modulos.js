@@ -245,7 +245,7 @@ export const PERFIS_MODELO = [
   },
   {
     chave: "aux_farmacia", nome: "Auxiliar de Farmácia", categoria: "administrativo", role: "adm_silver",
-    descricao: "Dispensação e estoque da farmácia. Não acessa prontuário.",
+    descricao: "Dispensação e estoque da farmácia. Lê a prescrição e as alergias para dispensar; não acessa o resto do prontuário.",
     // Controlados só em leitura: a escrituração do livro é responsabilidade
     // do farmacêutico responsável técnico (Portaria 344/98).
     // NSP em escrita: erro de dispensação e quase-falha de medicamento são o

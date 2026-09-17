@@ -4,7 +4,7 @@
 // Estrutura aprovada pela Laura (padrão NSP: barra lateral própria):
 //   Gestão:        Visão executiva · Pendentes · Glosas · Receitas
 //   Inteligência:  Análises · Previsões · Convênios & contratos
-//   Referência:    Tabela SIGTAP · Assistente AI
+//   Referência:    Tabela SIGTAP · Consulta rápida
 //
 // O QUE JÁ TEM MOTOR: a Tabela SIGTAP (os 219 + glosa de permanência,
 // lê `sigtap_procedimentos`), a conta do prontuário (aba Pendentes) e a
@@ -101,7 +101,7 @@ const FAT_NAV = [
   ] },
   { grupo: "Referência", itens: [
     { key: "sigtap", label: "Tabela SIGTAP" },
-    { key: "assistente", label: "Assistente AI" },
+    { key: "assistente", label: "Consulta rápida" },
   ] },
 ];
 
@@ -1286,7 +1286,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit, onIrPara }) 
     return () => { vivo = false; };
   }, [sb]);
 
-  const titulo = { pendentes: "Pendentes", glosas: "Glosas", receitas: "Receitas", analises: "Análises", previsoes: "Previsões", convenios: "Convênios & contratos", assistente: "Assistente AI" };
+  const titulo = { pendentes: "Pendentes", glosas: "Glosas", receitas: "Receitas", analises: "Análises", previsoes: "Previsões", convenios: "Convênios & contratos", assistente: "Consulta rápida" };
 
   return (
     <div style={{ display: "flex", flex: 1, minHeight: 0, color: "var(--text)" }}>

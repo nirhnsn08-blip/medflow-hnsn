@@ -20,6 +20,7 @@ import {
 import { situacaoAlergica } from "../clinico/alergias.js";
 import { contextoDoInternado } from "./contexto-internado.js";
 import { analisarPrescricaoClinica, FARM_GRAV } from "../clinico/alertas.js";
+import { rotuloDaValidacao, situacaoDaValidacao } from "../farmacia/internacao.js";
 import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js";
 import {
   carregarProntuario, registrarSinais, registrarAnotacao,
@@ -173,7 +174,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
               ctx={ctx} prescricaoAnterior={presc}
               onPronto={() => { setPrescrevendo(false); recarregar(); }}
               onCancelar={() => setPrescrevendo(false)} />
-          : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep}
+          : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep} validacoesFarmacia={d.validacoesFarmacia}
               canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar}
               onNova={() => setPrescrevendo(true)} />
       )}
@@ -348,7 +349,28 @@ function Visao({ ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
 }
 
 // ── PRESCRIÇÃO ──────────────────────────────────────────────
-function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, onOk, onNova }) {
+/**
+ * O selo da farmácia na prescrição.
+ *
+ * 🔴 QUEM PRESCREVE PRECISA VER A RESSALVA SEM IR À FARMÁCIA. Antes de
+ * 17/09/2026 a avaliação farmacêutica não existia; agora ela existe e ficar
+ * só na tela da farmácia seria a mesma incomunicação de sempre, com um
+ * registro novo.
+ */
+function SeloFarmacia({ validacoes, prescricao }) {
+  const s = situacaoDaValidacao(validacoes, prescricao);
+  if (s.estado === "nao_validada" || s.estado === "sem_prescricao") {
+    return <span style={{ fontSize: 10.5, color: cor.txt3, border: `1px solid ${cor.borda}`, borderRadius: 99, padding: "1px 8px" }}>farmácia ainda não validou</span>;
+  }
+  const r = rotuloDaValidacao(s.estado);
+  return (
+    <span title={s.linha?.observacao || ""} style={{ fontSize: 10.5, fontWeight: 700, color: r.cor, border: `1px solid ${r.cor}66`, background: `${r.cor}14`, borderRadius: 99, padding: "1px 8px" }}>
+      farmácia: {r.label.toLowerCase()}{s.linha?.observacao ? " — " + s.linha.observacao : ""}
+    </span>
+  );
+}
+
+function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarmacia, onOk, onNova }) {
   const podePrescrever = podeClinico(user, "prescricao_medica") || podeClinico(user, "prescricao_enfermagem");
   const botaoNova = canEdit && (
     podePrescrever
@@ -389,6 +411,7 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, onOk, onNova })
       {botaoNova}
       <div style={{ ...cartao, display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13.5 }}>Prescrição {presc.tipo} de {presc.data_referencia}</strong>
+        <SeloFarmacia validacoes={validacoesFarmacia} prescricao={presc} />
         <span style={{ fontSize: 12, color: cor.txt3 }}>assinada por {presc.prescritor_nome || presc.usuario} em {dataHora(presc.assinada_em)}</span>
       </div>
 

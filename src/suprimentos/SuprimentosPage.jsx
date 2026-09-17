@@ -79,7 +79,7 @@ const SUP_NAV = [
 
   { key: "executivo",    label: "Painel executivo", icon: "briefcase", grupo: "Acompanhar" },
   { key: "indicadores",  label: "Indicadores",   icon: "chart", grupo: "Acompanhar" },
-  { key: "assistente",   label: "Assistente AI", icon: "chat",  grupo: "Acompanhar" },
+  { key: "assistente",   label: "Consulta rápida", icon: "chat",  grupo: "Acompanhar" },
 ];
 
 const SUP_ASSIST_HELP = 'Posso responder sobre: panorama do almoxarifado, o que vai faltar (previsão 7 dias), zerados/abaixo do mínimo, validade (lista de lotes), consumo do mês (top materiais, por setor, por categoria), gasto do mês (por fornecedor), requisições pendentes, pedidos de compra abertos, fornecedores e tamanho do catálogo. Ex.: "panorama", "o que vai faltar?", "consumo por setor", "gasto do mês", "quais vencendo?", "saldo de luva".';
