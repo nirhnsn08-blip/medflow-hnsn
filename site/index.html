@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#0a2740">
 <meta name="description" content="A Valentrax integra pessoas, processos e dados do pronto-socorro à alta: pronto-socorro, giro de leitos, maternidade, farmácia, faturamento SUS e segurança do paciente em uma plataforma só.">
 <link rel="canonical" href="https://valentrax.com.br/">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72'><defs><g id='r'><path d='M45 35.4C51 34.6 55.5 32.6 59 29.6' stroke='%232dd4bf' stroke-width='3.4' fill='none' stroke-linecap='round'/><circle cx='60.6' cy='28.2' r='3' fill='%232dd4bf'/></g><g id='b'><path d='M45 35.4C51 34.6 55.5 32.6 59 29.6' stroke='%2338bdf8' stroke-width='2.6' fill='none' stroke-linecap='round'/><circle cx='60.6' cy='28.2' r='2.3' fill='%2338bdf8'/></g></defs><rect width='72' height='72' rx='18' fill='%23101c30'/><use href='%23r'/><use href='%23r' transform='rotate(90 36 36)'/><use href='%23r' transform='rotate(180 36 36)'/><use href='%23r' transform='rotate(270 36 36)'/><use href='%23b' transform='rotate(45 36 36)'/><use href='%23b' transform='rotate(135 36 36)'/><use href='%23b' transform='rotate(225 36 36)'/><use href='%23b' transform='rotate(315 36 36)'/><circle cx='36' cy='36' r='8.4' fill='%232dd4bf'/></svg>">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Valentrax Healthcare Operations">
@@ -14,24 +15,37 @@
 <meta property="og:url" content="https://valentrax.com.br/">
 <meta property="og:title" content="Valentrax — inteligência para o fluxo hospitalar">
 <meta property="og:description" content="Uma plataforma inteligente para um hospital mais seguro, eficiente e conectado. Do pronto-socorro à alta, em um prontuário só.">
-<meta property="og:image" content="https://valentrax.com.br/hero-clinica.png">
-<meta property="og:image:width" content="1712">
-<meta property="og:image:height" content="959">
+<meta property="og:image" content="https://valentrax.com.br/og-valentrax.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Valentrax Healthcare Operations — sistema hospitalar">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Valentrax — inteligência para o fluxo hospitalar">
 <meta name="twitter:description" content="Uma plataforma inteligente para um hospital mais seguro, eficiente e conectado.">
-<meta name="twitter:image" content="https://valentrax.com.br/hero-clinica.png">
+<meta name="twitter:image" content="https://valentrax.com.br/og-valentrax.jpg">
 
 <title>Valentrax — Inteligência para o fluxo hospitalar</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<!-- Fontes servidas pelo próprio site (licença OFL — ver fonts/LICENCAS.md).
+     Antes vinham do Google Fonts: o CSS de lá bloqueava a primeira pintura e
+     cada visita mandava o IP do visitante para o Google. -->
+<link rel="preload" href="/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/jakarta-latin.woff2" as="font" type="font/woff2" crossorigin>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"Organization","@id":"https://valentrax.com.br/#org","name":"Valentrax","url":"https://valentrax.com.br/","logo":"https://valentrax.com.br/icon-512.png"},
+ {"@type":"SoftwareApplication","name":"Valentrax Healthcare Operations","applicationCategory":"HealthApplication","operatingSystem":"Web","url":"https://www.valentrax.com.br","publisher":{"@id":"https://valentrax.com.br/#org"}}
+]}
+</script>
 <style>
+  @font-face{font-family:"Sora";src:url(/fonts/sora-latin.woff2) format("woff2");font-weight:600 800;font-display:swap}
+  @font-face{font-family:"Plus Jakarta Sans";src:url(/fonts/jakarta-latin.woff2) format("woff2");font-weight:400 700;font-display:swap}
+  @font-face{font-family:"JetBrains Mono";src:url(/fonts/jbmono-latin.woff2) format("woff2");font-weight:500 700;font-display:swap}
   :root{
     color-scheme: light;
     --paper:#ffffff; --mist:#f4f8fc; --ice:#e8f1f9; --line:#dce8f2; --line-2:#c7dcec;
     --navy:#0a2740; --navy-2:#12466e;
-    --ink:#0a2740; --ink-2:#3d5f7d; --ink-3:#6d8aa3;
+    --ink:#0a2740; --ink-2:#3d5f7d; --ink-3:#4f6d86;
     --azure:#0a9ad6; --azure-deep:#0a6f9e; --azure-soft:#e2f3fb;
     --turq:#17bfae; --amber:#e9922c; --red:#dc4b4b; --green:#22a06b;
     --maxw:1180px;
@@ -43,6 +57,10 @@
     --sh-lg:0 30px 70px -35px rgba(10,39,64,.42), 0 2px 8px rgba(10,39,64,.05);
   }
   *{box-sizing:border-box}
+  /* âncora não para debaixo do cabeçalho fixo */
+  html{scroll-padding-top:86px}
+  .pular{position:absolute; left:12px; top:-80px; z-index:100; background:var(--navy); color:#fff; padding:10px 16px; border-radius:8px; font-weight:600}
+  .pular:focus{top:12px}
   body{
     margin:0; background:var(--paper); color:var(--ink);
     font-family:var(--sans); font-size:16px; line-height:1.62;
@@ -52,7 +70,7 @@
   h1,h2,h3{font-family:var(--display); font-weight:700; line-height:1.1; letter-spacing:-.025em; text-wrap:balance; margin:0; color:var(--ink)}
   p{margin:0}
   a{color:inherit; text-decoration:none}
-  .eyebrow{font-family:var(--mono); font-weight:700; font-size:11.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--azure)}
+  .eyebrow{font-family:var(--mono); font-weight:700; font-size:11.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--azure-deep)}
   .lede{color:var(--ink-2); font-size:1.06rem; line-height:1.62}
 
   /* ── brand ────────────────────────────────── */
@@ -69,7 +87,7 @@
     border:1.5px solid transparent; display:inline-flex; align-items:center; gap:9px; white-space:nowrap;
     transition:transform .14s cubic-bezier(.2,.8,.3,1), box-shadow .14s, background .14s, border-color .14s}
   .btn svg{width:15px; height:15px; flex:none}
-  .btn-primary{background:linear-gradient(135deg,var(--azure),#0b86bd); color:#fff; box-shadow:0 8px 22px -10px rgba(10,154,214,.75)}
+  .btn-primary{background:linear-gradient(135deg,#0b78a8,var(--azure-deep)); color:#fff; box-shadow:0 8px 22px -10px rgba(10,154,214,.75)}
   .btn-primary:hover{transform:translateY(-2px); box-shadow:0 14px 30px -12px rgba(10,154,214,.85)}
   .btn-outline{border-color:var(--line-2); color:var(--ink); background:var(--paper)}
   .btn-outline:hover{border-color:var(--azure); color:var(--azure-deep); transform:translateY(-2px)}
@@ -125,7 +143,8 @@
   .mock-bar .lamps{display:flex; gap:6px}
   .mock-bar .lamps i{width:9px; height:9px; border-radius:9px; background:var(--line-2)}
   .mock-bar .ttl{font-family:var(--mono); font-size:11px; color:var(--ink-3); letter-spacing:.02em}
-  .mock-bar .live{margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10px; color:var(--green); letter-spacing:.08em}
+  .mock-bar .live{margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10px; color:#15804f; letter-spacing:.08em}
+  .mock-bar .ficticio{margin-left:auto; font-family:var(--mono); font-size:10px; letter-spacing:.08em; color:var(--ink-3); white-space:nowrap}
   .mock-bar .live i{width:6px; height:6px; border-radius:6px; background:var(--green)}
   .mock-body{padding:16px; display:grid; gap:12px}
   .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:10px}
@@ -169,11 +188,14 @@
     .heroviz .mock-body{grid-template-columns:1fr}
     .heroviz .kpis{grid-template-columns:repeat(3,1fr); gap:10px}
   }
-  .shot{position:relative; aspect-ratio:1712/959; border-radius:20px; overflow:hidden;
-    background-color:#0a2740;
-    background-image:url("hero-clinica.png");
-    background-size:cover; background-position:center; background-repeat:no-repeat;
-    border:1px solid var(--line); box-shadow:var(--sh-md)}
+  /* A foto era um PNG de 1,85 MB em background-image (94% do peso da página).
+     Agora é <picture> com AVIF/WebP em 4 larguras: 20–60 KB no lugar dela. */
+  .shot{position:relative; aspect-ratio:1672/940; border-radius:20px; overflow:hidden;
+    background-color:#0a2740; border:1px solid var(--line); box-shadow:var(--sh-md)}
+  .shot picture,.shot img{display:block; width:100%; height:100%}
+  .shot img{object-fit:cover}
+  .shot .selo{position:absolute; left:12px; bottom:12px; font-family:var(--mono); font-size:10.5px; letter-spacing:.08em;
+    text-transform:uppercase; color:#fff; background:rgba(6,26,46,.72); border-radius:6px; padding:4px 9px}
   .pgh{display:flex; align-items:center; gap:8px; margin-bottom:9px}
   .pgh .ph{margin:0}
   .pgh .ac{margin-left:auto; font-family:var(--mono); font-size:9px; letter-spacing:.08em; padding:3px 7px;
@@ -305,11 +327,15 @@
   #filme .stage::after{content:""; position:absolute; inset:0; pointer-events:none; z-index:2;
     background:radial-gradient(120% 110% at 50% 42%, transparent 50%, rgba(2,10,20,.66) 100%)}
   #filme .vgh{position:absolute; right:-6%; bottom:-22%; width:52%; opacity:.06; pointer-events:none}
+  #filme .ilus{position:absolute; top:1.3cqw; right:1.6cqw; z-index:3; font-family:var(--mono); font-size:.93cqw; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--fdim); border:1px solid rgba(79,214,232,.26); border-radius:.56cqw; padding:.37cqw .74cqw;
+    background:rgba(6,26,46,.6); pointer-events:none}
 
   #filme .scene{position:absolute; inset:0; display:grid; place-content:center; justify-items:center;
     text-align:center; padding:0 7% 8%; opacity:0; visibility:hidden; transition:opacity .5s ease}
   #filme .scene.on{opacity:1; visibility:visible}
-  #filme .scene:not(.on) .a{animation:none!important}
+  #filme .scene:not(.on) *{animation:none!important}
+  #filme.pausado .scene.on *{animation-play-state:paused!important}
   #filme .a{animation:fup .9s cubic-bezier(.16,.84,.28,1) both}
   @keyframes fup{from{opacity:0; transform:translateY(2cqw)} to{opacity:1; transform:none}}
   @keyframes fpop{from{opacity:0; transform:scale(.84)} to{opacity:1; transform:none}}
@@ -404,7 +430,7 @@
   #filme .dn{display:flex; align-items:center; gap:.93cqw}
   #filme .dn svg{width:7.4cqw; height:7.4cqw; flex:none}
   #filme .dn .val{stroke-dasharray:302; stroke-dashoffset:302}
-  #filme .scene.on .dn .val{animation:fdraw 1.5s .5s cubic-bezier(.2,.8,.3,1) forwards}
+  #filme .scene.on .dn .val{animation:draw 1.5s .5s cubic-bezier(.2,.8,.3,1) both}
   #filme .dn b{display:block; font-family:var(--display); font-weight:800; font-size:2.6cqw; line-height:1; color:#fff}
   #filme .dn span{display:block; font-family:var(--mono); font-size:.83cqw; color:var(--ffaint); margin-top:.37cqw}
   #filme .beds{display:grid; grid-template-columns:repeat(12,1fr); gap:.32cqw}
@@ -574,10 +600,21 @@
     .kpis{grid-template-columns:1fr 1fr}
     section{padding:64px 0}
   }
+  /* Legenda do filme no celular: dentro do palco ela ficava com 3,9 px (a régua
+     é cqw). Fora do palco pode ter tamanho de texto de verdade. */
+  #filme .cc-fora{position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap}
+  @media (max-width:680px){
+    #filme .cc{display:none}
+    #filme .ilus{display:none}
+    #filme .cc-fora{position:static; width:auto; height:auto; overflow:visible; clip-path:none; white-space:normal;
+      margin:10px 0 0; min-height:4.5em; font-size:15px; line-height:1.5; color:var(--ink-2)}
+    #filme .cc-fora.off{display:none}
+  }
   :focus-visible{outline:2.5px solid var(--azure); outline-offset:3px; border-radius:8px}
 </style>
 </head>
 <body>
+<a class="pular" href="#top">Pular para o conteúdo</a>
 
 <!-- ══ the Valentrax V, rebuilt in vector ══ -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
@@ -630,7 +667,7 @@
       <svg class="mark" width="40" height="40" viewBox="0 0 72 72"><use href="#vxmark"/></svg>
       <span><span class="wm">VALENTRA<b>X</b></span><span class="wmsub">HEALTHCARE&nbsp;OPERATIONS</span></span>
     </a>
-    <nav class="main">
+    <nav class="main" aria-label="Principal">
       <a class="nl" href="#modulos">Módulos</a>
       <a class="nl" href="#filmsec">Vídeo</a>
       <a class="nl" href="#essencia">Essência</a>
@@ -659,20 +696,30 @@
             Assista ao vídeo</a>
         </div>
         <div class="chips an an-4">
-          <span class="chip"><i></i>SUS nativo — SIGTAP, AIH e BPA</span>
+          <span class="chip"><i></i>Faturamento SUS com a tabela SIGTAP</span>
           <span class="chip"><i></i>Registro clínico sem rasura</span>
-          <span class="chip"><i></i>Conforme a LGPD</span>
+          <span class="chip"><i></i>Construído para apoiar a LGPD</span>
         </div>
       </div>
 
       <!-- a foto inteira e, abaixo dela, o painel do sistema -->
-      <div class="heroviz an an-3">
-        <div class="shot" role="img" aria-label="Profissional de enfermagem acompanhando os indicadores do hospital na Valentrax"></div>
-        <div class="mock" role="img" aria-label="Painel da Valentrax: indicadores do hospital e o partograma da maternidade em acompanhamento. Números ilustrativos.">
+      <div class="heroviz">
+        <div class="shot">
+          <picture>
+            <source type="image/avif" sizes="(max-width:1080px) calc(100vw - 52px), 580px"
+              srcset="img/hero-clinica-v1-640.avif 640w, img/hero-clinica-v1-960.avif 960w, img/hero-clinica-v1-1280.avif 1280w, img/hero-clinica-v1-1672.avif 1672w">
+            <source type="image/webp" sizes="(max-width:1080px) calc(100vw - 52px), 580px"
+              srcset="img/hero-clinica-v1-640.webp 640w, img/hero-clinica-v1-960.webp 960w, img/hero-clinica-v1-1280.webp 1280w, img/hero-clinica-v1-1672.webp 1672w">
+            <img src="img/hero-clinica-v1-1280.jpg" width="1672" height="940" fetchpriority="high"
+              alt="Imagem ilustrativa: profissional de saúde diante de um painel de indicadores do hospital">
+          </picture>
+          <span class="selo" aria-hidden="true">Imagem ilustrativa</span>
+        </div>
+        <div class="mock an an-3" role="img" aria-label="Painel da Valentrax: indicadores do hospital e o partograma da maternidade em acompanhamento. Números ilustrativos.">
           <div class="mock-bar">
             <span class="lamps"><i></i><i></i><i></i></span>
             <span class="ttl">valentrax &middot; centro de monitoramento</span>
-            <span class="live"><i></i>TEMPO REAL</span>
+            <span class="ficticio">DADOS FICTÍCIOS</span>
           </div>
           <div class="mock-body">
             <div class="kpis">
@@ -767,12 +814,13 @@
       <div class="sec-head" style="text-align:center; margin-left:auto; margin-right:auto; margin-bottom:34px">
         <span class="eyebrow">O filme institucional</span>
         <h2>O sistema operacional de um hospital.</h2>
-        <p>Pouco mais de um minuto por dentro da plataforma: da emergência ao faturamento, sem sair do mesmo prontuário.</p>
+        <p>Pouco mais de um minuto por dentro da plataforma: da emergência ao faturamento, sem sair do mesmo prontuário. Nomes, números e telas do filme são ilustrativos.</p>
       </div>
 
       <div id="filme">
         <div class="stage">
           <svg class="vgh" viewBox="0 0 64 64" aria-hidden="true"><use href="#vmark"/></svg>
+          <span class="ilus" aria-hidden="true">Ilustração · dados fictícios</span>
 
           <!-- 1 · abertura -->
           <div class="scene on" data-d="8500"
@@ -930,7 +978,7 @@
                 </span></div>
                 <div class="srow"><span class="rm">SALA 2</span><span class="tl">
                   <span class="blk b2" style="left:2%; width:34%; animation-delay:1.15s">CES&Aacute;REA</span>
-                  <span class="blk b3" style="left:39%; width:28%; animation-delay:1.35s">ATRASO PREVISTO</span>
+                  <span class="blk b3" style="left:39%; width:28%; animation-delay:1.35s">LAPAROTOMIA</span>
                   <span class="blk b1" style="left:70%; width:22%; animation-delay:1.55s">CURETAGEM</span>
                 </span></div>
                 <div class="srow"><span class="rm">SALA 3</span><span class="tl">
@@ -945,11 +993,11 @@
 
           <!-- 8 · o ecossistema -->
           <div class="scene" data-d="9800"
-               data-say="E integra ainda maternidade, UTI, segurança do paciente, suprimentos, faturamento, financeiro, pessoas, diagnóstico, controle de infecção e inteligência clínica.">
+               data-say="E integra ainda atendimento, maternidade, segurança do paciente, estoque e compras, faturamento, paciente 360, protocolos clínicos, controle de infecção, auditoria e perfis de acesso.">
             <span class="eyeb a">Um ecossistema, n&atilde;o uma lista</span>
             <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Todo o hospital ligado ao <span class="hl">mesmo c&eacute;rebro</span>.</h3>
             <div class="rg a" style="animation-delay:.5s">
-              <svg viewBox="0 0 900 300" role="img" aria-label="Maternidade, UTI, segurança do paciente, suprimentos, faturamento, financeiro, pessoas, diagnóstico, controle de infecção e inteligência clínica ligados a um núcleo central">
+              <svg viewBox="0 0 900 300" role="img" aria-label="Atendimento, maternidade, segurança do paciente, estoque e compras, faturamento, paciente 360, protocolos clínicos, controle de infecção, auditoria e perfis de acesso ligados a um núcleo central">
                 <path class="ln" style="animation-delay:1.5s" stroke="#25a9e0" d="M200 40 C 280 40, 320 150, 392 150"/>
                 <path class="ln" style="animation-delay:1.65s" stroke="#25a9e0" d="M200 95 C 280 95, 320 150, 392 150"/>
                 <path class="ln" style="animation-delay:1.8s" stroke="#25a9e0" d="M200 150 L 392 150"/>
@@ -972,16 +1020,16 @@
                 <circle class="dot" style="animation-delay:2.6s" cx="700" cy="205" r="3.4" fill="#17bfae"/>
                 <circle class="dot" style="animation-delay:2.75s" cx="700" cy="260" r="3.4" fill="#17bfae"/>
 
-                <text class="lb" style="animation-delay:1.35s" x="186" y="45"  text-anchor="end">MATERNIDADE</text>
-                <text class="lb" style="animation-delay:1.5s" x="186" y="100" text-anchor="end">UTI</text>
+                <text class="lb" style="animation-delay:1.35s" x="186" y="45"  text-anchor="end">ATENDIMENTO</text>
+                <text class="lb" style="animation-delay:1.5s" x="186" y="100" text-anchor="end">MATERNIDADE</text>
                 <text class="lb" style="animation-delay:1.65s" x="186" y="155" text-anchor="end">SEGURAN&Ccedil;A DO PACIENTE</text>
-                <text class="lb" style="animation-delay:1.8s" x="186" y="210" text-anchor="end">SUPRIMENTOS</text>
+                <text class="lb" style="animation-delay:1.8s" x="186" y="210" text-anchor="end">ESTOQUE E COMPRAS</text>
                 <text class="lb" style="animation-delay:1.95s" x="186" y="265" text-anchor="end">FATURAMENTO</text>
-                <text class="lb" style="animation-delay:2.1s" x="714" y="45"  text-anchor="start">FINANCEIRO</text>
-                <text class="lb" style="animation-delay:2.25s" x="714" y="100" text-anchor="start">PESSOAS</text>
-                <text class="lb" style="animation-delay:2.4s" x="714" y="155" text-anchor="start">DIAGN&Oacute;STICO</text>
-                <text class="lb" style="animation-delay:2.55s" x="714" y="210" text-anchor="start">CONTROLE DE INFEC&Ccedil;&Atilde;O</text>
-                <text class="lb" style="animation-delay:2.7s" x="714" y="265" text-anchor="start">INTELIG&Ecirc;NCIA CL&Iacute;NICA</text>
+                <text class="lb" style="animation-delay:2.1s" x="714" y="45"  text-anchor="start">PACIENTE 360</text>
+                <text class="lb" style="animation-delay:2.25s" x="714" y="100" text-anchor="start">PROTOCOLOS CL&Iacute;NICOS</text>
+                <text class="lb" style="animation-delay:2.4s" x="714" y="155" text-anchor="start">CONTROLE DE INFEC&Ccedil;&Atilde;O</text>
+                <text class="lb" style="animation-delay:2.55s" x="714" y="210" text-anchor="start">AUDITORIA DE ACESSO</text>
+                <text class="lb" style="animation-delay:2.7s" x="714" y="265" text-anchor="start">PERFIS DE ACESSO</text>
 
                 <g class="hub">
                   <circle class="halo" cx="450" cy="150" r="62" fill="#4fd6e8" opacity=".2"/>
@@ -994,9 +1042,9 @@
 
           <!-- 9 · a inteligência -->
           <div class="scene" data-d="9000"
-               data-say="Mas a Valentrax vai além de organizar informações. Ela identifica riscos, cruza indicadores, gera alertas e utiliza inteligência para antecipar cenários e apoiar decisões.">
+               data-say="Mas a Valentrax vai além de organizar informações: cruza o que cada setor registrou, dispara alertas quando algo sai do esperado e avisa quando não conseguiu conferir.">
             <span class="eyeb a">Al&eacute;m de organizar</span>
-            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Cruza indicadores, enxerga o risco <span class="hl">antes</span>.</h3>
+            <h3 class="sm a" style="animation-delay:.2s; margin-top:1.11cqw">Cruza o que cada setor registrou e <span class="hl">avisa</span>.</h3>
             <div class="dz">
               <div class="pgbox a" style="animation-delay:.6s">
                 <div class="conh"><span class="dt"></span><span class="tt">Maternidade &middot; partograma &middot; leito 302</span></div>
@@ -1032,7 +1080,7 @@
                 <div class="al r" style="animation-delay:4.3s"><em style="background:#e8585f"></em>
                   <span><b>Curva cruzou a linha de a&ccedil;&atilde;o</b><span>MATERNIDADE &middot; LEITO 302 &middot; REAVALIAR</span></span></div>
                 <div class="al m" style="animation-delay:4.6s"><em style="background:#f0a63c"></em>
-                  <span><b>UTI chegando a 100%</b><span>PROJE&Ccedil;&Atilde;O EM 3H &middot; ACIONAR NIR</span></span></div>
+                  <span><b>Setor com 100% de ocupa&ccedil;&atilde;o</b><span>GIRO DE LEITOS &middot; ACIONAR NIR</span></span></div>
                 <div class="al c" style="animation-delay:4.9s"><em style="background:#4fd6e8"></em>
                   <span><b>14 contas com glosa a recorrer</b><span>FATURAMENTO &middot; PRAZO EM 6 DIAS</span></span></div>
               </div>
@@ -1068,7 +1116,7 @@
               <svg viewBox="0 0 72 72"><use href="#vxmark"/></svg>
               <span><span class="fwm">VALENTRA<b>X</b></span><span class="fwms">HEALTHCARE&nbsp;OPERATIONS</span></span>
             </div>
-            <p class="med a" style="animation-delay:.9s; margin-top:1.85cqw; font-size:2.22cqw">
+            <p class="med a" lang="en" style="animation-delay:.9s; margin-top:1.85cqw; font-size:2.22cqw">
               One Journey. Two Lives.<br><span class="hl">One Intelligent Command Center.</span></p>
             <div class="chips">
               <span class="chip" style="animation-delay:1.8s"><svg viewBox="0 0 24 24" width="14" height="14" fill="#3ec98b" style="vertical-align:-2.5px; margin-right:7px"><use href="#wa"/></svg>(51) 99347-6688</span>
@@ -1077,7 +1125,7 @@
             </div>
           </div>
 
-          <div class="cc" aria-live="polite"></div>
+          <div class="cc" aria-hidden="true"></div>
 
           <div class="poster">
             <button class="playbtn" type="button" aria-label="Reproduzir o filme de apresenta&ccedil;&atilde;o">
@@ -1086,12 +1134,13 @@
             <span class="plabel">Assistir</span>
           </div>
         </div>
+        <p class="cc-fora" aria-live="polite"></p>
 
         <div class="fbar"><i class="prog"></i></div>
         <div class="fctrl">
           <button class="pp" type="button">&#9658; Reproduzir</button>
           <button class="rp" type="button">&#8634; Do in&iacute;cio</button>
-          <button class="lg" type="button" aria-pressed="true">&#9744; Legenda</button>
+          <button class="lg" type="button" aria-pressed="true">&#9745; Legenda</button>
           <span class="fcap clock">cena 1 / 11 &middot; 00:00</span>
         </div>
       </div>
@@ -1131,7 +1180,7 @@
         <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></div>
           <h3>Faturamento SUS</h3>
           <p>Do procedimento ao recebido com a tabela SIGTAP: ciclo faturado → glosado → recebido, glosa por valor e o recurso que não deixa dinheiro na mesa.</p>
-          <div class="tags"><span class="tag">SIGTAP</span><span class="tag">AIH · BPA</span><span class="tag">glosa</span></div></div>
+          <div class="tags"><span class="tag">SIGTAP</span><span class="tag">convênios</span><span class="tag">glosa</span></div></div>
 
         <div class="mod"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg></div>
           <h3>Segurança do Paciente</h3>
@@ -1177,9 +1226,9 @@
         </div>
       </div>
       <div class="facts">
-        <div class="fct"><span class="n">9</span><span><span class="t">módulos no ar</span><span class="s">Do pronto-socorro ao faturamento, já rodando em produção.</span></span></div>
+        <div class="fct"><span class="n">13</span><span><span class="t">conferências na farmácia clínica</span><span class="s">Alergia, interação, compatibilidade em Y, dose por dia e por kg, gestação, idoso, criança, rim e fígado — e avisa quando não conseguiu conferir.</span></span></div>
         <div class="fct"><span class="n">1</span><span><span class="t">prontuário, a jornada inteira</span><span class="s">A mesma paciente do PS à alta — sem recadastrar.</span></span></div>
-        <div class="fct"><span class="n">10</span><span><span class="t">grupos de Robson auditados</span><span class="s">A taxa de cesárea explicada por grupo, no padrão da OMS.</span></span></div>
+        <div class="fct"><span class="n">10</span><span><span class="t">grupos de Robson na maternidade</span><span class="s">A taxa de cesárea explicada por grupo, no padrão da OMS.</span></span></div>
         <div class="fct"><span class="n">0</span><span><span class="t">rasura no registro clínico</span><span class="s">Append-only: correção é anotação nova, nunca apagamento.</span></span></div>
       </div>
     </div>
@@ -1193,9 +1242,9 @@
         <h2>Fala a língua do hospital brasileiro.</h2>
       </div>
       <div class="br">
-        <div class="brc"><h3>SUS de ponta a ponta</h3><p>SIGTAP, AIH e BPA no faturamento, CBO × procedimento e município IBGE. Não é adaptação — é nativo.</p></div>
+        <div class="brc"><h3>Feito para o SUS</h3><p>Tabela SIGTAP no faturamento, cada procedimento na sua via (AIH, BPA ou APAC), conferência de CBO × procedimento e município pelo IBGE.</p></div>
         <div class="brc"><h3>Protocolos reais</h3><p>Manchester, MEOWS, Bishop, Robson, Capurro e os protocolos de IAM, AVC e TEV já embutidos.</p></div>
-        <div class="brc"><h3>LGPD por dentro</h3><p>Acesso por perfil, dado sensível segregado e trilha de auditoria atribuível a quem assinou.</p></div>
+        <div class="brc"><h3>Controles para a LGPD</h3><p>Acesso por perfil e por módulo, registro de quem acessou cada prontuário e registro clínico que não se apaga. Construído para apoiar a adequação do hospital.</p></div>
         <div class="brc"><h3>Um banco por hospital</h3><p>Seus dados são só seus. Cada hospital sobe isolado — e o sistema já nasce sabendo lidar com o dia zero.</p></div>
       </div>
     </div>
@@ -1232,8 +1281,8 @@
       <svg class="mark" width="36" height="36" viewBox="0 0 72 72"><use href="#vxmark"/></svg>
       <span><span class="wm" style="font-size:17px">VALENTRA<b>X</b></span><span class="wmsub">HEALTHCARE&nbsp;OPERATIONS</span></span>
     </a>
-    <p class="tag">One journey. Two lives. One intelligent command center.</p>
-    <nav class="fl">
+    <p class="tag" lang="en">One journey. Two lives. One intelligent command center.</p>
+    <nav class="fl" aria-label="Rodapé">
       <a href="#modulos">Módulos</a><a href="#essencia">Essência</a><a href="#contato">Contato</a>
       <a href="https://www.valentrax.com.br">Acessar</a>
     </nav>
@@ -1245,198 +1294,8 @@
   </div></div>
 </footer>
 
-<script>
-(function(){
-  /* ══════════════════════════════════════════════════════════════
-     LOCUÇÃO — quando houver o MP3 gravado, é só preencher aqui:
-       TRILHA = "narracao.mp3"  (publicado junto com esta página)
-       MARCAS = [0, 8.5, 18, 22.8, ...]  ← segundo em que CADA cena
-                entra, na ordem. Com a trilha, o áudio comanda o filme.
-                Vazio, roda pelos tempos de cada cena.
-     ══════════════════════════════════════════════════════════════ */
-  var TRILHA = "";
-  var MARCAS = null;
+<script src="filme.js"></script>
 
-  var root = document.getElementById('filme');
-  if (!root) return;
-  var scenes = [].slice.call(root.querySelectorAll('.scene'));
-  var says   = scenes.map(function(s){ return s.getAttribute('data-say') || ''; });
-  var durs   = scenes.map(function(s){ return parseInt(s.getAttribute('data-d'), 10) || 5000; });
-  var cc     = root.querySelector('.cc');
-  var prog   = root.querySelector('.prog');
-  var clock  = root.querySelector('.clock');
-  var pp     = root.querySelector('.pp');
-  var rp     = root.querySelector('.rp');
-  var lg     = root.querySelector('.lg');
-  var poster = root.querySelector('.poster');
-
-  var caption = true;
-  var i = 0, playing = false, done = false, timer = null, tick = null;
-  var sceneAt = 0, left = 0, t0 = 0, elapsed = 0, lastWithin = 0;
-
-  var track = null;
-  if (TRILHA && MARCAS && MARCAS.length === scenes.length){
-    track = new Audio(TRILHA);
-    track.preload = 'auto';
-    track.addEventListener('timeupdate', function(){
-      if (!playing) return;
-      var t = track.currentTime, n = 0;
-      for (var k = 0; k < MARCAS.length; k++){ if (t >= MARCAS[k]) n = k; }
-      if (n !== i) enter(n);
-    });
-    track.addEventListener('ended', finish);
-  }
-
-  function fmt(ms){
-    var s = Math.floor(ms / 1000), m = Math.floor(s / 60);
-    s = s % 60;
-    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
-  }
-  function paint(){
-    var within = playing ? Math.min(1, (Date.now() - sceneAt) / durs[i]) : lastWithin;
-    if (playing) lastWithin = within;
-    var pct = done ? 100 : ((i + within) / scenes.length) * 100;
-    prog.style.width = pct.toFixed(2) + '%';
-    clock.textContent = 'cena ' + (i + 1) + ' / ' + scenes.length + ' · ' + fmt(elapsed + (playing ? Date.now() - t0 : 0));
-  }
-  function clearTimers(){ clearTimeout(timer); timer = null; }
-
-  function enter(n, resumeMs){
-    clearTimers();
-    i = n;
-    for (var k = 0; k < scenes.length; k++) scenes[k].classList.remove('on');
-    void scenes[i].offsetWidth;              /* reinicia as animações da cena */
-    scenes[i].classList.add('on');
-    cc.textContent = says[i];
-    sceneAt = Date.now();
-    left = resumeMs || durs[i];
-    if (!playing || track) return;           /* com trilha, quem vira a cena é o áudio */
-    timer = setTimeout(advance, left);
-  }
-  function advance(){
-    if (!playing) return;
-    if (i + 1 < scenes.length){
-      var nx = i + 1;
-      timer = setTimeout(function(){ if (playing) enter(nx); }, 300);
-    } else {
-      finish();
-    }
-  }
-  function finish(){
-    playing = false; clearTimers();
-    done = true;
-    if (track) { try { track.pause(); } catch (e) {} }
-    elapsed += Date.now() - t0;
-    root.classList.remove('playing');
-    poster.querySelector('.plabel').textContent = 'Ver de novo';
-    setBtn(); paint();
-  }
-  function setBtn(){
-    pp.innerHTML = playing ? '&#10074;&#10074; Pausar' : '&#9658; Reproduzir';
-  }
-  function start(){
-    if (playing) return;
-    done = false;
-    playing = true; t0 = Date.now();
-    root.classList.add('playing');
-    setBtn();
-    enter(i, left);
-    if (track) { try { track.play(); } catch (e) {} }
-    if (!tick) tick = setInterval(paint, 250);
-  }
-  function pause(){
-    if (!playing) return;
-    playing = false;
-    elapsed += Date.now() - t0;
-    left = Math.max(600, durs[i] - (Date.now() - sceneAt));
-    clearTimers();
-    if (track) { try { track.pause(); } catch (e) {} }
-    setBtn(); paint();
-  }
-  function restart(){
-    playing = false; clearTimers();
-    i = 0; left = durs[0]; elapsed = 0; lastWithin = 0; done = false;
-    if (track) { try { track.pause(); track.currentTime = 0; } catch (e) {} }
-    poster.querySelector('.plabel').textContent = 'Assistir';
-    start();
-  }
-
-  poster.addEventListener('click', function(){ if (!playing) { done ? restart() : start(); } });
-  pp.addEventListener('click', function(){ playing ? pause() : (done ? restart() : start()); });
-  rp.addEventListener('click', restart);
-  lg.addEventListener('click', function(){
-    caption = !caption;
-    lg.setAttribute('aria-pressed', String(caption));
-    lg.innerHTML = (caption ? '&#9744;' : '&#9746;') + ' Legenda';
-    cc.classList.toggle('off', !caption);
-  });
-  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && playing) pause(); });
-
-  /* botões "Assista ao vídeo" do topo da página */
-  [].slice.call(document.querySelectorAll('[data-play]')).forEach(function(b){
-    b.addEventListener('click', function(e){
-      e.preventDefault();
-      var sec = document.getElementById('filmsec');
-      if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      setTimeout(function(){ if (!playing) { done ? restart() : start(); } }, 520);
-    });
-  });
-
-  cc.textContent = says[0];
-  paint();
-})();
-</script>
-
-<script>
-/* Idioma da demonstração. O site continua em português: isto só troca a
-   mensagem que vai no WhatsApp/e-mail e o rótulo dos dois botões, para a
-   pessoa dizer em que língua quer a demo sem ter que escrever nada. */
-(function(){
-  var cta = document.getElementById('contato');
-  if (!cta) return;
-  var botoes = [].slice.call(cta.querySelectorAll('.seg button'));
-  var wa    = document.getElementById('ctaWa');
-  var mail  = document.getElementById('ctaMail');
-  var waTxt = wa && wa.querySelector('.t');
-  if (!botoes.length || !wa || !mail || !waTxt) return;
-
-  var FONE = '5551993476688', EMAIL = 'Valentrax.ai@gmail.com';
-  var idiomas = {
-    pt: {
-      zap:      'Olá! Gostaria de conhecer a Valentrax e agendar uma demonstração.',
-      assunto:  'Demonstração da Valentrax',
-      corpo:    'Olá! Gostaria de agendar uma demonstração da Valentrax, em português.',
-      rotuloZap:'Agendar pelo WhatsApp',
-      rotuloMail:'Enviar e-mail'
-    },
-    en: {
-      zap:      'Hello! I would like to know Valentrax and schedule a demo in English.',
-      assunto:  'Valentrax demo (in English)',
-      corpo:    'Hello! I would like to schedule a Valentrax demo, in English.',
-      rotuloZap:'Schedule on WhatsApp',
-      rotuloMail:'Send an email'
-    }
-  };
-
-  function aplicar(lang){
-    var t = idiomas[lang] || idiomas.pt;
-    wa.href = 'https://wa.me/' + FONE + '?text=' + encodeURIComponent(t.zap);
-    mail.href = 'mailto:' + EMAIL + '?subject=' + encodeURIComponent(t.assunto) +
-                '&body=' + encodeURIComponent(t.corpo);
-    waTxt.textContent = t.rotuloZap;
-    mail.textContent = t.rotuloMail;
-    botoes.forEach(function(b){
-      var ligado = b.getAttribute('data-lang') === lang;
-      b.classList.toggle('on', ligado);
-      b.setAttribute('aria-pressed', String(ligado));
-    });
-  }
-
-  botoes.forEach(function(b){
-    b.addEventListener('click', function(){ aplicar(b.getAttribute('data-lang')); });
-  });
-  aplicar('pt');
-})();
-</script>
+<script src="idioma.js"></script>
 </body>
 </html>

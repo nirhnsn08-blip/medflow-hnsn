@@ -34,9 +34,22 @@ apontar para este projeto em vez de redirecionar.
 
 ## Conteúdo
 
-- `index.html` — a página inteira, sem dependência de build. Fontes vêm do
-  Google Fonts; todo o resto (estilos, ícones, o filme) está dentro do arquivo.
-- `hero-clinica.png` — a foto do topo.
+- `index.html` — a página, sem dependência de build. Estilos e ícones estão
+  dentro do arquivo.
+- `filme.js` e `idioma.js` — os dois scripts da página (o filme e a escolha do
+  idioma da demonstração). Saíram de dentro do HTML para a política de segurança
+  do `vercel.json` poder usar `script-src self` sem hash — hash quebraria a
+  cada edição do script.
+- `img/hero-clinica-v1-*.avif|webp|jpg` — a foto do topo em 4 larguras (20–60 KB
+  cada). O `hero-clinica.png` original (1,85 MB) continua na pasta, mas a página
+  não usa mais. Trocar a foto = gerar os arquivos com nome novo (`-v2-`): o
+  cache de `/img/` é `immutable`.
+- `og-valentrax.jpg` — a prévia de 1200×630 que aparece no WhatsApp.
+- `fonts/` — as três fontes, servidas pelo próprio site (ver `fonts/LICENCAS.md`).
+- `favicon.svg`, `apple-touch-icon.png`, `icon-512.png`, `robots.txt`, `sitemap.xml`.
+- `vercel.json` — cabeçalhos de segurança e cache. A política de conteúdo está
+  como `Content-Security-Policy-Report-Only`: publicar, abrir a página, conferir
+  que o console não reclama e só então renomear para `Content-Security-Policy`.
 
 ⚠️ **O botão "Acessar Plataforma" aponta para `https://www.valentrax.com.br`.**
 Se um dia o endereço do sistema mudar, tem que mudar aqui também — são dois
@@ -46,7 +59,7 @@ lugares no arquivo (o cabeçalho e o rodapé).
 
 O filme institucional é feito em HTML/CSS dentro da própria página, sem vídeo
 gravado. A locução ainda não existe: quando houver o MP3, preencher `TRILHA` e
-`MARCAS` no topo do `<script>` no fim do arquivo — com a trilha preenchida, o
+`MARCAS` no topo de `filme.js` — com a trilha preenchida, o
 áudio passa a comandar a virada das cenas.
 
 O palco do filme é 16:9 e **tudo lá dentro é medido em `cqw`** (porcentagem da
