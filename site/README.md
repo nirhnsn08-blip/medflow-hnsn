@@ -36,8 +36,10 @@ apontar para este projeto em vez de redirecionar.
 
 - `index.html` — a página, sem dependência de build. Estilos e ícones estão
   dentro do arquivo.
-- `filme.js` e `idioma.js` — os dois scripts da página (o filme e a escolha do
-  idioma da demonstração). Saíram de dentro do HTML para a política de segurança
+- `filme.js` e `contato.js` — os dois scripts da página: o filme, e o pedido de
+  demonstração (o formulário monta a mensagem e abre o WhatsApp com ela pronta —
+  o site não tem servidor e não guarda nada; a escolha do idioma da demonstração
+  continua lá dentro e decide a língua da mensagem). Saíram de dentro do HTML para a política de segurança
   do `vercel.json` poder usar `script-src self` sem hash — hash quebraria a
   cada edição do script.
 - `img/hero-clinica-v1-*.avif|webp|jpg` — a foto do topo em 4 larguras (20–60 KB
@@ -51,9 +53,10 @@ apontar para este projeto em vez de redirecionar.
   como `Content-Security-Policy-Report-Only`: publicar, abrir a página, conferir
   que o console não reclama e só então renomear para `Content-Security-Policy`.
 
-⚠️ **O botão "Acessar Plataforma" aponta para `https://www.valentrax.com.br`.**
-Se um dia o endereço do sistema mudar, tem que mudar aqui também — são dois
-lugares no arquivo (o cabeçalho e o rodapé).
+⚠️ **O acesso ao sistema aponta para `https://www.valentrax.com.br`** em dois
+lugares: o link "Entrar" do cabeçalho e o "Acessar" do rodapé. O botão em
+destaque do cabeçalho é "Agendar demonstração" — quem chega pela busca ainda não
+é usuário. Se o endereço do sistema mudar, os dois links mudam juntos.
 
 ## O filme
 
