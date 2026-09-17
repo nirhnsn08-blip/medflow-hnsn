@@ -109,6 +109,9 @@ const PREPARO_STATUS = {
 // pré-requisito ("Sem lote em estoque. Registre uma entrada no Estoque"),
 // e ele vinha DEPOIS do ato que depende dele, misturado com a base de
 // interações e o livro de controlados. Coisas de natureza diferente.
+// "Consulta rápida" e não "Assistente AI": as respostas saem de regras locais
+// sobre os dados da tela, sem modelo de linguagem. Quem testa percebe, e
+// rótulo que promete o que não existe custa a confiança no resto.
 const FARM_NAV = [
   { key: "dashboard",   label: "Dashboard",         icon: "dashboard" },
 
@@ -125,7 +128,7 @@ const FARM_NAV = [
   { key: "interacoes",  label: "Interações",        icon: "flask", grupo: "Registro e referência" },
 
   { key: "indicadores", label: "Indicadores",       icon: "chart", grupo: "Acompanhar" },
-  { key: "assistente",  label: "Assistente AI",     icon: "chat",  grupo: "Acompanhar" },
+  { key: "assistente",  label: "Consulta rápida",   icon: "chat",  grupo: "Acompanhar" },
 ];
 
 // ── Inventário da FARMÁCIA ──────────────────────────────────

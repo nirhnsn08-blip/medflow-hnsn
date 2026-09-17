@@ -72,7 +72,7 @@ const PS_NAV_EMERG = [
   { key: "e_leitos",         label: "Leitos detalhados",    icon: "bed" },
   { key: "e_transferencias", label: "Transferências",       icon: "truck" },
   { key: "e_aguardando",     label: "Aguardando leito",     icon: "clock" },
-  { key: "e_ia",             label: "Assistente IA",        icon: "chat" },
+  { key: "e_ia",             label: "Consulta rápida",      icon: "chat" },
 ];
 
 
@@ -1804,7 +1804,7 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
           );
         }
 
-        // ── Assistente IA do PS ──
+        // ── Consulta rápida do PS (respostas locais, sem IA) ──
         if (sub === "e_ia") return <PsAssistenteView fila={fila} finalizados={finalizados} salas={ativas} leitos={leitos} />;
         return null;
       })()}
