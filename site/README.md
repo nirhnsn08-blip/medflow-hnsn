@@ -42,6 +42,11 @@ apontar para este projeto em vez de redirecionar.
   continua lá dentro e decide a língua da mensagem). Saíram de dentro do HTML para a política de segurança
   do `vercel.json` poder usar `script-src self` sem hash — hash quebraria a
   cada edição do script.
+- `nav.js` — acabamento da navegação: fecha o menu do celular (que é um
+  `<details>` e abre sem JS), sombra no cabeçalho ao rolar, link da seção
+  visível aceso e entrada suave das seções abaixo da dobra. Sem ele a página
+  funciona igual.
+- `404.html` — a página que a Vercel mostra para endereço inexistente.
 - `img/hero-clinica-v1-*.avif|webp|jpg` — a foto do topo em 4 larguras (20–60 KB
   cada). O `hero-clinica.png` original (1,85 MB) continua na pasta, mas a página
   não usa mais. Trocar a foto = gerar os arquivos com nome novo (`-v2-`): o
@@ -69,3 +74,14 @@ O palco do filme é 16:9 e **tudo lá dentro é medido em `cqw`** (porcentagem d
 largura do palco), nunca em `vw` nem em pixel fixo. É isso que faz o conteúdo
 encolher junto com a moldura em telas estreitas. Mexer nessa régua volta a
 cortar as cenas no celular.
+
+## Desempenho: o que não desfazer
+
+- `main > section:not(.hero)` tem `content-visibility:auto`. O layout inicial
+  da página inteira custava ~500 ms num celular médio (trace com CPU 4× mais
+  lenta); com isso caiu para ~150 ms. Efeito colateral conhecido: ferramenta
+  que fotografa a página inteira sem rolar vê as seções de baixo em branco —
+  no navegador de verdade elas montam ao chegar perto da tela.
+- A entrada das seções (`.surge`) só marca o que está abaixo da tela na carga,
+  e lê a posição pelo IntersectionObserver — `getBoundingClientRect` na carga
+  forçava layout extra.

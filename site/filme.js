@@ -88,7 +88,10 @@
     setBtn(); paint();
   }
   function setBtn(){
-    pp.innerHTML = playing ? '&#10074;&#10074; Pausar' : '&#9658; Reproduzir';
+    /* ícone em SVG: os caracteres ► e ❚❚ mudavam de tamanho e de altura em cada sistema */
+    pp.innerHTML = playing
+      ? '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1"/><rect x="13.5" y="5" width="4" height="14" rx="1"/></svg><span>Pausar</span>'
+      : '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6L19 12z"/></svg><span>Reproduzir</span>';
   }
   function start(){
     if (playing) return;
@@ -125,7 +128,6 @@
   lg.addEventListener('click', function(){
     caption = !caption;
     lg.setAttribute('aria-pressed', String(caption));
-    lg.innerHTML = (caption ? '&#9745;' : '&#9744;') + ' Legenda';   /* marcado = ligada */
     cc.classList.toggle('off', !caption);
     if (ccFora) ccFora.classList.toggle('off', !caption);
   });

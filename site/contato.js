@@ -87,12 +87,25 @@
   botoes.forEach(function(b){
     b.addEventListener('click', function(){ aplicarIdioma(b.getAttribute('data-lang')); });
   });
-  form.addEventListener('input', atualizarLinks);
-  form.addEventListener('change', atualizarLinks);
+  /* "Selecione…" fica cinza como placeholder; o campo que faltou fica marcado
+     até ser preenchido. */
+  var selects = [].slice.call(form.querySelectorAll('select'));
+  function pintarSelects(){ selects.forEach(function(s){ s.classList.toggle('vazio', !s.value); }); }
+  function limparErro(e){
+    var el = e.target;
+    if (el && el.getAttribute('aria-invalid') === 'true' && String(el.value).trim()) el.removeAttribute('aria-invalid');
+  }
+  form.addEventListener('input', function(e){ limparErro(e); atualizarLinks(); });
+  form.addEventListener('change', function(e){ limparErro(e); pintarSelects(); atualizarLinks(); });
+  pintarSelects();
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
     var faltando = ['nome', 'cargo', 'hospital'].filter(function(n){ return !valor(n); });
+    ['nome', 'cargo', 'hospital'].forEach(function(n){
+      var el = form.elements[n];
+      if (faltando.indexOf(n) >= 0) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+    });
     if (faltando.length){
       erro.textContent = idiomas[lang].faltou;
       erro.hidden = false;

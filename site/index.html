@@ -171,7 +171,7 @@
   .al time{margin-left:auto; font-family:var(--mono); font-size:9.5px; color:var(--ink-3)}
   .mat{display:flex; align-items:center; gap:10px; padding:9px 11px; border-radius:12px; background:linear-gradient(120deg,#0a2740,#124b6e); color:#fff}
   .mat .ic{width:30px; height:30px; border-radius:9px; background:rgba(255,255,255,.14); display:grid; place-items:center; flex:none}
-  .mat .t{font-size:12px; font-weight:700} .mat .s{font-size:10.5px; color:#9fc4dc}
+  .mat .t{display:block; font-size:12px; font-weight:700; line-height:1.3} .mat .s{display:block; font-size:10.5px; color:#9fc4dc; line-height:1.4}
 
   /* ── hero: a foto inteira, com o painel logo abaixo ──
      A imagem aparece completa (a moldura tem a mesma proporção do arquivo,
@@ -256,9 +256,11 @@
   .pil span{font-size:12px; color:#9fc4dc; line-height:1.45}
   .facts{display:grid; gap:14px}
   .fct{display:flex; align-items:center; gap:16px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.10); border-radius:14px; padding:16px 18px}
-  .fct .n{font-family:var(--display); font-weight:800; font-size:30px; letter-spacing:-.03em; color:#4fd6e8; line-height:1; min-width:78px; font-variant-numeric:tabular-nums}
-  .fct .t{font-size:13px; font-weight:700; color:#fff; line-height:1.3}
-  .fct .s{font-size:11.5px; color:#9fc4dc; margin-top:2px; line-height:1.4}
+  .fct .n{font-family:var(--display); font-weight:800; font-size:30px; letter-spacing:-.03em; color:#4fd6e8; line-height:1; min-width:58px; font-variant-numeric:tabular-nums}
+  /* título e descrição são <span>: sem display:block eles corriam na mesma
+     linha e a vista lia "farmácia clínicaAlergia". */
+  .fct .t{display:block; font-size:14px; font-weight:700; color:#fff; line-height:1.3}
+  .fct .s{display:block; font-size:12.5px; color:#a9c9de; margin-top:4px; line-height:1.5}
 
   /* brasil */
   .br{display:grid; grid-template-columns:repeat(4,1fr); gap:18px}
@@ -286,19 +288,94 @@
   .cta .contact a{color:var(--azure-deep); font-weight:700}
   .cta .contact a:hover{text-decoration:underline}
 
-  /* footer */
-  footer{background:var(--navy); color:#fff; padding:40px 0}
-  footer .wrap{display:flex; align-items:center; gap:28px; flex-wrap:wrap}
-  footer .tag{background:none; color:#7ba6c4; font-family:var(--mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; padding:0; margin:0 auto; text-align:center}
-  footer .fl{display:flex; gap:22px; font-size:13px; color:#9fc4dc}
-  footer .fl a:hover{color:#fff}
-  .fbot{border-top:1px solid rgba(255,255,255,.10); margin-top:26px; padding-top:18px; font-family:var(--mono); font-size:11px; color:#6f96b3; display:flex; gap:14px; flex-wrap:wrap}
-  .fbot span{margin-left:auto}
+  /* footer — marca e frase à esquerda, três colunas de links, linha legal embaixo */
+  footer{background:var(--navy); color:#fff; padding:64px 0 28px}
+  .fgrid{display:grid; grid-template-columns:minmax(0,1.5fr) repeat(3,minmax(0,1fr)); gap:40px}
+  .fsobre p{margin-top:18px; max-width:34ch; font-size:14px; line-height:1.6; color:#a9c9de}
+  .fsobre .btn{margin-top:22px}
+  .fcol h3{font-family:var(--mono); font-size:11px; font-weight:700; letter-spacing:.18em; text-transform:uppercase; color:#6fb8dc; margin-bottom:16px}
+  .fcol ul{list-style:none; margin:0; padding:0; display:grid; gap:11px}
+  .fcol a{font-size:14px; color:#c4dcec; transition:color .15s}
+  .fcol a:hover{color:#fff}
+  .fcol svg{vertical-align:-2px; margin-right:6px}
+  .fbot{border-top:1px solid rgba(255,255,255,.10); margin-top:48px; padding-top:22px; font-size:12.5px; color:#8fb3cc; display:flex; gap:10px 24px; flex-wrap:wrap; justify-content:space-between}
+  @media (max-width:900px){ .fgrid{grid-template-columns:1fr 1fr} .fsobre{grid-column:1 / -1} }
+  @media (max-width:480px){ .fgrid{grid-template-columns:1fr; gap:30px} footer{padding-top:52px} }
 
   /* ── cabeçalho: login discreto, demonstração em destaque ── */
   nav.main a.entrar{font-size:14.5px; font-weight:600; color:var(--ink-2); padding:4px 2px}
   nav.main a.entrar:hover{color:var(--azure-deep)}
-  @media (max-width:420px){ nav.main a.entrar{display:none} }
+  @media (max-width:820px){ nav.main a.entrar{display:none} }
+
+  /* cabeçalho ganha sombra quando a página rola; o link da seção visível acende */
+  header{transition:box-shadow .2s, background-color .2s}
+  header.rolou{background:rgba(255,255,255,.94); box-shadow:0 6px 24px -14px rgba(10,39,64,.28)}
+  nav.main a.nl.atual{color:var(--ink)}
+  nav.main a.nl.atual::after{transform:scaleX(1)}
+
+  /* ── menu do celular ──
+     <details> abre e fecha sem JavaScript; o nav.js só fecha ao tocar num link,
+     no Esc e fora do painel. Antes, abaixo de 820 px o menu simplesmente sumia. */
+  .menu{display:none; position:relative}
+  .menu summary{list-style:none; width:44px; height:44px; margin-right:-8px; border-radius:12px; display:grid; place-items:center; cursor:pointer; color:var(--ink)}
+  .menu summary::-webkit-details-marker{display:none}
+  .menu summary:hover{background:var(--mist)}
+  .menu summary svg{width:22px; height:22px}
+  .menu .ic-x{display:none}
+  .menu[open] .ic-x{display:block} .menu[open] .ic-m{display:none}
+  .menu .painel{position:absolute; right:-8px; top:calc(100% + 10px); width:min(300px,calc(100vw - 24px)); background:var(--paper);
+    border:1px solid var(--line); border-radius:16px; box-shadow:var(--sh-lg); padding:8px; display:grid; gap:2px;
+    animation:rise .18s cubic-bezier(.2,.75,.3,1) both}
+  .menu .painel a{display:flex; align-items:center; min-height:46px; padding:0 14px; border-radius:10px; font-size:15px; font-weight:600; color:var(--ink)}
+  .menu .painel a:hover{background:var(--mist); color:var(--azure-deep)}
+  .menu .painel hr{border:0; border-top:1px solid var(--line); margin:6px 8px}
+  .menu .painel .btn{justify-content:center; margin:4px 6px 6px; color:#fff}
+  .menu .painel .btn:hover{background:linear-gradient(135deg,#0b78a8,var(--azure-deep)); color:#fff}
+  @media (max-width:820px){ .menu{display:block} }
+  /* 320–380 px: marca + "Agendar" + menu não cabiam com 26 px de margem */
+  @media (max-width:600px){ .wrap{padding:0 18px} }
+  @media (max-width:380px){ .wrap{padding:0 14px} nav.main .btn svg{display:none} nav.main .btn{padding:9px 13px} header .wrap{gap:8px} }
+
+  /* O layout inicial da página inteira custava ~500 ms num celular médio (medido
+     em trace com CPU 4x mais lenta) — boa parte era montar seções que ninguém
+     está vendo, inclusive as 11 cenas do filme. Com content-visibility o
+     navegador só monta a seção quando ela chega perto da tela; a altura
+     estimada evita que a barra de rolagem pule, e "auto" guarda a altura real
+     depois da primeira vez. */
+  main > section:not(.hero){content-visibility:auto; contain-intrinsic-size:auto 900px}
+  @media (max-width:600px){ main > section:not(.hero){contain-intrinsic-size:auto 1800px} }
+
+  /* ritmo de fundos: duas seções brancas seguidas pareciam uma só */
+  #para-quem,#brasil{background:var(--mist); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+  .avisa .eyebrow{display:block; margin-bottom:15px}
+
+  /* perguntas: coluna lateral com contato, em vez de meia tela vazia */
+  .faqgrid{display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:64px; align-items:start}
+  .faqgrid .sec-head{margin-bottom:0; position:sticky; top:110px}
+  .faqajuda{margin-top:28px; padding:22px; border-radius:16px; background:var(--mist); border:1px solid var(--line)}
+  .faqajuda b{display:block; font-size:15px}
+  .faqajuda p{margin-top:6px; font-size:14px; color:var(--ink-2)}
+  .faqajuda .acts{display:flex; gap:10px; flex-wrap:wrap; margin-top:16px}
+  .faqajuda .btn{padding:10px 18px; font-size:14px}
+  @media (max-width:900px){ .faqgrid{grid-template-columns:1fr; gap:28px} .faqgrid .sec-head{position:static} .faqajuda{display:none} }
+
+  /* entrada suave das seções — só quem está abaixo da dobra na carga, e só com JS */
+  .surge{opacity:0; transform:translateY(18px); transition:opacity .7s cubic-bezier(.2,.75,.3,1), transform .7s cubic-bezier(.2,.75,.3,1)}
+  .surge.visto{opacity:1; transform:none}
+  @media (prefers-reduced-motion:reduce){ .surge{opacity:1; transform:none} }
+
+  /* contato alternativo embaixo do formulário: cada item inteiro numa linha */
+  .cta .contact{display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:8px 18px; font-family:var(--sans); font-size:14px}
+  .cta .contact a{display:inline-flex; align-items:center; gap:6px; white-space:nowrap}
+
+  @media (max-width:600px){
+    .hero .acts{flex-direction:column; align-items:stretch}
+    .hero .acts .btn{justify-content:center}
+    .hero .eyebrow .sep{display:none}
+    .hero .eyebrow .p2{display:block; margin-top:6px}
+    .mock-bar .ttl{white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0}
+    .per{padding:20px}
+  }
 
   .hero .nota{margin-top:14px; font-size:13.5px; color:var(--ink-3)}
 
@@ -354,20 +431,40 @@
   /* ── formulário de demonstração ── */
   .demo{max-width:760px; margin:34px auto 0; text-align:left; background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:26px; box-shadow:var(--sh-md)}
   .demo .campos{display:grid; grid-template-columns:1fr 1fr; gap:14px}
-  .demo label.c{display:flex; flex-direction:column; gap:6px; font-size:13px; font-weight:600; color:var(--ink)}
-  .demo input,.demo select{font:inherit; font-size:15px; font-weight:400; color:var(--ink); background:var(--mist); border:1px solid var(--line-2); border-radius:10px; padding:11px 12px; width:100%}
-  .demo input:focus,.demo select:focus{outline:2px solid var(--azure); outline-offset:1px; background:var(--paper)}
-  .demo fieldset{border:0; padding:0; margin:18px 0 0}
-  .demo legend{font-size:13px; font-weight:600; color:var(--ink); margin-bottom:8px}
+  .demo label.c{display:flex; flex-direction:column; gap:7px; font-size:13px; font-weight:600; color:var(--ink)}
+  /* input e select com a mesma altura e a mesma seta: antes o select nativo
+     ficava 4 px mais baixo e cada navegador desenhava a seta de um jeito. */
+  .demo input:not([type=checkbox]),.demo select{font:inherit; font-size:15px; font-weight:400; color:var(--ink); background-color:var(--mist);
+    border:1px solid var(--line-2); border-radius:10px; padding:0 14px; height:48px; width:100%;
+    transition:border-color .15s, background-color .15s, box-shadow .15s}
+  .demo select{-webkit-appearance:none; appearance:none; padding-right:40px; cursor:pointer;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%234f6d86' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 15px center}
+  .demo select.vazio{color:var(--ink-3)}   /* "Selecione…" em cinza, como placeholder */
+  .demo select option{color:var(--ink)}
+  .demo input:not([type=checkbox]):hover,.demo select:hover{border-color:#a9c8de}
+  .demo input:not([type=checkbox]):focus,.demo select:focus{outline:none; border-color:var(--azure); background-color:var(--paper); box-shadow:0 0 0 4px rgba(10,154,214,.14)}
+  .demo input[aria-invalid=true],.demo select[aria-invalid=true]{border-color:#d9645c; box-shadow:0 0 0 4px rgba(220,75,75,.10)}
+  .demo fieldset{border:0; padding:0; margin:20px 0 0; min-width:0}
+  .demo legend{font-size:13px; font-weight:600; color:var(--ink); margin-bottom:10px; padding:0}
   .demo .marca{display:flex; flex-wrap:wrap; gap:8px}
-  .demo .marca label{display:inline-flex; align-items:center; gap:7px; font-size:13.5px; color:var(--ink-2); background:var(--mist); border:1px solid var(--line); border-radius:999px; padding:6px 12px; cursor:pointer}
-  .demo .marca input{width:auto; accent-color:var(--azure-deep)}
+  .demo .marca label{position:relative; display:inline-flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-2); background:var(--paper);
+    border:1px solid var(--line-2); border-radius:999px; padding:7px 14px 7px 10px; cursor:pointer; user-select:none;
+    transition:border-color .15s, background-color .15s, color .15s}
+  .demo .marca label:hover{border-color:#a9c8de; color:var(--ink)}
+  .demo .marca input{-webkit-appearance:none; appearance:none; flex:none; width:17px; height:17px; margin:0; border-radius:5px;
+    border:1.5px solid #9dbad0; background:var(--paper) center/11px no-repeat; cursor:pointer; transition:background-color .15s, border-color .15s}
+  .demo .marca input:checked{border-color:var(--azure-deep); background-color:var(--azure-deep);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-4.9' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")}
+  .demo .marca input:focus-visible{outline:2.5px solid var(--azure); outline-offset:2px}
+  .demo .marca label:has(input:checked){border-color:#8cc7e4; background:var(--azure-soft); color:var(--azure-deep); font-weight:600}
+  .demo .obrig{margin:0 0 16px; font-size:12px; color:var(--ink-3)}
   .demo .lang{justify-content:flex-start; margin-top:18px}
   .demo .enviar{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:20px}
   .demo .enviar .btn{padding:14px 26px; font-size:15px}
   .demo .aviso-form{font-size:12.5px; color:var(--ink-3); flex:1; min-width:220px}
   .demo .erro-form{margin-top:12px; font-size:13.5px; font-weight:600; color:#b6382f}
-  .demo .req{color:#b6382f}
+  .demo .req{color:#b6382f; margin-left:2px}
 
   @media (max-width:1080px){
     .avisa .wrap{grid-template-columns:1fr; gap:36px}
@@ -634,9 +731,12 @@
   #filme .fbar{height:3px; background:#dbe8f3; border-radius:3px; overflow:hidden; margin-top:14px}
   #filme .fbar i{display:block; height:100%; width:0; background:linear-gradient(90deg,var(--azure),var(--fcyan),var(--fturq)); border-radius:3px}
   #filme .fctrl{display:flex; align-items:center; gap:11px; margin-top:12px}
-  #filme .fctrl button{font-family:var(--sans); font-weight:600; font-size:13px; color:var(--ink); cursor:pointer;
-    background:var(--paper); border:1px solid var(--line-2); border-radius:999px; padding:8px 16px}
+  #filme .fctrl button{display:inline-flex; align-items:center; gap:8px; font-family:var(--sans); font-weight:600; font-size:13px; color:var(--ink); cursor:pointer;
+    background:var(--paper); border:1px solid var(--line-2); border-radius:999px; padding:8px 16px 8px 13px; transition:border-color .15s, color .15s, background-color .15s}
+  #filme .fctrl button svg{width:15px; height:15px; flex:none}
   #filme .fctrl button:hover{border-color:var(--azure); color:var(--azure-deep)}
+  /* legenda desligada: o botão fica "apagado", em vez de trocar ☑ por ☐ */
+  #filme .fctrl .lg[aria-pressed=true]{background:var(--azure-soft); border-color:#8cc7e4; color:var(--azure-deep)}
   #filme .fctrl .fcap{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-left:auto; text-align:right}
 
   /* ── celular ──────────────────────────────────
@@ -767,6 +867,21 @@
       <a class="btn btn-primary" href="#contato"><span class="full">Agendar demonstração</span><span class="short">Agendar</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a>
     </nav>
+    <details class="menu">
+      <summary aria-label="Abrir menu">
+        <svg class="ic-m" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        <svg class="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </summary>
+      <nav class="painel" aria-label="Menu">
+        <a href="#modulos">Módulos</a>
+        <a href="#contratar">Como contratar</a>
+        <a href="#filmsec">Vídeo</a>
+        <a href="#perguntas">Perguntas</a>
+        <hr>
+        <a href="https://www.valentrax.com.br">Entrar no sistema</a>
+        <a class="btn btn-primary" href="#contato">Agendar demonstração</a>
+      </nav>
+    </details>
   </div>
 </header>
 
@@ -777,7 +892,7 @@
     <svg class="vghost" viewBox="0 0 64 64" aria-hidden="true"><use href="#vmark"/></svg>
     <div class="wrap hero-grid">
       <div>
-        <span class="eyebrow an an-1">Sistema hospitalar brasileiro · SUS e convênios</span>
+        <span class="eyebrow an an-1"><span class="p1">Sistema hospitalar brasileiro</span><span class="sep"> · </span><span class="p2">SUS e convênios</span></span>
         <h1 class="an an-2">O sistema do seu hospital, <span class="hl">contratado por módulo</span>.</h1>
         <p class="lede an an-3">Pronto-socorro, leitos, maternidade, farmácia clínica, estoque e faturamento em um sistema web só. Comece pelo setor que mais precisa e ligue os outros quando quiser — eles já nascem integrados.</p>
         <div class="acts an an-4">
@@ -873,6 +988,11 @@
       <div class="rail">
         <span class="railline" aria-hidden="true"></span>
 
+        <!-- na ordem da jornada que o título promete: porta do PS → leito → alta -->
+        <div class="node">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></div>
+          <h3>Pronto-Socorro</h3><p>Triagem de risco e fila sob controle.</p>
+        </div>
         <div class="node">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6M3 14h18M7 10V7h5v3"/></svg></div>
           <h3>Giro de Leitos</h3><p>Leito parado vira leito disponível.</p>
@@ -880,10 +1000,6 @@
         <div class="node">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 3h12M9 3v5l-5 8a3 3 0 0 0 2.6 4.5h10.8A3 3 0 0 0 20 16l-5-8V3M6.5 14h11"/></svg></div>
           <h3>Farmácia Clínica</h3><p>Rastreabilidade e dose segura.</p>
-        </div>
-        <div class="node">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="9"/></svg></div>
-          <h3>Pronto-Socorro</h3><p>Triagem de risco e fila sob controle.</p>
         </div>
         <div class="node">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg></div>
@@ -1391,9 +1507,9 @@
 
         <div class="fbar"><i class="prog"></i></div>
         <div class="fctrl">
-          <button class="pp" type="button">&#9658; Reproduzir</button>
-          <button class="rp" type="button">&#8634; Do in&iacute;cio</button>
-          <button class="lg" type="button" aria-pressed="true">&#9745; Legenda</button>
+          <button class="pp" type="button"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.2v13.6L19 12z"/></svg><span>Reproduzir</span></button>
+          <button class="rp" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg><span>Do in&iacute;cio</span></button>
+          <button class="lg" type="button" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6"/></svg><span>Legenda</span></button>
           <span class="fcap clock">cena 1 / 11 &middot; 00:00</span>
         </div>
       </div>
@@ -1429,7 +1545,7 @@
   </section>
 
   <!-- ══════════ BRASIL ══════════ -->
-  <section>
+  <section id="brasil">
     <div class="wrap">
       <div class="sec-head">
         <span class="eyebrow">Construído aqui, para cá</span>
@@ -1446,10 +1562,18 @@
 
   <!-- ══════════ PERGUNTAS ══════════ -->
   <section id="perguntas">
-    <div class="wrap">
+    <div class="wrap faqgrid">
       <div class="sec-head">
         <span class="eyebrow">Perguntas frequentes</span>
         <h2>O que costumam perguntar antes da demonstração.</h2>
+        <div class="faqajuda">
+          <b>Sua dúvida não está aqui?</b>
+          <p>Pergunte direto para a equipe — quem responde conhece o sistema por dentro.</p>
+          <div class="acts">
+            <a class="btn btn-primary" href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><use href="#wa"/></svg>WhatsApp</a>
+            <a class="btn btn-outline" href="mailto:Valentrax.ai@gmail.com?subject=D%C3%BAvida%20sobre%20a%20Valentrax">E-mail</a>
+          </div>
+        </div>
       </div>
       <div class="faq">
         <details><summary>Preciso trocar todo o sistema que uso hoje?</summary>
@@ -1479,16 +1603,17 @@
       <p>Em 30 minutos, com dados fictícios, percorremos os módulos que você marcar. Você sai sabendo se serve, por onde começar e como a mensalidade é formada.</p>
 
       <form class="demo" id="formDemo" novalidate>
+        <p class="obrig"><span class="req" aria-hidden="true">*</span> campos obrigatórios</p>
         <div class="campos">
-          <label class="c">Seu nome <span class="req" aria-hidden="true">*</span><input name="nome" required autocomplete="name"></label>
-          <label class="c">Cargo <span class="req" aria-hidden="true">*</span>
+          <label class="c"><span>Seu nome<span class="req" aria-hidden="true">*</span></span><input name="nome" required autocomplete="name"></label>
+          <label class="c"><span>Cargo<span class="req" aria-hidden="true">*</span></span>
             <select name="cargo" required><option value="">Selecione…</option><option>Direção / administração</option><option>Diretoria clínica</option><option>Enfermagem</option><option>Farmácia</option><option>Faturamento</option><option>TI</option><option>Gestão pública</option><option>Outro</option></select></label>
-          <label class="c">Hospital e cidade/UF <span class="req" aria-hidden="true">*</span><input name="hospital" required autocomplete="organization"></label>
-          <label class="c">Natureza do hospital
+          <label class="c"><span>Hospital e cidade/UF<span class="req" aria-hidden="true">*</span></span><input name="hospital" required autocomplete="organization" placeholder="Nome do hospital — cidade/UF"></label>
+          <label class="c"><span>Natureza do hospital</span>
             <select name="natureza"><option value="">Selecione…</option><option>Público</option><option>Filantrópico</option><option>Privado</option></select></label>
-          <label class="c">Número de leitos
+          <label class="c"><span>Número de leitos</span>
             <select name="leitos"><option value="">Selecione…</option><option>Até 50</option><option>51 a 150</option><option>151 a 300</option><option>Mais de 300</option></select></label>
-          <label class="c">Sistema que usa hoje
+          <label class="c"><span>Sistema que usa hoje</span>
             <select name="sistema"><option value="">Selecione…</option><option>MV</option><option>Tasy</option><option>Outro sistema</option><option>Planilha ou papel</option></select></label>
         </div>
         <fieldset>
@@ -1509,32 +1634,58 @@
         </div>
       </form>
 
-      <p class="contact">Prefere de outro jeito? <a id="ctaMail" href="mailto:Valentrax.ai@gmail.com?subject=Demonstra%C3%A7%C3%A3o%20da%20Valentrax">Enviar e-mail</a> &nbsp;·&nbsp; <a id="ctaWa" href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="#25b366" style="vertical-align:-2.5px; margin-right:5px"><use href="#wa"/></svg>(51) 99347-6688</a></p>
+      <p class="contact">Prefere de outro jeito? <a id="ctaMail" href="mailto:Valentrax.ai@gmail.com?subject=Demonstra%C3%A7%C3%A3o%20da%20Valentrax">Enviar e-mail</a> <a id="ctaWa" href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="#25b366" style="vertical-align:-2.5px; margin-right:5px"><use href="#wa"/></svg>(51) 99347-6688</a></p>
     </div>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <a class="brand on-dark" href="#top" aria-label="Valentrax">
-      <svg class="mark" width="36" height="36" viewBox="0 0 72 72"><use href="#vxmark"/></svg>
-      <span><span class="wm" style="font-size:17px">VALENTRA<b>X</b></span><span class="wmsub">HEALTHCARE&nbsp;OPERATIONS</span></span>
-    </a>
-    <p class="tag" lang="en">One journey. Two lives. One intelligent command center.</p>
-    <nav class="fl" aria-label="Rodapé">
-      <a href="#modulos">Módulos</a><a href="#contratar">Como contratar</a><a href="#perguntas">Perguntas</a><a href="#contato">Contato</a>
-      <a href="https://www.valentrax.com.br">Acessar</a>
-    </nav>
+    <div class="fgrid">
+      <div class="fsobre">
+        <a class="brand on-dark" href="#top" aria-label="Valentrax — voltar ao início">
+          <svg class="mark" width="36" height="36" viewBox="0 0 72 72" aria-hidden="true"><use href="#vxmark"/></svg>
+          <span><span class="wm" style="font-size:17px">VALENTRA<b>X</b></span><span class="wmsub">HEALTHCARE&nbsp;OPERATIONS</span></span>
+        </a>
+        <p>Sistema hospitalar web brasileiro, contratado por módulo — do pronto-socorro ao faturamento.</p>
+        <a class="btn btn-primary" href="#contato">Agendar demonstração
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></a>
+      </div>
+      <nav class="fcol" aria-label="Produto">
+        <h3>Produto</h3>
+        <ul>
+          <li><a href="#modulos">Módulos</a></li>
+          <li><a href="#avisa">Farmácia clínica</a></li>
+          <li><a href="#contratar">Como contratar</a></li>
+          <li><a href="#filmsec">Vídeo</a></li>
+        </ul>
+      </nav>
+      <nav class="fcol" aria-label="Ajuda">
+        <h3>Ajuda</h3>
+        <ul>
+          <li><a href="#perguntas">Perguntas frequentes</a></li>
+          <li><a href="#contato">Pedir demonstração</a></li>
+          <li><a href="https://www.valentrax.com.br">Entrar no sistema</a></li>
+        </ul>
+      </nav>
+      <div class="fcol">
+        <h3>Contato</h3>
+        <ul>
+          <li><a href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="14" height="14" fill="#3ec98b" aria-hidden="true"><use href="#wa"/></svg>(51) 99347-6688</a></li>
+          <li><a href="mailto:Valentrax.ai@gmail.com">Valentrax.ai@gmail.com</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="fbot">
+      <span>© 2026 Valentrax. Todos os direitos reservados.</span>
+      <span>Telas, nomes e números mostrados neste site são ilustrativos.</span>
+    </div>
   </div>
-  <div class="wrap"><div class="fbot">
-    <a href="mailto:Valentrax.ai@gmail.com">Valentrax.ai@gmail.com</a>
-    <a href="https://wa.me/5551993476688" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" width="13" height="13" fill="#3ec98b" style="vertical-align:-2px; margin-right:5px"><use href="#wa"/></svg>(51) 99347-6688</a>
-    <span>© 2026 Valentrax · valentrax.com.br</span>
-  </div></div>
 </footer>
 
 <script src="filme.js"></script>
 
 <script src="contato.js"></script>
+<script src="nav.js"></script>
 </body>
 </html>
