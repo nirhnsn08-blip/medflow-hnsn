@@ -35,7 +35,8 @@ import { abasVisiveis, podeAbrirAba } from "./abas.js";
 import { FARM_ALERTA_TIPOS, FARM_CLASSES, FARM_FORMAS, FARM_MOTIVOS_SAIDA, FARM_PREV_HORIZONTE, FARM_PREV_JANELA, FARM_UNIDADES } from "./catalogo.js";
 import { addFarmIntervencaoRemote, addFarmInventarioRemote, addFarmMovimentoRemote, addFarmNaoPadronizadoRemote, atualizarPreparoRemote, deleteFarmIncompatRemote, deleteFarmInteracaoRemote, deleteFarmIntervencaoRemote, deleteFarmMedicamentoRemote, deleteFarmNaoPadronizadoRemote, loadFarmIncompatY, loadFarmInteracoes, loadFarmIntervencoes, loadFarmInventarios, loadFarmLotes, loadFarmMedicamentos, loadFarmMovimentos, loadFarmMovimentosByMeds, loadFarmMovimentosPeriodo, loadFarmNaoPadronizados, loadFarmPreparo, loadFarmSaidasByAtendimentos, loadFarmSaidasDesde, receberPreparoRemote, updateFarmIntervencaoRemote, updateFarmNaoPadronizadoRemote, upsertFarmIncompatRemote, upsertFarmInteracaoRemote, upsertFarmMedicamentoRemote } from "./dados.js";
 import { custoUnit, saldoDoMedicamento } from "./estoque.js";
-import { podeMarcarPronto } from "./preparo.js";
+import { dispensadoDoItem, podeMarcarPronto } from "./preparo.js";
+import { movimentosDeConsumo, somarPor } from "./consumo.js";
 import { DIAS_VENCENDO, infoDeValidade, lotesParaEscolha, podeSair, situacaoDoLote } from "./validade.js";
 import { useEffect, useRef, useState } from "react";
 // 🔴 A MESMA view do almoxarifado, com a chave trocada: contagem cega, curva
@@ -884,7 +885,8 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
   }, []);
 
   const medById = {}; meds.forEach(m => medById[m.id] = m);
-  const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  // Líquido: estorno desconta (ver dispensadoDoItem em ./preparo.js).
+  const dispDoItem = itemId => dispensadoDoItem(itemId, saidas);
   const q = busca.trim().toLowerCase();
   const todas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
@@ -893,7 +895,7 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
     const tipos = new Set(alertas.map(x => x.tipo));
     const temControlado = its.some(i => medById[i.medicamento_id]?.controlado);
-    const custoDisp = saidas.filter(s => s.atendimento_id === a.id).reduce((sum, s) => sum + Number(s.quantidade || 0) * custoUnit(medById[s.medicamento_id]), 0);
+    const custoDisp = movimentosDeConsumo(saidas.filter(s => s.atendimento_id === a.id)).reduce((sum, s) => sum + s.qtd * custoUnit(medById[s.medicamento_id]), 0);
     return { at: a, itens: its, pendentes: pend.length, alertas, tipos, temControlado, custoDisp, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
   }).filter(x => x.itens.length > 0);
 
@@ -1003,7 +1005,7 @@ function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], o
   const [selItem, setSelItem] = useState(null);   // item aberto p/ dispensar (com _lotes)
   const [f, setF] = useState({ lote_id: "", quantidade: "" });
   const [busy, setBusy] = useState(false);
-  const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  const dispDoItem = itemId => dispensadoDoItem(itemId, saidas);
 
   function abrir(item) {
     // 🔴 O vencido NÃO é mais a sugestão. FEFO segue entre os válidos.
@@ -1214,13 +1216,16 @@ function FarmIndicadoresView({ sb }) {
   const nomeMed = id => medById[id]?.nome || "—";
   const saidas = movs.filter(m => m.tipo === "saida");
   const entradas = movs.filter(m => m.tipo === "entrada");
-  const dispensacoes = saidas.filter(m => (m.motivo || "") === "Dispensação");
+  // Consumo de paciente LÍQUIDO: a dispensação soma, o estorno e a devolução
+  // descontam (ver ./consumo.js). Antes só as saídas entravam, e todo
+  // indicador abaixo ficava acima do real depois de qualquer devolução.
+  const dispensacoes = movimentosDeConsumo(movs);
   const perdas = saidas.filter(m => /perda|vencim/i.test(m.motivo || ""));
 
   // Consumo (dispensação) por medicamento + curva ABC
   const consMap = {};
-  dispensacoes.forEach(m => { if (!m.medicamento_id) return; consMap[m.medicamento_id] = (consMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
-  const consumo = Object.entries(consMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  Object.assign(consMap, somarPor(dispensacoes, m => m.medicamento_id || null));
+  const consumo = Object.entries(consMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).filter(c => c.qtd > 0).sort((a, b) => b.qtd - a.qtd);
   const totalCons = consumo.reduce((s, c) => s + c.qtd, 0);
   let acc = 0;
   const abc = consumo.map(c => { acc += c.qtd; const pctAcc = totalCons > 0 ? (acc / totalCons) * 100 : 0; return { ...c, pct: totalCons > 0 ? (c.qtd / totalCons) * 100 : 0, pctAcc, abc: pctAcc <= 80 ? "A" : pctAcc <= 95 ? "B" : "C" }; });
@@ -1228,14 +1233,14 @@ function FarmIndicadoresView({ sb }) {
 
   // Consumo por classe
   const classeMap = {};
-  dispensacoes.forEach(m => { const cl = medById[m.medicamento_id]?.classe || "Outros"; classeMap[cl] = (classeMap[cl] || 0) + Number(m.quantidade || 0); });
-  const porClasse = Object.entries(classeMap).map(([cl, qtd]) => ({ cl, qtd })).sort((a, b) => b.qtd - a.qtd);
+  Object.assign(classeMap, somarPor(dispensacoes, m => medById[m.medicamento_id]?.classe || "Outros"));
+  const porClasse = Object.entries(classeMap).map(([cl, qtd]) => ({ cl, qtd })).filter(x => x.qtd > 0).sort((a, b) => b.qtd - a.qtd);
   const maxClasse = Math.max(1, ...porClasse.map(x => x.qtd));
 
   // Controlados dispensados
   const controlMap = {};
-  dispensacoes.filter(m => medById[m.medicamento_id]?.controlado).forEach(m => { controlMap[m.medicamento_id] = (controlMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
-  const controlados = Object.entries(controlMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  Object.assign(controlMap, somarPor(dispensacoes.filter(m => medById[m.medicamento_id]?.controlado), m => m.medicamento_id));
+  const controlados = Object.entries(controlMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).filter(c => c.qtd > 0).sort((a, b) => b.qtd - a.qtd);
 
   // Snapshot: rupturas e validade (independem do período)
   const ativos = meds.filter(m => m.ativo !== false);
@@ -1245,13 +1250,15 @@ function FarmIndicadoresView({ sb }) {
   const vencidosEstoque = lotesEstoque.filter(l => infoDeValidade(l.validade).status === "vencido");
   const venc30 = lotesEstoque.filter(l => infoDeValidade(l.validade).status === "vencendo");
 
-  const qtdDispensada = dispensacoes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-  const qtdEntradas = entradas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdDispensada = dispensacoes.reduce((s, m) => s + m.qtd, 0);
+  // Entrada de COMPRA/ajuste: a devolução e o estorno de dispensação não são
+  // abastecimento, e já descontam no consumo acima.
+  const qtdEntradas = entradas.filter(m => m.estorno_de == null && m.devolucao_de == null).reduce((s, m) => s + Number(m.quantidade || 0), 0);
   const qtdPerdas = perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-  const pacientes = new Set(dispensacoes.map(m => m.paciente_prontuario || m.paciente_iniciais || "").filter(Boolean)).size;
+  const pacientes = new Set(dispensacoes.filter(m => m.qtd > 0).map(m => m.paciente_prontuario || m.paciente_iniciais || "").filter(Boolean)).size;
 
   // Custos (por medicamento e por paciente)
-  const custoDe = m => Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]);
+  const custoDe = m => m.qtd * custoUnit(medById[m.medicamento_id]);
   const custoTotal = dispensacoes.reduce((s, m) => s + custoDe(m), 0);
   const semPreco = new Set(dispensacoes.filter(m => !custoUnit(medById[m.medicamento_id])).map(m => m.medicamento_id)).size;
   const custoPacMap = {};
@@ -1282,7 +1289,7 @@ function FarmIndicadoresView({ sb }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
-        <KPI label="Itens dispensados" valor={fmt(dispensacoes.length)} sub="baixas de dispensação" cor="#22d3ee" />
+        <KPI label="Itens dispensados" valor={fmt(dispensacoes.filter(m => m.qtd > 0).length)} sub="baixas de dispensação" cor="#22d3ee" />
         <KPI label="Qtd dispensada" valor={fmt(qtdDispensada)} sub={`${pacientes} paciente(s)`} cor="#3b82f6" />
         <KPI label="Entradas" valor={fmt(qtdEntradas)} sub="unidades recebidas" cor="#34d399" />
         <KPI label="Perdas / vencimento" valor={fmt(qtdPerdas)} sub="baixas por perda" cor={qtdPerdas > 0 ? "#f43f5e" : "var(--border)"} />
@@ -1421,7 +1428,7 @@ function FarmIndicadoresView({ sb }) {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-            {[["Itens dispensados", fmt(dispensacoes.length)], ["Qtd dispensada", fmt(qtdDispensada)], ["Entradas", fmt(qtdEntradas)], ["Perdas/vencimento", fmt(qtdPerdas)], ["Rupturas agora", fmt(rupturas.length)], ["Vencendo ≤30d", fmt(venc30.length)]].map(([l, v]) => (
+            {[["Itens dispensados", fmt(dispensacoes.filter(m => m.qtd > 0).length)], ["Qtd dispensada", fmt(qtdDispensada)], ["Entradas", fmt(qtdEntradas)], ["Perdas/vencimento", fmt(qtdPerdas)], ["Rupturas agora", fmt(rupturas.length)], ["Vencendo ≤30d", fmt(venc30.length)]].map(([l, v]) => (
               <div key={l} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase" }}>{l}</div><div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{v}</div></div>
             ))}
           </div>
@@ -2389,17 +2396,18 @@ function FarmAssistenteView({ sb }) {
   const vencendo = lotesEst.filter(l => infoDeValidade(l.validade).status === "vencendo");
   const cons30 = {}; saidas30.forEach(s => { if (s.medicamento_id) cons30[s.medicamento_id] = (cons30[s.medicamento_id] || 0) + Number(s.quantidade || 0); });
   const emRisco = ativos.map(m => { const media = (cons30[m.id] || 0) / FARM_PREV_JANELA; const s = saldo(m); return { m, media, cobertura: media > 0 ? s / media : null, sugestao: Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(m.estoque_minimo || 0) - s)) }; }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).sort((a, b) => a.cobertura - b.cobertura);
-  const dispMes = movsMes.filter(m => m.tipo === "saida" && (m.motivo || "") === "Dispensação");
-  const consMesMap = {}; dispMes.forEach(m => { if (m.medicamento_id) consMesMap[m.medicamento_id] = (consMesMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
-  const topMes = Object.entries(consMesMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
-  const custoPacMap = {}; dispMes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]); });
+  // Líquido, como nos Indicadores (ver ./consumo.js).
+  const dispMes = movimentosDeConsumo(movsMes);
+  const consMesMap = {}; dispMes.forEach(m => { if (m.medicamento_id) consMesMap[m.medicamento_id] = (consMesMap[m.medicamento_id] || 0) + m.qtd; });
+  const topMes = Object.entries(consMesMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).filter(x => x.qtd > 0).sort((a, b) => b.qtd - a.qtd);
+  const custoPacMap = {}; dispMes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + m.qtd * custoUnit(medById[m.medicamento_id]); });
   const custoPac = Object.entries(custoPacMap).map(([pac, v]) => ({ pac, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
   const custoTotal = custoPac.reduce((s, x) => s + x.v, 0);
-  const classeConsMap = {}; dispMes.forEach(m => { const c = medById[m.medicamento_id]?.classe || "Outros"; classeConsMap[c] = (classeConsMap[c] || 0) + Number(m.quantidade || 0); });
+  const classeConsMap = {}; dispMes.forEach(m => { const c = medById[m.medicamento_id]?.classe || "Outros"; classeConsMap[c] = (classeConsMap[c] || 0) + m.qtd; });
   const classeTop = Object.entries(classeConsMap).map(([c, qtd]) => ({ c, qtd })).sort((a, b) => b.qtd - a.qtd);
-  const qtdDispMes = dispMes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdDispMes = dispMes.reduce((s, m) => s + m.qtd, 0);
   const dispHoje = dispMes.filter(m => m.created_at && todayStr(new Date(m.created_at)) === todayStr());
-  const qtdDispHoje = dispHoje.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdDispHoje = dispHoje.reduce((s, m) => s + m.qtd, 0);
   const numClasses = new Set(ativos.map(m => m.classe || "Outros")).size;
   const vencendoDet = vencendo.map(l => ({ ...l, nome: medById[l.medicamento_id]?.nome || l.medicamento_id })).sort((a, b) => (a.validade || "").localeCompare(b.validade || ""));
 
