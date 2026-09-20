@@ -13004,7 +13004,11 @@ comment on column public.farm_movimentos.episodio_id is
 -- ───────────────────────────────────────────────────────────
 alter table public.farm_movimentos
   add column if not exists devolucao_de bigint
-    references public.farm_movimentos(id) on delete restrict;
+    references public.farm_movimentos(id) on delete restrict,
+  -- Por que voltou ("item suspenso", "alta", "dose não administrada"). O
+  -- kardex não tinha campo livre: o motivo ia parar em `documento`, que é o
+  -- número da nota ou da requisição.
+  add column if not exists observacao text;
 
 create index if not exists farm_mov_devolucao_idx on public.farm_movimentos (devolucao_de)
   where devolucao_de is not null;
@@ -13244,7 +13248,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
   union all
   select 'kardex: coluna ' || c,
          exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'farm_movimentos' and column_name = c)
-    from unnest(array['pep_item_id','episodio_id','devolucao_de','prescritor_nome','prescritor_registro','receita_numero']) c
+    from unnest(array['pep_item_id','episodio_id','devolucao_de','observacao','prescritor_nome','prescritor_registro','receita_numero']) c
   union all
   select 'catálogo: coluna lista_controle',
          exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'farm_medicamentos' and column_name = 'lista_controle')
