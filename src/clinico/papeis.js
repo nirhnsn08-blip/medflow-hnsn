@@ -76,6 +76,9 @@ const QUEM_PODE = {
   // ── Multiprofissional ─────────────────────────────────────
   evolucao_multi:         ["fisioterapeuta", "nutricionista", "farmaceutico", "assistente_social"],
   intervencao_farmaceutica: ["farmaceutico"],
+  // Avaliação farmacêutica da prescrição da internação: o ato que libera (ou
+  // segura) a dispensação. O banco confere o mesmo pela categoria do perfil.
+  validacao_farmaceutica: ["farmaceutico"],
   // Reconciliação medicamentosa: na literatura de segurança do paciente é
   // conduzida tipicamente pelo farmacêutico clínico, com validação médica.
   // Enfermeiro entra porque é quem levanta a lista de uso domiciliar na

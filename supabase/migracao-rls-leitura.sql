@@ -213,7 +213,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 105 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 106 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -277,6 +277,7 @@ begin
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_ver_algum(''farmacia'')'),                               -- farmacia
       ('farm_preparo', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                                -- farmacia, ps
+      ('farm_validacoes', 'public.pode_ver_algum(''farmacia'', ''paciente'')'),                       -- farmacia, paciente
       ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
@@ -299,17 +300,17 @@ begin
       ('pacientes', 'public.pode_ver_algum(''atendimento'', ''ambulatorio'', ''ps'', ''paciente'')'), -- atendimento, ambulatorio, ps, paciente
       ('pep_acessos', 'public.pode_ver_algum(''auditoria'')'),                                        -- auditoria
       ('pep_administracoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
-      ('pep_alergias', 'public.pode_ver_algum(''paciente'')'),                                        -- paciente
+      ('pep_alergias', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                          -- paciente, farmacia
       ('pep_anamneses', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_anotacoes_enfermagem', 'public.pode_ver_algum(''paciente'')'),                            -- paciente
       ('pep_aprazamentos', 'public.pode_ver_algum(''paciente'')'),                                    -- paciente
       ('pep_condicoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
-      ('pep_episodios', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_episodios', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                         -- paciente, farmacia
       ('pep_evolucoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_medicamentos_uso', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
-      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'')'),                              -- paciente
-      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
-      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'')'),                                     -- paciente
+      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                -- paciente, farmacia
+      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                  -- paciente, farmacia
+      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                       -- paciente, farmacia
       ('pep_reconciliacao_itens', 'public.pode_ver_algum(''paciente'')'),                             -- paciente
       ('pep_reconciliacoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
       ('pep_sinais_vitais', 'public.pode_ver_algum(''paciente'')'),                                   -- paciente
@@ -460,6 +461,7 @@ begin
       ('farm_movimentos', 'public.pode_editar_algum(''farmacia'', ''controlados'', ''ps'')'),         -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_editar_algum(''farmacia'')'),                            -- farmacia
       ('farm_preparo', 'public.pode_editar_algum(''farmacia'', ''ps'')'),                             -- farmacia, ps
+      ('farm_validacoes', 'public.pode_editar_algum(''farmacia'')'),                                  -- farmacia
       ('leitos', 'public.pode_editar_algum(''leitos'', ''paciente'', ''scih'')'),                     -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_editar_algum(''leitos'', ''paciente'')'),                        -- leitos, paciente
       ('leitos_turnover', 'public.pode_editar_algum(''leitos'', ''overview'', ''print'')'),           -- leitos, overview, print
