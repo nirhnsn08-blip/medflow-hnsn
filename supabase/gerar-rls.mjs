@@ -23,7 +23,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAPA_TABELAS, TODOS, PROPRIO, ESCRITA_ABERTA } from "../src/acesso/mapa-tabelas.js";
+import { MAPA_TABELAS, TODOS, PROPRIO, ESCRITA_ABERTA, LEITURA_EXTRA, leitoresDe } from "../src/acesso/mapa-tabelas.js";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,11 +89,12 @@ export function conferir(tabelas, mapa = MAPA_TABELAS) {
   return problemas;
 }
 
-export function gerarSql(tabelas, mapa = MAPA_TABELAS) {
+export function gerarSql(tabelas, mapa = MAPA_TABELAS, extra = LEITURA_EXTRA) {
   // A vírgula vem ANTES do comentário, senão ela entra no `--` e a lista
   // de valores quebra — com o agravante de o SQL parecer certo aos olhos.
   const linhas = tabelas.map((t, i) => {
-    const alvos = mapa[t];
+    // LEITURA usa os leitores extras; a ESCRITA, mais abaixo, usa só o mapa.
+    const alvos = leitoresDe(t, mapa, extra);
     const rotulo = alvos.includes(TODOS) ? "todos os autenticados" : alvos.join(", ");
     const virgula = i < tabelas.length - 1 ? "," : "";
     return `      ('${t}', '${condicaoDe(alvos)}')${virgula}`

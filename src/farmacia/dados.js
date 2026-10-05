@@ -178,10 +178,112 @@ export async function addFarmInventarioRemote(sb, inv, user) {
 }
 export async function loadFarmSaidasByAtendimentos(sb, ids) {
   if (!ids.length) return [];
-  const rows = await sb(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&select=atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at,tipo,estorno_de`);
+  const rows = await sb(`farm_movimentos?atendimento_id=in.(${ids.join(",")})&select=id,atendimento_id,prescricao_item_id,medicamento_id,quantidade,created_at,tipo,motivo,lote,validade,estorno_de,devolucao_de,paciente_iniciais,paciente_prontuario,setor`);
   return listaLida(rows);
 }
 export async function loadFarmSaidasByAtendimento(sb, atendimentoId) {
   const rows = await sb(`farm_movimentos?atendimento_id=eq.${atendimentoId}&select=*&order=created_at.desc`);
+  return listaLida(rows);
+}
+
+// ═══════════════════════════════════════════════════════════
+// INTERNAÇÃO NA FARMÁCIA (17/09/2026)
+//
+// A farmácia passa a ler a prescrição do prontuário de internação. As
+// leituras são por LOTE (uma consulta para a fila inteira) e toda falha
+// volta como `FALHA` (listaLida): "não li" nunca pode virar "não há
+// prescrição", "nada dispensado" ou "não validada".
+//
+// ⚠️ Filtro `in.(...)` com lista vazia é erro no PostgREST — por isso o
+// retorno antecipado com `[]` COMUM: não haver o que consultar não é falha.
+// ═══════════════════════════════════════════════════════════
+const emLista = ids => [...new Set((ids || []).filter(v => v != null))];
+const textoEmLista = vals => emLista(vals).map(p => `"${String(p).replace(/"/g, '""')}"`).join(",");
+
+export async function loadEpisodiosAbertos(sb) {
+  if (!sb) return [];
+  const rows = await sb("pep_episodios?status=eq.aberto&alta_em=is.null&select=id,prontuario,iniciais,leito,setor,especialidade,admissao_em,status,alta_em&order=admissao_em.desc&limit=500");
+  return listaLida(rows);
+}
+export async function loadPrescricoesDosEpisodios(sb, episodioIds) {
+  const ids = emLista(episodioIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`pep_prescricoes?episodio_id=in.(${ids.join(",")})&assinada_em=not.is.null&select=*&order=assinada_em.desc`);
+  return listaLida(rows);
+}
+export async function loadItensDasPrescricoes(sb, prescricaoIds) {
+  const ids = emLista(prescricaoIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`pep_prescricao_itens?prescricao_id=in.(${ids.join(",")})&select=*&order=ordem`);
+  return listaLida(rows);
+}
+export async function loadEventosDasPrescricoes(sb, prescricaoIds) {
+  const ids = emLista(prescricaoIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`pep_prescricao_eventos?prescricao_id=in.(${ids.join(",")})&select=*&order=criado_em`);
+  return listaLida(rows);
+}
+/** Todos os movimentos de paciente dos episódios: dispensação, estorno e devolução. */
+export async function loadMovimentosDosEpisodios(sb, episodioIds) {
+  const ids = emLista(episodioIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`farm_movimentos?episodio_id=in.(${ids.join(",")})&select=*&order=created_at.asc&limit=8000`);
+  return listaLida(rows);
+}
+export async function loadValidacoesDasPrescricoes(sb, prescricaoIds) {
+  const ids = emLista(prescricaoIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`farm_validacoes?prescricao_id=in.(${ids.join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * O que o motor de alertas precisa além das alergias: data de nascimento e
+ * condições (sonda). Só quem tem o módulo Paciente 360 lê estas tabelas — o
+ * auxiliar de farmácia recebe listas vazias do RLS, e por isso a tela só
+ * chama isto para quem pode (e avisa os outros de que a conferência está
+ * incompleta, em vez de mostrar alerta de menos).
+ */
+export async function loadContextoDosInternados(sb, prontuarios) {
+  const lista = textoEmLista(prontuarios);
+  if (!sb || !lista) return { pacientes: [], condicoes: [] };
+  const q = encodeURIComponent(lista);
+  const [pacientes, condicoes] = await Promise.all([
+    sb(`pacientes?prontuario=in.(${q})&select=prontuario,data_nascimento`).catch(() => null),
+    sb(`pep_condicoes?prontuario=in.(${q})&select=prontuario,descricao,situacao,corrige_id,id`).catch(() => null),
+  ]);
+  return { pacientes: listaLida(pacientes), condicoes: listaLida(condicoes) };
+}
+
+/**
+ * Grava a validação farmacêutica.
+ *
+ * 🔴 CONFERE O RETORNO. Sem permissão (perfil que não é farmacêutico) o
+ * PostgREST pode responder sem linha nenhuma; dizer "validada" nesse caso
+ * poria na tela uma avaliação que não existe.
+ */
+export async function addFarmValidacaoRemote(sb, row, user) {
+  if (!sb) return { ok: false, erro: "Supabase indisponível." };
+  const r = await sb("farm_validacoes", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...row, usuario: user?.name || null }),
+  });
+  const linhas = Array.isArray(r) ? r : r ? [r] : [];
+  if (!linhas.length) return { ok: false, erro: "A validação não foi gravada. Só farmacêutico com perfil de escrita na Farmácia pode validar." };
+  return { ok: true, linha: linhas[0] };
+}
+
+// ── Conciliação: as checagens da enfermagem ──────────────────
+export async function loadAdministracoesDosEpisodios(sb, episodioIds) {
+  const ids = emLista(episodioIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`pep_administracoes?episodio_id=in.(${ids.join(",")})&select=id,episodio_id,prontuario,medicamento_id,descricao,status,corrige_id,administrado_em&limit=8000`);
+  return listaLida(rows);
+}
+export async function loadAdministracoesDosAtendimentos(sb, atendimentoIds) {
+  const ids = emLista(atendimentoIds);
+  if (!sb || !ids.length) return [];
+  const rows = await sb(`ps_administracoes?atendimento_id=in.(${ids.join(",")})&select=id,atendimento_id,medicamento_id,medicamento_nome,status,administrado_em&limit=8000`);
   return listaLida(rows);
 }

@@ -55,7 +55,7 @@ const BASE_NSP = [
 // funcionais: Visão geral, Dashboard, Notificações (triagem), Registrar e
 // Consultar incidente (2a); Análise de causas e Plano de ação (2b);
 // Indicadores e Metas de segurança (2c); Relatórios/NOTIVISA, Protocolos, Capacitações e Comunicação (2d).
-// Assistente AI: último item da 2d.
+// Consulta rápida (antes "Assistente AI"): último item da 2d.
 // ═══════════════════════════════════════════════════════════
 // 🔴 ORDENADO POR QUEM USA, e não por assunto.
 //
@@ -96,7 +96,7 @@ const NSP_NAV = [
   { key: "dashboard",    label: "Panorama de incidentes", icon: "dashboard", grupo: "Acompanhar" },
   { key: "indicadores",  label: "Indicadores",         icon: "chart",   grupo: "Acompanhar" },
   { key: "relatorios",   label: "Relatórios",          icon: "printer", grupo: "Acompanhar" },
-  { key: "assistente",   label: "Assistente AI",       icon: "chat",    grupo: "Acompanhar" },
+  { key: "assistente",   label: "Consulta rápida",     icon: "chat",    grupo: "Acompanhar" },
 ];
 // As cores saíram para `nsp-cores.js`, e o botão de notificar para
 // `NotificacaoRapida.jsx`: ele vive no casco, e importá-lo daqui arrastava
@@ -260,7 +260,7 @@ function NspRelatorioView({ incidentes, acoes, lppAdq, medicoes, faixas }) {
 }
 
 
-// ── NSP Fase 2d: Assistente AI — chat local e gratuito (nada sai do navegador) ──
+// ── NSP Fase 2d: Consulta rápida — chat local e gratuito (nada sai do navegador) ──
 // Só a tela. Toda a inteligência vive em responderAssistenteNsp (nsp.js, puro/testável).
 function NspAssistenteView({ incidentes, acoes, rcas, faixas, medicoes, lppAdquiridas, protocolos, capacitacoes, comunicados }) {
   const [msgs, setMsgs] = useState([{ role: "a", text: "Olá! Sou o assistente local do Núcleo de Segurança do Paciente. " + NSP_ASSIST_AJUDA }]);

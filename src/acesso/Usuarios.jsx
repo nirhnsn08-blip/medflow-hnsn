@@ -28,6 +28,22 @@ import { cbosDoCatalogo, formatarCbo, validarCbo } from "./cbo.js";
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "../clinico/papeis.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
 
+/**
+ * 🔴 AS CINCO CHAMADAS DESTA TELA IAM SEM O `sb`.
+ * É a MESMA falha que o `loadProfiles()` já teve (ver o comentário no
+ * UsersPage, abaixo): as funções de `./dados.js` ganharam `sb` como
+ * primeiro parâmetro na extração, e aqui os argumentos ficaram deslocados —
+ * `sb` recebia o username, `dados` chegava `undefined`, e a função
+ * estourava ANTES de qualquer requisição.
+ *
+ * O que isso quebrava, ao vivo e em silêncio (erro só no console):
+ *   · classificar profissional (categoria, conselho, CBO) não salvava —
+ *     e categoria é o que decide quem valida prescrição, quem evolui e
+ *     quem prescreve;
+ *   · exceção de acesso por usuário não carregava, não salvava e não removia.
+ *
+ * Achado ao tentar virar farmacêutico no banco de teste (17/09/2026).
+ */
 function AdminUsuarios({ sb, adminUsuarios, currentUser }) {
   const [rows, setRows] = useState(null);       // null = carregando
   const [erro, setErro] = useState("");
@@ -73,31 +89,31 @@ function AdminUsuarios({ sb, adminUsuarios, currentUser }) {
     setClassificando(null);
     setEditandoExc(u.id); setExcMsg(""); setExcForm({ modulo: "", nivel: "leitura", motivo: "" });
     setExcList([]); setGrantsPerfil({});
-    const [exc, grants] = await Promise.all([carregarExcecoesUsuario(u.id), carregarGrantsDoPerfil(u.perfil)]);
+    const [exc, grants] = await Promise.all([carregarExcecoesUsuario(sb, u.id), carregarGrantsDoPerfil(sb, u.perfil)]);
     setExcList(exc); setGrantsPerfil(grants);
   }
   async function liberarExcecao(u) {
     const erro = validarExcecao(excForm);
     if (erro) { setExcMsg("⚠️ " + erro); return; }
     setBusy(true);
-    const r = await salvarExcecaoRemota(u.id, excForm, currentUser?.name);
+    const r = await salvarExcecaoRemota(sb, u.id, excForm, currentUser?.name);
     setBusy(false);
     if (!r || (Array.isArray(r) && !r.length)) {
       setExcMsg("⚠️ Nada foi gravado — só o ADM Master libera exceção (e a migração de perfis precisa estar aplicada neste banco)."); return;
     }
     registrarAuditoria(sb, currentUser, "liberar exceção", `${u.username}: ${excForm.modulo} → ${excForm.nivel}`, { motivo: (excForm.motivo || "").trim() });
-    setExcList(await carregarExcecoesUsuario(u.id));
+    setExcList(await carregarExcecoesUsuario(sb, u.id));
     setExcForm({ modulo: "", nivel: "leitura", motivo: "" });
     setExcMsg(`✓ Exceção aplicada. Vale no próximo login de ${u.nome}.`);
   }
   async function tirarExcecao(u, ex) {
     if (!confirm(`Remover a exceção de "${ex.modulo}" de ${u.nome}?\n\nEle volta ao que o cargo "${u.perfil || "sem cargo"}" define.`)) return;
     setBusy(true);
-    const r = await removerExcecaoRemota(ex.id);
+    const r = await removerExcecaoRemota(sb, ex.id);
     setBusy(false);
     if (!r || (Array.isArray(r) && !r.length)) { setExcMsg("⚠️ Nada foi removido."); return; }
     registrarAuditoria(sb, currentUser, "remover exceção", `${u.username}: ${ex.modulo}`, {});
-    setExcList(await carregarExcecoesUsuario(u.id));
+    setExcList(await carregarExcecoesUsuario(sb, u.id));
     setExcMsg("");
   }
 
@@ -120,7 +136,7 @@ function AdminUsuarios({ sb, adminUsuarios, currentUser }) {
     if (!vCbo.ok) { setCatMsg("⚠️ " + vCbo.erro); return; }
     setCatMsg("");
     setBusy(true);
-    const r = await salvarCategoriaProfissional(u.username, { ...catForm, cbo: vCbo.valor });
+    const r = await salvarCategoriaProfissional(sb, u.username, { ...catForm, cbo: vCbo.valor });
     setBusy(false);
     // PostgREST devolve 204 mesmo quando o RLS bloqueia e nada muda; por isso
     // conferimos o RETORNO, não o status.

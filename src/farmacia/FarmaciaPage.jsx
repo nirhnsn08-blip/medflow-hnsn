@@ -21,7 +21,7 @@
 import { registrarAuditoria } from "../auditoria/dados.js";
 import { alergiasDoPaciente, contextoClinico } from "../clinico/contexto.js";
 import { useAlergiasDosAtendimentos } from "../clinico/usar-alergias.js";
-import { analisarPrescricaoClinica, CATEGORIAS_GESTACAO, FARM_GRAV, FARM_SCORE_COR, farmFmtQtd, normTxt, scoreItemClinico, scorePrescricao } from "../clinico/alertas.js";
+import { analisarPrescricaoClinica, CATEGORIAS_GESTACAO, FARM_GRAV, FARM_SCORE_COR, farmFmtQtd, normTxt, scorePrescricao } from "../clinico/alertas.js";
 import { camposGestacaoPeso } from "./campos-gestacao-peso.js";
 import { MANCHESTER, PS_DOSE_UNID, PS_PRIORIDADE } from "../ps/catalogo.js";
 import { loadPsAtendimentos, loadPsPrescricaoItensByAtendimentos, loadPsPrescricoesByAtendimentos } from "../ps/dados.js";
@@ -33,9 +33,15 @@ import { fmtDataBR, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { fmtReais } from "../util/formato.js";
 import { abasVisiveis, podeAbrirAba } from "./abas.js";
 import { FARM_ALERTA_TIPOS, FARM_CLASSES, FARM_FORMAS, FARM_MOTIVOS_SAIDA, FARM_PREV_HORIZONTE, FARM_PREV_JANELA, FARM_UNIDADES } from "./catalogo.js";
-import { addFarmIntervencaoRemote, addFarmInventarioRemote, addFarmMovimentoRemote, addFarmNaoPadronizadoRemote, atualizarPreparoRemote, deleteFarmIncompatRemote, deleteFarmInteracaoRemote, deleteFarmIntervencaoRemote, deleteFarmMedicamentoRemote, deleteFarmNaoPadronizadoRemote, loadFarmIncompatY, loadFarmInteracoes, loadFarmIntervencoes, loadFarmInventarios, loadFarmLotes, loadFarmMedicamentos, loadFarmMovimentos, loadFarmMovimentosByMeds, loadFarmMovimentosPeriodo, loadFarmNaoPadronizados, loadFarmPreparo, loadFarmSaidasByAtendimentos, loadFarmSaidasDesde, receberPreparoRemote, updateFarmIntervencaoRemote, updateFarmNaoPadronizadoRemote, upsertFarmIncompatRemote, upsertFarmInteracaoRemote, upsertFarmMedicamentoRemote } from "./dados.js";
+import { loadEpisodiosAbertos, loadPrescricoesDosEpisodios, loadItensDasPrescricoes, loadEventosDasPrescricoes, loadMovimentosDosEpisodios, loadValidacoesDasPrescricoes, addFarmIntervencaoRemote, addFarmInventarioRemote, addFarmMovimentoRemote, addFarmNaoPadronizadoRemote, atualizarPreparoRemote, deleteFarmIncompatRemote, deleteFarmInteracaoRemote, deleteFarmIntervencaoRemote, deleteFarmMedicamentoRemote, deleteFarmNaoPadronizadoRemote, loadFarmIncompatY, loadFarmInteracoes, loadFarmIntervencoes, loadFarmInventarios, loadFarmLotes, loadFarmMedicamentos, loadFarmMovimentos, loadFarmMovimentosByMeds, loadFarmMovimentosPeriodo, loadFarmNaoPadronizados, loadFarmPreparo, loadFarmSaidasByAtendimentos, loadFarmSaidasDesde, receberPreparoRemote, updateFarmIntervencaoRemote, updateFarmNaoPadronizadoRemote, upsertFarmIncompatRemote, upsertFarmInteracaoRemote, upsertFarmMedicamentoRemote } from "./dados.js";
+import { camposControle, camposDoPrescritor, conferirPrescritor, exigePrescritor, LISTAS_PORTARIA_344, rotuloDaLista } from "./controlados.js";
 import { custoUnit, saldoDoMedicamento } from "./estoque.js";
-import { podeMarcarPronto } from "./preparo.js";
+import { dispensadoDoItem, podeMarcarPronto } from "./preparo.js";
+import DispensarModal from "./DispensarModal.jsx";
+import { filaDaInternacao } from "./internacao.js";
+import FarmConciliacaoView from "./Conciliacao.jsx";
+import FarmInternacaoView from "./Internacao.jsx";
+import { movimentosDeConsumo, somarPor } from "./consumo.js";
 import { DIAS_VENCENDO, infoDeValidade, lotesParaEscolha, podeSair, situacaoDoLote } from "./validade.js";
 import { useEffect, useRef, useState } from "react";
 // 🔴 A MESMA view do almoxarifado, com a chave trocada: contagem cega, curva
@@ -109,6 +115,9 @@ const PREPARO_STATUS = {
 // pré-requisito ("Sem lote em estoque. Registre uma entrada no Estoque"),
 // e ele vinha DEPOIS do ato que depende dele, misturado com a base de
 // interações e o livro de controlados. Coisas de natureza diferente.
+// "Consulta rápida" e não "Assistente AI": as respostas saem de regras locais
+// sobre os dados da tela, sem modelo de linguagem. Quem testa percebe, e
+// rótulo que promete o que não existe custa a confiança no resto.
 const FARM_NAV = [
   { key: "dashboard",   label: "Dashboard",         icon: "dashboard" },
 
@@ -124,8 +133,9 @@ const FARM_NAV = [
   { key: "controlados", label: "Controlados",       icon: "lock",  grupo: "Registro e referência" },
   { key: "interacoes",  label: "Interações",        icon: "flask", grupo: "Registro e referência" },
 
+  { key: "conciliacao", label: "Checagem × saída",  icon: "shield", grupo: "Acompanhar" },
   { key: "indicadores", label: "Indicadores",       icon: "chart", grupo: "Acompanhar" },
-  { key: "assistente",  label: "Assistente AI",     icon: "chat",  grupo: "Acompanhar" },
+  { key: "assistente",  label: "Consulta rápida",   icon: "chat",  grupo: "Acompanhar" },
 ];
 
 // ── Inventário da FARMÁCIA ──────────────────────────────────
@@ -147,7 +157,7 @@ async function marcarFarmInventarioRemote(sb, id, campos) {
   return { ok: true, linha: linhas[0] };
 }
 
-export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeControlados = true }) {
+export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeControlados = true, leProntuario = false, lePs = false }) {
   const [meds, setMeds]   = useState([]);
   const [lotes, setLotes] = useState([]);
   const [busca, setBusca] = useState("");
@@ -308,7 +318,7 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
   const totalAtivos = meds.filter(m => m.ativo !== false).length;
 
   const navAtual = FARM_NAV.find(n => n.key === sub) || FARM_NAV[0];
-  const subTexto = { dashboard: "Visão geral do setor com atalhos.", estoque: `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.`, preparo: "Solicitações: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada.", dispensacao: "Dispensação de medicamentos a partir da prescrição do PS ou avulsa, com baixa de estoque.", analise: "Análise clínica das prescrições — alertas de duplicidade, dose, interação, alergia, sonda e adequação idoso/criança.", intervencao: "Intervenção farmacêutica — registrar o problema, propor a conduta e acompanhar o desfecho.", interacoes: "Base de interações medicamentosas e incompatibilidade em Y.", controlados: "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação.", naopad: "Medicamentos fora do catálogo trazidos pelo paciente/família.", indicadores: "Relatórios & BI — consumo, curva ABC, custos por paciente, controlados, rupturas.", assistente: "Assistente local para perguntas sobre o setor." };
+  const subTexto = { dashboard: "Visão geral do setor com atalhos.", estoque: `Catálogo, entradas e saídas por lote e validade (FEFO). ${totalAtivos} ativos · ${totalItens} cadastrados.`, preparo: "Solicitações: receber a prescrição → separar (baixa de estoque) → marcar pronto → confirmar retirada.", dispensacao: "Dispensação a partir da prescrição do pronto-socorro ou da internação, com baixa de estoque por lote.", analise: "Análise clínica das prescrições do PS e da internação — alertas, e a validação farmacêutica da prescrição do internado.", intervencao: "Intervenção farmacêutica — registrar o problema, propor a conduta e acompanhar o desfecho.", interacoes: "Base de interações medicamentosas e incompatibilidade em Y.", controlados: "Livro de controlados (Portaria 344): saldo, balanço mensal e movimentação.", naopad: "Medicamentos fora do catálogo trazidos pelo paciente/família.", conciliacao: "O que a enfermagem checou × o que saiu do estoque: dose administrada sem dispensação e medicamento dispensado sem checagem.", indicadores: "Relatórios & BI — consumo, curva ABC, custos por paciente, controlados, rupturas.", assistente: "Assistente local para perguntas sobre o setor." };
 
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
@@ -347,11 +357,20 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
       {sub === "interacoes" && <FarmInteracoesView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
       {sub === "assistente" && <FarmAssistenteView sb={sb} />}
       {sub === "preparo" && <FarmPreparoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} />}
-      {sub === "dispensacao" && <FarmDispensacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} />}
-      {sub === "analise" && <FarmAnaliseView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "dispensacao" && (
+        <ComOrigem
+          ps={<FarmDispensacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} />}
+          internacao={<FarmInternacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} leProntuario={leProntuario} modo="dispensacao" />} />
+      )}
+      {sub === "analise" && (
+        <ComOrigem
+          ps={<FarmAnaliseView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
+          internacao={<FarmInternacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} leProntuario={leProntuario} modo="analise" />} />
+      )}
       {sub === "intervencao" && <FarmIntervencaoView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
       {sub === "controlados" && podeAbrirAba(sub, { podeControlados }) && <FarmControladosView sb={sb} />}
       {sub === "naopad" && <FarmNaoPadronizadosView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
+      {sub === "conciliacao" && <FarmConciliacaoView sb={sb} leProntuario={leProntuario} lePs={lePs} />}
       {sub === "indicadores" && <FarmIndicadoresView sb={sb} />}
       {/* A MESMA view do almoxarifado, com a chave trocada. Contagem cega,
           curva ABC, acuracidade e conciliação são a mesma regra nos dois
@@ -452,7 +471,7 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
                     <td style={{ padding: "9px 12px" }}>
                       <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         {m.nome}
-                        {m.controlado && <span style={{ fontSize: 9.5, color: "#6366f1", border: "1px solid #6366f155", borderRadius: 99, padding: "0 6px", fontWeight: 800, letterSpacing: ".03em" }}>CONTROLADO</span>}
+                        {m.controlado && <span title={rotuloDaLista(m.lista_controle)} style={{ fontSize: 9.5, color: "#6366f1", border: "1px solid #6366f155", borderRadius: 99, padding: "0 6px", fontWeight: 800, letterSpacing: ".03em" }}>CONTROLADO</span>}
                         {inativo && <span style={{ fontSize: 9.5, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 6px" }}>inativo</span>}
                       </div>
                       {m.principio_ativo && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{m.principio_ativo}</div>}
@@ -527,6 +546,8 @@ function FarmMedModal({ med, onClose, onSave }) {
       // Gestação e dose por kg: só vão no corpo se a coluna já existe neste
       // banco ou se alguém preencheu — ver `campos-gestacao-peso.js`.
       ...camposGestacaoPeso(med, f),
+      // Mesmo cuidado com a lista da Portaria 344 (coluna de 17/09/2026).
+      ...camposControle(med, f),
     });
     setBusy(false);
   }
@@ -580,10 +601,22 @@ function FarmMedModal({ med, onClose, onSave }) {
             <input type="number" min="0" step="any" value={f.custo_unitario ?? ""} onChange={e => set("custo_unitario", e.target.value)} placeholder="0,00" style={campoTexto} />
           </div>
         </div>
-        <div style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", gap: 18, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
           <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}>
             <input type="checkbox" checked={!!f.controlado} onChange={e => set("controlado", e.target.checked)} style={{ accentColor: "#6366f1", width: 15, height: 15 }} /> Controlado (Portaria 344)
           </label>
+          {/* A lista decide o tipo de receita e separa a escrituração. Nasce
+              vazia de propósito: classificar o catálogo é do farmacêutico
+              responsável técnico, não nosso. */}
+          {!!f.controlado && (
+            <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 12.5, color: "var(--text-2)" }}>
+              Lista
+              <select value={f.lista_controle || ""} onChange={e => set("lista_controle", e.target.value)} style={{ ...campoTexto, width: 320 }}>
+                <option value="">— não classificada</option>
+                {LISTAS_PORTARIA_344.map(l => <option key={l.codigo} value={l.codigo}>{l.codigo} — {l.nome}</option>)}
+              </select>
+            </label>
+          )}
           <label style={{ display: "flex", gap: 7, alignItems: "center", fontSize: 13, color: "var(--text-2)", cursor: "pointer" }}>
             <input type="checkbox" checked={f.ativo !== false} onChange={e => set("ativo", e.target.checked)} style={{ accentColor: "#34d399", width: 15, height: 15 }} /> Ativo
           </label>
@@ -670,6 +703,7 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
   const [f, setF] = useState({
     lote: "", validade: "", quantidade: "", documento: "",
     lote_id: "", motivo: "Dispensação",
+    prescritor_nome: "", prescritor_registro: "", receita_numero: "",
   });
   const [busy, setBusy] = useState(false);
   // 🔴 A ordem e a SUGESTÃO dependem do motivo. Para dispensar, o vencido
@@ -694,7 +728,15 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
       const v = podeSair({ lote: loteSel, motivo: f.motivo });
       if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
       if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nRegistrar a saída assim mesmo?`)) return;
-      mov = { medicamento_id: med.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null };
+      // Controlado saindo como dispensação: o livro da Portaria 344 exige
+      // quem prescreveu, e o gatilho do banco recusa sem isso.
+      const precisa = exigePrescritor(med, f.motivo);
+      if (precisa) {
+        const p = conferirPrescritor({ nome: f.prescritor_nome });
+        if (!p.ok) { alert("⚠ " + p.erros.join(" ")); return; }
+      }
+      mov = { medicamento_id: med.id, tipo: "saida", quantidade: q, lote: loteSel.lote || null, validade: loteSel.validade || null, motivo: f.motivo, documento: f.documento.trim() || null,
+              ...(precisa ? camposDoPrescritor({ nome: f.prescritor_nome, registro: f.prescritor_registro, receita: f.receita_numero }) : {}) };
     }
     setBusy(true);
     const ok = await onSave(mov);
@@ -746,6 +788,16 @@ function FarmMovModal({ med, tipoInicial, lotes, onClose, onSave }) {
               <div><label style={rotuloCampo}>Quantidade *</label><input type="number" min="0" step="any" value={f.quantidade} onChange={e => set("quantidade", e.target.value)} placeholder="0" style={campoTexto} autoFocus /></div>
               <div><label style={rotuloCampo}>Motivo</label><select value={f.motivo} onChange={e => set("motivo", e.target.value)} style={campoTexto}>{FARM_MOTIVOS_SAIDA.map(x => <option key={x} value={x}>{x}</option>)}</select></div>
             </div>
+            {exigePrescritor(med, f.motivo) && (
+              <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+                <div style={{ fontSize: 11.5, color: "#6366f1", fontWeight: 700, marginBottom: 6 }}>Controlado — Portaria 344/98: o livro exige quem prescreveu.</div>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 8 }}>
+                  <div><label style={rotuloCampo}>Prescritor *</label><input value={f.prescritor_nome} onChange={e => set("prescritor_nome", e.target.value)} placeholder="Nome de quem prescreveu" style={campoTexto} /></div>
+                  <div><label style={rotuloCampo}>Registro</label><input value={f.prescritor_registro} onChange={e => set("prescritor_registro", e.target.value)} placeholder="CRM/UF" style={campoTexto} /></div>
+                </div>
+                <div><label style={rotuloCampo}>Receita / notificação</label><input value={f.receita_numero} onChange={e => set("receita_numero", e.target.value)} placeholder="nº, se houver" style={campoTexto} /></div>
+              </div>
+            )}
             {loteSel && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 16 }}>Saldo do lote: <strong style={{ color: "var(--text-2)" }}>{farmFmtQtd(loteSel.quantidade)} {med.unidade || ""}</strong></div>}
           </>)}
         </>)}
@@ -789,7 +841,7 @@ function FarmKardexModal({ sb, sbCru, med, currentUser, canEdit, onClose }) {
     )) return;
     setOcupado(true);
     const r = await addFarmMovimentoRemote(sbCru, 
-      movimentoDeEstorno(mv, { chave: "medicamento_id", copiar: ["paciente_iniciais", "paciente_prontuario", "setor", "atendimento_id", "prescricao_item_id"] }),
+      movimentoDeEstorno(mv, { chave: "medicamento_id", copiar: ["paciente_iniciais", "paciente_prontuario", "setor", "atendimento_id", "prescricao_item_id", "pep_item_id", "episodio_id"] }),
       currentUser);
     setOcupado(false);
     if (!r.ok) { alert("Não foi possível estornar." + String.fromCharCode(10, 10) + (r.erro || "")); return; }
@@ -814,6 +866,7 @@ function FarmKardexModal({ sb, sbCru, med, currentUser, canEdit, onClose }) {
                     <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, color: cor, fontSize: 14, minWidth: 62, textAlign: "right" }}>{ent ? "+" : "−"}{farmFmtQtd(mv.quantidade)}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, color: "var(--text-2)" }}>{ent ? "Entrada" : "Saída"} · {mv.motivo || "—"}{mv.lote ? ` · lote ${mv.lote}` : ""}{mv.paciente_iniciais ? ` · ${mv.paciente_iniciais}` : ""}
+                        {mv.devolucao_de != null && <span title={`Devolução da dispensação #${mv.devolucao_de}${mv.observacao ? " — " + mv.observacao : ""}`} style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "#8b5cf6", border: "1px solid #8b5cf655", borderRadius: 99, padding: "0 7px" }}>devolução de #{mv.devolucao_de}</span>}
                         {mv.estorno_de != null && <span title={`Desfaz o movimento #${mv.estorno_de}`} style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: VX.azul, border: `1px solid ${VX.azul}55`, borderRadius: 99, padding: "0 7px" }}>estorno de #{mv.estorno_de}</span>}
                         {jaEstornados.has(mv.id) && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 7px" }}>estornado</span>}
                       </div>
@@ -881,7 +934,8 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
   }, []);
 
   const medById = {}; meds.forEach(m => medById[m.id] = m);
-  const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
+  // Líquido: estorno desconta (ver dispensadoDoItem em ./preparo.js).
+  const dispDoItem = itemId => dispensadoDoItem(itemId, saidas);
   const q = busca.trim().toLowerCase();
   const todas = atends.map(a => {
     const its = itens.filter(i => i.atendimento_id === a.id);
@@ -890,7 +944,7 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
     const alertas = analisarPrescricaoClinica(its, ctx, medById, interacoes, incompatY);
     const tipos = new Set(alertas.map(x => x.tipo));
     const temControlado = its.some(i => medById[i.medicamento_id]?.controlado);
-    const custoDisp = saidas.filter(s => s.atendimento_id === a.id).reduce((sum, s) => sum + Number(s.quantidade || 0) * custoUnit(medById[s.medicamento_id]), 0);
+    const custoDisp = movimentosDeConsumo(saidas.filter(s => s.atendimento_id === a.id)).reduce((sum, s) => sum + s.qtd * custoUnit(medById[s.medicamento_id]), 0);
     return { at: a, itens: its, pendentes: pend.length, alertas, tipos, temControlado, custoDisp, score: scorePrescricao(its, alertas), prio: PS_PRIORIDADE[a.classificacao] ?? 5 };
   }).filter(x => x.itens.length > 0);
 
@@ -914,11 +968,16 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
   const filtroAtivo = busca || fSit || fStatus || fScore || fAlerta || fControl;
   function limparFiltros() { setBusca(""); setFSit(""); setFStatus(""); setFScore(""); setFAlerta(""); setFControl(false); }
 
-  async function registrarDispensacao(mov) {
+  // Dispensação e devolução são o MESMO caminho de escrita: as duas são
+  // linha no kardex, e o motivo diz qual é. Duas funções quase iguais
+  // divergiriam na primeira regra nova.
+  async function registrarMovimentoPaciente(mov) {
+    const devolucao = mov.devolucao_de != null;
     const r = await addFarmMovimentoRemote(sbCru, mov, currentUser);
-    if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; }
+    if (!r.ok) { alert(`Não foi possível ${devolucao ? "registrar a devolução" : "dispensar"}.\n` + (r.erro || "")); return false; }
     const med = meds.find(m => m.id === mov.medicamento_id);
-    registrarAuditoria(sb, currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"} · ${med?.nome || mov.medicamento_id} · ${farmFmtQtd(mov.quantidade)}`, {});
+    registrarAuditoria(sb, currentUser, devolucao ? "devolução do setor (farmácia)" : "dispensação farmácia",
+      `${mov.paciente_iniciais || mov.paciente_prontuario || "?"} · ${med?.nome || mov.medicamento_id} · ${farmFmtQtd(mov.quantidade)}${devolucao && mov.observacao ? ` · ${mov.observacao}` : ""}`, {});
     setTimeout(refresh, 350);
     return true;
   }
@@ -989,112 +1048,50 @@ function FarmDispensacaoView({ sb, sbCru, currentUser, canEdit }) {
           );})}
         </div>
       )}
-      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(fila.find(f => f.at.id === disp.id) || {}).alertas || []} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
-      {avulsa && <FarmAvulsaModal meds={meds} lotes={lotes} onClose={() => setAvulsa(false)} onDispensar={registrarDispensacao} />}
+      {disp && <DispensarModal
+        titulo={`Dispensar — ${disp.iniciais}${disp.prontuario ? ` · reg. ${disp.prontuario}` : ""}`}
+        subtitulo="Itens prescritos no PS. A baixa é por lote (o que vence antes é sugerido)."
+        itens={itens.filter(i => i.atendimento_id === disp.id)} movimentos={saidas} lotes={lotes} medById={medById}
+        alertas={(fila.find(f => f.at.id === disp.id) || {}).alertas || []}
+        vinculo={{ atendimento_id: disp.id, paciente_iniciais: disp.iniciais || null, paciente_prontuario: disp.prontuario || null }}
+        canEdit={canEdit} onDispensar={registrarMovimentoPaciente} onDevolver={registrarMovimentoPaciente}
+        onClose={() => setDisp(null)} />}
+      {avulsa && <FarmAvulsaModal meds={meds} lotes={lotes} onClose={() => setAvulsa(false)} onDispensar={registrarMovimentoPaciente} />}
     </div>
   );
 }
 
-// Dispensar os itens da prescrição de um paciente do PS
-function FarmDispensarModal({ atendimento, itens, saidas, lotes, alertas = [], onClose, onDispensar }) {
-  const [selItem, setSelItem] = useState(null);   // item aberto p/ dispensar (com _lotes)
-  const [f, setF] = useState({ lote_id: "", quantidade: "" });
-  const [busy, setBusy] = useState(false);
-  const dispDoItem = itemId => saidas.filter(s => s.prescricao_item_id === itemId).reduce((a, s) => a + Number(s.quantidade || 0), 0);
-
-  function abrir(item) {
-    // 🔴 O vencido NÃO é mais a sugestão. FEFO segue entre os válidos.
-    const esc = lotesParaEscolha(lotes.filter(l => String(l.medicamento_id) === String(item.medicamento_id)), { motivo: "Dispensação" });
-    const ls = esc.lotes;
-    const q = Number(item.quantidade || 0);
-    const sugestao = q > 0 ? Math.max(0, q - dispDoItem(item.id)) : (Number(item.dose_valor) || "");
-    setSelItem({ ...item, _lotes: ls });
-    setF({ lote_id: ls[0]?.id || "", quantidade: sugestao || "" });
-  }
-  async function confirmar() {
-    const q = Number(f.quantidade);
-    if (!q || q <= 0) { alert("Informe a quantidade a dispensar."); return; }
-    const lote = selItem._lotes.find(l => String(l.id) === String(f.lote_id));
-    if (!lote) { alert("Sem lote em estoque para este medicamento. Registre uma entrada no Estoque."); return; }
-    if (q > Number(lote.quantidade)) { alert(`Maior que o saldo do lote (disponível: ${farmFmtQtd(lote.quantidade)}).`); return; }
-    const v = podeSair({ lote, motivo: "Dispensação" });
-    if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
-    if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nDispensar assim mesmo?`)) return;
-    setBusy(true);
-    const ok = await onDispensar({ medicamento_id: selItem.medicamento_id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", atendimento_id: atendimento.id, prescricao_item_id: selItem.id, paciente_iniciais: atendimento.iniciais || null, paciente_prontuario: atendimento.prontuario || null });
-    setBusy(false);
-    if (ok) setSelItem(null);
-  }
+/**
+ * O seletor Pronto-socorro × Internação.
+ *
+ * 🔴 A INTERNAÇÃO NÃO É UMA ABA NOVA de propósito. O trabalho é o mesmo —
+ * analisar a prescrição, separar, dar baixa — e o que muda é DE ONDE vem a
+ * prescrição. Duas abas separadas ensinariam a farmácia a esquecer uma
+ * delas, que é exatamente o que acontecia quando a internação não existia
+ * aqui: o internado saía pela "dispensação avulsa" e ninguém via.
+ */
+function ComOrigem({ ps, internacao }) {
+  const [origem, setOrigem] = useState("ps");
+  const bt = ativo => ({
+    background: ativo ? "var(--surface)" : "transparent",
+    color: ativo ? VX.turquesa : "var(--text-3)",
+    border: `1px solid ${ativo ? VX.turquesa : "var(--border)"}`,
+    borderRadius: 999, padding: "6px 16px", fontWeight: 700, fontSize: 12.5, cursor: "pointer",
+  });
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 620, maxWidth: "96vw", maxHeight: "90vh", overflowY: "auto" }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>Dispensar — {atendimento.iniciais}{atendimento.prontuario ? ` · reg. ${atendimento.prontuario}` : ""}</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 14 }}>Itens prescritos no PS. A baixa é feita por lote (o que vence antes é sugerido).</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {itens.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "1rem" }}>Sem itens estruturados nesta prescrição.</div>}
-          {itens.map(it => {
-            const q = Number(it.quantidade || 0);
-            const disp = dispDoItem(it.id);
-            const pend = Math.max(0, q - disp);
-            const semVinculo = !it.medicamento_id;
-            const podeDispensar = !semVinculo && (q > 0 ? pend > 0 : disp <= 0);
-            const st = semVinculo ? { c: "#8d99ab", t: "item livre" }
-              : q > 0 ? (pend <= 0 ? { c: "#34d399", t: "dispensado" } : disp > 0 ? { c: "#d97706", t: `parcial ${farmFmtQtd(disp)}/${farmFmtQtd(q)}` } : { c: "#8d99ab", t: "a dispensar" })
-              : (disp > 0 ? { c: "#34d399", t: `dispensado ${farmFmtQtd(disp)}` } : { c: "#8d99ab", t: "a dispensar" });
-            const aberto = selItem?.id === it.id;
-            return (
-              <div key={it.id} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 13px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span title={`Score do item: ${scoreItemClinico(it, alertas)}/3`} style={{ fontSize: 10.5, fontWeight: 800, color: "#fff", background: FARM_SCORE_COR[scoreItemClinico(it, alertas)], borderRadius: 5, padding: "1px 6px", flexShrink: 0 }}>{scoreItemClinico(it, alertas)}</span>
-                  <div style={{ flex: 1, minWidth: 150 }}>
-                    <strong style={{ fontSize: 13 }}>{it.medicamento_nome}</strong>
-                    <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{it.dose ? `${it.dose} · ` : ""}{it.via || ""}{q ? ` · prescrito ${farmFmtQtd(q)} ${it.unidade || ""}` : ""}</div>
-                  </div>
-                  <span style={{ fontSize: 11, color: st.c, fontWeight: 700 }}>{st.t}</span>
-                  {podeDispensar && <button onClick={() => aberto ? setSelItem(null) : abrir(it)} style={btnContorno("#22d3ee")}>{aberto ? "Fechar" : "Dispensar"}</button>}
-                  {semVinculo && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>item livre — baixa avulsa</span>}
-                </div>
-                {aberto && (
-                  <div style={{ marginTop: 10, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                    {selItem._lotes.length === 0 ? (
-                      <div style={{ fontSize: 12.5, color: "#f43f5e" }}>Sem estoque deste medicamento. Registre uma entrada no Estoque.</div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-                        <div style={{ flex: "2 1 220px" }}>
-                          <label style={rotuloCampo}>Lote (FEFO)</label>
-                          {/* `f.lote_id`, e não um `loteEfetivo` como nos outros dois
-                              modais: aqui o `abrir()` JÁ semeia o lote com o primeiro
-                              da ordem FEFO, e é `f.lote_id` que o `confirmar()` lê.
-                              Mostrar no select um valor diferente do que a baixa usa
-                              faria o farmacêutico ver um lote e o estoque sair de outro. */}
-                          <select value={f.lote_id} onChange={e => setF(p => ({ ...p, lote_id: e.target.value }))} style={campoTexto}>
-                            {selItem._lotes.map(l => { const vi = infoDeValidade(l.validade); return <option key={l.id} value={l.id}>{(l.lote || "sem lote")} · val {l.validade ? fmtDataBR(l.validade) : "—"}{vi.status === "vencido" ? " (VENCIDO)" : ""} · saldo {farmFmtQtd(l.quantidade)}</option>; })}
-                          </select>
-                        </div>
-                        <div style={{ flex: "0 1 100px" }}>
-                          <label style={rotuloCampo}>Qtd</label>
-                          <input type="number" min="0" step="any" value={f.quantidade} onChange={e => setF(p => ({ ...p, quantidade: e.target.value }))} style={campoTexto} />
-                        </div>
-                        <button onClick={confirmar} disabled={busy} style={{ background: "#34d399", color: "#000", border: "none", borderRadius: 6, padding: "9px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{busy ? "…" : "Confirmar baixa"}</button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-          <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 18px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Fechar</button>
-        </div>
+    <div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <button onClick={() => setOrigem("ps")} style={bt(origem === "ps")}>Pronto-socorro</button>
+        <button onClick={() => setOrigem("internacao")} style={bt(origem === "internacao")}>Internação</button>
       </div>
+      {origem === "ps" ? ps : internacao}
     </div>
   );
 }
 
 // Dispensação avulsa (paciente digitado — ex.: internado no leito)
 function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
-  const [f, setF] = useState({ iniciais: "", prontuario: "", setor: "", medId: "", lote_id: "", quantidade: "" });
+  const [f, setF] = useState({ iniciais: "", prontuario: "", setor: "", medId: "", lote_id: "", quantidade: "", prescritor_nome: "", prescritor_registro: "", receita_numero: "" });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const escAvulsa = lotesParaEscolha(f.medId ? lotes.filter(l => String(l.medicamento_id) === String(f.medId)) : [], { motivo: "Dispensação" });
@@ -1113,8 +1110,14 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
     const v = podeSair({ lote, motivo: "Dispensação" });
     if (!v.ok) { alert("⚠ " + v.erros.join(" ")); return; }
     if (v.avisos.length && !confirm(`${v.avisos.join("\n\n")}\n\nDispensar assim mesmo?`)) return;
+    const precisa = exigePrescritor(med, "Dispensação");
+    if (precisa) {
+      const p = conferirPrescritor({ nome: f.prescritor_nome });
+      if (!p.ok) { alert("⚠ " + p.erros.join(" ")); return; }
+    }
     setBusy(true);
-    const ok = await onDispensar({ medicamento_id: med.id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", paciente_iniciais: f.iniciais.trim(), paciente_prontuario: f.prontuario.trim() || null, setor: f.setor.trim() || null });
+    const ok = await onDispensar({ medicamento_id: med.id, tipo: "saida", quantidade: q, lote: lote.lote || null, validade: lote.validade || null, motivo: "Dispensação", paciente_iniciais: f.iniciais.trim(), paciente_prontuario: f.prontuario.trim() || null, setor: f.setor.trim() || null,
+      ...(precisa ? camposDoPrescritor({ nome: f.prescritor_nome, registro: f.prescritor_registro, receita: f.receita_numero }) : {}) });
     setBusy(false);
     if (ok) onClose();
   }
@@ -1142,6 +1145,16 @@ function FarmAvulsaModal({ meds, lotes, onClose, onDispensar }) {
             ))}
           </select>
         </div>
+        {f.medId && exigePrescritor(meds.find(m => String(m.id) === String(f.medId)), "Dispensação") && (
+          <div style={{ border: "1px dashed var(--border)", borderRadius: 8, padding: "10px 12px", marginBottom: 10 }}>
+            <div style={{ fontSize: 11.5, color: "#6366f1", fontWeight: 700, marginBottom: 6 }}>Controlado — Portaria 344/98: o livro exige quem prescreveu.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8, marginBottom: 8 }}>
+              <div><label style={rotuloCampo}>Prescritor *</label><input value={f.prescritor_nome} onChange={e => set("prescritor_nome", e.target.value)} placeholder="Nome de quem prescreveu" style={campoTexto} /></div>
+              <div><label style={rotuloCampo}>Registro</label><input value={f.prescritor_registro} onChange={e => set("prescritor_registro", e.target.value)} placeholder="CRM/UF" style={campoTexto} /></div>
+            </div>
+            <div><label style={rotuloCampo}>Receita / notificação</label><input value={f.receita_numero} onChange={e => set("receita_numero", e.target.value)} placeholder="nº, se houver" style={campoTexto} /></div>
+          </div>
+        )}
         {f.medId && (
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10, marginBottom: 8 }}>
             <div>
@@ -1211,13 +1224,16 @@ function FarmIndicadoresView({ sb }) {
   const nomeMed = id => medById[id]?.nome || "—";
   const saidas = movs.filter(m => m.tipo === "saida");
   const entradas = movs.filter(m => m.tipo === "entrada");
-  const dispensacoes = saidas.filter(m => (m.motivo || "") === "Dispensação");
+  // Consumo de paciente LÍQUIDO: a dispensação soma, o estorno e a devolução
+  // descontam (ver ./consumo.js). Antes só as saídas entravam, e todo
+  // indicador abaixo ficava acima do real depois de qualquer devolução.
+  const dispensacoes = movimentosDeConsumo(movs);
   const perdas = saidas.filter(m => /perda|vencim/i.test(m.motivo || ""));
 
   // Consumo (dispensação) por medicamento + curva ABC
   const consMap = {};
-  dispensacoes.forEach(m => { if (!m.medicamento_id) return; consMap[m.medicamento_id] = (consMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
-  const consumo = Object.entries(consMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  Object.assign(consMap, somarPor(dispensacoes, m => m.medicamento_id || null));
+  const consumo = Object.entries(consMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).filter(c => c.qtd > 0).sort((a, b) => b.qtd - a.qtd);
   const totalCons = consumo.reduce((s, c) => s + c.qtd, 0);
   let acc = 0;
   const abc = consumo.map(c => { acc += c.qtd; const pctAcc = totalCons > 0 ? (acc / totalCons) * 100 : 0; return { ...c, pct: totalCons > 0 ? (c.qtd / totalCons) * 100 : 0, pctAcc, abc: pctAcc <= 80 ? "A" : pctAcc <= 95 ? "B" : "C" }; });
@@ -1225,14 +1241,14 @@ function FarmIndicadoresView({ sb }) {
 
   // Consumo por classe
   const classeMap = {};
-  dispensacoes.forEach(m => { const cl = medById[m.medicamento_id]?.classe || "Outros"; classeMap[cl] = (classeMap[cl] || 0) + Number(m.quantidade || 0); });
-  const porClasse = Object.entries(classeMap).map(([cl, qtd]) => ({ cl, qtd })).sort((a, b) => b.qtd - a.qtd);
+  Object.assign(classeMap, somarPor(dispensacoes, m => medById[m.medicamento_id]?.classe || "Outros"));
+  const porClasse = Object.entries(classeMap).map(([cl, qtd]) => ({ cl, qtd })).filter(x => x.qtd > 0).sort((a, b) => b.qtd - a.qtd);
   const maxClasse = Math.max(1, ...porClasse.map(x => x.qtd));
 
   // Controlados dispensados
   const controlMap = {};
-  dispensacoes.filter(m => medById[m.medicamento_id]?.controlado).forEach(m => { controlMap[m.medicamento_id] = (controlMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
-  const controlados = Object.entries(controlMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
+  Object.assign(controlMap, somarPor(dispensacoes.filter(m => medById[m.medicamento_id]?.controlado), m => m.medicamento_id));
+  const controlados = Object.entries(controlMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).filter(c => c.qtd > 0).sort((a, b) => b.qtd - a.qtd);
 
   // Snapshot: rupturas e validade (independem do período)
   const ativos = meds.filter(m => m.ativo !== false);
@@ -1242,13 +1258,15 @@ function FarmIndicadoresView({ sb }) {
   const vencidosEstoque = lotesEstoque.filter(l => infoDeValidade(l.validade).status === "vencido");
   const venc30 = lotesEstoque.filter(l => infoDeValidade(l.validade).status === "vencendo");
 
-  const qtdDispensada = dispensacoes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-  const qtdEntradas = entradas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdDispensada = dispensacoes.reduce((s, m) => s + m.qtd, 0);
+  // Entrada de COMPRA/ajuste: a devolução e o estorno de dispensação não são
+  // abastecimento, e já descontam no consumo acima.
+  const qtdEntradas = entradas.filter(m => m.estorno_de == null && m.devolucao_de == null).reduce((s, m) => s + Number(m.quantidade || 0), 0);
   const qtdPerdas = perdas.reduce((s, m) => s + Number(m.quantidade || 0), 0);
-  const pacientes = new Set(dispensacoes.map(m => m.paciente_prontuario || m.paciente_iniciais || "").filter(Boolean)).size;
+  const pacientes = new Set(dispensacoes.filter(m => m.qtd > 0).map(m => m.paciente_prontuario || m.paciente_iniciais || "").filter(Boolean)).size;
 
   // Custos (por medicamento e por paciente)
-  const custoDe = m => Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]);
+  const custoDe = m => m.qtd * custoUnit(medById[m.medicamento_id]);
   const custoTotal = dispensacoes.reduce((s, m) => s + custoDe(m), 0);
   const semPreco = new Set(dispensacoes.filter(m => !custoUnit(medById[m.medicamento_id])).map(m => m.medicamento_id)).size;
   const custoPacMap = {};
@@ -1279,7 +1297,7 @@ function FarmIndicadoresView({ sb }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: "1.5rem" }}>
-        <KPI label="Itens dispensados" valor={fmt(dispensacoes.length)} sub="baixas de dispensação" cor="#22d3ee" />
+        <KPI label="Itens dispensados" valor={fmt(dispensacoes.filter(m => m.qtd > 0).length)} sub="baixas de dispensação" cor="#22d3ee" />
         <KPI label="Qtd dispensada" valor={fmt(qtdDispensada)} sub={`${pacientes} paciente(s)`} cor="#3b82f6" />
         <KPI label="Entradas" valor={fmt(qtdEntradas)} sub="unidades recebidas" cor="#34d399" />
         <KPI label="Perdas / vencimento" valor={fmt(qtdPerdas)} sub="baixas por perda" cor={qtdPerdas > 0 ? "#f43f5e" : "var(--border)"} />
@@ -1418,7 +1436,7 @@ function FarmIndicadoresView({ sb }) {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
-            {[["Itens dispensados", fmt(dispensacoes.length)], ["Qtd dispensada", fmt(qtdDispensada)], ["Entradas", fmt(qtdEntradas)], ["Perdas/vencimento", fmt(qtdPerdas)], ["Rupturas agora", fmt(rupturas.length)], ["Vencendo ≤30d", fmt(venc30.length)]].map(([l, v]) => (
+            {[["Itens dispensados", fmt(dispensacoes.filter(m => m.qtd > 0).length)], ["Qtd dispensada", fmt(qtdDispensada)], ["Entradas", fmt(qtdEntradas)], ["Perdas/vencimento", fmt(qtdPerdas)], ["Rupturas agora", fmt(rupturas.length)], ["Vencendo ≤30d", fmt(venc30.length)]].map(([l, v]) => (
               <div key={l} style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 10px" }}><div style={{ fontSize: 10, color: "#64748b", textTransform: "uppercase" }}>{l}</div><div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{v}</div></div>
             ))}
           </div>
@@ -1729,7 +1747,15 @@ function FarmPreparoView({ sb, sbCru, currentUser, canEdit }) {
   }
   async function confirmarRetirada(c) { if (!confirm(`Confirmar retirada da prescrição de ${c.at?.iniciais || "?"}?`)) return; await atualizarPreparoRemote(sb, c.prep.id, { status: "retirado", retirado_em: nowISO(), retirado_por: currentUser?.name || null }); registrarAuditoria(sb, currentUser, "farmácia: retirada confirmada", c.at?.iniciais || "", {}); setTimeout(refresh, 300); }
   function ativarSom() { ligarSom(true); setSom(true); avisoSonoro(false); }
-  async function registrarDispensacao(mov) { const r = await addFarmMovimentoRemote(sbCru, mov, currentUser); if (!r.ok) { alert("Não foi possível dispensar.\n" + (r.erro || "")); return false; } registrarAuditoria(sb, currentUser, "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {}); setTimeout(refresh, 300); return true; }
+  // Separar e devolver escrevem no mesmo kardex; o motivo distingue.
+  async function registrarDispensacaoPreparo(mov) {
+    const devolucao = mov.devolucao_de != null;
+    const r = await addFarmMovimentoRemote(sbCru, mov, currentUser);
+    if (!r.ok) { alert(`Não foi possível ${devolucao ? "registrar a devolução" : "dispensar"}.\n` + (r.erro || "")); return false; }
+    registrarAuditoria(sb, currentUser, devolucao ? "devolução do setor (farmácia)" : "dispensação farmácia", `${mov.paciente_iniciais || "?"}`, {});
+    setTimeout(refresh, 300);
+    return true;
+  }
 
   const Card = ({ c }) => {
     const st = PREPARO_STATUS[c.status];
@@ -1797,7 +1823,14 @@ function FarmPreparoView({ sb, sbCru, currentUser, canEdit }) {
         </div>
       )}
 
-      {disp && <FarmDispensarModal atendimento={disp} itens={itens.filter(i => i.atendimento_id === disp.id)} saidas={saidas} lotes={lotes} alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario)), medById, interacoes, incompatY); })()} onClose={() => setDisp(null)} onDispensar={registrarDispensacao} />}
+      {disp && <DispensarModal
+        titulo={`Separar — ${disp.iniciais}${disp.prontuario ? ` · reg. ${disp.prontuario}` : ""}`}
+        subtitulo="Itens da prescrição assinada no PS. A prescrição só fica pronta com a baixa no estoque."
+        itens={itens.filter(i => i.atendimento_id === disp.id)} movimentos={saidas} lotes={lotes} medById={medById}
+        alertas={(() => { const a = atendById[disp.id] || {}; const its = itens.filter(i => i.atendimento_id === disp.id); return analisarPrescricaoClinica(its, contextoClinico(a, alergiasDoPaciente(idxAlergias, a.prontuario)), medById, interacoes, incompatY); })()}
+        vinculo={{ atendimento_id: disp.id, paciente_iniciais: disp.iniciais || null, paciente_prontuario: disp.prontuario || null }}
+        canEdit={canEdit} onDispensar={registrarDispensacaoPreparo} onDevolver={registrarDispensacaoPreparo}
+        onClose={() => setDisp(null)} />}
     </div>
   );
 }
@@ -1859,12 +1892,13 @@ function FarmControladosView({ sb }) {
         <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10, marginBottom: "1.5rem" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 560 }}>
             <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 11, textTransform: "uppercase" }}>
-              <th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo inicial</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Entradas</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saídas</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo final</th>
+              <th style={{ padding: "8px 12px" }}>Medicamento</th><th style={{ padding: "8px 12px" }}>Lista</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo inicial</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Entradas</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saídas</th><th style={{ padding: "8px 12px", textAlign: "right" }}>Saldo final</th>
             </tr></thead>
             <tbody>
               {comBalanco.map(b => (
                 <tr key={b.med.id} style={{ borderTop: "1px solid var(--border)" }}>
                   <td style={{ padding: "7px 12px", fontWeight: 600 }}>{b.med.nome}</td>
+                  <td style={{ padding: "7px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: b.med.lista_controle ? "#6366f1" : "#d97706" }} title={rotuloDaLista(b.med.lista_controle)}>{b.med.lista_controle || "sem lista"}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{fmt(b.saldoIni)}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", color: "#34d399" }}>+{fmt(b.ent)}</td>
                   <td style={{ padding: "7px 12px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", color: "#d97706" }}>−{fmt(b.sai)}</td>
@@ -1884,7 +1918,7 @@ function FarmControladosView({ sb }) {
         <div style={{ overflowX: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 680 }}>
             <thead><tr style={{ background: "var(--surface-2)", textAlign: "left", color: "var(--text-3)", fontSize: 10.5, textTransform: "uppercase" }}>
-              <th style={{ padding: "7px 10px" }}>Data</th><th style={{ padding: "7px 10px" }}>Medicamento</th><th style={{ padding: "7px 10px" }}>Tipo</th><th style={{ padding: "7px 10px", textAlign: "right" }}>Qtd</th><th style={{ padding: "7px 10px", textAlign: "right" }}>Saldo</th><th style={{ padding: "7px 10px" }}>Paciente</th><th style={{ padding: "7px 10px" }}>Doc.</th><th style={{ padding: "7px 10px" }}>Usuário</th>
+              <th style={{ padding: "7px 10px" }}>Data</th><th style={{ padding: "7px 10px" }}>Medicamento</th><th style={{ padding: "7px 10px" }}>Tipo</th><th style={{ padding: "7px 10px", textAlign: "right" }}>Qtd</th><th style={{ padding: "7px 10px", textAlign: "right" }}>Saldo</th><th style={{ padding: "7px 10px" }}>Paciente</th><th style={{ padding: "7px 10px" }}>Prescritor</th><th style={{ padding: "7px 10px" }}>Doc.</th><th style={{ padding: "7px 10px" }}>Usuário</th>
             </tr></thead>
             <tbody>
               {linhasLivro.map(x => (
@@ -1895,6 +1929,7 @@ function FarmControladosView({ sb }) {
                   <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace" }}>{x.tipo === "entrada" ? "+" : "−"}{fmt(x.quantidade)}</td>
                   <td style={{ padding: "6px 10px", textAlign: "right", fontFamily: "JetBrains Mono, monospace", fontWeight: 700 }}>{fmt(x.saldo)}</td>
                   <td style={{ padding: "6px 10px" }}>{x.paciente_iniciais || "—"}{x.paciente_prontuario ? ` · ${x.paciente_prontuario}` : ""}</td>
+                  <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{x.prescritor_nome || "—"}{x.prescritor_registro ? ` · ${x.prescritor_registro}` : ""}{x.receita_numero ? ` · receita ${x.receita_numero}` : ""}</td>
                   <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{x.documento || "—"}</td>
                   <td style={{ padding: "6px 10px", color: "var(--text-muted)" }}>{x.usuario || "—"}</td>
                 </tr>
@@ -2208,6 +2243,10 @@ function FarmIntervencaoModal({ prefill, onClose, onSave }) {
 
 // Dashboard da Farmácia — visão geral com atalhos
 function FarmDashboardView({ sb, onNav }) {
+  // A internação entra no painel pelas MESMAS funções da tela (fila e
+  // validação vêm de ./internacao.js). Sem isto, o painel diria que a
+  // farmácia está em dia enquanto a prescrição do andar espera validação.
+  const [interna, setInterna] = useState(null);
   const [ats, setAts] = useState([]);
   // Alergia é do PACIENTE (`pep_alergias`) — a mesma que imprime a pulseira.
   // Antes de 04/09/2026 esta tela conferia só o texto livre do atendimento.
@@ -2227,8 +2266,20 @@ function FarmDashboardView({ sb, onNav }) {
   const [carregando, setCarregando] = useState(true);
   const [, setTick] = useState(0);
 
+  async function carregarInternacao() {
+    const episodios = await loadEpisodiosAbertos(sb);
+    const prescricoes = await loadPrescricoesDosEpisodios(sb, episodios.map(e => e.id));
+    const presIds = prescricoes.map(p => p.id);
+    const [itens, eventos, movimentos, validacoes] = await Promise.all([
+      loadItensDasPrescricoes(sb, presIds), loadEventosDasPrescricoes(sb, presIds),
+      loadMovimentosDosEpisodios(sb, episodios.map(e => e.id)), loadValidacoesDasPrescricoes(sb, presIds),
+    ]);
+    setInterna(filaDaInternacao({ episodios, prescricoes, itens, eventos, movimentos, validacoes }));
+  }
+
   function refresh() {
     if (!sb) return;
+    carregarInternacao();
     loadFarmLotes(sb).then(setLotes);
     loadFarmIntervencoes(sb).then(setIntervs);
     loadFarmPreparo(sb).then(setPrep);
@@ -2254,6 +2305,8 @@ function FarmDashboardView({ sb, onNav }) {
   const abaixoMin = ativos.filter(m => farmStatusEstoque(m, lotes).key === "baixo").length;
   const lotesEst = lotes.filter(l => Number(l.quantidade) > 0);
   const venc = lotesEst.filter(l => ["vencido", "vencendo"].includes(infoDeValidade(l.validade).status)).length;
+  const internadosSemValidacao = interna ? interna.filter(l => l.validacao.estado === "nao_validada").length : null;
+  const internadosPendentes = interna ? interna.reduce((s, l) => s + l.aDispensar.length, 0) : null;
 
   const Card = ({ label, valor, cor, sub, nav }) => (
     <button onClick={() => nav && onNav && onNav(nav)} style={{ textAlign: "left", background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `4px solid ${cor}`, borderRadius: 10, padding: "14px 16px", cursor: nav ? "pointer" : "default" }}>
@@ -2268,7 +2321,10 @@ function FarmDashboardView({ sb, onNav }) {
         <Card label="Solicitações a preparar" valor={aguardando} cor={VX.azul} sub="prescrições aguardando" nav="preparo" />
         <Card label="Em preparo" valor={emPreparo} cor="#d97706" sub="separando" nav="preparo" />
         <Card label="Prontos p/ retirada" valor={prontos} cor={VX.turquesa} sub="aguardando enfermagem" nav="preparo" />
-        <Card label="Prescrições com alerta" valor={carregando ? "—" : comAlerta} cor="#f43f5e" sub="análise clínica" nav="analise" />
+        <Card label="Prescrições com alerta" valor={carregando ? "—" : comAlerta} cor="#f43f5e" sub="análise clínica (PS)" nav="analise" />
+        {/* "—" enquanto carrega: zero aqui se leria como "a internação está em dia". */}
+        <Card label="Internação sem validação" valor={internadosSemValidacao == null ? "—" : internadosSemValidacao} cor={internadosSemValidacao ? "#d97706" : "#34d399"} sub="prescrição do andar" nav="analise" />
+        <Card label="Internação a dispensar" valor={internadosPendentes == null ? "—" : internadosPendentes} cor={internadosPendentes ? VX.azul : "#34d399"} sub="itens sem baixa" nav="dispensacao" />
         <Card label="Intervenções pendentes" valor={intervPend} cor="#d97706" sub="aguardando resposta" nav="intervencao" />
         <Card label="Rupturas de estoque" valor={rupturas} cor={rupturas ? "#f43f5e" : "#34d399"} sub="itens sem saldo" nav="estoque" />
         <Card label="Abaixo do mínimo" valor={abaixoMin} cor={abaixoMin ? "#d97706" : "#34d399"} sub="repor" nav="estoque" />
@@ -2386,17 +2442,18 @@ function FarmAssistenteView({ sb }) {
   const vencendo = lotesEst.filter(l => infoDeValidade(l.validade).status === "vencendo");
   const cons30 = {}; saidas30.forEach(s => { if (s.medicamento_id) cons30[s.medicamento_id] = (cons30[s.medicamento_id] || 0) + Number(s.quantidade || 0); });
   const emRisco = ativos.map(m => { const media = (cons30[m.id] || 0) / FARM_PREV_JANELA; const s = saldo(m); return { m, media, cobertura: media > 0 ? s / media : null, sugestao: Math.max(0, Math.ceil(media * FARM_PREV_HORIZONTE + Number(m.estoque_minimo || 0) - s)) }; }).filter(x => x.media > 0 && x.cobertura != null && x.cobertura < FARM_PREV_HORIZONTE).sort((a, b) => a.cobertura - b.cobertura);
-  const dispMes = movsMes.filter(m => m.tipo === "saida" && (m.motivo || "") === "Dispensação");
-  const consMesMap = {}; dispMes.forEach(m => { if (m.medicamento_id) consMesMap[m.medicamento_id] = (consMesMap[m.medicamento_id] || 0) + Number(m.quantidade || 0); });
-  const topMes = Object.entries(consMesMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).sort((a, b) => b.qtd - a.qtd);
-  const custoPacMap = {}; dispMes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + Number(m.quantidade || 0) * custoUnit(medById[m.medicamento_id]); });
+  // Líquido, como nos Indicadores (ver ./consumo.js).
+  const dispMes = movimentosDeConsumo(movsMes);
+  const consMesMap = {}; dispMes.forEach(m => { if (m.medicamento_id) consMesMap[m.medicamento_id] = (consMesMap[m.medicamento_id] || 0) + m.qtd; });
+  const topMes = Object.entries(consMesMap).map(([id, qtd]) => ({ id: Number(id), qtd, med: medById[Number(id)] })).filter(x => x.qtd > 0).sort((a, b) => b.qtd - a.qtd);
+  const custoPacMap = {}; dispMes.forEach(m => { const k = m.paciente_prontuario || m.paciente_iniciais || "—"; custoPacMap[k] = (custoPacMap[k] || 0) + m.qtd * custoUnit(medById[m.medicamento_id]); });
   const custoPac = Object.entries(custoPacMap).map(([pac, v]) => ({ pac, v })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
   const custoTotal = custoPac.reduce((s, x) => s + x.v, 0);
-  const classeConsMap = {}; dispMes.forEach(m => { const c = medById[m.medicamento_id]?.classe || "Outros"; classeConsMap[c] = (classeConsMap[c] || 0) + Number(m.quantidade || 0); });
+  const classeConsMap = {}; dispMes.forEach(m => { const c = medById[m.medicamento_id]?.classe || "Outros"; classeConsMap[c] = (classeConsMap[c] || 0) + m.qtd; });
   const classeTop = Object.entries(classeConsMap).map(([c, qtd]) => ({ c, qtd })).sort((a, b) => b.qtd - a.qtd);
-  const qtdDispMes = dispMes.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdDispMes = dispMes.reduce((s, m) => s + m.qtd, 0);
   const dispHoje = dispMes.filter(m => m.created_at && todayStr(new Date(m.created_at)) === todayStr());
-  const qtdDispHoje = dispHoje.reduce((s, m) => s + Number(m.quantidade || 0), 0);
+  const qtdDispHoje = dispHoje.reduce((s, m) => s + m.qtd, 0);
   const numClasses = new Set(ativos.map(m => m.classe || "Outros")).size;
   const vencendoDet = vencendo.map(l => ({ ...l, nome: medById[l.medicamento_id]?.nome || l.medicamento_id })).sort((a, b) => (a.validade || "").localeCompare(b.validade || ""));
 
