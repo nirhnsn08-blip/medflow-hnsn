@@ -29,6 +29,28 @@ const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 export const todayStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+/**
+ * O DIA CIVIL (YYYY-MM-DD, relógio local) de uma data ou de um carimbo.
+ *
+ * 🔴 `new Date().toISOString().slice(0, 10)` e `String(chegada_em).slice(0, 10)`
+ * dão o dia em UTC. No Brasil (UTC−3), das 21h à meia-noite isso já é
+ * AMANHÃ: a Recepção deixava de ver a consulta marcada para hoje, e a
+ * chegada das 22h entrava na produção do dia seguinte. Hospital funciona à
+ * noite — o ambulatório noturno e o PS vivem exatamente nessa janela.
+ *
+ * Só-dia ("2026-07-24") passa intacto: já é civil. Carimbo é convertido
+ * pelo relógio local. Ilegível vira `null` — quem chama decide o que fazer,
+ * em vez de receber uma data inventada.
+ */
+export function diaLocal(valor) {
+  if (valor == null || valor === "") return null;
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? null : todayStr(valor);
+  const s = String(valor);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : todayStr(d);
+}
+
 /** Instante atual em ISO (UTC). Bom para timestamp de gravação, não para data civil. */
 export const nowISO = () => new Date().toISOString();
 

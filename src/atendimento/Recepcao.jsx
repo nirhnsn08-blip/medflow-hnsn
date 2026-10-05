@@ -19,7 +19,7 @@
 // `dados.js`. Aqui só há tela.
 // ═══════════════════════════════════════════════════════════
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import CadastroPaciente from "../pacientes/CadastroPaciente.jsx";
 import RecemNascido from "../pacientes/RecemNascido.jsx";
 import { pendenciaDeNomeDefinitivo } from "../pacientes/recem-nascido.js";
@@ -31,10 +31,12 @@ import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone, avisoDeObito } from "../pacientes/identidade.js";
 import {
   PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe, TIPOS_DISPONIVEIS,
-  classificarBusca, filtroBuscaPacientes, validarAbertura,
+  validarAbertura, motivoSemBusca, buscaPodeEscolherSozinha,
   pendenciasDeIdentificacao, aguardandoIdentificacao,
 } from "./recepcao.js";
 import { ORIGENS_MARCACAO, gradeParaChegada } from "./agenda.js";
+import { todayStr } from "../util/datas.js";
+import { naoDeuParaLer, algumaFalhou } from "../util/leitura.js";
 import {
   buscarPacientes, carregarPaciente, emitirProntuario,
   criarPacienteNaoIdentificado, atendimentosAbertos, abrirAtendimento,
@@ -100,6 +102,12 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
 
   const [paciente, setPaciente] = useState(null);
   const [abertos, setAbertos] = useState([]);
+  // A conferência de quem acabou de ser escolhido: consulta marcada hoje e
+  // atendimento já aberto. Enquanto ela não volta — ou se ela FALHA — o
+  // botão de abrir fica travado. Ver `conferirAgendaEAbertos`.
+  const [conferindo, setConferindo] = useState(false);
+  const [conferenciaFalhou, setConferenciaFalhou] = useState(false);
+  const pacienteDaConferencia = useRef(null);
   const [cadastrando, setCadastrando] = useState(null);   // { prontuario } quando o formulário está aberto
   const [pendentes, setPendentes] = useState([]);
   const [verPendentes, setVerPendentes] = useState(false);
@@ -142,11 +150,14 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   }, [sb]);
 
   async function fazerBusca() {
-    const filtro = filtroBuscaPacientes(termo);
-    if (!filtro) {
-      setMsg({ tom: "erro", texto: classificarBusca(termo).tipo === "vazio"
-        ? "Digite o nome, o CPF, o Cartão SUS ou o número do prontuário."
-        : "Digite pelo menos 3 letras do nome." });
+    // Data de nascimento que não existe (31/02) ou no futuro também para
+    // aqui, com o motivo — e não como "nenhum paciente encontrado".
+    // A lista da busca ANTERIOR sai junto: embaixo de "31/02/1950 não
+    // existe", ela parecia o resultado desta — com o botão de cadastrar.
+    const semBusca = motivoSemBusca(termo);
+    if (semBusca) {
+      setResultados([]); setBuscou(false); setBuscaFalhou(false);
+      setMsg({ tom: "erro", texto: semBusca });
       return;
     }
     setBuscando(true); setMsg(null); setBuscaFalhou(false);
@@ -161,7 +172,10 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
       return;
     }
     setResultados(r.lista); setBuscou(true);
-    if (r.lista.length === 1) escolher(r.lista[0]);
+    // Um resultado só é escolhido sozinho quando o dado IDENTIFICA a pessoa.
+    // Pela data de nascimento, o único nascido naquele dia pode ser outro
+    // paciente — e quem está no balcão, alguém que nunca veio.
+    if (r.lista.length === 1 && buscaPodeEscolherSozinha(termo)) escolher(r.lista[0]);
   }
 
   /**
@@ -181,6 +195,13 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
    * escolher outro nome sem redigitar.
    */
   async function escolher(p) {
+    // Trava ANTES de mostrar o paciente: sem isto, entre aparecer a ficha e
+    // voltarem as duas perguntas ao banco, "Abrir atendimento" já estava
+    // clicável como emergência — sem o cartão da consulta marcada e sem o
+    // aviso de atendimento aberto.
+    pacienteDaConferencia.current = p.prontuario;
+    setConferindo(true); setConferenciaFalhou(false);
+    setAgendaDeHoje([]); setAbertos([]);
     const completo = await carregarPaciente(sb, p.prontuario);
     const alvo = completo || p;
     setPaciente(alvo);
@@ -193,17 +214,56 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     // triagem do PS. O ambulatorial só entrava pela Agenda, que obriga a
     // recepcionista a saber o PRONTUÁRIO de quem está na frente dela — e a
     // pessoa se apresenta pelo nome.
-    const hoje = new Date().toISOString().slice(0, 10);
-    const futuros = await agendamentosFuturos(sb, alvo.prontuario, { de: hoje });
-    setAgendaDeHoje(futuros.filter(a => String(a.data).slice(0, 10) === hoje));
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
     setFicha({}); setMedicoUser(""); setCorrigindo(null);
     setImprimindo(null); setResponsaveis([]);
-    setAbertos(await atendimentosAbertos(sb, alvo.prontuario));
     setMsg(null);
+    await conferirAgendaEAbertos(alvo);
+  }
+
+  /**
+   * As duas perguntas que decidem COMO este paciente entra.
+   *
+   * 🔴 "NÃO CONSEGUI LER" NÃO É "NÃO TEM". Antes, uma leitura que falhava
+   * virava lista vazia: o cartão "Tem consulta marcada hoje" sumia e o
+   * paciente com hora marcada era aberto como EMERGÊNCIA (fila de triagem
+   * do PS); o aviso de atendimento já aberto sumia e nascia um episódio
+   * duplicado. Oscilação de rede no balcão é rotina, não exceção.
+   *
+   * Agora: se qualquer das duas falhar, a tela DIZ, e o botão de abrir fica
+   * travado até reler. Emergência de verdade não espera por isto — a faixa
+   * oferece seguir mesmo assim, com o risco dito.
+   *
+   * "Hoje" é o dia LOCAL (`todayStr`): em UTC já é amanhã depois das 21h, e
+   * a consulta da noite sumia do cartão.
+   */
+  async function conferirAgendaEAbertos(alvo) {
+    pacienteDaConferencia.current = alvo.prontuario;
+    setConferindo(true); setConferenciaFalhou(false);
+    const hoje = todayStr();
+    const [futuros, abertosLidos] = await Promise.all([
+      agendamentosFuturos(sb, alvo.prontuario, { de: hoje }),
+      atendimentosAbertos(sb, alvo.prontuario),
+    ]);
+    // A recepcionista pode ter escolhido OUTRO paciente enquanto esperava:
+    // a resposta velha não pode pousar na ficha nova.
+    if (pacienteDaConferencia.current !== alvo.prontuario) return;
+    // A marca de falha é por identidade — conferir ANTES de filtrar.
+    setConferenciaFalhou(algumaFalhou(futuros, abertosLidos));
+    setAgendaDeHoje(naoDeuParaLer(futuros) ? [] : futuros.filter(a => String(a.data).slice(0, 10) === hoje));
+    setAbertos(naoDeuParaLer(abertosLidos) ? [] : abertosLidos);
+    setConferindo(false);
+  }
+
+  /** Emergência não espera a rede: seguir sem a conferência, sabendo disso. */
+  function seguirSemConferir() {
+    if (!confirm("Abrir SEM saber se este paciente tem consulta marcada hoje ou atendimento já aberto?\n\nUse só em emergência. Se ele já tiver atendimento aberto, nasce um duplicado, que depois precisa ser cancelado.")) return;
+    setConferenciaFalhou(false);
   }
 
   function recomecar() {
+    pacienteDaConferencia.current = null;
+    setConferindo(false); setConferenciaFalhou(false);
     setPaciente(null); setAbertos([]); setCadastrando(null);
     setResultados([]); setBuscou(false); setTermo(""); setMsg(null);
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
@@ -337,6 +397,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
 
   async function abrir() {
     if (!canEdit || busy) return;
+    if (conferindo || conferenciaFalhou) return;   // o botão já está travado; isto cobre o atalho
     const v = validarAbertura({
       paciente, tipo: f.tipo, origem: f.origem,
       origemDetalhe: f.origemDetalhe, especialidade: ficha.especialidade_cod,
@@ -396,10 +457,17 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     // Falhar aqui não desfaz nada e não bloqueia ninguém: a tela DIZ o que
     // ficou faltando e o que fazer. Número que sai menor que a realidade
     // sem ninguém saber é o defeito que este módulo mais repetiu.
-    const hojeISO = new Date().toISOString().slice(0, 10);
+    const hojeISO = todayStr();
     const [grades, bloqueios, doDia] = await Promise.all([
       carregarGrades(sb), carregarBloqueios(sb, { de: hojeISO, ate: hojeISO }), carregarAgendaDoDia(sb, hojeISO),
     ]);
+    // Sem conseguir ler a agenda, "não há grade" e "a cota acabou" seriam
+    // MENTIRA — e a lista de hoje lida como vazia faria a cota parecer
+    // livre. O atendimento já está aberto e vale; o que falta é dito.
+    if (algumaFalhou(grades, bloqueios, doDia)) {
+      setMsg({ tom: "erro", texto: `Atendimento #${r.atendimento.id} aberto para ${nome} (reg. ${r.atendimento.prontuario}). Imprima a pulseira antes de ele sair do balcão. ⚠️ Mas não consegui ler a agenda de hoje, então ele AINDA NÃO entrou na fila de chegada nem na produção do dia. Receba-o pela Agenda → Fila quando a conexão voltar.` });
+      return;
+    }
     const alvo = gradeParaChegada({
       grades, data: hojeISO, especialidade: ficha.especialidade_cod,
       agendamentos: doDia, bloqueios,
@@ -552,7 +620,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <input value={termo} onChange={e => setTermo(e.target.value)}
               onKeyDown={e => e.key === "Enter" && fazerBusca()}
-              placeholder="Nome, nome da mãe, CPF, Cartão SUS, RG, telefone ou nº do prontuário"
+              placeholder="Nome, data de nascimento, nome da mãe, CPF, Cartão SUS, RG, telefone ou prontuário"
               style={{ ...inp, flex: 1, minWidth: 260 }} />
             <button onClick={fazerBusca} disabled={buscando} style={btn("#22d3ee", !buscando)}>
               {buscando ? "Procurando…" : "Procurar"}
@@ -788,6 +856,33 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               Vem ANTES do formulário de emergência de propósito: quando há
               consulta marcada, receber por ela é o caminho certo, e o que
               está mais acima é o que se lê primeiro. */}
+          {/* 🔴 A CONFERÊNCIA FALHOU — e isso não é "não tem consulta" nem
+              "não tem atendimento aberto". Sem esta faixa, a lista vazia
+              apagava o cartão da consulta marcada e o aviso de duplicidade,
+              e o botão de emergência ficava ali, livre. */}
+          {paciente && conferenciaFalhou && !chegando && (
+            <div role="alert" style={{ ...cartao, borderLeft: "4px solid #f43f5e", background: "#3d0f1833" }}>
+              <div style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>
+                <strong style={{ color: "#fb7185" }}>Não consegui conferir a agenda e os atendimentos deste paciente.</strong>{" "}
+                Isto <strong>não</strong> quer dizer que ele não tenha consulta hoje nem atendimento aberto — a pergunta
+                não chegou ao banco. Abrir agora pode mandar para a triagem do PS quem tem hora marcada, ou duplicar um
+                atendimento que já existe.
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                <button onClick={() => conferirAgendaEAbertos(paciente)} disabled={conferindo}
+                  style={{ ...btn("#f43f5e", !conferindo), color: "#fff", padding: "6px 14px", fontSize: 12 }}>
+                  {conferindo ? "Conferindo…" : "Ler de novo"}
+                </button>
+                {canEdit && (
+                  <button onClick={seguirSemConferir}
+                    style={{ ...btn("var(--surface-2)", false), color: "var(--text)", padding: "6px 14px", fontSize: 12 }}>
+                    É emergência — seguir sem conferir
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {agendaDeHoje.length > 0 && !chegando && (
             <div style={{ ...cartao, borderLeft: "4px solid #0d9488", background: "#0d948810" }}>
               <div style={rotulo}>Tem consulta marcada hoje</div>
@@ -1032,8 +1127,12 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 {/* O botão carrega a pendência — é o que substituiu o modal
                     que disparava em todo atendimento. Quem clica num botão
                     que diz o que falta decidiu seguir assim. */}
-                <button onClick={abrir} disabled={busy} style={btn("#22d3ee", !busy)}>
+                <button onClick={abrir} disabled={busy || conferindo || conferenciaFalhou}
+                  title={conferenciaFalhou ? "Não consegui conferir a agenda deste paciente — veja a faixa acima." : undefined}
+                  style={btn("#22d3ee", !busy && !conferindo && !conferenciaFalhou)}>
                   {busy ? "Abrindo…"
+                    : conferindo ? "Conferindo a agenda…"
+                    : conferenciaFalhou ? "Confira a agenda antes (faixa acima)"
                     : conf.pendenciasGraves
                       ? `Abrir com ${conf.pendenciasGraves} pendência(s)`
                       : "Abrir atendimento"}

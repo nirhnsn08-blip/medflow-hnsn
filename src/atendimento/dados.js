@@ -32,6 +32,7 @@ import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
 import { listaLida, naoDeuParaLer } from "../util/leitura.js";
 import { numeroDigitado } from "../util/numero-brasileiro.js";
+import { diaLocal, todayStr } from "../util/datas.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -389,7 +390,7 @@ export async function historicoDoPaciente(sb, prontuario, { limite = 200 } = {})
 export async function agendamentosFuturos(sb, prontuario, { de } = {}) {
   const p = normalizarProntuario(prontuario);
   if (!p) return [];
-  const inicio = de || new Date().toISOString().slice(0, 10);
+  const inicio = de || todayStr();
   const r = await sb(`ag_agendamentos?prontuario=eq.${encodeURIComponent(p)}` +
     // `confirmado` entra na lista: sem ele, o paciente que confirmou na
     // vespera SUMIRIA do cartao "tem consulta hoje" da Recepcao — e quem
@@ -592,7 +593,7 @@ export async function salvarGrade(sb, grade, user) {
     vagas_regulacao: Number(grade.vagas_regulacao) || 0,
     vagas_internas: Number(grade.vagas_internas) || 0,
     vagas_chegada: Number(grade.vagas_chegada) || 0,
-    vigencia_inicio: grade.vigencia_inicio || new Date().toISOString().slice(0, 10),
+    vigencia_inicio: grade.vigencia_inicio || todayStr(),
     vigencia_fim: grade.vigencia_fim || null,
     ativo: grade.ativo !== false,
     observacao: String(grade.observacao ?? "").trim() || null,
@@ -711,7 +712,8 @@ export async function amarrarChegadaNaAgenda(sb, { atendimento, grade, tipoAtend
   if (!grade?.id) return { ok: false, motivo: "Sem grade para amarrar." };
 
   const corpo = {
-    data: String(atendimento.chegada_em ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+    // Dia LOCAL da chegada: a das 22h é de hoje, não de amanhã em UTC.
+    data: diaLocal(atendimento.chegada_em) || todayStr(),
     hora: null,                       // fila de chegada não tem relógio: tem ordem
     especialidade_cod: grade.especialidade_cod,
     profissional_username: grade.profissional_username || null,

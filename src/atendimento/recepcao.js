@@ -94,15 +94,61 @@ export const escaparTermoBusca = t =>
   String(t ?? "").replace(/[(),.*:"'\\]/g, " ").replace(/\s+/g, " ").trim();
 
 /**
+ * Uma data de nascimento dentro do que foi digitado — sozinha ("12/03/1950")
+ * ou junto do nome ("maria 12/03/1950").
+ *
+ * Aceita `/`, `.` e `-` (o mesmo nos dois lugares) e ano com 2 ou 4
+ * dígitos. Ano de 2 dígitos vira o século que não cai no futuro: em 2026,
+ * "50" é 1950 e "20" é 2020 — é como a recepção fala ("nasceu em 50").
+ *
+ * Data que não existe (31/02) ou que está no futuro NÃO vira busca: volta
+ * `valido: false` com o motivo, para a tela dizer o que está errado em vez
+ * de responder "nenhum paciente encontrado" — que no balcão é lido como
+ * "pode cadastrar".
+ */
+export function acharNascimento(texto, hoje = new Date()) {
+  const m = String(texto ?? "").match(/(^|\s)(\d{1,2})([/.-])(\d{1,2})\3(\d{4}|\d{2})(?=\s|$)/);
+  if (!m) return null;
+  const [, , dTxt, separador, mTxt, aTxt] = m;
+  const trecho = `${dTxt}${separador}${mTxt}${separador}${aTxt}`;
+  const dia = Number(dTxt), mes = Number(mTxt);
+  let ano = Number(aTxt);
+  if (aTxt.length === 2) ano += ano <= hoje.getFullYear() % 100 ? 2000 : 1900;
+
+  const recusa = motivo => ({ valido: false, motivo, trecho });
+  const fimDoMes = new Date(ano, mes, 0).getDate();      // dia 0 do mês seguinte
+  if (mes < 1 || mes > 12 || dia < 1 || dia > fimDoMes)
+    return recusa(`${trecho} não existe no calendário — confira dia e mês.`);
+  if (ano < 1900) return recusa(`Ano ${ano}: confira a data de nascimento.`);
+  const iso = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+  const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`;
+  if (iso > hojeISO) return recusa(`${trecho} está no futuro — confira o ano.`);
+  return { valido: true, iso, ano, separador, trecho };
+}
+
+/**
  * O que a pessoa digitou?
  *
  * A recepção digita as três coisas no mesmo campo — é assim que se
  * trabalha no balcão. Aqui se decide o que foi, para a busca ir direto ao
  * ponto em vez de varrer nome com um CPF.
  */
-export function classificarBusca(termo) {
+export function classificarBusca(termo, { hoje = new Date() } = {}) {
   const bruto = String(termo ?? "").trim();
   if (!bruto) return { tipo: "vazio", valor: "" };
+  // DATA DE NASCIMENTO vem antes de tudo. Sem isto, "12/03/1950" caía em
+  // `nome` e exigia "12", "03" e "1950" DENTRO do nome — a tela respondia
+  // "Nenhum paciente encontrado" com "+ Cadastrar paciente novo" logo
+  // abaixo, que é o caminho da duplicata. E "12.03.1950" caía em
+  // prontuário. Nascimento é o desempate que o balcão mais usa quando o
+  // nome é comum ("Maria da Silva, nasceu em 50").
+  const nasc = acharNascimento(bruto, hoje);
+  if (nasc) {
+    if (!nasc.valido) return { tipo: "nascimento", valido: false, motivo: nasc.motivo };
+    const resto = bruto.replace(nasc.trecho, " ").replace(/\s+/g, " ").trim();
+    if (!resto) return { tipo: "nascimento", valido: true, valor: nasc.iso, ano: nasc.ano, separador: nasc.separador, original: nasc.trecho };
+    return { tipo: "nome_nascimento", valido: true, valor: escaparTermoBusca(resto), nascimento: nasc.iso, ano: nasc.ano };
+  }
   const doc = limparDoc(bruto);
   // 15 dígitos só existe em CNS; 11 só em CPF. O comprimento decide antes
   // do dígito verificador, para o cartão digitado errado ainda ser buscado
@@ -128,9 +174,25 @@ export function classificarBusca(termo) {
  * Devolve a string do parâmetro `or=(...)`, sem `?` e sem encode: quem
  * monta a URL é a camada de dados.
  */
-export function filtroBuscaPacientes(termo) {
-  const c = classificarBusca(termo);
+export function filtroBuscaPacientes(termo, opcoes) {
+  const c = classificarBusca(termo, opcoes);
   if (c.tipo === "vazio") return null;
+  // Data inválida não vira consulta: a tela explica (ver `motivoSemBusca`).
+  if ((c.tipo === "nascimento" || c.tipo === "nome_nascimento") && !c.valido) return null;
+  if (c.tipo === "nascimento") {
+    // Com "." ou "-" a mesma coisa era, até aqui, procurada como prontuário
+    // ou RG — e continua sendo: trazer alguém a mais custa uma linha na
+    // tela; deixar de achar quem existe custa um prontuário duplicado.
+    const comoDoc = c.separador === "/" ? "" : `,prontuario.ilike.${c.original},rg.ilike.${c.original}`;
+    return `or=(${filtroDeNascimento(c)}${comoDoc})`;
+  }
+  if (c.tipo === "nome_nascimento") {
+    const palavras = palavrasDeBusca(c.valor);
+    // Nome curto demais ("Jo 12/03/1950") não impede: a data sozinha já
+    // estreita a busca, e recusar aqui só faria a recepcionista apagar o nome.
+    if (!palavras.length) return `or=(${filtroDeNascimento({ valor: c.nascimento, ano: c.ano })})`;
+    return `and=(${palavras.map(p => `nome_busca.ilike.*${p}*`).join(",")},or(${filtroDeNascimento({ valor: c.nascimento, ano: c.ano })}))`;
+  }
   // QUALQUER NÚMERO SOLTO É PROCURADO EM TODOS OS CAMPOS NUMÉRICOS.
   //
   // CPF de 11 dígitos, CELULAR com DDD e RG têm comprimentos que se
@@ -167,6 +229,48 @@ export function filtroBuscaPacientes(termo) {
 }
 
 /**
+ * O pedaço do filtro que acha a data de nascimento.
+ *
+ * O cadastro antigo guardava só o ANO (`ano_nascimento`); a data completa
+ * veio depois e não foi preenchida para trás. Quem só tem o ano entra
+ * quando o ano bate — de novo: uma linha a mais na lista é barato, não achar
+ * quem existe é duplicata.
+ */
+function filtroDeNascimento({ valor, ano }) {
+  return `data_nascimento.eq.${valor},and(data_nascimento.is.null,ano_nascimento.eq.${ano})`;
+}
+
+/**
+ * Por que este termo não virou busca — a frase que a tela mostra.
+ * `null` quando ele vira busca normalmente.
+ */
+export function motivoSemBusca(termo, opcoes) {
+  const c = classificarBusca(termo, opcoes);
+  if (c.tipo === "vazio") return "Digite o nome, a data de nascimento, o CPF, o Cartão SUS ou o número do prontuário.";
+  if ((c.tipo === "nascimento" || c.tipo === "nome_nascimento") && !c.valido) return c.motivo;
+  if (!filtroBuscaPacientes(termo, opcoes)) return "Digite pelo menos 3 letras do nome.";
+  return null;
+}
+
+/**
+ * Pode a tela escolher sozinha quando a busca acha UMA pessoa?
+ *
+ * Só quando o dado identifica uma pessoa: documento ou prontuário. Data de
+ * nascimento e telefone NÃO: a única pessoa nascida em 12/03/1950 no acervo
+ * pode não ser a que está no balcão — talvez esta nunca tenha vindo — e o
+ * atendimento nasceria na ficha de outro paciente. Com nome junto, a pessoa
+ * olha a linha e escolhe.
+ */
+export function buscaPodeEscolherSozinha(termo, opcoes) {
+  const c = classificarBusca(termo, opcoes);
+  // 11 dígitos são procurados também como CELULAR (ver o filtro): só um CPF
+  // com dígito verificador válido é tratado como documento. O celular da
+  // família traria a mãe no lugar do filho.
+  if (c.tipo === "cpf" || c.tipo === "cns") return !!c.valido;
+  return c.tipo === "prontuario" || c.tipo === "nome";
+}
+
+/**
  * As palavras que a busca por nome vai exigir.
  *
  * Reaproveita `normalizarNome`, que tira acento e derruba tudo que não é
@@ -199,9 +303,14 @@ export function palavrasDeBusca(termo) {
  * roda, este caminho deixa de ser usado sozinho — e ele pode ser removido na
  * limpeza seguinte, quando os dois bancos estiverem migrados.
  */
-export function filtroBuscaPacientesLegado(termo) {
-  const c = classificarBusca(termo);
-  if (c.tipo !== "nome") return filtroBuscaPacientes(termo);
+export function filtroBuscaPacientesLegado(termo, opcoes) {
+  const c = classificarBusca(termo, opcoes);
+  if (c.tipo === "nome_nascimento" && c.valido && c.valor.length >= 3) {
+    const t = c.valor;
+    return `and=(or(nome_completo.ilike.*${t}*,nome_social.ilike.*${t}*,nome_mae.ilike.*${t}*),` +
+      `or(${filtroDeNascimento({ valor: c.nascimento, ano: c.ano })}))`;
+  }
+  if (c.tipo !== "nome") return filtroBuscaPacientes(termo, opcoes);
   const t = c.valor;
   if (t.length < 3) return null;
   return `or=(nome_completo.ilike.*${t}*,nome_social.ilike.*${t}*,nome_mae.ilike.*${t}*)`;

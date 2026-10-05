@@ -24,6 +24,7 @@ import { contaComo } from "./catalogo.js";
 // Só o aviso de óbito: o texto é regra clínica e não pode divergir entre
 // as telas. `identidade.js` não conhece este arquivo — sem ciclo.
 import { avisoDeObito } from "../pacientes/identidade.js";
+import { todayStr } from "../util/datas.js";
 
 /** Os três donos de vaga, e o que cada um implica. */
 export const ORIGENS_MARCACAO = {
@@ -645,7 +646,7 @@ export function podeMarcar({
 
   // Data no passado avisa, não impede: lançar consulta de ontem que ficou
   // sem registro é trabalho legítimo de recepção.
-  const ref = hoje ? diaCivil(hoje) : diaCivil(new Date().toISOString().slice(0, 10));
+  const ref = hoje ? diaCivil(hoje) : diaCivil(todayStr());
   const alvo = diaCivil(data);
   if (ref && alvo && alvo < ref) {
     avisos.push("Data no passado. Se for lançamento retroativo, siga — só confirme que é a data certa.");
