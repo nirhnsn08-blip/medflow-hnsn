@@ -146,6 +146,9 @@ export const MAPA_TABELAS = {
   farm_interacoes:          [TODOS],
   farm_medicamentos:        [TODOS],
   farm_intervencoes:        ["farmacia"],
+  // Avaliação farmacêutica da prescrição da internação (append-only). Quem
+  // prescreve LÊ — ver LEITURA_EXTRA —, mas só a farmácia grava.
+  farm_validacoes:          ["farmacia"],
   // Contagem cega do estoque. Não carrega paciente — é saldo, como
   // `sup_inventarios`, e por isso não entra em SENSIVEIS.
   farm_inventarios:         ["farmacia"],
@@ -312,6 +315,7 @@ export const SENSIVEIS = new Set([
   "enf_sae_diagnosticos", "enf_sae_historico",
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
   "farm_intervencoes", "farm_movimentos", "farm_nao_padronizados", "farm_preparo",
+  "farm_validacoes",
   "leitos", "leitos_saidas",
   "mat_admissoes", "mat_alojamento", "mat_episodios", "mat_partos", "mat_recem_nascidos",
   "mat_trabalho_parto",
@@ -328,6 +332,44 @@ export const SENSIVEIS = new Set([
   "ps_registros", "ps_salas", "ps_sinais",
   "scih_casos", "solicitacoes",
 ]);
+
+/**
+ * Módulos que LEEM uma tabela sem ganhar ESCRITA nela.
+ *
+ * 🔴 POR QUE ISTO NÃO ENTROU NA LISTA DE CIMA
+ * A lista de `MAPA_TABELAS` decide as duas coisas: quem lê e — pelo
+ * gerador (`condicaoDeEscrita`) — quem grava. Pôr `farmacia` em
+ * `pep_prescricoes` ali daria ao auxiliar de farmácia permissão de INSERIR
+ * prescrição médica pela API. Aqui a leitura se amplia e a escrita fica onde
+ * estava.
+ *
+ * A FARMÁCIA E A INTERNAÇÃO (17/09/2026)
+ * Até esta data a farmácia só enxergava o pronto-socorro: a prescrição da
+ * internação não chegava à fila, e o paciente internado era dispensado pela
+ * "dispensação avulsa", digitando iniciais à mão. O farmacêutico tem
+ * `paciente: leitura` e já alcançava estas tabelas; quem não alcançava era
+ * o AUXILIAR, que é quem separa. Sem ler a prescrição ele não dispensa, e
+ * sem ler `pep_alergias` a tela dele recebia lista vazia — que o RLS não
+ * distingue de "sem alergia" (ver o ⚠️ 3 no topo deste arquivo).
+ *
+ * O resto do prontuário (evolução, sinais, condições, administrações) NÃO
+ * entra: a análise clínica completa é do farmacêutico, que já tem acesso.
+ */
+export const LEITURA_EXTRA = {
+  pep_episodios:          ["farmacia"],   // leito, setor e iniciais da fila
+  pep_prescricoes:        ["farmacia"],   // vigência, substituição, prescritor
+  pep_prescricao_itens:   ["farmacia"],   // o que dispensar
+  pep_prescricao_eventos: ["farmacia"],   // item suspenso não se dispensa
+  pep_alergias:           ["farmacia"],   // a mesma lista que imprime a pulseira
+  farm_validacoes:        ["paciente"],   // o prescritor vê a avaliação da farmácia
+};
+
+/** Quem LÊ a tabela: a lista do mapa mais os leitores extras. */
+export function leitoresDe(tabela, mapa = MAPA_TABELAS, extra = LEITURA_EXTRA) {
+  const base = mapa[tabela] || [];
+  const mais = (extra[tabela] || []).filter(m => !base.includes(m));
+  return [...base, ...mais];
+}
 
 /** Os módulos citados no mapa, sem repetição. */
 export function modulosCitados(mapa = MAPA_TABELAS) {

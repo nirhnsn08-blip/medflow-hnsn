@@ -114,9 +114,14 @@ identidade da pessoa**.
   tela avisa quantas pessoas serão afetadas antes de salvar.
 - **Exceção individual** (`usuarios_permissoes`), com motivo e autor, em vez de criar
   um perfil novo para cada desvio. É o que evita chegar a 40 perfis que ninguém entende.
-- **Recortes normativos já embutidos:** recepção, faturamento, almoxarifado, auxiliar de
-  farmácia e gestão **não alcançam o prontuário** (COFEN 754/2024, art. 6º); o **Livro
-  de Controlados** é módulo à parte, com escrituração no farmacêutico (Portaria 344/98).
+- **Recortes normativos já embutidos:** recepção, faturamento, almoxarifado e gestão
+  **não alcançam o prontuário** (COFEN 754/2024, art. 6º); o **Livro de Controlados** é
+  módulo à parte, com escrituração no farmacêutico (Portaria 344/98).
+- **A farmácia lê a prescrição da internação, e só ela** (17/09/2026): episódio,
+  prescrição, itens, eventos e alergias entram por `LEITURA_EXTRA`
+  (`src/acesso/mapa-tabelas.js`) — leitura ampliada sem tocar na escrita, senão o
+  auxiliar de farmácia ganharia permissão de inserir prescrição médica pela API.
+  Evolução, sinais e anamnese continuam fora.
 - **Travas que nenhum perfil derruba:** `adm_master` nunca perde a tela de Usuários
   (anti-trancamento); `visualizador` nunca escreve.
 

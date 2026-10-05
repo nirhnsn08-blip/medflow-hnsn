@@ -85,7 +85,7 @@ export default function AssistenteView({ sb }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 230px)", minHeight: 380, maxWidth: 780 }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700 }}>Assistente AI</h2>
+      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 700 }}>Consulta rápida</h2>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
         Assistente local e gratuito: responde a partir dos dados que as outras abas já calculam.
         <strong> Nada é enviado para fora do navegador.</strong>

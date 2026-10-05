@@ -71,7 +71,7 @@ export async function carregarProntuario(sb, prontuario) {
 
   if (!ativo) {
     return { episodios: eps, episodio: null, paciente, alergias: alergias || [], condicoes: condicoes || [],
-             medicamentosUso: listaLida(medicamentosUso),
+             medicamentosUso: listaLida(medicamentosUso), validacoesFarmacia: [],
              prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [],
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
              escalas: [], lpp: [], faixasEscalas: [],
@@ -81,7 +81,7 @@ export async function carregarProntuario(sb, prontuario) {
 
   const e = ativo.id;
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
-         reconciliacoes, reconciliacaoItens, sumarios, escalas, lpp, faixasEscalas,
+         reconciliacoes, reconciliacaoItens, sumarios, validacoesFarmacia, escalas, lpp, faixasEscalas,
          saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
@@ -97,6 +97,9 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`pep_reconciliacoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_reconciliacao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_sumarios_alta?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    // A avaliação da farmácia sobre a prescrição (tabela de 17/09/2026).
+    // Quem prescreve precisa ver a ressalva e a pendência SEM ir à farmácia.
+    sb(`farm_validacoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     // Escalas de enfermagem + LPP (Tier 1 Fase 1a) + cortes globais de classificação.
     sb(`enf_escalas?episodio_id=eq.${e}&select=*&order=aferido_em.desc`).catch(() => []),
     sb(`enf_lesao_pressao?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
@@ -125,7 +128,7 @@ export async function carregarProntuario(sb, prontuario) {
     evolucoes: arr(evolucoes), anotacoes: arr(anotacoes), anamneses: arr(anamneses),
     medicamentosUso: arr(medicamentosUso),
     reconciliacoes: arr(reconciliacoes), reconciliacaoItens: arr(reconciliacaoItens),
-    sumarios: arr(sumarios),
+    sumarios: arr(sumarios), validacoesFarmacia: arr(validacoesFarmacia),
     escalas: arr(escalas), lpp: arr(lpp), faixasEscalas: arr(faixasEscalas),
     saeCatalogo: arr(saeCatalogo), saeHistorico: arr(saeHistorico),
     saeDiagnosticos: arr(saeDiagnosticos), saePrescricoes: arr(saePrescricoes),

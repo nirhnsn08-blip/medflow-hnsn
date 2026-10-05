@@ -1341,7 +1341,7 @@ export default function App() {
               trabalho de beira de leito, e ninguém para de atender porque o
               livro demorou a aparecer. Aqui o custo de abrir por engano é
               maior que o de fechar por engano — então falha FECHADO. */}
-          {active === "farmacia"  && <FarmaciaPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} />}
+          {active === "farmacia"  && <FarmaciaPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} leProntuario={verModulo("paciente", false)} lePs={verModulo("ps", false)} />}
           {active === "suprimentos" && <SuprimentosPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
