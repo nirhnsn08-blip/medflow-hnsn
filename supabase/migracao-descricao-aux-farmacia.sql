@@ -42,7 +42,9 @@ from (
          not exists (select 1 from public.perfis_acesso
                       where chave = 'aux_farmacia' and descricao like '%Não acessa prontuário%')
   union all
-  select 'migração anotada no registro',
+  -- Rótulo com o nome do arquivo: quando esta conferência é colada junto com
+  -- a da farmácia, duas linhas "migração anotada no registro" não diriam qual.
+  select 'descrição do auxiliar: migração anotada no registro',
          exists (select 1 from public.migracoes_aplicadas
                   where arquivo = 'migracao-descricao-aux-farmacia.sql')
 ) x;
