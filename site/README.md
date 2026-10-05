@@ -54,9 +54,12 @@ apontar para este projeto em vez de redirecionar.
 - `og-valentrax.jpg` — a prévia de 1200×630 que aparece no WhatsApp.
 - `fonts/` — as três fontes, servidas pelo próprio site (ver `fonts/LICENCAS.md`).
 - `favicon.svg`, `apple-touch-icon.png`, `icon-512.png`, `robots.txt`, `sitemap.xml`.
-- `vercel.json` — cabeçalhos de segurança e cache. A política de conteúdo está
-  como `Content-Security-Policy-Report-Only`: publicar, abrir a página, conferir
-  que o console não reclama e só então renomear para `Content-Security-Policy`.
+- `vercel.json` — cabeçalhos de segurança e cache. A política de conteúdo
+  (`Content-Security-Policy`) está ATIVA desde 17/09/2026: passou antes por
+  `Report-Only` em produção, sem nenhuma violação no console. Consequência:
+  script só de arquivo do próprio site (nada de `<script>` inline nem CDN),
+  imagem e fonte só do próprio site. Script ou serviço externo novo precisa
+  entrar nesta política antes, senão o navegador bloqueia.
 
 ⚠️ **O acesso ao sistema aponta para `https://www.valentrax.com.br`** em dois
 lugares: o link "Entrar" do cabeçalho e o "Acessar" do rodapé. O botão em
