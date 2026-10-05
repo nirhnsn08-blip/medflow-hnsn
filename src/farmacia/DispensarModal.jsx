@@ -21,7 +21,7 @@
 import { useState } from "react";
 import { farmFmtQtd, scoreItemClinico, FARM_SCORE_COR } from "../clinico/alertas.js";
 import { btnContorno, campoTexto, rotuloCampo } from "../ui/base.jsx";
-import { fmtDataBR } from "../util/datas.js";
+import { fmtDataBR, horaFmt } from "../util/datas.js";
 import { camposDoPrescritor, conferirPrescritor, exigePrescritor } from "./controlados.js";
 import { conferirDevolucao, devolviveis, movimentoDeDevolucao, MOTIVOS_DE_DEVOLUCAO } from "./devolucao.js";
 import { dispensadoDoItem } from "./preparo.js";
@@ -201,7 +201,7 @@ export default function DispensarModal({
                         <select value={d.saida_id} onChange={e => setD(p => ({ ...p, saida_id: e.target.value }))} style={campoTexto}>
                           {devItem._opcoes.map(o => (
                             <option key={o.saida.id} value={o.saida.id}>
-                              {o.saida.created_at ? fmtDataBR(o.saida.created_at) : "—"} · lote {o.saida.lote || "sem lote"} · saiu {farmFmtQtd(o.saida.quantidade)} · cabe {farmFmtQtd(o.restante)}
+                              {horaFmt(o.saida.created_at)} · lote {o.saida.lote || "sem lote"} · saiu {farmFmtQtd(o.saida.quantidade)} · cabe {farmFmtQtd(o.restante)}
                             </option>
                           ))}
                         </select>

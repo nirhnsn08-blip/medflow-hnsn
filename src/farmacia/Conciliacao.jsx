@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { farmFmtQtd } from "../clinico/alertas.js";
 import { loadPsAtendimentos } from "../ps/dados.js";
 import { AvisoLeitura, campoTexto } from "../ui/base.jsx";
-import { fmtDataBR, horaFmt } from "../util/datas.js";
+import { horaFmt } from "../util/datas.js";
 import { conciliar, PRAZO_SEM_CHECAGEM_H, TIPOS_DIVERGENCIA } from "./conciliacao.js";
 import {
   loadAdministracoesDosAtendimentos, loadAdministracoesDosEpisodios, loadEpisodiosAbertos,
@@ -141,9 +141,9 @@ export default function FarmConciliacaoView({ sb, leProntuario, lePs }) {
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                  {x.primeiraDose ? `1ª checagem ${fmtDataBR(x.primeiraDose)} ${horaFmt(x.primeiraDose)}` : ""}
+                  {x.primeiraDose ? `1ª checagem ${horaFmt(x.primeiraDose)}` : ""}
                   {x.primeiraDose && x.primeiraSaida ? " · " : ""}
-                  {x.primeiraSaida ? `1ª saída ${fmtDataBR(x.primeiraSaida)} ${horaFmt(x.primeiraSaida)}` : ""}
+                  {x.primeiraSaida ? `1ª saída ${horaFmt(x.primeiraSaida)}` : ""}
                 </div>
               </div>
             );

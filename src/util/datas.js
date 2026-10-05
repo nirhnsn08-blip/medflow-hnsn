@@ -66,13 +66,30 @@ export const isoToLocal = iso => {
 export const localToIso = v => (v ? new Date(v).toISOString() : null);
 
 /**
- * Data ISO só-dia (YYYY-MM-DD) → dd/mm/aaaa, SEM escorregar de fuso.
- * O `T00:00:00` força interpretação local em vez de UTC — sem ele, a data
- * apareceria um dia antes à noite.
+ * Data ISO → dd/mm/aaaa, SEM escorregar de fuso.
+ *
+ * Só-dia ("2026-07-24"): o `T00:00:00` força interpretação local em vez de
+ * UTC — sem ele, a data apareceria um dia antes à noite.
+ *
+ * 🔴 CARIMBO DE TEMPO TAMBÉM ENTRA AQUI. Esta função nasceu só para o
+ * "YYYY-MM-DD", e quem passava um `created_at` completo colhia a string
+ * literal "Invalid Date" NA TELA — foi assim na checagem × saída ("1ª
+ * checagem Invalid Date 04/09, 09:30") e na escolha da dispensação que a
+ * devolução desfaz. Concatenar texto em data é fácil de errar e o erro não
+ * estoura: ele vira legenda. Então o reconhecimento mora aqui, numa função
+ * só, e não em cada chamador. Carimbo é convertido pelo RELÓGIO LOCAL (não
+ * pela fatia antes do "T"), senão 02:00 UTC viraria o dia seguinte.
+ *
+ * O que não dá para ler vira "—", nunca "Invalid Date": o traço é honesto,
+ * a outra é lixo com cara de dado.
  */
 export function fmtDataBR(iso) {
   if (!iso) return "—";
-  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
+  const texto = String(iso);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(texto)
+    ? new Date(texto + "T00:00:00")   // só-dia: meia-noite local
+    : new Date(texto);                // carimbo: o dia do relógio local
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 }
 
 /** Competência (mês de referência) "YYYY-MM" a partir de ano e mês 0-11. */

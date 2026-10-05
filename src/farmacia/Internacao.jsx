@@ -24,7 +24,7 @@ import { useAlergiasDosAtendimentos } from "../clinico/usar-alergias.js";
 import { contextoDoInternado } from "../prontuario/contexto-internado.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
 import { AvisoLeitura, campoTexto, rotuloCampo } from "../ui/base.jsx";
-import { fmtDataBR } from "../util/datas.js";
+import { fmtDataBR, horaFmt } from "../util/datas.js";
 import { algumaFalhou } from "../util/leitura.js";
 import { farmFmtQtd as _fmt } from "../clinico/alertas.js";
 import { FARM_ALERTA_TIPOS } from "./catalogo.js";
@@ -234,7 +234,7 @@ export default function FarmInternacaoView({ sb, sbCru, currentUser, canEdit, le
                   <div style={{ padding: "0 14px 12px" }}>
                     {l.validacao.linha && (
                       <div style={{ fontSize: 11.5, color: "var(--text-2)", marginBottom: 8 }}>
-                        Avaliada por {l.validacao.linha.farmaceutico_nome}{l.validacao.linha.registro_conselho ? ` (${l.validacao.linha.conselho || "CRF"} ${l.validacao.linha.registro_conselho})` : ""} em {fmtDataBR(l.validacao.linha.criado_em)}
+                        Avaliada por {l.validacao.linha.farmaceutico_nome}{l.validacao.linha.registro_conselho ? ` (${l.validacao.linha.conselho || "CRF"} ${l.validacao.linha.registro_conselho})` : ""} em {horaFmt(l.validacao.linha.criado_em)}
                         {l.validacao.linha.observacao ? ` — ${l.validacao.linha.observacao}` : ""}
                       </div>
                     )}
