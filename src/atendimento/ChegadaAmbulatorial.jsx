@@ -25,7 +25,7 @@
 import { useState } from "react";
 import { comoExibir } from "../pacientes/identidade.js";
 import { conferirFicha, DOMINIOS } from "./ficha.js";
-import FontePagadora, { CampoCatalogo } from "./FontePagadora.jsx";
+import FontePagadora, { CampoCatalogo, CampoProcedimento } from "./FontePagadora.jsx";
 import { confirmarPresenca } from "./dados.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -55,6 +55,18 @@ export function fichaDaChegada(agendamento) {
     unidade_origem_cod: "ambulatorio",
     tipo_paciente_cod: "", carater_cod: "",
     local_procedencia_cod: "", destino_cod: "",
+    // 🔴 O CAMPO QUE FALTAVA, e com ele a conta do ambulatório.
+    //
+    // A produção faturável é lida com `procedimento_cod=not.is.null`
+    // (dados.js). Esta ficha nascia sem o campo e a tela não tinha onde
+    // preenchê-lo: QUEM TINHA HORA MARCADA NUNCA VIRAVA CONTA. O walk-in
+    // pela Recepção captura o procedimento e é faturado — o caminho normal,
+    // que é a maioria do ambulatório, era o que se perdia.
+    //
+    // E não é só dinheiro: `conferirFicha` compara o CBO do profissional
+    // com o procedimento. Sem procedimento, o aviso de CBO incompatível —
+    // que evita REJEIÇÃO da produção SUS, não glosa — nunca disparava aqui.
+    procedimento_cod: "",
   };
 }
 
@@ -108,6 +120,15 @@ export default function ChegadaAmbulatorial({
       </div>
 
       <FontePagadora catalogos={catalogos} ficha={ficha} onChange={setFicha} />
+
+      {/* O procedimento é o que transforma a consulta em produção. Fica
+          logo abaixo da fonte pagadora porque a lista depende do convênio
+          escolhido ali (tabela própria × SIGTAP). */}
+      <div style={{ marginTop: 12 }}>
+        <CampoProcedimento catalogos={catalogos} ficha={ficha}
+          valor={ficha.procedimento_cod}
+          onChange={v => setFicha(f => ({ ...f, procedimento_cod: v }))} />
+      </div>
 
       {/* A classificação que o painel COBRA precisa ter onde ser respondida.
           Origem e especialidade ficam de fora porque já são conhecidas: uma
