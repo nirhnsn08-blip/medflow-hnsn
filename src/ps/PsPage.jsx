@@ -19,6 +19,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { carregarCatalogos, carregarPaciente } from "../atendimento/dados.js";
+import { recusaPorUnificacao } from "../pacientes/unificacao.js";
+import { conferirIniciaisDaChegada } from "./chegada.js";
 import { dadosDeConta } from "../atendimento/faturavel.js";
 import { PS_ORIGEM_UNIDADES, PS_ORIGENS, PS_VIAS_TRANSF, psPedeDetalhe } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
@@ -621,13 +623,35 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
       return;
     }
 
-    await addPsAtendimentoRemote(sb, {
-      iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim(),
+    // Ficha aposentada pela unificação: a triagem, a prescrição e a alta
+    // iriam para o número que ninguém mais abre.
+    const unificada = recusaPorUnificacao(cadastrado);
+    if (unificada) { setBusy(false); alert(unificada); return; }
+
+    // 🔴 DOIS IDENTIFICADORES, NÃO UM. O número digitado só era conferido
+    // quanto a EXISTIR: um dígito trocado pendurava a triagem e a prescrição
+    // em outro paciente real, e as iniciais digitadas eram gravadas sem
+    // comparar com as do cadastro. Agora as iniciais do cadastro decidem —
+    // se não batem com as digitadas, a tela mostra QUEM é antes de gravar.
+    const conf = conferirIniciaisDaChegada(novo.iniciais, cadastrado);
+    if (!conf.ok && !confirm(conf.pergunta)) { setBusy(false); return; }
+
+    const gravou = await addPsAtendimentoRemote(sb, {
+      // As iniciais vêm do CADASTRO: era o campo em que a fila do PS e o
+      // Paciente 360 divergiam sem ninguém notar.
+      iniciais: conf.iniciais, prontuario: novo.prontuario.trim(),
       queixa: novo.queixa.trim() || null, origem: novo.origem,
       origem_detalhe: novo.origem_detalhe.trim() || null,
       chegada_em: nowISO(), status: "aguardando_triagem",
     }, currentUser);
-    registrarAuditoria(sb, currentUser, "PS: chegada", `${novo.iniciais.trim()} · ${novo.origem}${novo.origem_detalhe ? " — " + novo.origem_detalhe : ""}`, {});
+    // O formulário só limpa se a linha VOLTOU. Antes ele limpava sempre — e
+    // uma recusa do banco tirava o paciente da tela sem pô-lo na fila.
+    if (!Array.isArray(gravou) || !gravou.length) {
+      setBusy(false);
+      alert("A chegada NÃO foi registrada — o paciente não está na fila da triagem. Confira a conexão e tente de novo; se repetir, registre pela Recepção (menu Atendimento).");
+      return;
+    }
+    registrarAuditoria(sb, currentUser, "PS: chegada", `${conf.iniciais} · ${novo.origem}${novo.origem_detalhe ? " — " + novo.origem_detalhe : ""}`, {});
     setNovo({ iniciais: "", prontuario: "", queixa: "", origem: "Meios próprios", origem_detalhe: "" });
     setBusy(false); setTimeout(refresh, 400);
   }

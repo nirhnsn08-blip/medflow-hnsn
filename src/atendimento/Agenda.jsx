@@ -18,7 +18,7 @@
 // As regras estão em `agenda.js` (puras, testadas). Aqui só há tela.
 // ═══════════════════════════════════════════════════════════
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { comoExibir } from "../pacientes/identidade.js";
 import { naoDeuParaLer, algumaFalhou } from "../util/leitura.js";
 import {
@@ -43,6 +43,7 @@ import {
   chamarParaAtendimento, confirmarAgendamento,
 } from "./dados.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
+import VincularPaciente, { fichaQueVale } from "./VincularPaciente.jsx";
 import Impressos from "./Impressos.jsx";
 import { rotuloDominio } from "./impressos.js";
 import { CATEGORIAS_SEM_CAMPO } from "./prioridade.js";
@@ -105,6 +106,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   // para a sala. Sair é ato deliberado de quem opera.
   const [painel, setPainel] = useState(false);
   const [buscaPac, setBuscaPac] = useState("");
+  // A vaga da regulação cujo "Quem veio?" está aberto (ver VincularPaciente).
+  const [vinculando, setVinculando] = useState(null);
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
   const [verAbertos, setVerAbertos] = useState(false);
@@ -381,13 +384,36 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     setMsg({ tom: "ok", texto: "Escolha o novo dia e horário e clique em Marcar. A vaga antiga é cancelada só quando a nova existir." });
   }
 
-  async function vincular(a) {
+  // "Quem veio?" abre a busca DENTRO da linha da vaga — era um `prompt`
+  // que gravava o número digitado sem mostrar de quem ele era.
+  function vincular(a) {
     if (!canEdit) return;
-    const p = prompt("Número do prontuário de quem veio:");
-    if (!p) return;
-    const r = await vincularPacienteAoAgendamento(sb, a.id, p, undefined, currentUser);
-    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setVinculando(v => (v?.id === a.id ? null : a));
+  }
+
+  async function ligarQuemVeio(a, paciente) {
+    const r = await vincularPacienteAoAgendamento(sb, a.id, paciente.prontuario, undefined, currentUser);
+    if (!r.ok) return r;
+    setVinculando(null);
+    setMsg({ tom: "ok", texto: `Vaga das ${a.hora ? String(a.hora).slice(0, 5) : "—"} ligada a ${comoExibir(paciente) || paciente.iniciais} (reg. ${paciente.prontuario}).` });
     recarregarDia();
+    return { ok: true };
+  }
+
+  /**
+   * Escolhe o paciente da marcação pela FICHA COMPLETA.
+   *
+   * A lista da busca não traz óbito de origem nem unificação; guardar só o
+   * resultado dela deixava `podeMarcar` cega para a ficha aposentada.
+   * Unificada vai para a que vale, dito na tela; ficha que não abriu não é
+   * escolhida — "não consegui ler" não vira "pode marcar".
+   */
+  async function escolherParaMarcar(p) {
+    const r = await fichaQueVale(sb, p.prontuario);
+    if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setMarcando(x => ({ ...x, prontuario: r.paciente.prontuario, paciente: r.paciente }));
+    setAchados([]);
+    if (r.nota) setMsg({ tom: "ok", texto: r.nota });
   }
 
   /**
@@ -869,7 +895,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                     {doDia.map(a => (
-                      <div key={a.id} style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
+                      <Fragment key={a.id}>
+                      <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap",
                                                background: "var(--surface-2)", border: "1px solid var(--border)",
                                                borderLeft: `3px solid ${CORES_ORIGEM[a.origem_marcacao]}`,
                                                borderRadius: 8, padding: "8px 11px",
@@ -979,6 +1006,13 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                           <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>atend. #{a.atendimento_id}</span>
                         )}
                       </div>
+                      {/* Abre logo abaixo da própria vaga — não no fim da
+                          página, onde o clique parecia não ter feito nada. */}
+                      {vinculando?.id === a.id && (
+                        <VincularPaciente sb={sb} agendamento={a}
+                          onLigar={p => ligarQuemVeio(a, p)} onCancelar={() => setVinculando(null)} />
+                      )}
+                      </Fragment>
                     ))}
                   </div>
                 )}
@@ -1151,7 +1185,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                         // Guarda o CADASTRO, não só o número: é o que permite
                         // a `podeMarcar` recusar óbito. Antes só o prontuário
                         // sobrevivia à escolha, e a regra ficava cega.
-                        onClick={() => { setMarcando(x => ({ ...x, prontuario: p.prontuario, paciente: p })); setAchados([]); }}
+                        onClick={() => escolherParaMarcar(p)}
                         style={{ ...btn("var(--surface-2)", false), color: "var(--text)" }}>
                         {comoExibir(p) || p.iniciais} · reg. {p.prontuario}
                         {p.obito ? <span style={{ color: "#fb7185" }}> · óbito registrado</span> : ""}

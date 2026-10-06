@@ -29,6 +29,7 @@ import { pendenciaDeNomeDefinitivo } from "../pacientes/recem-nascido.js";
 import FontePagadora, { CampoCatalogo, CampoProcedimento } from "./FontePagadora.jsx";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone, avisoDeObito } from "../pacientes/identidade.js";
+import { foiUnificado, prontuarioVigente, recusaPorUnificacao } from "../pacientes/unificacao.js";
 import {
   PS_ORIGENS, PS_ORIGEM_UNIDADES, psPedeDetalhe, TIPOS_DISPONIVEIS,
   validarAbertura, motivoSemBusca, buscaPodeEscolherSozinha,
@@ -784,6 +785,25 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 Avisa e deixa seguir, de propósito: emergência entra, e
                 homônimo existe. Quem recusa é a Agenda, onde o dano é o
                 telefonema da véspera para a família. */}
+            {/* 🔴 FICHA UNIFICADA: o número foi aposentado. A busca acha as
+                duas fichas da mesma pessoa, e escolher a antiga abria
+                atendimento nela — o histórico se partia de novo. Aqui a tela
+                diz qual vale e abre com um clique; `validarAbertura` recusa
+                abrir na antiga, para o atalho de teclado também. */}
+            {foiUnificado(paciente) && (
+              <div role="alert" style={{ marginTop: 10, padding: "9px 12px", borderRadius: 8, fontSize: 12.5,
+                            background: "#6366f114", border: "1px solid #6366f166", lineHeight: 1.5 }}>
+                <strong style={{ color: "#a5b4fc" }}>Ficha unificada.</strong>{" "}
+                <span style={{ color: "var(--text-2)" }}>{recusaPorUnificacao(paciente)}</span>
+                <div style={{ marginTop: 8 }}>
+                  <button onClick={() => escolher({ prontuario: prontuarioVigente(paciente) })}
+                    style={{ ...btn("#6366f1", true), color: "#fff", padding: "6px 14px", fontSize: 12 }}>
+                    Abrir a ficha que vale ({prontuarioVigente(paciente)})
+                  </button>
+                </div>
+              </div>
+            )}
+
             {(() => {
               const o = avisoDeObito(paciente);
               if (!o) return null;
@@ -1127,12 +1147,13 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
                 {/* O botão carrega a pendência — é o que substituiu o modal
                     que disparava em todo atendimento. Quem clica num botão
                     que diz o que falta decidiu seguir assim. */}
-                <button onClick={abrir} disabled={busy || conferindo || conferenciaFalhou}
+                <button onClick={abrir} disabled={busy || conferindo || conferenciaFalhou || foiUnificado(paciente)}
                   title={conferenciaFalhou ? "Não consegui conferir a agenda deste paciente — veja a faixa acima." : undefined}
-                  style={btn("#22d3ee", !busy && !conferindo && !conferenciaFalhou)}>
+                  style={btn("#22d3ee", !busy && !conferindo && !conferenciaFalhou && !foiUnificado(paciente))}>
                   {busy ? "Abrindo…"
                     : conferindo ? "Conferindo a agenda…"
                     : conferenciaFalhou ? "Confira a agenda antes (faixa acima)"
+                    : foiUnificado(paciente) ? `Use a ficha ${prontuarioVigente(paciente)}`
                     : conf.pendenciasGraves
                       ? `Abrir com ${conf.pendenciasGraves} pendência(s)`
                       : "Abrir atendimento"}
