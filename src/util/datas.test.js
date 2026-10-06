@@ -9,8 +9,25 @@
 import { describe, it, expect } from "vitest";
 import {
   todayStr, nowISO, diffMin, fmtDur, horaFmt, isoToLocal, localToIso,
-  fmtDataBR, compDe, compLabel, horaMin,
+  fmtDataBR, compDe, compLabel, horaMin, diaLocal,
 } from "./datas.js";
+
+describe("diaLocal — o dia civil de uma data ou de um carimbo", () => {
+  it("só-dia passa intacto", () => {
+    expect(diaLocal("2026-10-05")).toBe("2026-10-05");
+  });
+  it("🔴 carimbo vai pelo relógio LOCAL — a chegada das 22h é de hoje", () => {
+    const vinteDuas = new Date(2026, 9, 5, 22, 0);           // 05/10 22:00 local
+    expect(diaLocal(vinteDuas)).toBe("2026-10-05");
+    expect(diaLocal(vinteDuas.toISOString())).toBe("2026-10-05");
+  });
+  it("ilegível vira null, não uma data inventada", () => {
+    expect(diaLocal(null)).toBe(null);
+    expect(diaLocal("")).toBe(null);
+    expect(diaLocal("ontem")).toBe(null);
+    expect(diaLocal(new Date("x"))).toBe(null);
+  });
+});
 
 describe("todayStr — data civil local, nunca UTC", () => {
   it("formata YYYY-MM-DD com zero à esquerda", () => {

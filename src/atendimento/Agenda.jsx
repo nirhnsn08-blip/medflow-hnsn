@@ -20,6 +20,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { comoExibir } from "../pacientes/identidade.js";
+import { naoDeuParaLer, algumaFalhou } from "../util/leitura.js";
 import {
   ORIGENS_MARCACAO, STATUS_AGENDAMENTO, gradesDoDia, vagasDoDia, horariosLivres,
   validarGrade, podeMarcar, podeRegistrarDaRegulacao, producaoDoDia, bloqueioDoDia,
@@ -174,6 +175,15 @@ export default function Agenda({ sb, currentUser, canEdit }) {
 
   const aplicaveis = gradesDoDia(grades, data);
   const producao = producaoDoDia({ grades, data, agendamentos, bloqueios, tiposDeAtendimento: catalogos.tipo_atendimento });
+  // 🔴 "NÃO CONSEGUI LER" NÃO É "ESTÁ VAZIO". Antes, a leitura que falhava
+  // virava lista vazia e a tela afirmava: "Ninguém registrado nesta agenda
+  // hoje", todas as vagas livres e "Nenhuma grade nesta data. Cadastre…".
+  // Com a lista do dia lida como vazia, "+ Marcar" ofertava o horário de
+  // quem já estava marcado, e num dia bloqueado. As marcas de falha são
+  // por identidade: conferidas no estado CRU, antes de qualquer filtro.
+  const gradesFalharam = naoDeuParaLer(grades);
+  const diaFalhou = naoDeuParaLer(agendamentos) || naoDeuParaLer(bloqueios);
+  const filaFalhou = naoDeuParaLer(ambAbertos);
   const bloqueioGeral = bloqueioDoDia(bloqueios, data, {});
   const conciliacao = conciliarProducao({
     grades, agendamentos, bloqueios, data,
@@ -205,6 +215,10 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   // ── ações ──
   async function marcar() {
     if (!canEdit || busy || !marcando) return;
+    if (algumaFalhou(grades, agendamentos, bloqueios)) {
+      setMsg({ tom: "erro", texto: "Não consegui ler a agenda deste dia — marcar agora poderia ocupar o horário de outra pessoa ou um dia bloqueado. Toque em \"Ler de novo\" na faixa vermelha." });
+      return;
+    }
     const { grade, origem, hora, prontuario, protocolo, tipo, observacao, paciente } = marcando;
     const v = origem === "regulacao"
       ? podeRegistrarDaRegulacao({ grade, data, hora, protocolo, agendamentos, bloqueios, paciente })
@@ -613,7 +627,15 @@ export default function Agenda({ sb, currentUser, canEdit }) {
       {vista === "fila" && (
         <div style={cartao}>
           <div style={rotulo}>Quem está esperando agora</div>
-          {fila.esperando.length === 0 && fila.emAtendimento.length === 0 ? (
+          {filaFalhou ? (
+            <div role="alert" style={{ fontSize: 12.5, color: "#fb7185", lineHeight: 1.55 }}>
+              Não consegui ler a fila do ambulatório. Isto não quer dizer que ninguém está esperando.{" "}
+              <button onClick={recarregarDia} disabled={carregando}
+                style={{ ...btn("#f43f5e", !carregando), color: "#fff", padding: "4px 12px", fontSize: 12, marginLeft: 6 }}>
+                Ler de novo
+              </button>
+            </div>
+          ) : fila.esperando.length === 0 && fila.emAtendimento.length === 0 ? (
             <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
               Ninguém na fila do ambulatório. Quem tem presença confirmada aparece aqui até ser chamado.
             </div>
@@ -755,7 +777,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                 <div key={l} style={{ background: "var(--surface-2)", border: "1px solid var(--border)",
                                       borderLeft: `3px solid ${cor}`, borderRadius: 8, padding: "8px 11px" }}>
                   <div style={{ fontSize: 9.5, color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>{l}</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace" }}>{v}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: cor, fontFamily: "JetBrains Mono, monospace" }}>{gradesFalharam || diaFalhou ? "—" : v}</div>
                 </div>
               ))}
             </div>
@@ -764,9 +786,25 @@ export default function Agenda({ sb, currentUser, canEdit }) {
             </div>
           </div>
 
+          {!carregando && (gradesFalharam || diaFalhou) && (
+            <div role="alert" style={{ ...cartao, borderLeft: "4px solid #f43f5e", background: "#3d0f1833", fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>
+              <strong style={{ color: "#fb7185" }}>
+                Não consegui ler {gradesFalharam && diaFalhou ? "as grades nem os agendamentos" : gradesFalharam ? "as grades" : "os agendamentos e bloqueios"} deste dia.
+              </strong>{" "}
+              Isto <strong>não</strong> quer dizer que o dia está vazio. Enquanto não reler, os números ficam em "—"
+              e não dá para marcar: a tela ofereceria como livre o horário de quem já está marcado.
+              <div style={{ marginTop: 10 }}>
+                <button onClick={recarregarDia} disabled={carregando}
+                  style={{ ...btn("#f43f5e", !carregando), color: "#fff", padding: "6px 14px", fontSize: 12 }}>
+                  Ler de novo
+                </button>
+              </div>
+            </div>
+          )}
+
           {carregando ? (
             <div style={{ ...cartao, fontSize: 13, color: "var(--text-muted)" }}>Carregando o dia…</div>
-          ) : aplicaveis.length === 0 ? (
+          ) : gradesFalharam ? null : aplicaveis.length === 0 ? (
             <div style={{ ...cartao, fontSize: 12.5, color: "var(--text-muted)" }}>
               Nenhuma grade nesta data. Cadastre em <strong>Grade e bloqueios</strong> — sem grade não há vaga para marcar
               nem para receber da regulação.
@@ -798,10 +836,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                                           borderLeft: `3px solid ${CORES_ORIGEM[k]}`, borderRadius: 8, padding: "7px 11px", minWidth: 150 }}>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textTransform: "uppercase" }}>{cfg.label}</div>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>
-                        {vagas[k].ocupadas}/{vagas[k].total}
-                        <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11.5 }}> · {vagas[k].livres} livre(s)</span>
+                        {diaFalhou ? "—" : <>
+                          {vagas[k].ocupadas}/{vagas[k].total}
+                          <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: 11.5 }}> · {vagas[k].livres} livre(s)</span>
+                        </>}
                       </div>
-                      {canEdit && !bloqueado && vagas[k].livres > 0 && (
+                      {canEdit && !diaFalhou && !bloqueado && vagas[k].livres > 0 && (
                         <button onClick={() => setMarcando({ grade: g, origem: k, hora: "", protocolo: "", tipo: "",
                           // Numa remarcação o paciente já está decidido — é o
                           // da origem. Entra preenchido para a recepcionista
@@ -816,7 +856,12 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                   ))}
                 </div>
 
-                {doDia.length === 0 ? (
+                {diaFalhou ? (
+                  <div style={{ fontSize: 12.5, color: "#fb7185", padding: "0.8rem",
+                                border: "1px dashed #f43f5e55", borderRadius: 8 }}>
+                    Não consegui ler quem está marcado nesta agenda — veja a faixa vermelha acima.
+                  </div>
+                ) : doDia.length === 0 ? (
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "0.8rem",
                                 border: "1px dashed var(--border)", borderRadius: 8 }}>
                     Ninguém registrado nesta agenda hoje.
