@@ -1829,3 +1829,23 @@ export async function salvarPreco(sb, p, user) {
   }
   return { ok: true, preco: r[0] };
 }
+
+/**
+ * Os desfechos dos atendimentos ligados à agenda do dia.
+ *
+ * 🔴 "Realizadas" contava PRESENÇA. Quem dava presença e desistia antes de
+ * ser chamado entrava no numerador — o indicador saía bonito e falso. O
+ * desfecho não mora no agendamento (mora no atendimento), então ele precisa
+ * ser buscado para o número dizer a verdade.
+ *
+ * Uma consulta só, por `id in (...)`. Lista vazia devolve `{}` sem ir ao
+ * banco; falha devolve `null`, e `producaoDoDia` sem o mapa se comporta
+ * como antes em vez de zerar o dia.
+ */
+export async function carregarDesfechosDosAtendimentos(sb, ids) {
+  const lista = [...new Set((Array.isArray(ids) ? ids : []).filter(v => v != null))];
+  if (!sb || !lista.length) return {};
+  const r = await sb(`ps_atendimentos?id=in.(${lista.join(",")})&select=id,desfecho,status`).catch(() => null);
+  if (!Array.isArray(r)) return null;
+  return Object.fromEntries(r.map(a => [String(a.id), a.desfecho]));
+}

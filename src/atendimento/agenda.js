@@ -24,6 +24,7 @@ import { contaComo } from "./catalogo.js";
 // Só o aviso de óbito: o texto é regra clínica e não pode divergir entre
 // as telas. `identidade.js` não conhece este arquivo — sem ciclo.
 import { avisoDeObito } from "../pacientes/identidade.js";
+import { ehEvasao } from "../clinico/desfechos.js";
 import { recusaPorUnificacao } from "../pacientes/unificacao.js";
 import { todayStr } from "../util/datas.js";
 
@@ -709,21 +710,36 @@ export function podeRegistrarDaRegulacao({
  * Os números que hoje são DIGITADOS À MÃO na tabela `atendimentos`.
  *
  * Com a agenda eles deixam de ser digitação e passam a ser consequência:
- * ofertadas é o que a grade abriu, realizadas é quem teve presença
- * confirmada, faltas é quem foi marcado e não veio.
+ * ofertadas é o que a grade abriu, realizadas é quem foi atendido, faltas é
+ * quem foi marcado e não veio.
+ *
+ * 🔴 "REALIZADAS" CONTAVA PRESENÇA, NÃO ATENDIMENTO. Quem dava presença e
+ * desistia antes de ser chamado entrava no numerador: o indicador do
+ * primeiro mês sairia bonito e falso, e o absenteísmo real ficaria
+ * escondido justamente onde ele dói — a vaga que foi ocupada e perdida.
+ *
+ * `desfechos` é o mapa `atendimento_id → desfecho` do dia. Sem ele a
+ * função se comporta como antes (nenhuma tela quebra); com ele, quem
+ * EVADIU sai da conta. Quem ainda não tem desfecho continua contando: a
+ * consulta está acontecendo agora, e zerar o número do dia inteiro até o
+ * último encerramento seria trocar um erro por outro.
  *
  * `absenteismo` é a taxa que o gestor pergunta primeiro — e é sobre quem
  * foi MARCADO, não sobre quem chegou por ordem de chegada, que não podia
  * faltar a nada.
  */
-export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios = [], tiposDeAtendimento = [] } = {}) {
+export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios = [], tiposDeAtendimento = [], desfechos = null } = {}) {
   const doDia = (agendamentos || []).filter(a => String(a.data).slice(0, 10) === String(data).slice(0, 10));
   const aplicaveis = gradesDoDia(grades, data)
     .filter(g => !bloqueioDoDia(bloqueios, data, {
       especialidade: g.especialidade_cod, profissional: g.profissional_username }));
 
   const ofertadas = aplicaveis.reduce((s, g) => s + cotasSomadas(g), 0);
-  const realizadas = doDia.filter(a => a.status === "presente").length;
+  const evadiu = a => a.atendimento_id != null && ehEvasao(desfechos?.[String(a.atendimento_id)]);
+  const realizadas = doDia.filter(a => a.status === "presente" && !evadiu(a)).length;
+  // Quem ocupou a vaga e foi embora sem ser atendido. Não é falta (veio) nem
+  // realizada (não foi atendido) — e é o número que mostra vaga perdida.
+  const desistencias = doDia.filter(a => a.status === "presente" && evadiu(a)).length;
   const faltas = doDia.filter(a => a.status === "falta").length;
   const cancelados = doDia.filter(a => a.status === "cancelado").length;
   // O denominador do absenteísmo: quem TINHA hora e ou veio, ou não veio, ou
@@ -763,6 +779,7 @@ export function producaoDoDia({ grades = [], data, agendamentos = [], bloqueios 
   return {
     ofertadas,
     realizadas,
+    desistencias,
     faltas,
     cancelados,
     remarcados,
