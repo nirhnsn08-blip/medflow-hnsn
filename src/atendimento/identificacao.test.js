@@ -116,6 +116,16 @@ describe("🔴 chegada do PS: as iniciais são conferidas contra o cadastro", ()
     expect(c.iniciais).toBe("M.S.F.");
   });
 
+  it("🔴 acervo com iniciais divergentes do nome não transforma TODA chegada em pergunta", () => {
+    // T9032 no banco de teste: nome "Maria Silva Ferreira", coluna iniciais "Q.A.".
+    // Comparar só com a coluna faria perguntar sempre — e pergunta que aparece
+    // sempre é clicada sem ler.
+    const torto = { ...MARIA, iniciais: "Q.A." };
+    expect(conferirIniciaisDaChegada("Q.A.", torto).ok).toBe(true);    // bate a coluna
+    expect(conferirIniciaisDaChegada("M.S.F.", torto).ok).toBe(true);  // bate o nome
+    expect(conferirIniciaisDaChegada("J.P.S.", torto).ok).toBe(false); // não bate nenhuma: pergunta
+  });
+
   it("as iniciais que vão para a fila são SEMPRE as do cadastro", () => {
     // Era aqui que a fila do PS e o Paciente 360 divergiam.
     expect(conferirIniciaisDaChegada("X.Y.Z.", MARIA).iniciais).toBe("M.S.F.");

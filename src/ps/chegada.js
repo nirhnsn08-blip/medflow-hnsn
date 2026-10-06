@@ -26,13 +26,22 @@ const soLetras = t => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").t
  */
 export function conferirIniciaisDaChegada(digitadas, cadastro) {
   const doCadastro = String(cadastro?.iniciais ?? "").trim() || comoExibir(cadastro) || "";
-  const a = soLetras(digitadas), b = soLetras(doCadastro);
+  // DUAS FONTES, e basta UMA bater.
+  //
+  // A coluna `iniciais` e o `nome_completo` divergem em acervo importado —
+  // no banco de teste, T9032 tem nome "Maria Silva Ferreira" e iniciais
+  // "Q.A." gravadas. Comparando só com a coluna, TODA chegada viraria
+  // pergunta, e pergunta que aparece sempre é clicada sem ler: a confirmação
+  // deixaria de proteger justamente o caso do número trocado.
+  const derivadas = comoExibir(cadastro) || "";
+  const a = soLetras(digitadas);
+  const bate = [doCadastro, derivadas].map(soLetras).filter(Boolean);
   const quem = [
     comoExibir(cadastro, { completo: true }) || doCadastro,
     cadastro?.data_nascimento ? `nascido(a) em ${fmtDataBR(cadastro.data_nascimento)}` : null,
     cadastro?.nome_mae ? `mãe ${cadastro.nome_mae}` : null,
   ].filter(Boolean).join(" · ");
-  if (a && b && a === b) return { ok: true, iniciais: doCadastro, pergunta: null };
+  if (a && bate.includes(a)) return { ok: true, iniciais: doCadastro, pergunta: null };
   const motivo = a
     ? `As iniciais digitadas (${String(digitadas).trim()}) não batem com as do prontuário ${cadastro?.prontuario} (${doCadastro}).`
     : `Só o número foi digitado.`;
