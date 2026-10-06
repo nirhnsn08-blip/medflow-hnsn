@@ -29,7 +29,7 @@ import {
   horariosDaGrade, cotasSomadas, donoDaVaga,
 } from "./agenda.js";
 import {
-  DESFECHOS_AMBULATORIAL, validarEncerramento, STATUS_ATENDIMENTO,
+  DESFECHOS_AMBULATORIAL, DESFECHO_AMB_POR_CHAVE, validarEncerramento, STATUS_ATENDIMENTO,
   filaDoAmbulatorio, validarChamada,
 } from "./ciclo.js";
 import {
@@ -39,11 +39,12 @@ import {
   carregarAncestraisDeRemarcacao,
   cancelarAgendamento, vincularPacienteAoAgendamento, carregarCatalogos,
   carregarProfissionais, buscarPacientes, carregarPaciente,
-  carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo,
+  carregarProducaoGravada, gravarProducao, carregarAgendamentosDoPeriodo, carregarDesfechosDosAtendimentos,
   chamarParaAtendimento, confirmarAgendamento,
 } from "./dados.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import VincularPaciente, { fichaQueVale } from "./VincularPaciente.jsx";
+import EscolhaRegistro from "./EscolhaRegistro.jsx";
 import Impressos from "./Impressos.jsx";
 import { rotuloDominio } from "./impressos.js";
 import { CATEGORIAS_SEM_CAMPO } from "./prioridade.js";
@@ -108,6 +109,11 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const [buscaPac, setBuscaPac] = useState("");
   // A vaga da regulação cujo "Quem veio?" está aberto (ver VincularPaciente).
   const [vinculando, setVinculando] = useState(null);
+  // A linha cuja escolha (desfecho / falta / cancelamento) está aberta.
+  // Uma de cada vez: duas caixas abertas convidam a registrar na errada.
+  const [registrando, setRegistrando] = useState(null);   // { tipo, a }
+  // atendimento_id → desfecho, para "realizadas" não contar quem desistiu.
+  const [desfechos, setDesfechos] = useState(null);
   const [achados, setAchados] = useState([]);
   const [ambAbertos, setAmbAbertos] = useState([]);
   const [verAbertos, setVerAbertos] = useState(false);
@@ -139,6 +145,9 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     setAncestrais(a.some(x => x?.remarcado_de != null)
       ? await carregarAncestraisDeRemarcacao(sb, a) : []);
     setAmbAbertos(await listarAmbulatoriaisAbertos(sb));
+    // O desfecho mora no ATENDIMENTO, não no agendamento: sem ele,
+    // "realizadas" contaria quem deu presença e foi embora.
+    setDesfechos(await carregarDesfechosDosAtendimentos(sb, a.map(x => x?.atendimento_id)));
     setCarregando(false);
   }, [sb, data]);
 
@@ -149,17 +158,19 @@ export default function Agenda({ sb, currentUser, canEdit }) {
    * "atendido" escolheria um dado assistencial que ninguém conferiu — e
    * quem sabe se o paciente foi atendido ou desistiu é quem estava lá.
    */
-  async function encerrar(a) {
+  function encerrar(a) {
     if (!canEdit) return;
-    const opcoes = DESFECHOS_AMBULATORIAL.map((d, i) => `${i + 1} - ${d.label}`).join("\n");
-    const escolha = prompt(`Como terminou o atendimento #${a.id} (reg. ${a.prontuario})?\n\n${opcoes}\n\nDigite o número:`);
-    if (escolha === null) return;
-    const d = DESFECHOS_AMBULATORIAL[Number(escolha) - 1];
+    setRegistrando(r => (r?.tipo === "desfecho" && r.a.id === a.id ? null : { tipo: "desfecho", a }));
+  }
+
+  async function gravarDesfecho(a, chave) {
+    const d = DESFECHO_AMB_POR_CHAVE[chave];
     const v = validarEncerramento({ atendimento: a, desfecho: d?.chave });
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erros.join(" ") }); return; }
     setBusy(true);
     const r = await encerrarAtendimento(sb, a.id, d.chave, null, currentUser);
     setBusy(false);
+    setRegistrando(null);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
     setMsg({ tom: "ok", texto: `Atendimento #${a.id} encerrado como "${d.label}".` });
     recarregarDia();
@@ -177,7 +188,7 @@ export default function Agenda({ sb, currentUser, canEdit }) {
   const fila = filaDoAmbulatorio(ambAbertos);
 
   const aplicaveis = gradesDoDia(grades, data);
-  const producao = producaoDoDia({ grades, data, agendamentos, bloqueios, tiposDeAtendimento: catalogos.tipo_atendimento });
+  const producao = producaoDoDia({ grades, data, agendamentos, bloqueios, tiposDeAtendimento: catalogos.tipo_atendimento, desfechos });
   // 🔴 "NÃO CONSEGUI LER" NÃO É "ESTÁ VAZIO". Antes, a leitura que falhava
   // virava lista vazia e a tela afirmava: "Ninguém registrado nesta agenda
   // hoje", todas as vagas livres e "Nenhuma grade nesta data. Cadastre…".
@@ -425,20 +436,20 @@ export default function Agenda({ sb, currentUser, canEdit }) {
    * se resolve com comprovante e lembrete; e "resolveu em outro serviço"
    * nem é falta — é cadastro a atualizar.
    */
-  async function faltar(a) {
+  function faltar(a) {
     if (!canEdit) return;
-    const opcoes = MOTIVOS_DE_FALTA.map((m, i) => `${i + 1} - ${m.label}`).join("\n");
-    const escolha = prompt(
-      `Registrar FALTA de ${a.prontuario ? `reg. ${a.prontuario}` : "vaga reservada"}.\n\n` +
-      `Por que não veio?\n\n${opcoes}\n\nDigite o número:`);
-    if (escolha === null) return;
-    const m = MOTIVOS_DE_FALTA[Number(escolha) - 1];
+    setRegistrando(r => (r?.tipo === "falta" && r.a.id === a.id ? null : { tipo: "falta", a }));
+  }
+
+  async function gravarFalta(a, chave) {
+    const m = MOTIVOS_DE_FALTA.find(x => x.chave === chave);
     const v = validarFalta(m?.chave);
     if (!v.ok) { setMsg({ tom: "erro", texto: v.erro }); return; }
     setBusy(true);
     const r = await registrarFalta(sb, a.id, v.valor, currentUser);
     setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setRegistrando(null);
     setMsg({ tom: "ok", texto: `Falta registrada como "${m.label}". ${m.acao}` });
     recarregarDia();
   }
@@ -460,12 +471,26 @@ export default function Agenda({ sb, currentUser, canEdit }) {
     recarregarDia();
   }
 
-  async function cancelar(a) {
+  function cancelar(a) {
     if (!canEdit) return;
-    const motivo = prompt("Motivo do cancelamento:");
-    if (motivo === null) return;
+    setRegistrando(r => (r?.tipo === "cancelar" && r.a.id === a.id ? null : { tipo: "cancelar", a }));
+  }
+
+  /**
+   * 🔴 O MOTIVO ERA OPCIONAL, e um Enter no prompt vazio já cancelava.
+   *
+   * Cancelamento sem motivo é uma vaga que desapareceu e ninguém sabe por
+   * quê: não dá para distinguir o erro de digitação do paciente que
+   * desmarcou, e é essa diferença que diz se a vaga pode ser reofertada.
+   * O autor vai no `usuario` da linha, que é gravado em toda escrita.
+   */
+  async function gravarCancelamento(a, _chave, motivo) {
+    setBusy(true);
     const r = await cancelarAgendamento(sb, a.id, motivo, currentUser);
+    setBusy(false);
     if (!r.ok) { setMsg({ tom: "erro", texto: r.motivo }); return; }
+    setRegistrando(null);
+    setMsg({ tom: "ok", texto: `Agendamento de ${a.hora ? String(a.hora).slice(0, 5) : "—"} cancelado: ${motivo}` });
     recarregarDia();
   }
 
@@ -636,6 +661,15 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                       Encerrar
                     </button>
                   )}
+                  {registrando?.a?.id === a.id && registrando.tipo === "desfecho" && (
+                    <EscolhaRegistro busy={busy} cor="#0d9488"
+                      titulo={`Como terminou o atendimento #${a.id}${a.prontuario ? ` (reg. ${a.prontuario})` : ""}?`}
+                      aviso="O desfecho NÃO se corrige nesta tela — confira antes de gravar. É ele que decide se a consulta vira conta."
+                      confirmar="Encerrar atendimento"
+                      opcoes={DESFECHOS_AMBULATORIAL.map(d => ({ chave: d.chave, label: d.label, dica: d.dica }))}
+                      onEscolher={chave => gravarDesfecho(a, chave)}
+                      onCancelar={() => setRegistrando(null)} />
+                  )}
                 </div>
               ))}
             </div>
@@ -746,6 +780,15 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                           Encerrar
                         </button>
                       )}
+                      {registrando?.a?.id === a.id && registrando.tipo === "desfecho" && (
+                        <EscolhaRegistro busy={busy} cor="#0d9488"
+                          titulo={`Como terminou o atendimento #${a.id}${a.prontuario ? ` (reg. ${a.prontuario})` : ""}?`}
+                          aviso="O desfecho NÃO se corrige nesta tela — confira antes de gravar. É ele que decide se a consulta vira conta."
+                          confirmar="Encerrar atendimento"
+                          opcoes={DESFECHOS_AMBULATORIAL.map(d => ({ chave: d.chave, label: d.label, dica: d.dica }))}
+                          onEscolher={chave => gravarDesfecho(a, chave)}
+                          onCancelar={() => setRegistrando(null)} />
+                      )}
                     </div>
                   ))}
                 </>
@@ -796,6 +839,10 @@ export default function Agenda({ sb, currentUser, canEdit }) {
               {[
                 ["Ofertadas", producao.ofertadas, "#6366f1"],
                 ["Realizadas", producao.realizadas, "#0d9488"],
+                // Quem ocupou a vaga e foi embora sem ser atendido: não é falta
+                // (veio) nem realizada (não foi atendido). Só aparece quando
+                // existe — zero desistência não precisa de cartão na tela.
+                ...(producao.desistencias ? [["Desistiram", producao.desistencias, "#d97706"]] : []),
                 ["Faltas", producao.faltas, "#f43f5e"],
                 ["Livres", producao.livres, "#22d3ee"],
                 ["Absenteísmo", producao.absenteismo == null ? "—" : `${producao.absenteismo}%`, "#d97706"],
@@ -808,7 +855,8 @@ export default function Agenda({ sb, currentUser, canEdit }) {
               ))}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-              Estes números saem da agenda — não são digitados. Ofertadas vem da grade; realizadas, de quem teve presença confirmada.
+              Estes números saem da agenda — não são digitados. Ofertadas vem da grade; realizadas, de quem foi
+              atendido (quem deu presença e desistiu conta em Desistiram, não aqui).
             </div>
           </div>
 
@@ -1011,6 +1059,26 @@ export default function Agenda({ sb, currentUser, canEdit }) {
                       {vinculando?.id === a.id && (
                         <VincularPaciente sb={sb} agendamento={a}
                           onLigar={p => ligarQuemVeio(a, p)} onCancelar={() => setVinculando(null)} />
+                      )}
+                      {registrando?.a?.id === a.id && registrando.tipo === "falta" && (
+                        <EscolhaRegistro busy={busy} cor="#d97706"
+                          titulo={`Registrar falta — ${a.prontuario ? `reg. ${a.prontuario}` : "vaga reservada"}`}
+                          confirmar="Registrar falta"
+                          opcoes={MOTIVOS_DE_FALTA.map(m => ({ chave: m.chave, label: m.label, dica: m.acao }))}
+                          onEscolher={chave => gravarFalta(a, chave)}
+                          onCancelar={() => setRegistrando(null)} />
+                      )}
+                      {registrando?.a?.id === a.id && registrando.tipo === "cancelar" && (
+                        <EscolhaRegistro busy={busy} cor="#f43f5e"
+                          titulo={`Cancelar o agendamento de ${a.hora ? String(a.hora).slice(0, 5) : "—"}`}
+                          aviso="A vaga volta a ficar livre. O cancelamento não se apaga: fica registrado com motivo e autor."
+                          confirmar="Cancelar agendamento"
+                          opcoes={[{ chave: "cancelar", label: "Confirmo o cancelamento", dica: "Marque e escreva o motivo abaixo." }]}
+                          motivo={{ label: "Por que está sendo cancelado", obrigatorio: true,
+                                    placeholder: "paciente desmarcou, erro de marcação, médico ausente…",
+                                    faltando: "Escreva o motivo. Sem ele, ninguém saberá se a vaga pode ser reofertada — nem se foi engano." }}
+                          onEscolher={(chave, motivo) => gravarCancelamento(a, chave, motivo)}
+                          onCancelar={() => setRegistrando(null)} />
                       )}
                       </Fragment>
                     ))}
