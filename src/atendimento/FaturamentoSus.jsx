@@ -1004,7 +1004,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
       {/* worklist: internações a faturar */}
       <section style={{ ...cx.card, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
-          <div style={cx.rotulo}>Internações a faturar ({worklist.length})</div>
+          <div style={cx.rotulo}>Episódios a faturar ({worklist.length})</div>
           <button onClick={carregarWL} disabled={carregandoWL} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 7, padding: "5px 12px", fontSize: 12, cursor: carregandoWL ? "default" : "pointer" }}>
             {carregandoWL ? "Atualizando…" : "Atualizar"}
           </button>
@@ -1022,7 +1022,8 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                 <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                   <th style={{ padding: "6px 8px" }}>Paciente</th>
                   <th style={{ padding: "6px 8px" }}>Atend.</th>
-                  <th style={{ padding: "6px 8px" }}>Internação</th>
+                  <th style={{ padding: "6px 8px" }}>Origem</th>
+                  <th style={{ padding: "6px 8px" }}>Entrada</th>
                   <th style={{ padding: "6px 8px" }}>CID</th>
                   <th style={{ padding: "6px 8px" }}>Conta</th>
                   <th style={{ padding: "6px 8px" }} />
@@ -1036,6 +1037,14 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                     <tr key={row.id} onClick={() => montar(row.id)} style={{ cursor: "pointer", borderTop: "1px solid var(--border)", background: ativo ? "var(--surface-3)" : "transparent" }}>
                       <td style={{ padding: "8px", fontWeight: 600 }}>{row.iniciais || "—"}</td>
                       <td style={{ padding: "8px", fontVariantNumeric: "tabular-nums", color: "var(--text-2)", whiteSpace: "nowrap" }}>#{row.id} · reg. {row.prontuario}</td>
+                      {/* De onde veio: a conta de internação (AIH) e a do
+                          ambulatório (BPA/APAC) seguem caminhos diferentes, e
+                          quem fatura precisa saber qual é antes de montar. */}
+                      <td style={{ padding: "8px", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                        {row.desfecho === "internacao" ? "Internação"
+                          : row.tipo_atendimento === "ambulatorial" ? "Ambulatório"
+                          : "Pronto-socorro"}
+                      </td>
                       <td style={{ padding: "8px", color: "var(--text-2)", whiteSpace: "nowrap" }}>{row.chegada_em ? new Date(row.chegada_em).toLocaleDateString("pt-BR") : "—"}</td>
                       <td style={{ padding: "8px", color: "var(--text-2)" }}>{row.cid || "—"}</td>
                       <td style={{ padding: "8px" }}>

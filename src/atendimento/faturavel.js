@@ -32,6 +32,8 @@
 // "não havia como preencher".
 // ═══════════════════════════════════════════════════════════
 
+import { EVASAO, ehEvasao } from "../clinico/desfechos.js";
+
 const texto = v => String(v ?? "").trim();
 
 /**
@@ -43,9 +45,12 @@ const texto = v => String(v ?? "").trim();
  * fingir o contrário seria perder produção real num momento em que
  * ninguém vai voltar para corrigir.
  */
-export const SEM_CONTA = ["evasao"];
+// 🔴 "evadiu" (ambulatório) e "evasao" (PS/internação) são a MESMA coisa, e
+// esta lista conhecia só uma: o paciente que foi embora antes de ser
+// atendido virava conta. O vocabulário agora é único — ver clinico/desfechos.js.
+export const SEM_CONTA = EVASAO;
 
-export const geraConta = desfecho => !SEM_CONTA.includes(texto(desfecho));
+export const geraConta = desfecho => !ehEvasao(texto(desfecho));
 
 /**
  * O que falta para este episódio virar conta.

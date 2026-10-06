@@ -48,6 +48,7 @@ import {
   permanenciaEmDias, avaliarPermanencia, avaliarGlosa, temImpedimento,
 } from "./sigtap.js";
 import { precoDe, SITUACAO } from "./precos.js";
+import { geraConta } from "./faturavel.js";
 
 // ── item proposto (o formato do camposDoItem + a origem para a tela) ──
 
@@ -371,13 +372,41 @@ function itensMedicacao(administracoes) {
  * recente no topo. Uma conta cancelada não conta — o episódio volta a
  * aparecer como "sem conta", que é a verdade.
  */
+/**
+ * Este episódio pode virar conta?
+ *
+ * 🔴 ANTES A LISTA ERA SÓ `desfecho = internacao`, e o ambulatório inteiro
+ * ficava invisível para o faturamento: a consulta acontecia, era registrada,
+ * e ninguém nunca via que faltava a conta dela. BPA e APAC nascem daí.
+ *
+ * Quem foi embora antes de ser atendido NÃO entra — ver clinico/desfechos.js,
+ * onde "evadiu" e "evasao" passaram a ser a mesma coisa.
+ *
+ * ⚠️ RESPONDE "NÃO" SÓ QUANDO SABE. Esconder um episódio que precisa de
+ * conta é dinheiro perdido sem ninguém perceber; mostrar um a mais é uma
+ * linha extra na lista, que alguém resolve em dois segundos. Entre os dois
+ * erros, a lista erra para o lado de mostrar.
+ */
+export function podeVirarConta(a) {
+  if (!a) return false;
+  // Foi embora antes de ser atendido: não há o que cobrar.
+  if (!geraConta(a.desfecho)) return false;
+  // Ambulatorial ainda em curso: a consulta não terminou, e cobrar conta do
+  // que está acontecendo agora é ruído. Internação não entra nesta regra —
+  // a conta da internação se monta com o paciente ainda no leito.
+  if (a.tipo_atendimento === "ambulatorial" && a.desfecho !== "internacao") {
+    return a.status === "finalizado";
+  }
+  return true;
+}
+
 export function montarWorklist(internacoes = [], contas = []) {
   const porAtend = new Map();
   for (const c of Array.isArray(contas) ? contas : []) {
     if (!c || c.status === "cancelada") continue;
     porAtend.set(String(c.atendimento_id), c);
   }
-  const rows = (Array.isArray(internacoes) ? internacoes : []).map((a) => {
+  const rows = (Array.isArray(internacoes) ? internacoes : []).filter(podeVirarConta).map((a) => {
     const conta = porAtend.get(String(a.id)) || null;
     return { ...a, conta, situacao: conta ? conta.status : "sem-conta" };
   });

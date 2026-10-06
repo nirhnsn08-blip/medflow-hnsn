@@ -1047,8 +1047,13 @@ export async function carregarLeitosDoEpisodio(sb, { atendimentoId, prontuario }
  * e dois selects simples não dependem de relação declarada no schema.
  */
 export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
-  const internacoes = await sb(`ps_atendimentos?desfecho=eq.internacao` +
-    `&select=id,prontuario,iniciais,chegada_em,desfecho,desfecho_em,convenio_id,procedimento_cod,cid` +
+  // 🔴 ERA SÓ `desfecho=eq.internacao`. O ambulatório — que é de onde
+  // nascem BPA e APAC — não aparecia em lista nenhuma: a consulta
+  // acontecia, era registrada, e ninguém via que faltava a conta. Agora
+  // vêm também os ambulatoriais CONCLUÍDOS; quem decide o que entra é
+  // `podeVirarConta`, que também descarta quem foi embora sem ser atendido.
+  const internacoes = await sb(`ps_atendimentos?or=(desfecho.eq.internacao,and(status.eq.finalizado,tipo_atendimento.eq.ambulatorial))` +
+    `&select=id,prontuario,iniciais,chegada_em,desfecho,desfecho_em,convenio_id,procedimento_cod,cid,status,tipo_atendimento` +
     `&order=chegada_em.desc&limit=${limite}`);
   const lista = listaLida(internacoes);
   if (!lista.length) return { internacoes: [], contas: [] };
