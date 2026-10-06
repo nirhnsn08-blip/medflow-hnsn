@@ -74,6 +74,10 @@ export const MAPA_TABELAS = {
   // parte do Atendimento. Ver `migracao-faturamento-modulo.sql`.
   at_conta_itens:           ["faturamento"],
   at_contas:                ["faturamento"],
+  // A correção de desfecho é do ATENDIMENTO (quem registrou o episódio é
+  // quem corrige), não do faturamento — embora o faturamento seja quem mais
+  // sente o erro. Ver migracao-correcao-desfecho.sql.
+  at_desfecho_correcoes:    ["ps", "atendimento", "ambulatorio"],
   // A glosa recebida carrega prontuário e valor da conta de um paciente.
   at_glosas:                ["faturamento"],
   // O repasse aponta para a conta de um paciente e diz quanto foi pago por ela.
@@ -308,7 +312,8 @@ export const ESCRITA_ABERTA = new Set([
 ]);
 
 export const SENSIVEIS = new Set([
-  "ag_agendamentos", "at_conta_itens", "at_contas", "at_glosas", "at_repasses",
+  "ag_agendamentos", "at_conta_itens", "at_contas", "at_desfecho_correcoes",
+  "at_glosas", "at_repasses",
   "at_responsaveis",
   "auditoria", "cc_cirurgias",
   "enf_escalas", "enf_lesao_pressao", "enf_sae_checagem",

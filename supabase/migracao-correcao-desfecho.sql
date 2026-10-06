@@ -155,19 +155,22 @@ create trigger trg_at_corrige_desfecho
 -- ───────────────────────────────────────────────────────────
 alter table public.at_desfecho_correcoes enable row level security;
 
-drop policy if exists at_desf_corr_leitura on public.at_desfecho_correcoes;
-create policy at_desf_corr_leitura on public.at_desfecho_correcoes
+drop policy if exists at_desfecho_correcoes_leitura on public.at_desfecho_correcoes;
+create policy at_desfecho_correcoes_leitura on public.at_desfecho_correcoes
   for select to authenticated
   using (public.pode_ver_algum('ps', 'atendimento', 'ambulatorio', 'paciente'));
 
-drop policy if exists at_desf_corr_ins on public.at_desfecho_correcoes;
-create policy at_desf_corr_ins on public.at_desfecho_correcoes
+drop policy if exists at_desfecho_correcoes_ins on public.at_desfecho_correcoes;
+create policy at_desfecho_correcoes_ins on public.at_desfecho_correcoes
   for insert to authenticated
   with check (public.my_role() in ('adm_master', 'adm_silver'));
 
--- A mesma trava restritiva que o gerar-rls.mjs põe em toda tabela de módulo.
-drop policy if exists at_desf_corr_mod_ins on public.at_desfecho_correcoes;
-create policy at_desf_corr_mod_ins on public.at_desfecho_correcoes
+-- A mesma trava restritiva que o gerar-rls.mjs põe em toda tabela de módulo —
+-- e com o NOME que ele usa, para o gerador substituir esta política em vez de
+-- criar uma segunda ao lado. Duas restritivas iguais não mudam o resultado,
+-- mas quem for auditar amanhã perde tempo descobrindo isso.
+drop policy if exists at_desfecho_correcoes_mod_ins on public.at_desfecho_correcoes;
+create policy at_desfecho_correcoes_mod_ins on public.at_desfecho_correcoes
   as restrictive for insert to authenticated
   with check (public.pode_editar_algum('ps', 'atendimento', 'ambulatorio'));
 
@@ -201,7 +204,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
   union all
   select 'política ' || p,
          exists (select 1 from pg_policies where tablename = 'at_desfecho_correcoes' and policyname = p)
-    from unnest(array['at_desf_corr_leitura','at_desf_corr_ins','at_desf_corr_mod_ins']) p
+    from unnest(array['at_desfecho_correcoes_leitura','at_desfecho_correcoes_ins','at_desfecho_correcoes_mod_ins']) p
   union all
   select 'trilha é imutável (sem update/delete)',
          not exists (select 1 from pg_policies
