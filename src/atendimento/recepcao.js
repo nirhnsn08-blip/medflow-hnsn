@@ -19,6 +19,7 @@ import { conferirCadastro, limparDoc, validarCPF, validarCNS, normalizarSexo, no
 // Só o aviso de óbito: o texto é regra clínica e não pode divergir entre
 // as telas. `identidade.js` não conhece este arquivo — sem ciclo.
 import { avisoDeObito } from "../pacientes/identidade.js";
+import { recusaPorUnificacao } from "../pacientes/unificacao.js";
 
 // ── COMO O PACIENTE CHEGOU ──────────────────────────────────
 // Estas listas moraram no App.jsx enquanto a chegada só existia no PS.
@@ -405,6 +406,11 @@ export function validarAbertura({ paciente, tipo, origem, origemDetalhe, especia
   if (!prontuario) {
     erros.push("Selecione ou cadastre o paciente antes de abrir o atendimento. O atendimento precisa nascer ligado a um prontuário — sem isso, o que for registrado hoje não aparece no histórico dele amanhã.");
   }
+  // Ficha unificada RECUSA — ao contrário do óbito, que só avisa: aqui não
+  // há homônimo nem emergência que justifique, porque a mesma pessoa tem
+  // outro número que vale, e a tela oferece abri-lo com um clique.
+  const unificada = recusaPorUnificacao(paciente);
+  if (unificada) erros.push(unificada);
 
   const t = TIPOS_ATENDIMENTO.find(x => x.chave === tipo);
   if (!t) erros.push("Informe o tipo de atendimento.");

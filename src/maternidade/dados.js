@@ -163,20 +163,71 @@ export async function cadastrarGestante(sb, dados, user, vinculo = {}) {
 
   // Religa a FONTE (leito/atendimento do PS) ao prontuário emitido, senão a
   // paciente reapareceria na fila como "sem cadastro" e alguém a cadastraria
-  // de novo. Best-effort: se a RLS negar (perfil sem escrita no leito/PS), a
-  // admissão já valeu — só a fila fica com uma linha órfã até um admin religar.
-  await religarFonte(sb, vinculo, pront.prontuario);
+  // de novo. Não impede a admissão: se a RLS negar (perfil sem escrita no
+  // leito/PS) ou o leito tiver trocado de paciente, o cadastro já valeu — o
+  // que muda é que agora a tela SABE e pode dizer, em vez de supor que deu.
+  const religou = await religarFonte(sb, vinculo, pront.prontuario, corpo.iniciais);
+  const faltou = [];
+  if (religou.leito === false) faltou.push(`o leito ${vinculo.leito}`);
+  if (religou.ps === false) faltou.push("o atendimento do pronto-socorro");
 
-  return { ok: true, paciente: r[0] };
+  return {
+    ok: true, paciente: r[0],
+    aviso: faltou.length
+      ? `Cadastro e prontuário ${pront.prontuario} criados, e a admissão segue. Mas não consegui ligar ${faltou.join(" nem ")} a este prontuário — a linha já não estava como a fila mostrou (pode ter trocado de paciente) ou seu perfil não edita ali. Confira em Giro de Leitos antes do fim do plantão.`
+      : null,
+  };
 }
 
-async function religarFonte(sb, vinculo, prontuario) {
-  const corpo = JSON.stringify({ prontuario });
-  const opt = { method: "PATCH", headers: { Prefer: "return=representation" }, body: corpo };
-  try {
-    if (vinculo?.leito) await sb(`leitos?identificacao=eq.${encodeURIComponent(vinculo.leito)}`, opt);
-    if (vinculo?.psId)  await sb(`ps_atendimentos?id=eq.${encodeURIComponent(vinculo.psId)}`, opt);
-  } catch { /* best-effort: a admissão não depende disto */ }
+/**
+ * Religa a fonte (leito / atendimento do PS) ao prontuário emitido.
+ *
+ * 🔴 ESCREVIA EM QUEM ESTIVESSE NO LEITO. O filtro era só
+ * `leitos?identificacao=eq.<leito>`: entre a leitura da fila e o cadastro, o
+ * leito pode ter trocado de paciente (alta e nova internação acontecem em
+ * minutos na maternidade), e o prontuário da gestante nova ia parar na linha
+ * de OUTRA mulher — identificar pelo leito é o que a Meta 1 de segurança do
+ * paciente proíbe, e o erro só apareceria quando alguém abrisse o prontuário
+ * errado.
+ *
+ * Agora o PATCH só acerta a linha que AINDA está como a fila mostrou:
+ * `prontuario is null` (é por isso que estamos cadastrando) e as mesmas
+ * iniciais. Se o leito mudou, nenhuma linha volta e quem chamou avisa, em
+ * vez de gravar por cima.
+ *
+ * Devolve `{ leito, ps }` com `true` (religou), `false` (não achou a linha
+ * como esperado) ou `null` (não havia o que religar).
+ */
+async function religarFonte(sb, vinculo, prontuario, iniciais) {
+  const opt = {
+    method: "PATCH", headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ prontuario }),
+  };
+  const pegou = r => Array.isArray(r) && r.length > 0;
+  const out = { leito: null, ps: null };
+  const ini = String(iniciais ?? "").trim();
+
+  if (vinculo?.leito) {
+    // `iniciais` entra no filtro só quando existe: leito ocupado sem
+    // iniciais é raro, mas exigi-las aí faria a religação nunca acontecer.
+    const porIniciais = ini ? `&iniciais=eq.${encodeURIComponent(ini)}` : "";
+    const r = await sb(
+      `leitos?identificacao=eq.${encodeURIComponent(vinculo.leito)}&prontuario=is.null${porIniciais}`,
+      opt,
+    ).catch(() => null);
+    out.leito = pegou(r);
+  }
+  if (vinculo?.psId) {
+    // O atendimento do PS é achado pelo id, que não troca de dono — mas o
+    // `prontuario is null` continua valendo: se alguém já o preencheu, não
+    // é esta admissão que decide por cima.
+    const r = await sb(
+      `ps_atendimentos?id=eq.${encodeURIComponent(vinculo.psId)}&prontuario=is.null`,
+      opt,
+    ).catch(() => null);
+    out.ps = pegou(r);
+  }
+  return out;
 }
 
 // ── Parto & cesárea: o registro do nascimento ────────────────

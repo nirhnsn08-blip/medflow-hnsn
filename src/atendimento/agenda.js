@@ -24,6 +24,7 @@ import { contaComo } from "./catalogo.js";
 // Só o aviso de óbito: o texto é regra clínica e não pode divergir entre
 // as telas. `identidade.js` não conhece este arquivo — sem ciclo.
 import { avisoDeObito } from "../pacientes/identidade.js";
+import { recusaPorUnificacao } from "../pacientes/unificacao.js";
 import { todayStr } from "../util/datas.js";
 
 /** Os três donos de vaga, e o que cada um implica. */
@@ -598,6 +599,10 @@ export function podeMarcar({
   // o carimbo é derivado do desfecho e volta no próximo toque no episódio.
   const obito = avisoDeObito(paciente);
   if (obito) erros.push(obito.agenda);
+  // Consulta marcada no número aposentado divide o histórico: o retorno, a
+  // produção e a confirmação da véspera iriam para a ficha errada.
+  const unificada = recusaPorUnificacao(paciente);
+  if (unificada) erros.push(unificada);
 
   if (!cfg.marcavelAqui) {
     erros.push(`Vaga de ${cfg.label.toLowerCase()} não é marcada aqui. ${cfg.quem} O sistema reserva a vaga; quem a ocupa é definido lá.`);
