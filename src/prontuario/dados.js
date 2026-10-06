@@ -22,6 +22,7 @@
 
 import { assinaturaDe } from "../clinico/papeis.js";
 import { listaLida } from "../util/leitura.js";
+import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 
 /**
  * Autoria congelada dentro do registro: nome e conselho de quem assinou,
@@ -54,7 +55,9 @@ export async function carregarProntuario(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
   const [episodios, alergias, condicoes, pacientes] = await Promise.all([
     sb(`pep_episodios?prontuario=eq.${p}&select=*&order=admissao_em.desc`).catch(() => []),
-    sb(`pep_alergias?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    // Pela PESSOA, não pelo número: a alergia registrada antes de unificar
+    // o prontuário não aparecia aqui — nem na prescrição, nem na pulseira.
+    carregarAlergiasDoPaciente(sb, prontuario),
     sb(`pep_condicoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
     // A data de nascimento alimenta as regras de criança e de idoso do motor
     // de alertas. Sem ela o contexto ia com `idade: null` fixo, e nenhuma das

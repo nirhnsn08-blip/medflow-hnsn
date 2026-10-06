@@ -16,7 +16,7 @@ import { avisoDeCatalogo, filtrarProcedimentos, opcoesDeProcedimento, viaDaEscol
 import { avisoDeConta, convenioSugerido, geraConta, valoresIniciais } from "../atendimento/faturavel.js";
 import { PS_VIAS_TRANSF } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
-import { carregarAlergias } from "../clinico/alergias-dados.js";
+import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 import { AbaPrescricao } from "./AbaPrescricao.jsx";
 import { AbaChecagem } from "./AbaChecagem.jsx";
 import { AbaExames } from "./AbaExames.jsx";
@@ -658,7 +658,8 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const carregarPrescricao = () => { loadPsPrescricaoItens(sb, paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(sb, paciente.id).then(setSaidas); loadPsAdministracoes(sb, paciente.id).then(setAdms); };
   useEffect(() => { carregarRegistros(); }, []);
   useEffect(() => { loadFarmMedicamentos(sb).then(setCatalogo); loadFarmLotes(sb).then(setPresLotes); loadFarmInteracoes(sb).then(setInteracoes); loadFarmIncompatY(sb).then(setIncompatY); carregarPrescricao(); }, []);
-  useEffect(() => { carregarAlergias(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
+  // Pela PESSOA: segue a unificação de prontuário (ver clinico/pessoa.js).
+  useEffect(() => { carregarAlergiasDoPaciente(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
   // Trocar de aba DESLIGA o ditado — voz sendo transcrita para uma aba que
   // não está na tela é texto entrando sem ninguém ver.
   //

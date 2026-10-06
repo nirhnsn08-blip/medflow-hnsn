@@ -15,6 +15,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { listaLida } from "../util/leitura.js";
+import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 
 export async function loadPaciente360(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
@@ -28,9 +29,11 @@ export async function loadPaciente360(sb, prontuario) {
     // created_at, e scih_casos é uma delas.
     sb(`scih_casos?prontuario=eq.${p}&select=*&order=created_at.desc`).catch(() => []),
     sb(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`),
-    // Alergia é do PACIENTE (pep_alergias), não do atendimento. `.catch`
-    // preserva o app em bancos onde a migração do PEP ainda não rodou.
-    sb(`pep_alergias?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    // Alergia é da PESSOA, não do número nem do atendimento: segue a
+    // unificação de prontuário (ver clinico/pessoa.js). Era a quarta cópia
+    // desta leitura, e a última que ainda lia por um número só — a alergia
+    // registrada na ficha antiga não aparecia no Paciente 360 da que vale.
+    carregarAlergiasDoPaciente(sb, prontuario),
   ]);
   const psRows = listaLida(ps);
   let registrosPS = [];
