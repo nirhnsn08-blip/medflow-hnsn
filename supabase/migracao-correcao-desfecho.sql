@@ -155,6 +155,23 @@ create trigger trg_at_corrige_desfecho
 -- ───────────────────────────────────────────────────────────
 alter table public.at_desfecho_correcoes enable row level security;
 
+-- ⚠️ LIMPEZA DE UMA VERSÃO ANTERIOR DESTE PRÓPRIO ARQUIVO.
+--
+-- A primeira versão rodada no demo (06/10/2026) criou estas políticas com
+-- nomes abreviados. Depois elas foram renomeadas para a convenção do
+-- `gerar-rls.mjs` (ver o comentário da restritiva, abaixo). Sem estes drops,
+-- o banco que recebeu a versão antiga fica com SEIS políticas em vez de três:
+-- as novas somam-se às velhas, e a tabela passa a ter duas restritivas iguais
+-- e duas permissivas iguais. Não muda o resultado do acesso — mas quem for
+-- auditar amanhã perde tempo descobrindo isso, e é o tipo de sujeira que
+-- separa os dois bancos em silêncio.
+--
+-- No banco que nunca viu a versão antiga (o principal), os três drops são
+-- no-ops. É por isso que o MESMO arquivo serve nos dois.
+drop policy if exists at_desf_corr_leitura on public.at_desfecho_correcoes;
+drop policy if exists at_desf_corr_ins     on public.at_desfecho_correcoes;
+drop policy if exists at_desf_corr_mod_ins on public.at_desfecho_correcoes;
+
 drop policy if exists at_desfecho_correcoes_leitura on public.at_desfecho_correcoes;
 create policy at_desfecho_correcoes_leitura on public.at_desfecho_correcoes
   for select to authenticated
@@ -205,6 +222,13 @@ select item, case when ok then '✅' else '❌' end as situacao from (
   select 'política ' || p,
          exists (select 1 from pg_policies where tablename = 'at_desfecho_correcoes' and policyname = p)
     from unnest(array['at_desfecho_correcoes_leitura','at_desfecho_correcoes_ins','at_desfecho_correcoes_mod_ins']) p
+  union all
+  select 'política antiga ' || p || ' removida',
+         not exists (select 1 from pg_policies where tablename = 'at_desfecho_correcoes' and policyname = p)
+    from unnest(array['at_desf_corr_leitura','at_desf_corr_ins','at_desf_corr_mod_ins']) p
+  union all
+  select 'exatamente 3 políticas na tabela',
+         (select count(*) from pg_policies where tablename = 'at_desfecho_correcoes') = 3
   union all
   select 'trilha é imutável (sem update/delete)',
          not exists (select 1 from pg_policies
