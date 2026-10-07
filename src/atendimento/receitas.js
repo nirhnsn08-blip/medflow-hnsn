@@ -27,6 +27,7 @@
 
 import { totalDaConta } from "./faturamento.js";
 import { naoDeuParaLer, listaLida } from "../util/leitura.js";
+import { diaLocal } from "../util/datas.js";
 
 /** Reais (numeric do banco) → centavos. Lixo vira 0, nunca NaN. */
 const cent = v => {
@@ -107,9 +108,13 @@ export function conciliarConta({ conta, itens = [], glosas = [], repasses = [], 
   };
 }
 
+// Pelo relógio local: `faturada_em` é carimbo, e fatiá-lo envelhecia em um
+// dia toda conta transmitida depois das 21h — o que entra na régua de
+// atraso do recebível.
 function diasDesde(data, hoje) {
-  if (!data) return null;
-  const d = new Date(`${String(data).slice(0, 10)}T00:00:00`);
+  const civil = diaLocal(data);
+  if (!civil) return null;
+  const d = new Date(`${civil}T00:00:00`);
   if (Number.isNaN(d.getTime())) return null;
   const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
   return Math.round((base - d) / 86400000);

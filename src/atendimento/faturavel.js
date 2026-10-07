@@ -33,6 +33,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { EVASAO, ehEvasao } from "../clinico/desfechos.js";
+import { diaLocal } from "../util/datas.js";
 
 const texto = v => String(v ?? "").trim();
 
@@ -157,6 +158,6 @@ export function convenioSugerido(historico = []) {
   if (!comConvenio.length) return null;
   return {
     convenio_id: texto(comConvenio[0].convenio_id),
-    de: texto(comConvenio[0].chegada_em).slice(0, 10),
+    de: diaLocal(comConvenio[0].chegada_em),
   };
 }

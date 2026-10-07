@@ -41,12 +41,22 @@ export const todayStr = (d = new Date()) =>
  * Só-dia ("2026-07-24") passa intacto: já é civil. Carimbo é convertido
  * pelo relógio local. Ilegível vira `null` — quem chama decide o que fazer,
  * em vez de receber uma data inventada.
+ *
+ * ⚠️ SÓ FORMA ISO, e isto é regra, não zelo. `new Date()` aceita formato
+ * solto e o interpreta na ordem AMERICANA: "04/03/1957" — 4 de março, para
+ * quem digitou — vira 3 de abril e sai impresso como "03/04/1957", sem erro
+ * nenhum pelo caminho. Um impresso do hospital já estava defendido disso por
+ * teste próprio; a porta fica fechada AQUI, para não precisar ser fechada de
+ * novo em cada chamador.
  */
 export function diaLocal(valor) {
   if (valor == null || valor === "") return null;
   if (valor instanceof Date) return isNaN(valor.getTime()) ? null : todayStr(valor);
-  const s = String(valor);
+  const s = String(valor).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Carimbo ISO ("2026-07-24T22:10:00Z" ou com espaço, como alguns registros
+  // antigos). Qualquer outra forma é recusada em vez de adivinhada.
+  if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) return null;
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : todayStr(d);
 }

@@ -25,6 +25,7 @@ import { ORIGENS_MARCACAO, STATUS_AGENDAMENTO } from "./agenda.js";
 // Só o carimbo de data e hora — o mesmo formato dos impressos, para a
 // pesquisa e o papel não mostrarem o mesmo instante de dois jeitos.
 import { dataHoraBR } from "./impressos.js";
+import { fmtDataBR as dataBR } from "../util/datas.js";
 import { atendimentoAberto } from "./ciclo.js";
 import {
   buscarPacientes, historicoDoPaciente, agendamentosFuturos,
@@ -53,7 +54,9 @@ const menos30 = () => {
   const d = new Date(); d.setDate(d.getDate() - 30);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-const dataBR = s => (s ? new Date(String(s).slice(0, 10) + "T00:00:00").toLocaleDateString("pt-BR") : "—");
+// `fmtDataBR` em vez de uma cópia local: a daqui fatiava o carimbo e a
+// chegada das 22h aparecia no dia seguinte — nesta MESMA lista em que se
+// procura o atendimento meses depois porque a conta não bateu.
 
 /** Uma linha do histórico. Sem dado clínico, por desenho. */
 function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir, sb, currentUser, canEdit, onCorrigido }) {
