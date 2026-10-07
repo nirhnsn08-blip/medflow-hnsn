@@ -30,6 +30,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { conferirFicha, TIPOS_CONVENIO, tipoDoConvenio, conferirCbo } from "./ficha.js";
+import { diaLocal } from "../util/datas.js";
 import { GRAVIDADES } from "./sigtap.js";
 
 // ── DINHEIRO ────────────────────────────────────────────────
@@ -82,14 +83,21 @@ export function reais(cent) {
 /**
  * O mês de referência da conta: "2026-07".
  *
- * Sai da string ISO por fatia, sem passar por `new Date`. `new Date("2026-07-01")`
- * é meia-noite UTC e no Brasil volta para junho — a conta do dia 1º cairia
+ * Só-dia continua sem passar por `new Date`: `new Date("2026-07-01")` é
+ * meia-noite UTC e no Brasil volta para junho — a conta do dia 1º cairia
  * na competência do mês anterior, que é justamente a que já foi fechada e
- * transmitida.
+ * transmitida. `diaLocal` preserva isso (só-dia passa intacto).
+ *
+ * 🔴 Mas a fatia crua errava o CARIMBO, e é dele que a competência nasce
+ * na prática: `competenciaDe(atendimento.chegada_em)`. Quem chega às 22h
+ * do dia 30 tem `chegada_em` em UTC já no dia 1º do mês SEGUINTE — e a
+ * conta ia para uma competência que ainda não existe, enquanto o mês que
+ * de fato atendeu fechava sem ela. É o mesmo erro do dia 1º, na outra
+ * ponta do mês.
  */
 export function competenciaDe(data) {
-  const s = String(data ?? "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(0, 7) : null;
+  const s = diaLocal(data);
+  return s ? s.slice(0, 7) : null;
 }
 
 /** "2026-07" → "Jul/2026". */

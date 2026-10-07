@@ -88,10 +88,27 @@ describe("dinheiro", () => {
 });
 
 describe("competência", () => {
-  it("não passa por new Date — o dia 1º fica no próprio mês", () => {
+  it("só-dia não passa por new Date — o dia 1º fica no próprio mês", () => {
     expect(competenciaDe("2026-07-01")).toBe("2026-07");
-    expect(competenciaDe("2026-07-01T02:00:00Z")).toBe("2026-07");
     expect(competenciaDe("2026-01-01")).toBe("2026-01");
+  });
+
+  // ⚠️ ESTA ASSERÇÃO FOI INVERTIDA DE PROPÓSITO.
+  //
+  // Antes este teste exigia `competenciaDe("2026-07-01T02:00:00Z") === "2026-07"`,
+  // tratando o texto do carimbo como se já fosse local. Mas 02:00Z do dia 1º
+  // é 23:00 do dia 30 em Brasília: o paciente foi atendido em JUNHO. A conta
+  // ia para uma competência que ainda não começou, e o mês que de fato
+  // atendeu fechava e transmitia sem ela.
+  //
+  // Só-dia e carimbo são coisas diferentes: um já é dia civil, o outro é um
+  // instante que precisa do relógio do hospital para virar dia.
+  it("🔴 carimbo vai pelo relógio do hospital, não pela fatia do texto", () => {
+    // 22:00 de 30/06 em Brasília → gravado como 01/07 01:00Z. É junho.
+    expect(competenciaDe("2026-07-01T01:00:00Z")).toBe("2026-06");
+    expect(competenciaDe("2026-07-01T02:00:00Z")).toBe("2026-06");
+    // 10:00 de 01/07 → 13:00Z do mesmo dia. Segue julho.
+    expect(competenciaDe("2026-07-01T13:00:00Z")).toBe("2026-07");
   });
 
   it("lixo devolve null, não uma competência inventada", () => {

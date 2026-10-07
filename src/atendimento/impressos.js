@@ -33,6 +33,7 @@ import { aguardandoIdentificacao } from "./recepcao.js";
 import { DOMINIOS } from "./ficha.js";
 import { STATUS_ATENDIMENTO, atendimentoAberto } from "./ciclo.js";
 import { PAPEIS, VINCULO_POR_CHAVE } from "./responsavel.js";
+import { diaLocal } from "../util/datas.js";
 
 /** O piso do PNSP. Menos que isso não é identificação, é palpite. */
 export const MINIMO_IDENTIFICADORES = 2;
@@ -62,8 +63,11 @@ export const NAO_IDENTIFICAM = ["leito", "quarto", "cama", "box", "sala", "poltr
  * alguns registros.
  */
 export function dataBR(iso) {
-  const s = String(iso ?? "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  // 🔴 Pelo relógio do hospital. Com a fatia crua, o comprovante de
+  // comparecimento das 22h saía com a data de AMANHÃ ao lado da hora de
+  // entrada das 22h: um papel que se contradiz, assinado pelo hospital.
+  const s = diaLocal(iso);
+  if (!s) return "";
   const [a, m, d] = s.split("-");
   return `${d}/${m}/${a}`;
 }
@@ -393,7 +397,7 @@ export function declaracaoDeComparecimento({
       nascimento: dataBR(paciente?.data_nascimento),
     },
     periodo: {
-      data: dataBR(String(entrada ?? "").slice(0, 10)),
+      data: dataBR(entrada),
       entrada: horaBR(entrada),
       saida: horaBR(saida),
       // A tela imprime esta ressalva junto da hora final. Sem ela, a folha
