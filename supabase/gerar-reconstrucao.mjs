@@ -267,6 +267,29 @@ const ORDEM = [
   // farmacêutica, devolução do setor e controlados por lista da Portaria 344.
   // Precisa de pep_* (fase 1), de farm_intervencoes e do estorno — todos acima.
   "migracao-farmacia-hospital.sql",
+  // ⚠️ AS TRÊS ABAIXO FICARAM FORA DA ORDEM NA ÉPOCA E SÓ A TRAVA PEGOU, em
+  // 07/10/2026. Enquanto estiveram fora, `reconstruir-banco.sql` não as
+  // continha: um HOSPITAL NOVO nasceria sem a descrição certa do perfil
+  // Auxiliar de Farmácia e sem a trilha de correção de desfecho inteira —
+  // tabela, gatilho e políticas. Nenhum teste pegava, porque a trava só
+  // dispara quando o gerador roda.
+  //
+  // Acrescentar migração em ORDEM é parte de criar a migração, não um passo
+  // posterior. Ver o comentário da própria trava, logo abaixo da lista.
+
+  // Descrição do perfil Auxiliar de Farmácia (PR #255): o texto gravado
+  // ainda dizia "Não acessa prontuário" depois de ele passar a ler
+  // prescrição e alergias. Só UPDATE de texto; depende de perfis_acesso.
+  "migracao-descricao-aux-farmacia.sql",
+  // Trilha de correção de desfecho (PR #261): tabela append-only
+  // `at_desfecho_correcoes` + gatilho que aplica a correção no mesmo INSERT.
+  // TEM de vir antes do rls-leitura, que já cita esta tabela nas duas listas
+  // de políticas — fora de ordem, o banco novo morreria ali.
+  "migracao-correcao-desfecho.sql",
+  // O `for update` que faltava no gatilho acima (PR da corrida, 07/10):
+  // sem ele, duas correções simultâneas gravavam as duas trilhas e só uma
+  // valia. Substitui só a função, então vem logo depois dela.
+  "migracao-correcao-desfecho-corrida.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
