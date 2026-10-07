@@ -49,6 +49,7 @@ import {
 } from "./sigtap.js";
 import { precoDe, SITUACAO } from "./precos.js";
 import { geraConta } from "./faturavel.js";
+import { diaLocal } from "../util/datas.js";
 
 // ── item proposto (o formato do camposDoItem + a origem para a tela) ──
 
@@ -603,10 +604,18 @@ function montarSig(row) {
   });
 }
 
-/** ISO/timestamp → "AAAA-MM-DD" (só a data), ou `null`. */
+/**
+ * ISO/timestamp → "AAAA-MM-DD" (só a data), ou `null`.
+ *
+ * 🔴 Pelo RELÓGIO DO HOSPITAL, não por fatia de texto. Esta função
+ * alimenta o `data_execucao` de três itens — procedimento principal
+ * (`chegada_em`), diária (`alta_em`) e medicamento (`administrado_em`) —, e
+ * `data_execucao` é coluna `date`: o dia errado grava permanente. A
+ * dipirona das 22h ficava com execução no dia seguinte, que pode ser
+ * DEPOIS DA ALTA — e procedimento fora do período da internação é glosa.
+ */
 function soData(v) {
-  const s = String(v ?? "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  return diaLocal(v);
 }
 
 /** ISO → "DD/MM/AAAA" para a legenda de origem. */

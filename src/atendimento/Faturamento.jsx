@@ -32,6 +32,7 @@ import { glosaDaContaSalva, escolherInternacao, janelaInternacao } from "./monta
 import { GRAVIDADES, permanenciaEmDias } from "./sigtap.js";
 import { dataBR } from "./impressos.js";
 import { listaLida } from "../util/leitura.js";
+import { diaLocal } from "../util/datas.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -187,7 +188,9 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
       // código trocado que o processamento rejeita.
       ...(p ? { codigo: p.codigo, descricao: p.nome, valor_unitario: p.valor_sus ?? "" } : {}),
       executante: ctx?.atendimento?.medico || "",
-      data_execucao: String(ctx?.atendimento?.chegada_em ?? "").slice(0, 10),
+      // Pelo relógio do hospital: a fatia do carimbo punha a execução no
+      // dia seguinte para quem chegou depois das 21h.
+      data_execucao: diaLocal(ctx?.atendimento?.chegada_em) || "",
     });
   }
 

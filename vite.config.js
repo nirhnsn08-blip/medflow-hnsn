@@ -16,6 +16,25 @@ import react from '@vitejs/plugin-react'
 // banco está em uso — a porta é o primeiro aviso, não o único.
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  // ── O FUSO DA SUÍTE ──────────────────────────────────────
+  //
+  // 🔴 Sem isto os testes de fuso NÃO VALEM NADA NO CI.
+  //
+  // O bug mais caro deste projeto é data civil derivada de UTC: no Brasil
+  // (UTC−3), das 21h à meia-noite o `toISOString()` já aponta para AMANHÃ.
+  // Existe uma dúzia de testes para isso — e todos eles passavam com o
+  // defeito reintroduzido, porque o `ubuntu-latest` do CI roda em UTC e os
+  // testes constroem as datas com o construtor LOCAL: "22:00 local" em UTC
+  // é 22:00 UTC, que não cruza a meia-noite. O teste concordava consigo
+  // mesmo. Medido: `diaLocal` revertido para UTC passa 29/29 em TZ=UTC e
+  // reprova em TZ=America/Sao_Paulo.
+  //
+  // A proteção existia só porque quem desenvolve está em UTC−3. Fixar o
+  // fuso no do hospital é o que transfere essa proteção para o CI — e, de
+  // tabela, torna a suíte determinística em qualquer máquina.
+  test: {
+    env: { TZ: "America/Sao_Paulo" },
+  },
   server: {
     port: mode === 'demo' ? 5174 : 5173,
     strictPort: true,
