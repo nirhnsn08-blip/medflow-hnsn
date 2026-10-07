@@ -34,6 +34,7 @@ import { addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loa
 import { useEffect, useRef, useState } from "react";
 import { psContaCenso, saveFaixaObstetrica, saveFaixaPediatrica } from "./apoio.js";
 import { pendentesDeChecagem } from "./prescricao.js";
+import { listaLida } from "../util/leitura.js";
 
 // Biblioteca de protocolos do PS — abrir e cadastrar
 export function PsProtocolosModal({ sb, currentUser, canEdit, isMaster, onClose }) {
@@ -436,7 +437,7 @@ export function PsDesfechoModal({ sb, paciente, setores, leitos = [], catalogos 
     sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(paciente.prontuario)}` +
             `&convenio_id=not.is.null&id=neq.${paciente.id}` +
             `&select=convenio_id,chegada_em&order=chegada_em.desc&limit=5`)
-      .then(r => setSugestao(convenioSugerido(Array.isArray(r) ? r : [])));
+      .then(r => setSugestao(convenioSugerido(listaLida(r))));
   }, [paciente.id]);
 
   // Só depois de escolher o desfecho — antes disso não se sabe sequer se

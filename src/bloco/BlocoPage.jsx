@@ -14,6 +14,7 @@ import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS } from "./catalogo.js";
 import { addCcCirurgiaRemote, deleteCcSalaRemote, loadCcCirurgias, loadCcSalas, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import { useEffect, useState } from "react";
+import { listaLida } from "../util/leitura.js";
 
 // ── Página Bloco Cirúrgico ──
 export default function BlocoPage({ sb, currentUser, canEdit }) {
@@ -331,7 +332,10 @@ function BlocoIndicadores({ sb, salasAtivas }) {
   useEffect(() => {
     const ini = `${ano}-${String(mes + 1).padStart(2, "0")}-01`;
     const fim = `${ano}-${String(mes + 1).padStart(2, "0")}-${String(new Date(ano, mes + 1, 0).getDate()).padStart(2, "0")}`;
-    if (sb) sb(`cc_cirurgias?data=gte.${ini}&data=lte.${fim}&select=*`).then(r => setRows(Array.isArray(r) ? r : []));
+    // A marca de falha sobrevive até a tela; quem desenha o painel decide
+    // o que dizer. Antes isto virava `[]` e o mês sem leitura ficava
+    // indistinguível do mês sem cirurgia.
+    if (sb) sb(`cc_cirurgias?data=gte.${ini}&data=lte.${fim}&select=*`).then(r => setRows(listaLida(r)));
     setDiasMes(diasUteisNoMes(ano, mes));
   }, [mes, ano]);
 

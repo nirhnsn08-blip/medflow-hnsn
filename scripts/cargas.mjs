@@ -23,6 +23,24 @@ import path from "node:path";
 
 const COLAPSO = /Array\.isArray\(([a-zA-Z_$][\w$]*)\)\s*\?\s*\1\s*:\s*\[\]/;
 
+// 🔴 O COLAPSO EM ZERO — a mesma mentira com outra cara.
+//
+// `Array.isArray(r) ? r.length : 0` não devolve lista, devolve CONTAGEM —
+// e por isso escapava do regex acima, que exige `: []`. Mas o estrago é
+// idêntico: a leitura falhou e a tela recebe um número que parece medido.
+//
+// Os dois casos vivos quando isto foi escrito (07/10/2026) mostram o
+// tamanho do problema:
+//   • `contarRegistrosClinicos` — é o número que decide SE DÁ PARA CANCELAR
+//     um atendimento. Falha de leitura virava "0 registros clínicos", e o
+//     sistema liberava cancelar um episódio com prescrição e administração.
+//   • os óbitos pós-internação do PS — falha virava `0`, e o cartão saía
+//     VERDE escrito "nenhum hoje".
+//
+// Em código puro `x.length : 0` é guarda legítima de parâmetro, e continua
+// sendo: isto só é acusado quando a ORIGEM é rede.
+const COLAPSO_ZERO = /Array\.isArray\(([a-zA-Z_$][\w$]*)\)\s*\?\s*\1\.length\s*:\s*0/;
+
 /** Todos os fontes de src/, sem os testes. */
 export function fontes(raiz = "src") {
   const out = [];
@@ -40,9 +58,48 @@ export function fontes(raiz = "src") {
  * De onde veio a variável? Olha para trás no arquivo.
  * Devolve "rede" | "local" | "param" | "?".
  */
-function origemDe(L, i, v) {
-  for (let k = i; k > Math.max(0, i - 30); k--) {
+function origemDe(L, i, v, salto = 0) {
+  // `k >= ...` e não `k > ...`: com o `>` a PRIMEIRA linha do arquivo nunca
+  // era examinada, então uma assinatura de função na linha 1 ficava invisível
+  // e a origem caía em "?". Em código real a linha 1 é cabeçalho de
+  // comentário, por isso o off-by-one nunca apareceu — só foi notado em
+  // 07/10/2026, por um teste que escreve o fixture sem cabeçalho.
+  for (let k = i; k >= Math.max(0, i - 30); k--) {
     const linha = L[k];
+
+    // Callback de `.reduce`/`.map`/`.forEach`/`.flatMap`: o item herda a
+    // origem da COLEÇÃO. `rs.reduce((s, r) => ... Array.isArray(r) ...)`
+    // com `const rs = await Promise.all(...)` é rede, e sem este salto o
+    // censo pararia em "param" no próprio callback.
+    // Um salto só: cadeia mais funda que isso vira adivinhação.
+    if (salto < 1) {
+      const it = new RegExp(
+        "([a-zA-Z_$][\\w$]*)\\s*\\.(?:reduce|map|forEach|flatMap|filter|some|every)\\(" +
+        "\\s*(?:async\\s*)?\\(?[^)]*\\b" + v + "\\b[^)]*\\)?\\s*=>").exec(linha);
+      if (it && it[1] !== v) {
+        const daColecao = origemDe(L, k, it[1], salto + 1);
+        if (daColecao !== "?") return daColecao;
+      }
+    }
+
+    // 🔴 RESULTADO DE PROMESSA É REDE — e esta é a linha que faltava.
+    //
+    // `sb(...).then(r => Array.isArray(r) ? r : [])` colapsa a falha
+    // exatamente como `const r = await sb(...)` colapsaria. Mas o `r` é
+    // parâmetro de uma arrow, então o censo caía na regra de PARAM lá
+    // embaixo e devolvia "guarda legítima" — e `cargas.test.js`, que só
+    // reprova `origem === "rede"`, passava verde por cima do defeito.
+    //
+    // É o mesmo furo do ATALHO documentado no fim deste arquivo, por outra
+    // porta: a forma esconde a origem. Achado em 07/10/2026 na revisão do
+    // Bloco Cirúrgico, e havia DOIS casos vivos — o painel do bloco e, pior,
+    // os óbitos pós-internação do PS, que com a leitura falhando pintavam
+    // um cartão VERDE escrito "nenhum hoje".
+    //
+    // Vale para qualquer `.then`, não só o de `sb` direto: um
+    // `loadCcSalas(sb).then(r => Array.isArray(r) ? r : [])` destrói a marca
+    // que o `listaLida` de dentro do carregador acabou de pôr.
+    if (new RegExp("\\.then\\(\\s*(?:async\\s*)?\\(?\\s*" + v + "\\b").test(linha)) return "rede";
 
     // const/let X = ...
     const atrib = new RegExp("(?:const|let|var)\\s+" + v + "\\s*=(.*)").exec(linha);
@@ -88,7 +145,17 @@ export function censo(raiz = "src") {
       // dizer que acabou quando não acabou.
       const re = new RegExp(COLAPSO.source, "g");
       for (let m; (m = re.exec(l)); ) {
-        achados.push({ arquivo: a, linha: i + 1, v: m[1], origem: origemDe(L, i, m[1]), texto: l.trim() });
+        achados.push({ arquivo: a, linha: i + 1, v: m[1], forma: "[]", origem: origemDe(L, i, m[1]), texto: l.trim() });
+      }
+      // A forma que colapsa em ZERO. Em código puro é guarda legítima de
+      // parâmetro, então só entra no censo quando a origem é rede — por
+      // isso ela é varrida aqui e não junto com a de cima.
+      const reZero = new RegExp(COLAPSO_ZERO.source, "g");
+      for (let m; (m = reZero.exec(l)); ) {
+        const origem = origemDe(L, i, m[1]);
+        if (origem === "rede") {
+          achados.push({ arquivo: a, linha: i + 1, v: m[1], forma: "0", origem, texto: l.trim() });
+        }
       }
     });
   }

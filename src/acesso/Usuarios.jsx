@@ -27,6 +27,7 @@ import { NIVEIS_EXCECAO, excecoesAplicadas, modulosExcecionaveis, permissoesEfet
 import { cbosDoCatalogo, formatarCbo, validarCbo } from "./cbo.js";
 import { CATEGORIAS as CATEGORIAS_CLINICAS } from "../clinico/papeis.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { listaLida } from "../util/leitura.js";
 
 /**
  * 🔴 AS CINCO CHAMADAS DESTA TELA IAM SEM O `sb`.
@@ -73,7 +74,7 @@ function AdminUsuarios({ sb, adminUsuarios, currentUser }) {
   const [cbosSugeridos, setCbosSugeridos] = useState([]);
   useEffect(() => {
     sb("at_procedimentos?select=cbos_compativeis&ativo=eq.true")
-      .then(r => setCbosSugeridos(cbosDoCatalogo(Array.isArray(r) ? r : [])))
+      .then(r => setCbosSugeridos(cbosDoCatalogo(listaLida(r))))
       .catch(() => setCbosSugeridos([]));
   }, []);
   // Exceções de acesso de uma pessoa — a linha expansível espelha a de
@@ -147,7 +148,7 @@ function AdminUsuarios({ sb, adminUsuarios, currentUser }) {
 
   useEffect(() => {
     sb("perfis_acesso?select=*&ativo=eq.true&order=nome")
-      .then(r => setPerfisDisp(Array.isArray(r) ? r : []))
+      .then(r => setPerfisDisp(listaLida(r)))
       .catch(() => setPerfisDisp([]));
   }, []);
 
