@@ -470,7 +470,18 @@ export async function contarRegistrosClinicos(sb, atendimentoId) {
     `ps_administracoes?atendimento_id=eq.${atendimentoId}&select=id`,
   ];
   const rs = await Promise.all(alvos.map(a => sb(a).catch(() => null)));
-  return rs.reduce((s, r) => s + (Array.isArray(r) ? r.length : 0), 0);
+  // 🔴 `null` = NÃO SEI, e é diferente de zero.
+  //
+  // Antes isto somava `Array.isArray(r) ? r.length : 0`: as três leituras
+  // podiam falhar e o resultado era `0`, que `validarCancelamento` lê como
+  // "não há registro clínico" e LIBERA o cancelamento. O comentário acima
+  // diz o contrário — "se o atendimento já tem evolução ou prescrição, ele
+  // aconteceu" —, e era justamente nessa hora que a regra ficava cega.
+  //
+  // Basta UMA das três falhar: contar as outras duas daria um número menor
+  // que o real, e número menor aqui é permissão indevida.
+  if (rs.some(r => !Array.isArray(r))) return null;
+  return rs.reduce((s, r) => s + r.length, 0);
 }
 
 /**

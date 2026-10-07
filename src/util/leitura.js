@@ -54,6 +54,28 @@ export function naoDeuParaLer(x) {
 }
 
 /**
+ * A CONTAGEM de uma leitura. `null` quando não deu para ler.
+ *
+ * 🔴 Irmã do `listaLida`, e nasceu de um furo real (07/10/2026): a catraca
+ * `src/cargas.test.js` caçava `Array.isArray(x) ? x : []` e passava batido
+ * por `Array.isArray(x) ? x.length : 0`, que é a MESMA mentira com outra
+ * cara — a leitura falhou e a tela recebe um número que parece medido.
+ *
+ * Aqui `null` em vez de vazio-marcado, e de propósito: o motivo de `FALHA`
+ * ser lista (explicado no topo) é que `null.map()` derrubaria a tela. Número
+ * não tem esse risco, e o projeto já usa `null` como "não sei" em regra pura
+ * (`diasAteOPrazo`, `permanenciaEmDias`). Zero é uma AFIRMAÇÃO; `null` é a
+ * ausência dela.
+ *
+ * ⚠️ Quem recebe `null` tem de decidir o que fazer — e para contagem que
+ * libera ação ("não há registro clínico, pode cancelar") a decisão segura é
+ * RECUSAR, nunca seguir como se fosse zero.
+ */
+export function contagemLida(rows) {
+  return Array.isArray(rows) ? rows.length : null;
+}
+
+/**
  * Alguma das leituras falhou? Para tela que carrega várias listas de uma vez
  * e precisa de um aviso só.
  */

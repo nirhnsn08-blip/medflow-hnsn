@@ -305,7 +305,8 @@ function NspAssistenteView({ incidentes, acoes, rcas, faixas, medicoes, lppAdqui
 export default function NSPPage({ sb, currentUser, canEdit }) {
   const [sub, setSub] = useState("visao");
   const [incidentes, setIncidentes] = useState([]);
-  const [lppAdq, setLppAdq] = useState(0);
+  // Começa em null — "ainda não li" — e não em 0, que é afirmação.
+  const [lppAdq, setLppAdq] = useState(null);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState(nspFormVazio());
   const [filtro, setFiltro] = useState({ tipo: "", classe: "", status: "" });
@@ -464,7 +465,7 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
             <Card label="Com dano" valor={resumo.comDano} cor={resumo.comDano ? "#f43f5e" : "#34d399"} />
             <Card label="Near-miss ratio" valor={resumo.nearMissRatio ?? "—"} cor="#818cf8" sub="quase-erros ÷ com dano" />
             <Card label="Ações atrasadas" valor={planoResumo.atrasadas} cor={planoResumo.atrasadas ? "#f43f5e" : "#34d399"} sub="plano vencido — cobrar" />
-            <Card label="LPP adquirida" valor={lppAdq} cor={lppAdq ? "#fb923c" : "#34d399"} sub="automático · POA Fase 1a" />
+            <Card label="LPP adquirida" valor={lppAdq == null ? "não lido" : lppAdq} cor={lppAdq == null ? "#fbbf24" : lppAdq ? "#fb923c" : "#34d399"} sub="automático · POA Fase 1a" />
           </div>
           <div style={card}>
             <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>Por tipo</div>
@@ -702,7 +703,7 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
             Indicadores puxados automaticamente dos módulos — sem digitação. LPP adquirida vem do marcador POA (Fase 1a); quedas e erro de medicação, dos incidentes; o plano de ação, da Fase 2b.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 14 }}>
-            <Card label="LPP adquirida" valor={lppAdq} cor={lppAdq ? "#fb923c" : "#34d399"} sub="POA · Fase 1a" />
+            <Card label="LPP adquirida" valor={lppAdq == null ? "não lido" : lppAdq} cor={lppAdq == null ? "#fbbf24" : lppAdq ? "#fb923c" : "#34d399"} sub="POA · Fase 1a" />
             <Card label="Quedas" valor={ind.quedas} cor={ind.quedas ? "#f5b301" : "#34d399"} sub={`${ind.quedasComDano} com dano`} />
             <Card label="Erro de medicação" valor={ind.errosMedicacao} cor={ind.errosMedicacao ? "#f43f5e" : "#34d399"} sub={`${ind.medicacaoTotal} notificações`} />
             <Card label="Near-miss ratio" valor={resumo.nearMissRatio ?? "—"} cor="#818cf8" sub="quase-erros ÷ com dano" />
@@ -724,6 +725,20 @@ export default function NSPPage({ sb, currentUser, canEdit }) {
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 10 }}>
             As <strong>6 Metas Internacionais de Segurança do Paciente</strong> (OMS/JCI) com farol contra o alvo. As automáticas saem dos módulos; higiene das mãos, comunicação e cirurgia segura vêm da auditoria periódica. Alvos editáveis pelo ADM Master (nascem "em validação").
           </div>
+          {/* 🔴 A LPP adquirida entra na meta "quedas e lesão por pressão". Se
+              a leitura dela falhou, `metasSeguranca` cai para contar de uma
+              lista que esta tela não passa — ou seja, soma ZERO — e a meta
+              aparece melhor do que é, com farol verde. O número não some: o
+              que não pode é ele passar por apurado. */}
+          {lppAdq == null && (
+            <div role="alert" style={{ marginBottom: 10, background: "#fbbf2410", border: "1px solid #fbbf2455",
+                                       borderLeft: "3px solid #fbbf24", borderRadius: 7, padding: "8px 11px",
+                                       fontSize: 11.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+              Não consegui ler as <strong>lesões por pressão adquiridas na unidade</strong>. A meta
+              “Quedas e lesão por pressão” abaixo está <strong>incompleta</strong> — ela conta só as quedas,
+              e o farol dela pode estar mais verde do que a realidade. Recarregue antes de levar este painel para a reunião.
+            </div>
+          )}
           {medForm && (() => {
             const pv = Number(medForm.denominador) > 0 ? Math.round((Number(medForm.numerador) / Number(medForm.denominador)) * 100) : null;
             const pfx = faixasMeta.find(f => f.chave === medForm.meta);

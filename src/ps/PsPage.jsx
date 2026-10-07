@@ -43,6 +43,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import PrimeiroUso from "../ui/PrimeiroUso.jsx";
 import { useChecagens } from "../ui/usar-checagens.js";
+import { contagemLida } from "../util/leitura.js";
 
 // O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
 // números abaixo são zero por falta de configuração — não por falta de
@@ -577,7 +578,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     loadLeitosFromSupabase(sb).then(r => r && setLeitos(r));
     // óbitos ocorridos APÓS internação, hoje (fonte: leitos_saidas)
     const hoje = todayStr();
-    sb(`leitos_saidas?desfecho=eq.obito&data_alta=eq.${hoje}&select=id`).then(r => setObitosInternacao(Array.isArray(r) ? r.length : 0));
+    // 🔴 `null` quando não deu para ler, e não zero: o cartão de óbitos
+    // fica VERDE com "nenhum hoje" quando o total é zero, e pintar isso
+    // de verde sem ter conseguido perguntar é a pior forma do defeito.
+    sb(`leitos_saidas?desfecho=eq.obito&data_alta=eq.${hoje}&select=id`).then(r => setObitosInternacao(contagemLida(r)));
   }
   useEffect(() => {
     refresh();
@@ -1033,7 +1037,11 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
         const tot = salasAtivas.length;
         const pct = tot ? Math.round((ocup / tot) * 100) : 0;
         const obitoPS = finalizados.filter(p => p.desfecho === "obito").length;
-        const obitosTot = obitoPS + obitosInternacao;
+        // 🔴 `obitosInternacao === null` é "não consegui ler", não "nenhum".
+        // Somar null daria o número do PS sozinho, e o cartão diria "nenhum
+        // hoje" em VERDE por cima de uma pergunta que não foi respondida.
+        const obitosIncerto = obitosInternacao == null;
+        const obitosTot = obitosIncerto ? null : obitoPS + obitosInternacao;
         // Card compacto: rótulo pequeno, número grande, subtexto de apoio
         const Mini = ({ label, valor, cor, sub }) => (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${cor}`, borderRadius: 9, padding: "9px 11px", minWidth: 0 }}>
@@ -1047,7 +1055,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
             <Mini label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" sub="pacientes agora" />
             <Mini label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" sub="na fila" />
             <Mini label="Leitos ocupados" valor={tot ? `${ocup}/${tot}` : "—"} cor={ocup ? "#f43f5e" : "#34d399"} sub={tot ? `${pct}% de ocupação` : "sem leitos"} />
-            <Mini label="Óbitos" valor={obitosTot} cor={obitosTot ? "#f43f5e" : "#34d399"} sub={obitosTot ? `${obitoPS} no PS · ${obitosInternacao} pós-intern.` : "nenhum hoje"} />
+            <Mini label="Óbitos" valor={obitosIncerto ? `${obitoPS}+?` : obitosTot}
+              cor={obitosIncerto ? "#fbbf24" : obitosTot ? "#f43f5e" : "#34d399"}
+              sub={obitosIncerto ? `${obitoPS} no PS · pós-intern. não lido`
+                 : obitosTot ? `${obitoPS} no PS · ${obitosInternacao} pós-intern.` : "nenhum hoje"} />
             <Mini label="Tempo médio de permanência" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" sub="chegada → desfecho" />
             <Mini label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" sub="finalizados" />
           </div>
@@ -1574,7 +1585,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
                     cor: PS_DESFECHOS[k].cor,
                     n: finalizados.filter(p => p.desfecho === k).length,
                   }));
-                  const totalObitos = obitoPS + obitosInternacao;
+                  // `obitoPS + null` seria `obitoPS` — o total mentiria pela
+                  // metade sem nenhum sinal. Incerto é incerto.
+                  const incerto = obitosInternacao == null;
+                  const totalObitos = incerto ? null : obitoPS + obitosInternacao;
                   return (<>
                     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       {linhas.map(x => (
@@ -1588,7 +1602,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px dashed var(--border)", borderRadius: 7, padding: "7px 11px" }}>
                         <span style={{ width: 8, height: 8, borderRadius: 99, background: "#f43f5e", flexShrink: 0, opacity: .6 }} />
                         <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-3)" }}>Óbito após internação <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(fora do PS)</span></span>
-                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: obitosInternacao ? "#f43f5e" : "var(--text-muted)" }}>{obitosInternacao}</strong>
+                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: incerto ? "#fbbf24" : obitosInternacao ? "#f43f5e" : "var(--text-muted)" }}
+                          title={incerto ? "Não consegui ler as saídas de leito — este número não foi apurado." : undefined}>
+                          {incerto ? "não lido" : obitosInternacao}
+                        </strong>
                       </div>
                     </div>
                     {totalObitos > 0 && (
