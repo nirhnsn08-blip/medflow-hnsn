@@ -156,8 +156,44 @@ export function convenioSugerido(historico = []) {
     .filter(a => texto(a?.convenio_id))
     .sort((a, b) => texto(b?.chegada_em).localeCompare(texto(a?.chegada_em)));
   if (!comConvenio.length) return null;
+  const ultimo = comConvenio[0];
   return {
-    convenio_id: texto(comConvenio[0].convenio_id),
-    de: diaLocal(comConvenio[0].chegada_em),
+    convenio_id: texto(ultimo.convenio_id),
+    // O plano vem JUNTO porque é filho do convênio e da mesma linha: separar
+    // os dois faria a recepção aceitar a sugestão e ainda ter de escolher o
+    // plano à mão, que é metade do trabalho que a sugestão vinha poupar.
+    plano_id: texto(ultimo.plano_id),
+    de: diaLocal(ultimo.chegada_em),
+  };
+}
+
+/**
+ * A sugestão depois de conferida contra o catálogo de HOJE. `null` = não há
+ * o que sugerir.
+ *
+ * 🔴 Sugestão vem do passado; catálogo é do presente. Um convênio
+ * descredenciado some de `catalogos.convenios` mas continua gravado nos
+ * atendimentos antigos — oferecê-lo mandaria a recepção abrir a conta para
+ * quem não paga mais, e o episódio só seria recusado no processamento.
+ *
+ * O plano cai sozinho quando não pertence mais àquele convênio (renomeado,
+ * desativado, migrado): aí sugere-se o convênio e deixa-se o plano em
+ * branco, que é a parte verdadeira da sugestão.
+ */
+export function sugestaoUtil(sugestao, catalogos = {}) {
+  const id = texto(sugestao?.convenio_id);
+  if (!id) return null;
+  const convenio = (catalogos.convenios || []).find(c => texto(c?.id) === id);
+  if (!convenio) return null;
+  const planoId = texto(sugestao?.plano_id);
+  const plano = planoId
+    ? (catalogos.planos || []).find(p => texto(p?.id) === planoId && texto(p?.convenio_id) === id)
+    : null;
+  return {
+    convenio_id: id,
+    plano_id: plano ? planoId : "",
+    de: sugestao?.de ?? null,
+    nome: texto(convenio.nome) || `convênio ${id}`,
+    nomePlano: plano ? texto(plano.nome) : "",
   };
 }

@@ -23,6 +23,7 @@
 import { useState } from "react";
 import { opcoesDeProcedimento, filtrarProcedimentos, avisoDeCatalogo } from "./escolha-procedimento.js";
 import { exigenciasDoConvenio, tipoDoConvenio } from "./ficha.js";
+import { fmtDataBR } from "../util/datas.js";
 
 const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
 const lbl = { fontSize: 10.5, color: "var(--text-muted)", display: "block", marginBottom: 3 };
@@ -157,8 +158,12 @@ export function CampoProcedimento({ label = "Procedimento", catalogos = {}, fich
  * `ficha` e `onChange` são controlados por quem chama — a Recepção guarda a
  * ficha inteira do atendimento, a Agenda guarda só o pedaço da presença, e o
  * componente não precisa saber a diferença.
+ *
+ * `sugestao` (opcional, já conferida contra o catálogo por `sugestaoUtil`) é
+ * a fonte pagadora do último episódio desta pessoa. Ela aparece como um
+ * BOTÃO, nunca preenchida sozinha — ver o comentário da faixa, abaixo.
  */
-export default function FontePagadora({ catalogos = {}, ficha = {}, onChange, titulo = "Fonte pagadora" }) {
+export default function FontePagadora({ catalogos = {}, ficha = {}, onChange, titulo = "Fonte pagadora", sugestao = null }) {
   const convenios = catalogos.convenios || [];
   const convenio = convenios.find(c => String(c.id) === String(ficha.convenio_id)) || null;
   const planosDoConvenio = (catalogos.planos || []).filter(p => convenio && p.convenio_id === convenio.id);
@@ -166,9 +171,44 @@ export default function FontePagadora({ catalogos = {}, ficha = {}, onChange, ti
   const tipoConv = tipoDoConvenio(convenio);
   const set = (k, v) => onChange({ ...ficha, [k]: v });
 
+  // Some assim que a fonte pagadora tem valor: a sugestão serve para o campo
+  // VAZIO. Mantê-la ao lado de um convênio já escolhido só criaria um segundo
+  // botão disputando com a escolha de quem está no balcão.
+  const mostrarSugestao = !!sugestao && !String(ficha.convenio_id ?? "").trim();
+
   return (
     <>
       {titulo && <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginTop: 14, marginBottom: 8 }}>{titulo}</div>}
+
+      {/* ⚠️ SUGERIR NÃO É PREENCHER — e o botão é o que faz essa diferença
+          existir na tela. Convênio muda, carteira vence, e quem veio pelo SUS
+          mês passado pode chegar hoje pelo plano. Preencher sozinho faria a
+          recepção confirmar sem olhar, e a conta sairia para quem não paga —
+          erro que só aparece no fechamento da competência. Com o clique, a
+          escolha continua sendo de quem está com o paciente na frente.
+          A DATA vai junto de propósito: "de 05/10" e "de 2019" merecem
+          confiança diferente, e só quem lê sabe qual é o caso. */}
+      {mostrarSugestao && (
+        <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap",
+                      background: "var(--surface-2)", border: "1px solid var(--border-2)",
+                      borderLeft: "3px solid #22d3ee", borderRadius: 8, padding: "8px 11px", fontSize: 12.5 }}>
+          <span style={{ color: "var(--text-muted)" }}>
+            Da última vez veio por <strong style={{ color: "var(--text)" }}>{sugestao.nome}</strong>
+            {sugestao.nomePlano ? ` · ${sugestao.nomePlano}` : ""}
+            {sugestao.de ? ` (${fmtDataBR(sugestao.de)})` : ""}
+          </span>
+          <button type="button"
+            onClick={() => onChange({ ...ficha, convenio_id: sugestao.convenio_id, plano_id: sugestao.plano_id || "" })}
+            style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6,
+                     padding: "5px 12px", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+            Usar
+          </button>
+          <span style={{ color: "var(--text-3)", fontSize: 11 }}>
+            — confira a carteirinha antes.
+          </span>
+        </div>
+      )}
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 10 }}>
         <CampoCatalogo label="Convênio" lista={convenios} campoValor="id"
           valor={ficha.convenio_id}

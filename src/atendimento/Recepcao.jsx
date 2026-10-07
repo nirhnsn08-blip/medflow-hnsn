@@ -27,6 +27,7 @@ import { pendenciaDeNomeDefinitivo } from "../pacientes/recem-nascido.js";
 // Agenda passou a precisar dos dois. Duas cópias divergiriam na primeira
 // regra nova de convênio — e regra de convênio muda por contrato.
 import FontePagadora, { CampoCatalogo, CampoProcedimento } from "./FontePagadora.jsx";
+import { convenioSugerido, sugestaoUtil } from "./faturavel.js";
 import ChegadaAmbulatorial from "./ChegadaAmbulatorial.jsx";
 import { comoExibir, idadeDetalhada, rotuloSexo, formatarTelefone, avisoDeObito } from "../pacientes/identidade.js";
 import { foiUnificado, prontuarioVigente, recusaPorUnificacao } from "../pacientes/unificacao.js";
@@ -45,7 +46,7 @@ import {
   carregarCatalogos, carregarProfissionais,
   carregarAtendimento, corrigirAtendimento, cancelarAtendimento, agendamentosFuturos,
   carregarGrades, carregarBloqueios, carregarAgendaDoDia, amarrarChegadaNaAgenda,
-  contarRegistrosClinicos,
+  contarRegistrosClinicos, convenioDoHistorico,
 } from "./dados.js";
 import {
   DOMINIOS, conferirFicha,
@@ -99,6 +100,8 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
   const [buscaFalhou, setBuscaFalhou] = useState(false);
   // As consultas marcadas do paciente para HOJE, e a que está sendo recebida.
   const [agendaDeHoje, setAgendaDeHoje] = useState([]);
+  // A fonte pagadora do último episódio desta pessoa, para SUGERIR na ficha.
+  const [sugestaoConvenio, setSugestaoConvenio] = useState(null);
   const [chegando, setChegando] = useState(null);   // o agendamento em recepção
 
   const [paciente, setPaciente] = useState(null);
@@ -242,9 +245,14 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     pacienteDaConferencia.current = alvo.prontuario;
     setConferindo(true); setConferenciaFalhou(false);
     const hoje = todayStr();
-    const [futuros, abertosLidos] = await Promise.all([
+    // A terceira leitura entra NESTE Promise.all e não num efeito à parte:
+    // é a mesma pessoa, o mesmo instante, e assim ela herda a trava de
+    // corrida de `pacienteDaConferencia` abaixo — sem isso, a sugestão de
+    // um paciente poderia pousar na ficha de outro.
+    const [futuros, abertosLidos, historicoConv] = await Promise.all([
       agendamentosFuturos(sb, alvo.prontuario, { de: hoje }),
       atendimentosAbertos(sb, alvo.prontuario),
+      convenioDoHistorico(sb, alvo.prontuario),
     ]);
     // A recepcionista pode ter escolhido OUTRO paciente enquanto esperava:
     // a resposta velha não pode pousar na ficha nova.
@@ -253,6 +261,10 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setConferenciaFalhou(algumaFalhou(futuros, abertosLidos));
     setAgendaDeHoje(naoDeuParaLer(futuros) ? [] : futuros.filter(a => String(a.data).slice(0, 10) === hoje));
     setAbertos(naoDeuParaLer(abertosLidos) ? [] : abertosLidos);
+    // ⚠️ Falha aqui NÃO trava o balcão nem entra em `conferenciaFalhou`:
+    // sugestão é conveniência, e não saber o convênio anterior não muda
+    // como o paciente entra. Vira silêncio, e a recepção digita.
+    setSugestaoConvenio(convenioSugerido(historicoConv));
     setConferindo(false);
   }
 
@@ -270,7 +282,7 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
     setF({ tipo: "emergencia", origem: "Meios próprios", origemDetalhe: "", queixa: "" });
     setFicha({}); setMedicoUser(""); setCorrigindo(null);
     setImprimindo(null); setResponsaveis([]);
-    setAgendaDeHoje([]); setChegando(null);
+    setAgendaDeHoje([]); setChegando(null); setSugestaoConvenio(null);
   }
 
   /**
@@ -1046,7 +1058,8 @@ export default function Recepcao({ sb, currentUser, canEdit }) {
               )}
 
               {/* ── FONTE PAGADORA ── */}
-              <FontePagadora catalogos={cat} ficha={ficha} onChange={setFicha} />
+              <FontePagadora catalogos={cat} ficha={ficha} onChange={setFicha}
+                sugestao={sugestaoUtil(sugestaoConvenio, cat)} />
 
               {/* ── CLASSIFICAÇÃO ── */}
               <div style={{ ...rotulo, marginTop: 18, marginBottom: 8 }}>Classificação do atendimento</div>

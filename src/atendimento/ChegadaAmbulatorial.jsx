@@ -22,11 +22,13 @@
 // e centralizá-la aqui obrigaria as duas a abrir mão da que já têm.
 // ═══════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { comoExibir } from "../pacientes/identidade.js";
 import { conferirFicha, DOMINIOS } from "./ficha.js";
+import { convenioSugerido, sugestaoUtil } from "./faturavel.js";
+
 import FontePagadora, { CampoCatalogo, CampoProcedimento } from "./FontePagadora.jsx";
-import { confirmarPresenca } from "./dados.js";
+import { confirmarPresenca, convenioDoHistorico } from "./dados.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -78,6 +80,29 @@ export default function ChegadaAmbulatorial({
   const [ficha, setFicha] = useState(() => fichaDaChegada(agendamento));
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
+  const [sugestao, setSugestao] = useState(null);
+
+  // A fonte pagadora do último episódio desta pessoa.
+  //
+  // `ag_agendamentos` NÃO guarda convênio: a marcação sabe quem, quando e com
+  // quem, mas não quem paga. Por isso a ficha nasce vazia e a recepção
+  // redigita tudo a cada visita de quem vem todo mês.
+  //
+  // Fica ANTES do `return null` abaixo de propósito — hook não pode ficar
+  // depois de saída antecipada. Com prontuário vazio o efeito não pede nada.
+  useEffect(() => {
+    let vivo = true;
+    const p = paciente?.prontuario;
+    if (!sb || !p) return;
+    convenioDoHistorico(sb, p).then(r => {
+      // `convenioDoHistorico` já devolve `FALHA` (lista vazia com identidade)
+      // quando não deu para ler, e dali não sai sugestão nenhuma. Não ler
+      // vira SILÊNCIO, não vira "nunca teve convênio" — e silêncio aqui é o
+      // certo: a recepção digita, que é o que ela já fazia.
+      if (vivo) setSugestao(convenioSugerido(r));
+    });
+    return () => { vivo = false; };
+  }, [sb, paciente?.prontuario]);
 
   if (!agendamento || !paciente) return null;
 
@@ -119,7 +144,8 @@ export default function ChegadaAmbulatorial({
         </span>
       </div>
 
-      <FontePagadora catalogos={catalogos} ficha={ficha} onChange={setFicha} />
+      <FontePagadora catalogos={catalogos} ficha={ficha} onChange={setFicha}
+        sugestao={sugestaoUtil(sugestao, catalogos)} />
 
       {/* O procedimento é o que transforma a consulta em produção. Fica
           logo abaixo da fonte pagadora porque a lista depende do convênio

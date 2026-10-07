@@ -237,6 +237,31 @@ export async function atendimentosAbertos(sb, prontuario) {
 }
 
 /**
+ * A fonte pagadora dos últimos episódios desta pessoa, para SUGERIR.
+ *
+ * Existe porque `ag_agendamentos` NÃO guarda convênio: a marcação sabe quem,
+ * quando e com quem, mas não sabe quem paga. Sem isto a recepção redigita a
+ * fonte pagadora a cada visita de um paciente que vem todo mês — e a ficha
+ * que chega vazia ao faturamento só é notada no fechamento da competência.
+ *
+ * Cinco linhas porque a sugestão é o ÚLTIMO convênio, e as outras quatro só
+ * servem para o caso de a mais recente estar com o campo nulo.
+ *
+ * ⚠️ Devolve `FALHA` quando não deu para ler — "não li" não é "nunca teve
+ * convênio". Quem chama simplesmente não sugere nada, que é o silêncio certo:
+ * sugestão ausente faz digitar, sugestão errada faz faturar errado.
+ */
+export async function convenioDoHistorico(sb, prontuario, { exceto = null } = {}) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const fora = exceto == null ? "" : `&id=neq.${encodeURIComponent(exceto)}`;
+  const r = await sb(
+    `ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}&convenio_id=not.is.null${fora}` +
+    `&select=convenio_id,plano_id,chegada_em&order=chegada_em.desc&limit=5`);
+  return listaLida(r);
+}
+
+/**
  * Abre o atendimento.
  *
  * As `iniciais` são copiadas do cadastro em vez de digitadas de novo: era
