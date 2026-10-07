@@ -33,6 +33,7 @@ import {
   carregarAtendimento, carregarPaciente, carregarResponsaveis,
 } from "./dados.js";
 import Impressos from "./Impressos.jsx";
+import CorrigirDesfecho, { HistoricoDeCorrecoes } from "./CorrigirDesfecho.jsx";
 import { documentosDoEpisodio } from "./impressos.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -58,7 +59,8 @@ const menos30 = () => {
 // procura o atendimento meses depois porque a conta não bateu.
 
 /** Uma linha do histórico. Sem dado clínico, por desenho. */
-function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir }) {
+function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir, sb, currentUser, canEdit, onCorrigido }) {
+  const [corrigindo, setCorrigindo] = useState(false);
   // Se NENHUM papel sai deste episódio (cancelado), o botão nem aparece —
   // e o motivo vai no title, para quem for procurar por ele.
   const docs = documentosDoEpisodio(a);
@@ -87,6 +89,26 @@ function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir }) {
       </span>
       {/* Quem cancelou, quando e por quê. Estava gravado desde sempre e não
           era desenhado — "Cancelado" sozinho manda perguntar no corredor. */}
+      {/* 🔴 O DESFECHO ERA DEFINITIVO. Ele não entra em CAMPOS_CORRIGIVEIS
+          (é registro assistencial) e por isso um engano — até 06/10/2026 um
+          número digitado num prompt — ficava para sempre, no campo que
+          decide se a consulta vira conta. Corrigir aqui não edita: grava uma
+          correção, e o banco aplica as duas coisas juntas. */}
+      {canEdit && a.desfecho && a.status !== "cancelado" && (
+        <button onClick={() => setCorrigindo(v => !v)}
+          style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6,
+                   padding: "3px 9px", fontSize: 11, color: "var(--text-2)", cursor: "pointer" }}>
+          {corrigindo ? "Fechar" : "Corrigir desfecho"}
+        </button>
+      )}
+      <HistoricoDeCorrecoes sb={sb} atendimento={a} />
+      {corrigindo && (
+        <div style={{ flexBasis: "100%" }}>
+          <CorrigirDesfecho sb={sb} atendimento={a} currentUser={currentUser}
+            onCorrigido={novo => { setCorrigindo(false); onCorrigido?.(novo); }}
+            onFechar={() => setCorrigindo(false)} />
+        </div>
+      )}
       {a.status === "cancelado" && (a.cancelado_motivo || a.cancelado_por) && (
         <div style={{ flexBasis: "100%", fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
           {[a.cancelado_motivo, a.cancelado_por ? `por ${a.cancelado_por}` : "", dataHoraBR(a.cancelado_em)]
@@ -117,7 +139,7 @@ function LinhaEpisodio({ a, nomeEspec, nomeConvenio, onImprimir }) {
   );
 }
 
-export default function Consultas({ sb, currentUser }) {
+export default function Consultas({ sb, currentUser, canEdit = false }) {
   // Carrega o próprio catálogo, como as outras abas. É só para traduzir
   // código em nome ("ORTOPEDIA" → "Ortopedia") — se falhar, a tela mostra o
   // código cru em vez de quebrar.
@@ -227,6 +249,20 @@ export default function Consultas({ sb, currentUser }) {
     const r = await atendimentoPorNumero(sb, numero);
     if (!r) { setMsg({ tom: "erro", texto: `Não existe atendimento com o número ${numero}.` }); setAchadoNum(null); return; }
     setAchadoNum(r);
+  }
+
+  /**
+   * Depois de corrigir o desfecho, a lista na tela precisa acompanhar — ela
+   * é a MESMA que mostra "como terminou". Troca o episódio no lugar em vez
+   * de recarregar tudo: o resultado da pesquisa, o filtro e a rolagem são o
+   * trabalho de quem está procurando, e refazer a busca jogaria fora.
+   */
+  function recarregarApos(novo) {
+    if (!novo?.id) return;
+    const trocar = lista => lista.map(x => (x.id === novo.id ? { ...x, ...novo } : x));
+    setHistorico(h => trocar(h));
+    setAchadoNum(x => (x && x.id === novo.id ? { ...x, ...novo } : x));
+    setMsg({ tom: "ok", texto: `Desfecho do atendimento #${novo.id} corrigido para "${String(novo.desfecho).replace(/_/g, " ")}". A correção ficou registrada com motivo e autor.` });
   }
 
   const resumo = paciente ? resumoDoHistorico(historico) : null;
@@ -413,7 +449,8 @@ export default function Consultas({ sb, currentUser }) {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       {g.itens.map(a => (
-                        <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos} />
+                        <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos}
+                          sb={sb} currentUser={currentUser} canEdit={canEdit} onCorrigido={recarregarApos} />
                       ))}
                     </div>
                   </div>
@@ -469,7 +506,8 @@ export default function Consultas({ sb, currentUser }) {
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                   {doPeriodo.map(a => (
-                    <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos} />
+                    <LinhaEpisodio key={a.id} a={a} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos}
+                          sb={sb} currentUser={currentUser} canEdit={canEdit} onCorrigido={recarregarApos} />
                   ))}
                 </div>
               )}
@@ -494,7 +532,8 @@ export default function Consultas({ sb, currentUser }) {
           {achadoNum && (
             <div style={cartao}>
               <div style={rotulo}>Atendimento #{achadoNum.id}</div>
-              <LinhaEpisodio a={achadoNum} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos} />
+              <LinhaEpisodio a={achadoNum} nomeEspec={nomeEspec} nomeConvenio={nomeConvenio} onImprimir={abrirImpressos}
+                          sb={sb} currentUser={currentUser} canEdit={canEdit} onCorrigido={recarregarApos} />
               <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 10 }}>
                 Paciente: <strong>reg. {achadoNum.prontuario}</strong>
                 {achadoNum.agendamento_id ? ` · nasceu do agendamento #${achadoNum.agendamento_id}` : ""}

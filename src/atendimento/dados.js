@@ -1849,3 +1849,61 @@ export async function carregarDesfechosDosAtendimentos(sb, ids) {
   if (!Array.isArray(r)) return null;
   return Object.fromEntries(r.map(a => [String(a.id), a.desfecho]));
 }
+
+// ── CORREÇÃO DE DESFECHO ────────────────────────────────────
+
+/**
+ * As correções de desfecho de um atendimento, da mais recente para a mais
+ * antiga.
+ *
+ * `ps_atendimentos.desfecho` é a verdade CORRENTE; esta lista é como se
+ * chegou nela. Sem ela, "atendido" de hoje e "atendido" que nunca mudou
+ * seriam indistinguíveis — e é justamente a diferença que alguém procura
+ * quando a conta não bate.
+ */
+export async function carregarCorrecoesDeDesfecho(sb, atendimentoId) {
+  if (!sb || !atendimentoId) return [];
+  const r = await sb(`at_desfecho_correcoes?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&select=id,de,para,motivo,usuario,criado_em&order=criado_em.desc`).catch(() => null);
+  return listaLida(r);
+}
+
+/**
+ * Corrige o desfecho — gravando a correção, não editando o campo.
+ *
+ * 🔴 UMA ESCRITA SÓ. O `UPDATE` de `ps_atendimentos` é feito pelo GATILHO
+ * do banco, dentro deste mesmo INSERT (ver migracao-correcao-desfecho.sql):
+ * ou a trilha e o valor corrente mudam juntos, ou nada muda. Se a tela
+ * fizesse as duas escritas, uma poderia falhar depois da outra — e o
+ * histórico passaria a contar uma correção que não aconteceu.
+ *
+ * As quatro recusas (motivo curto, desfecho mudou debaixo da tela, conta
+ * fechada/faturada, óbito) vêm do banco com a frase pronta. A tela mostra
+ * o que o banco disse em vez de reescrever a regra aqui — regra duplicada
+ * é regra que diverge.
+ */
+export async function corrigirDesfecho(sb, { atendimentoId, de, para, motivo }, user) {
+  if (!atendimentoId) return { ok: false, motivo: "Atendimento inválido." };
+  const corpo = {
+    atendimento_id: atendimentoId,
+    de: de ?? null,
+    para: String(para ?? "").trim(),
+    motivo: String(motivo ?? "").trim(),
+    usuario: user?.name || null,
+  };
+  const r = await sb("at_desfecho_correcoes", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify(corpo),
+  }).catch(e => ({ _erro: String(e?.message || e) }));
+
+  if (Array.isArray(r) && r.length) return { ok: true, correcao: r[0] };
+  // A mensagem do banco é a que explica o que fazer; sem ela, a tela diria
+  // "não foi possível" para quatro causas diferentes.
+  const bruto = r && r._erro ? r._erro : "";
+  const msg = (bruto.match(/"message"\s*:\s*"([^"]+)"/) || [])[1] || bruto;
+  return {
+    ok: false,
+    motivo: msg
+      || "Não consegui registrar a correção, e nada foi alterado. Tente de novo; se repetir, chame a TI.",
+  };
+}

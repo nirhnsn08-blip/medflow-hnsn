@@ -213,7 +213,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 106 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 107 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -247,6 +247,7 @@ begin
       ('at_conta_itens', 'public.pode_ver_algum(''faturamento'')'),                                   -- faturamento
       ('at_contas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_convenios', 'true'),                                                                       -- todos os autenticados
+      ('at_desfecho_correcoes', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'')'),   -- ps, atendimento, ambulatorio
       ('at_dominios', 'true'),                                                                        -- todos os autenticados
       ('at_glosas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_planos', 'true'),                                                                          -- todos os autenticados
@@ -442,6 +443,7 @@ begin
       ('ag_grades', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
       ('at_conta_itens', 'public.pode_editar_algum(''faturamento'')'),                                -- faturamento
       ('at_contas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
+      ('at_desfecho_correcoes', 'public.pode_editar_algum(''ps'', ''atendimento'', ''ambulatorio'')'), -- ps, atendimento, ambulatorio
       ('at_glosas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
       ('at_precos', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
       ('at_repasses', 'public.pode_editar_algum(''faturamento'')'),                                   -- faturamento

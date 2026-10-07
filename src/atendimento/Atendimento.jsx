@@ -53,7 +53,7 @@ export default function Atendimento({ sb, currentUser, canEdit, abaInicial }) {
             de paciente sem autor é o vazamento que ninguém investiga porque
             ninguém sabe que aconteceu. Não vem `canEdit`: esta aba é de
             leitura, e imprimir não altera nada. */}
-        {aba === "consultas" && <Consultas sb={sb} currentUser={currentUser} />}
+        {aba === "consultas" && <Consultas sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {aba === "faturamento" && <Faturamento sb={sb} currentUser={currentUser} canEdit={canEdit} />}
         {aba === "tabelas"  && <Tabelas  sb={sb} currentUser={currentUser} canEdit={canEdit} />}
       </div>

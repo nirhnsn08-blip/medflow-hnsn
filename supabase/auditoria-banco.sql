@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 106 tabelas, 1735 colunas.
+-- Cobertura atual: 107 tabelas, 1742 colunas.
 -- ============================================================
 
 with
@@ -24,6 +24,7 @@ tabelas(nome, origem) as (values
   ('at_conta_itens','atendimento-faturamento'),
   ('at_contas','atendimento-faturamento'),
   ('at_convenios','atendimento-fase2'),
+  ('at_desfecho_correcoes','correcao-desfecho'),
   ('at_dominios','atendimento-fase2'),
   ('at_glosas','faturamento-glosas'),
   ('at_planos','atendimento-fase2'),
@@ -220,6 +221,13 @@ colunas(tabela, coluna, origem) as (values
   ('at_convenios','tipo','atendimento-fase2'),
   ('at_convenios','updated_at','atendimento-fase2'),
   ('at_convenios','usuario','atendimento-fase2'),
+  ('at_desfecho_correcoes','atendimento_id','correcao-desfecho'),
+  ('at_desfecho_correcoes','criado_em','correcao-desfecho'),
+  ('at_desfecho_correcoes','de','correcao-desfecho'),
+  ('at_desfecho_correcoes','id','correcao-desfecho'),
+  ('at_desfecho_correcoes','motivo','correcao-desfecho'),
+  ('at_desfecho_correcoes','para','correcao-desfecho'),
+  ('at_desfecho_correcoes','usuario','correcao-desfecho'),
   ('at_dominios','ativo','atendimento-fase2'),
   ('at_dominios','codigo','atendimento-fase2'),
   ('at_dominios','dominio','atendimento-fase2'),
