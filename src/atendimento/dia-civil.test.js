@@ -151,7 +151,9 @@ describe("🔴 a idade do recebível", () => {
 describe("🔴 de quando vem o convênio sugerido", () => {
   it("a tela mostra o dia do atendimento, não o de UTC", () => {
     const s = convenioSugerido([{ convenio_id: "7", chegada_em: "2026-10-06T01:00:00Z" }]);
-    expect(s).toEqual({ convenio_id: "7", de: "2026-10-05" });
+    // `plano_id` entrou na forma depois (a sugestão passou a levar o plano
+    // junto); o que este teste guarda é a DATA, e ela segue local.
+    expect(s).toMatchObject({ convenio_id: "7", de: "2026-10-05" });
   });
 });
 
