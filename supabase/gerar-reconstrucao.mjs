@@ -294,6 +294,9 @@ const ORDEM = [
   // cc_checklist + gatilho que acende o selo no mesmo INSERT, mais sítio e
   // lateralidade em cc_cirurgias. Antes do rls-leitura, que já cita a tabela.
   "migracao-cirurgia-segura-registro.sql",
+  // Paciente (FK), equipe com CBO carimbado, código de procedimento,
+  // caráter e autoria do cancelamento. Depende de pacientes e at_dominios.
+  "migracao-cirurgia-paciente-equipe-codigo.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

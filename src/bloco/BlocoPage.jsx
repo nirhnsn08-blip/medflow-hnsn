@@ -14,7 +14,8 @@ import { diffMin, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
 import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
-import { addCcCirurgiaRemote, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcSalas, registrarChecklist, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { CARATER, PAPEIS_EQUIPE, PAPEL_POR_CHAVE, conferirMembro, linhaDeEquipe, pendenciasDeFaturamento, resumoDaEquipe, procedimentoEscolhido } from "./equipe.js";
+import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcEquipeDoDia, loadCcSalas, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
@@ -50,6 +51,11 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const [leituraFalhou, setLeituraFalhou] = useState(false);
   // A trilha de cirurgia segura do dia, numa consulta só.
   const [trilha, setTrilha] = useState([]);
+  const [equipe, setEquipe] = useState([]);
+  const [procedimentos, setProcedimentos] = useState([]);
+  const [profissionais, setProfissionais] = useState([]);
+  // Qual cirurgia está com o painel de equipe aberto.
+  const [vendoEquipe, setVendoEquipe] = useState(null);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
@@ -64,11 +70,20 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // `await` solto, o mapa renderizava duas vezes a cada atualização (e
     // esta tela se atualiza sozinha a cada 30s); o segundo render trocava
     // os nós do DOM por baixo de quem estava clicando.
-    const t = await loadCcChecklistDoDia(sb, (Array.isArray(c) ? c : []).map(x => x.id));
+    const ids = (Array.isArray(c) ? c : []).map(x => x.id);
+    const [t, eq] = await Promise.all([loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids)]);
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
-    setSalas(s); setCirurgias(c); setTrilha(t);
+    setSalas(s); setCirurgias(c); setTrilha(t); setEquipe(eq);
   }
+  // O catálogo de procedimentos não muda com o dia do mapa: carrega uma
+  // vez, e não a cada 30s junto com o resto.
+  useEffect(() => {
+    if (!sb) return;
+    loadProcedimentosDoCatalogo(sb).then(setProcedimentos);
+    loadProfissionaisDoBloco(sb).then(setProfissionais);
+  }, [sb]);
+
   useEffect(() => {
     refresh(data);
     const onFocus = () => refresh(data);
@@ -97,7 +112,14 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     setErro(null); setAgendando(false); setTimeout(() => refresh(), 400);
   }
   async function cancelar(c, motivo) {
-    const r = await updateCcCirurgiaRemote(sb, c.id, { status: "cancelada", cancelamento_motivo: motivo });
+    // Autor e hora: cirurgia CANCELADA na véspera e SUSPENSA com o
+    // paciente já em jejum são indicadores diferentes, com donos
+    // diferentes, e eram a mesma linha. Sem autor, a reunião de bloco
+    // vira "quem cancelou isso?" sem resposta.
+    const r = await updateCcCirurgiaRemote(sb, c.id, {
+      status: "cancelada", cancelamento_motivo: motivo,
+      cancelado_em: nowISO(), cancelado_por: currentUser?.name || null,
+    });
     if (!r.ok) { setErro(r.motivo); return; }
     registrarAuditoria(sb, currentUser, "cancelar cirurgia", `${c.iniciais} · ${motivo}`, {});
     setErro(null); setCancelando(null); setTimeout(() => refresh(), 300);
@@ -141,6 +163,24 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
    * Não trava: há politrauma em choque e cesárea de emergência, e travar a
    * porta do bloco por campo inverteria a prioridade. Custa uma frase.
    */
+  async function acrescentarMembro(c, dados) {
+    const falta = conferirMembro({ ...dados, jaNaEquipe: equipe.filter(m => String(m.cirurgia_id) === String(c.id)) });
+    if (falta) return { erro: falta };
+    const r = await addMembroEquipe(sb, linhaDeEquipe({ cirurgia: c, ...dados }), currentUser);
+    if (!r.ok) return { erro: r.motivo };
+    registrarAuditoria(sb, currentUser, "bloco: equipe +" + dados.papel, c.iniciais, {});
+    setErro(null); await refresh();
+    return { ok: true };
+  }
+
+  async function tirarMembro(c, membro) {
+    if (!confirm(`Tirar ${membro.nome} (${PAPEL_POR_CHAVE[membro.papel]?.label || membro.papel}) da equipe desta cirurgia?`)) return;
+    const r = await removerMembroEquipe(sb, membro.id);
+    if (!r.ok) { setErro(r.motivo); return; }
+    registrarAuditoria(sb, currentUser, "bloco: equipe −" + membro.papel, c.iniciais, {});
+    setErro(null); await refresh();
+  }
+
   async function pularChecklist(c, faseKey) {
     const fase = CHECKLIST_OMS[faseKey];
     const motivo = prompt(
@@ -201,6 +241,39 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
           ))}
         </div>
       )}
+
+      {/* A EQUIPE, e o que ela impede de faturar.
+          Antes o cartão mostrava um sobrenome. O aviso de CBO não trava
+          nada: a cirurgia acontece antes de a conta existir, e barrar o
+          registro do ato por campo de faturamento inverteria a
+          prioridade. O que não pode é alguém descobrir a falta no
+          processamento do mês seguinte. */}
+      {(() => {
+        const minha = equipe.filter(m => String(m.cirurgia_id) === String(c.id));
+        const pend = c.status === "cancelada" ? [] : pendenciasDeFaturamento(minha);
+        return (
+          <div style={{ marginTop: 6, fontSize: 11.5, lineHeight: 1.5 }}>
+            <span style={{ color: "var(--text-muted)" }}>
+              {minha.length ? resumoDaEquipe(minha) : "Equipe não registrada"}
+            </span>
+            {canEdit && (
+              <button onClick={() => setVendoEquipe(vendoEquipe === c.id ? null : c.id)}
+                style={{ marginLeft: 8, background: "transparent", border: "1px solid var(--border)",
+                         borderRadius: 5, padding: "1px 7px", fontSize: 10.5, cursor: "pointer",
+                         color: "var(--text-3)" }}>
+                {vendoEquipe === c.id ? "fechar" : "equipe"}
+              </button>
+            )}
+            {pend.map((a, i) => (
+              <div key={i} style={{ color: "#fbbf24", fontSize: 11, marginTop: 2 }}>⚠ {a}</div>
+            ))}
+            {vendoEquipe === c.id && (
+              <EquipeDaCirurgia membros={minha} perfis={profissionais}
+                onAdd={d => acrescentarMembro(c, d)} onTirar={m => tirarMembro(c, m)} />
+            )}
+          </div>
+        );
+      })()}
 
       {/* 🔴 A TRILHA, NA LINHA DA CIRURGIA.
           Sem ela, uma cirurgia com os três selos acesos e uma com três
@@ -358,7 +431,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       )}
       </>)}
 
-      {agendando && <AgendarCirurgiaModal sb={sb} cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
+      {agendando && <AgendarCirurgiaModal sb={sb} procedimentos={procedimentos} cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
       {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
       {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={dados => concluirChecklist(checklist.cirurgia, checklist.fase, dados)} />}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(sb, s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(sb, n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
@@ -367,12 +440,15 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
 }
 
 // Modal de agendamento (nova cirurgia ou edição) com detecção de conflito de sala
-function AgendarCirurgiaModal({ sb, cirurgia, data, salas, cirurgiasDoDia, onClose, onSave }) {
+function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, cirurgiasDoDia, onClose, onSave }) {
   const [f, setF] = useState({
     data: cirurgia?.data || data, hora_prevista: cirurgia?.hora_prevista?.slice(0, 5) || "",
     duracao_prev_min: cirurgia?.duracao_prev_min || "", sala: cirurgia?.sala || "",
     iniciais: cirurgia?.iniciais || "", prontuario: cirurgia?.prontuario || "",
     procedimento: cirurgia?.procedimento || "", cirurgiao: cirurgia?.cirurgiao || "",
+    procedimento_cod: cirurgia?.procedimento_cod || "",
+    carater_cod: cirurgia?.carater_cod || "",
+    sitio_cirurgico: cirurgia?.sitio_cirurgico || "", lateralidade: cirurgia?.lateralidade || "",
     opme: cirurgia?.opme || "", observacao: cirurgia?.observacao || "",
   });
   const [busy, setBusy] = useState(false);
@@ -424,6 +500,10 @@ function AgendarCirurgiaModal({ sb, cirurgia, data, salas, cirurgiasDoDia, onClo
       data: f.data, hora_prevista: f.hora_prevista || null, duracao_prev_min: f.duracao_prev_min ? Number(f.duracao_prev_min) : null,
       sala: f.sala || null, iniciais: f.iniciais.trim(), prontuario: f.prontuario.trim() || null,
       procedimento: f.procedimento.trim(), cirurgiao: f.cirurgiao.trim() || null,
+      procedimento_cod: f.procedimento_cod || null,
+      carater_cod: f.carater_cod || null,
+      sitio_cirurgico: f.sitio_cirurgico.trim() || null,
+      lateralidade: f.lateralidade || null,
       opme: f.opme.trim() || null, observacao: f.observacao.trim() || null,
     }, cirurgia?.id);
     setBusy(false);
@@ -451,7 +531,56 @@ function AgendarCirurgiaModal({ sb, cirurgia, data, salas, cirurgiasDoDia, onClo
             dizer isso — senão o silêncio continua passando por aprovação. */}
         {naoConferi && <div style={{ background: "#3a2d06", border: "1px solid #fbbf2466", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#fbbf24", fontWeight: 600, marginBottom: 10 }}>Ainda NÃO conferi se a sala já está ocupada em {f.data}. A ausência de aviso aqui não quer dizer que está livre.</div>}
         {conflitos.length > 0 && <div style={{ background: "#3d2206", border: "1px solid #f9731666", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#f97316", fontWeight: 600, marginBottom: 10 }}>Conflito de sala: já há {conflitos.length} cirurgia(s) na {f.sala} nesse intervalo.</div>}
+        {/* 🔴 O CÓDIGO, não só o nome. Cirurgia é o procedimento de maior
+            valor da tabela: sem SIGTAP não há AIH, sem TUSS não há guia
+            TISS. Antes era um input livre, e o faturista redigitava tudo
+            do papel — onde nasce o código trocado. O nome continua
+            editável porque o catálogo nem sempre tem o termo que a sala
+            usa, e porque cirurgia fora do catálogo ainda precisa entrar. */}
+        <div style={{ marginBottom: 10 }}>
+          <label style={lbl}>Procedimento do catálogo</label>
+          <select value={f.procedimento_cod} style={inp}
+            onChange={e => {
+              const esc = procedimentoEscolhido(procedimentos, e.target.value);
+              setF(prev => ({ ...prev, procedimento_cod: e.target.value,
+                              procedimento: esc ? esc.nome : prev.procedimento }));
+            }}>
+            <option value="">— sem código (não fatura)</option>
+            {procedimentos.map(o => <option key={o.codigo} value={o.codigo}>{o.codigo} — {o.nome}</option>)}
+          </select>
+          {!f.procedimento_cod && (
+            <div style={{ fontSize: 10.5, color: "#fbbf24", marginTop: 3 }}>
+              Sem código a cirurgia não vira conta: nem AIH, nem guia TISS.
+            </div>
+          )}
+        </div>
         <div style={{ marginBottom: 10 }}><label style={lbl}>Procedimento *</label><input value={f.procedimento} onChange={e => set("procedimento", e.target.value)} placeholder="Ex.: Colecistectomia videolaparoscópica" style={inp} /></div>
+
+        {/* 🔴 SÍTIO E LADO. O Sign In manda a equipe confirmar o sítio
+            cirúrgico — e até aqui não havia onde guardá-lo: numa
+            artroplastia, "joelho D" ou "joelho E" só existia se alguém
+            escrevesse na observação. Cirurgia em lado errado é o evento
+            que a Meta 4 da OMS existe para impedir. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 10, marginBottom: 10 }}>
+          <div><label style={lbl}>Sítio cirúrgico</label>
+            <input value={f.sitio_cirurgico} onChange={e => set("sitio_cirurgico", e.target.value)} placeholder="Ex.: joelho, vesícula, hérnia inguinal" style={inp} /></div>
+          <div><label style={lbl}>Lado</label>
+            <select value={f.lateralidade} onChange={e => set("lateralidade", e.target.value)} style={inp}>
+              <option value="">—</option>
+              {Object.entries(LATERALIDADE).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select></div>
+        </div>
+
+        <div style={{ marginBottom: 10 }}>
+          <label style={lbl}>Caráter</label>
+          <select value={f.carater_cod} onChange={e => set("carater_cod", e.target.value)} style={inp}>
+            <option value="">—</option>
+            {CARATER.map(c => <option key={c.chave} value={c.chave}>{c.label}</option>)}
+          </select>
+          <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
+            Exigido na AIH. Separa os indicadores: cancelamento de eletiva é cobrança de gestão; de urgência, não é comparável.
+          </div>
+        </div>
         <div style={{ marginBottom: 10 }}><label style={lbl}>Cirurgião</label><input value={f.cirurgiao} onChange={e => set("cirurgiao", e.target.value)} placeholder="Sobrenome do cirurgião" style={inp} /></div>
         <div style={{ marginBottom: 10 }}><label style={lbl}>Materiais e OPME necessários</label><textarea value={f.opme} onChange={e => set("opme", e.target.value)} rows={2} placeholder="Ex.: kit vídeo, clipes de titânio; OPME: prótese X (fornecedor Y)" style={{ ...inp, resize: "vertical", lineHeight: 1.5 }} /></div>
         <div style={{ marginBottom: 16 }}><label style={lbl}>Observação</label><input value={f.observacao} onChange={e => set("observacao", e.target.value)} placeholder="Opcional" style={inp} /></div>
@@ -627,6 +756,101 @@ function BlocoIndicadores({ sb, salasAtivas }) {
 
 // Checklist de Cirurgia Segura (OMS). Item não confirmado é PERMITIDO e custa
 // descrever o que houve — ver o docblock abaixo.
+/**
+ * A equipe de uma cirurgia — quem estava na sala, com o que fatura.
+ *
+ * ⚠️ O NOME, O CONSELHO E O CBO SÃO CARIMBADOS do perfil escolhido, não
+ * referenciados. O cadastro muda (troca de CBO, renova conselho, sai do
+ * hospital) e quem operou aquele paciente naquele dia não muda junto. É o
+ * mesmo princípio do \`executante_cbo\` em \`at_conta_itens\`.
+ *
+ * Aceita nome DIGITADO também: cirurgião externo opera no hospital sem
+ * ter login, e recusá-lo deixaria a cirurgia sem executante — pior que
+ * registrar sem CBO, porque sem executante o procedimento não é pago.
+ */
+function EquipeDaCirurgia({ membros = [], perfis = [], onAdd, onTirar }) {
+  const [papel, setPapel] = useState("");
+  const [username, setUsername] = useState("");
+  const [nome, setNome] = useState("");
+  const [grau, setGrau] = useState("");
+  const [erro, setErro] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const perfil = perfis.find(x => x.username === username) || null;
+  const cx = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6,
+               padding: "6px 8px", color: "var(--text)", fontSize: 12, boxSizing: "border-box" };
+
+  async function acrescentar() {
+    setBusy(true); setErro(null);
+    const r = await onAdd({ papel, perfil, nome, grau });
+    setBusy(false);
+    if (r?.erro) { setErro(r.erro); return; }
+    setPapel(""); setUsername(""); setNome(""); setGrau("");
+  }
+
+  return (
+    <div style={{ marginTop: 8, padding: "9px 11px", background: "var(--surface-2)",
+                  border: "1px solid var(--border-2)", borderRadius: 8 }}>
+      {membros.length === 0 && (
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 7 }}>
+          Ninguém registrado ainda. Sem cirurgião, a conta desta cirurgia não tem executante.
+        </div>
+      )}
+      {membros.map(m => (
+        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12,
+                                 padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+          <span style={{ minWidth: 112, color: "var(--text-3)", fontSize: 11, fontWeight: 700 }}>
+            {PAPEL_POR_CHAVE[m.papel]?.label || m.papel}
+          </span>
+          <span style={{ flex: 1, color: "var(--text-2)" }}>
+            {m.nome}
+            {m.conselho && m.registro_conselho
+              ? <span style={{ color: "var(--text-muted)" }}> · {m.conselho} {m.registro_conselho}{m.uf_conselho ? "/" + m.uf_conselho : ""}</span>
+              : null}
+          </span>
+          {/* O CBO fica visível porque é ele que derruba o registro no
+              processamento quando falta — e só quem fatura precisa dele. */}
+          <span style={{ fontSize: 10.5, fontFamily: "JetBrains Mono, monospace",
+                         color: m.cbo ? "var(--text-muted)" : PAPEL_POR_CHAVE[m.papel]?.fatura ? "#fbbf24" : "var(--text-muted)" }}>
+            {m.cbo ? "CBO " + m.cbo : PAPEL_POR_CHAVE[m.papel]?.fatura ? "sem CBO" : "—"}
+          </span>
+          <button onClick={() => onTirar(m)} title="Tirar da equipe"
+            style={{ background: "transparent", border: "none", color: "#fb7185", cursor: "pointer", fontSize: 14 }}>×</button>
+        </div>
+      ))}
+
+      <div style={{ display: "grid", gridTemplateColumns: "132px 1fr 1fr 112px auto", gap: 6, marginTop: 8, alignItems: "center" }}>
+        <select value={papel} onChange={e => { setPapel(e.target.value); setErro(null); }} style={cx} aria-label="Função na sala">
+          <option value="">função…</option>
+          {PAPEIS_EQUIPE.map(x => <option key={x.chave} value={x.chave}>{x.label}</option>)}
+        </select>
+        <select value={username} onChange={e => { setUsername(e.target.value); setErro(null); }} style={cx} aria-label="Profissional do cadastro">
+          <option value="">do cadastro…</option>
+          {perfis.map(x => <option key={x.username} value={x.username}>{x.nome || x.username}</option>)}
+        </select>
+        <input value={username ? (perfil?.nome || "") : nome} disabled={!!username}
+          onChange={e => { setNome(e.target.value); setErro(null); }}
+          placeholder="ou digite o nome (externo)" style={cx} aria-label="Nome de quem está na sala" />
+        <input value={grau} onChange={e => setGrau(e.target.value)}
+          placeholder="grau TISS" title="Grau de participação da TISS — define o percentual pago"
+          style={cx} aria-label="Grau de participação" />
+        <button onClick={acrescentar} disabled={busy}
+          style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6,
+                   padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: busy ? "default" : "pointer" }}>
+          {busy ? "…" : "+"}
+        </button>
+      </div>
+      {perfil && !perfil.cbo && (
+        <div style={{ fontSize: 10.5, color: "#fbbf24", marginTop: 5 }}>
+          {perfil.nome} está sem CBO no cadastro. Dá para registrar assim — mas se este papel fatura,
+          o registro é rejeitado no processamento. Corrija em Usuários e Perfis.
+        </div>
+      )}
+      {erro && <div role="alert" style={{ marginTop: 6, color: "#fb7185", fontSize: 11.5, lineHeight: 1.45 }}>{erro}</div>}
+    </div>
+  );
+}
+
 /**
  * O modal do checklist de Cirurgia Segura.
  *
