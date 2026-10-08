@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 108 tabelas, 1762 colunas.
+-- Cobertura atual: 109 tabelas, 1779 colunas.
 -- ============================================================
 
 with
@@ -36,6 +36,7 @@ tabelas(nome, origem) as (values
   ('auditoria','schema'),
   ('cc_checklist','cirurgia-segura-registro'),
   ('cc_cirurgias','schema'),
+  ('cc_equipe','cirurgia-paciente-equipe-codigo'),
   ('cc_salas','schema'),
   ('cid_referencia','schema'),
   ('enf_escala_faixas','enf-escalas-lpp'),
@@ -353,7 +354,10 @@ colunas(tabela, coluna, origem) as (values
   ('cc_checklist','tipo','cirurgia-segura-registro'),
   ('cc_checklist','usuario','cirurgia-segura-registro'),
   ('cc_cirurgias','anestesista','schema'),
+  ('cc_cirurgias','cancelado_em','cirurgia-paciente-equipe-codigo'),
+  ('cc_cirurgias','cancelado_por','cirurgia-paciente-equipe-codigo'),
   ('cc_cirurgias','cancelamento_motivo','schema'),
+  ('cc_cirurgias','carater_cod','cirurgia-paciente-equipe-codigo'),
   ('cc_cirurgias','checkin_em','schema'),
   ('cc_cirurgias','chk_sign_in','schema'),
   ('cc_cirurgias','chk_sign_out','schema'),
@@ -373,6 +377,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','observacao','schema'),
   ('cc_cirurgias','opme','schema'),
   ('cc_cirurgias','procedimento','schema'),
+  ('cc_cirurgias','procedimento_cod','cirurgia-paciente-equipe-codigo'),
   ('cc_cirurgias','prontuario','schema'),
   ('cc_cirurgias','rpa_entrada_em','schema'),
   ('cc_cirurgias','rpa_saida_em','schema'),
@@ -383,6 +388,19 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','tipo_anestesia','schema'),
   ('cc_cirurgias','updated_at','schema'),
   ('cc_cirurgias','usuario','schema'),
+  ('cc_equipe','cbo','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','cirurgia_id','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','conselho','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','criado_em','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','grau_participacao','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','id','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','nome','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','papel','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','profissional_username','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','registro_conselho','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','uf_conselho','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','updated_at','cirurgia-paciente-equipe-codigo'),
+  ('cc_equipe','usuario','cirurgia-paciente-equipe-codigo'),
   ('cc_salas','ativa','schema'),
   ('cc_salas','nome','schema'),
   ('cc_salas','ordem','schema'),

@@ -160,3 +160,82 @@ export async function loadCcChecklistDoDia(sb, ids = []) {
   const rows = await sb(`cc_checklist?cirurgia_id=in.(${lista.join(",")})&select=*&order=criado_em.desc`);
   return listaLida(rows);
 }
+
+// ── A EQUIPE CIRÚRGICA ──────────────────────────────────────
+
+/** A equipe de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcEquipeDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_equipe?cirurgia_id=in.(${lista.join(",")})&select=*&order=id`);
+  return listaLida(rows);
+}
+
+export async function addMembroEquipe(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_equipe", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, membro: r[0] };
+  // A recusa do índice único ("dois cirurgiões") vem do banco com a frase
+  // do Postgres, que não serve para quem está na sala. A tela já conferiu
+  // antes; isto é a rede para quem chamar a API direto.
+  const msg = motivoDoBanco(r);
+  if (msg && /cc_equipe_um_cirurgiao_idx|duplicate key/i.test(msg)) {
+    return { ok: false, motivo: "Esta cirurgia já tem um cirurgião principal. Remova o atual antes de pôr outro." };
+  }
+  return { ok: false, motivo: msg || NAO_GRAVOU.motivo };
+}
+
+/**
+ * Tira um membro da equipe.
+ *
+ * ⚠️ DELETE de verdade, e isso é diferente da trilha de cirurgia segura
+ * (append-only). Equipe é CADASTRO do ato, não registro de conferência:
+ * trocar o auxiliar que entrou na sala é correção administrativa, e exigir
+ * linha nova encheria a conta de membro fantasma. O que foi CONFERIDO não
+ * se apaga; quem operou se corrige até a conta fechar.
+ *
+ * Como DELETE não devolve linha, a conferência é RELER.
+ */
+export async function removerMembroEquipe(sb, id) {
+  if (!sb) return SEM_BANCO;
+  await sb(`cc_equipe?id=eq.${id}`, { method: "DELETE" });
+  const resto = await sb(`cc_equipe?id=eq.${id}&select=id`);
+  if (!Array.isArray(resto)) {
+    return { ok: false, motivo: "Não consegui confirmar se o membro saiu da equipe — recarregue antes de concluir que saiu." };
+  }
+  return resto.length ? NAO_GRAVOU : { ok: true };
+}
+
+/**
+ * O catálogo de procedimentos do hospital, para a cirurgia ter CÓDIGO.
+ *
+ * Mesma tabela que o Atendimento usa (`at_procedimentos`) — e de propósito:
+ * duas listas de procedimento divergiriam, e aí a mesma cirurgia teria um
+ * código no bloco e outro no faturamento.
+ */
+export async function loadProcedimentosDoCatalogo(sb) {
+  if (!sb) return [];
+  const rows = await sb("at_procedimentos?ativo=eq.true&select=codigo,nome,valor_sus,via_sus&order=nome");
+  return listaLida(rows);
+}
+
+/**
+ * Os profissionais do cadastro, para a equipe sair com conselho e CBO.
+ *
+ * Reaproveita a mesma leitura do Atendimento (`profiles`), com `uf_conselho`
+ * a mais — a guia TISS pede conselho E UF de cada membro.
+ *
+ * ⚠️ NÃO filtra por categoria clínica, ao contrário do `carregarProfissionais`
+ * do Atendimento: a sala tem instrumentador e circulante, que são atos de
+ * apoio e não assinam ato assistencial — mas estão na equipe e entram no
+ * registro de quem operou.
+ */
+export async function loadProfissionaisDoBloco(sb) {
+  if (!sb) return [];
+  const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,uf_conselho,cbo&order=nome");
+  return listaLida(r);
+}
