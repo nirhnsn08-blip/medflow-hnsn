@@ -34,6 +34,7 @@ import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, carregarWorklistFaturamento,
   carregarProducaoFaturavel, contasDaCompetencia, registrarTransmissao, carregarPrecos,
+  carregarCirurgiasDoEpisodio,
 } from "./dados.js";
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
 import { listaLida } from "../util/leitura.js";
@@ -874,11 +875,12 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
       // Os preços do convênio (só quando há convênio) alimentam o preço por
       // via: uma conta TISS passa a ser precificada pela tabela da operadora,
       // não pela do SUS.
-      const [cat, administracoes, leitos, precos] = await Promise.all([
+      const [cat, administracoes, leitos, precos, cirurgico] = await Promise.all([
         carregarCatalogos(sb),
         carregarAdministracoes(sb, atendimento.id),
         carregarLeitosDoEpisodio(sb, { atendimentoId: atendimento.id, prontuario: atendimento.prontuario }),
         atendimento.convenio_id ? carregarPrecos(sb, { convenioId: atendimento.convenio_id }) : Promise.resolve([]),
+        carregarCirurgiasDoEpisodio(sb, atendimento.id),
       ]);
       const convenio = (cat.convenios || []).find((c) => String(c.id) === String(atendimento.convenio_id)) || null;
       // A permanência vem do LEITO (estadia real); só na falta dele o motor
@@ -892,7 +894,16 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         precos,
         administracoes,
         internacao,
+        cirurgias: cirurgico.cirurgias,
+        equipePorCirurgia: cirurgico.equipePorCirurgia,
       });
+      // 🔴 "Não consegui ler" não pode virar "não teve cirurgia". Sem este
+      // aviso, uma oscilação de rede faria o faturista fechar a conta sem
+      // o item mais caro dela — e a falta só apareceria no processamento.
+      if (cirurgico.naoLi) {
+        conta.avisos = [...(conta.avisos || []),
+          "Não consegui ler as cirurgias deste episódio. Se houve cirurgia, ela NÃO está nesta conta — recarregue antes de fechar."];
+      }
       setResultado({ conta, atendimento, fonteInternacao: internacao?.fonte || null });
     } catch {
       setErro("Não consegui montar a conta agora. Tente de novo.");

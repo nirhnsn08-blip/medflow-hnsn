@@ -50,6 +50,7 @@ import {
 import { precoDe, SITUACAO } from "./precos.js";
 import { geraConta } from "./faturavel.js";
 import { diaLocal } from "../util/datas.js";
+import { itensDasCirurgias } from "./conta-cirurgia.js";
 
 // ── item proposto (o formato do camposDoItem + a origem para a tela) ──
 
@@ -448,6 +449,10 @@ export function montarContaDoProntuario({
   administracoes = [],
   paciente = null,
   internacao = null,
+  // As cirurgias DESTE episódio, e a equipe de cada uma. Chegam por
+  // parâmetro, como todo o resto: este motor não lê banco.
+  cirurgias = [],
+  equipePorCirurgia = {},
 } = {}) {
   if (!atendimento?.id) {
     return {
@@ -489,6 +494,22 @@ export function montarContaDoProntuario({
 
   // 3) Medicação administrada.
   itens.push(...itensMedicacao(administracoes));
+
+  // 4) As cirurgias do episódio.
+  //
+  // Antes a cirurgia acontecia no Bloco e a conta não sabia: o
+  // faturista redigitava do papel o procedimento de MAIOR VALOR da
+  // tabela. Agora o ato entra com o cirurgião como executante e o CBO
+  // dele, o anestesista em linha própria (é assim que a TISS paga) e
+  // os auxiliares para conferência, sem valor — o percentual depende
+  // do contrato da operadora, e preço aqui nunca é inventado.
+  const cir = itensDasCirurgias({
+    cirurgias, equipePorCirurgia, via,
+    catalogoPorCodigo: Object.fromEntries([...idxProc.entries()]),
+    sigtapPorCodigo: Object.fromEntries([...idxSig.entries()]),
+  });
+  itens.push(...cir.itens);
+  avisos.push(...cir.avisos);
 
   // CID principal — carrega a conta e alimenta a compatibilidade da glosa.
   const cid = normalizarCid(atendimento.cid);

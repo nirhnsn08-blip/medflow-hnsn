@@ -1943,3 +1943,35 @@ export async function corrigirDesfecho(sb, { atendimentoId, de, para, motivo }, 
       || "Não consegui registrar a correção, e nada foi alterado. Tente de novo; se repetir, chame a TI.",
   };
 }
+
+/**
+ * As cirurgias de um episódio e a equipe de cada uma, para a conta.
+ *
+ * Pelo ELO (`ps_atendimento_id`), nunca por prontuário+data: a mesma pessoa
+ * pode ter dois atendimentos no mesmo dia, e adivinhar poria o porte
+ * cirúrgico na conta do episódio errado. Cirurgia sem elo simplesmente não
+ * entra — e a tela diz quantas ficaram de fora, porque silêncio aqui é
+ * receita perdida.
+ *
+ * ⚠️ Devolve `{ cirurgias, equipePorCirurgia, naoLi }`. `naoLi` é verdadeiro
+ * quando a leitura falhou — e aí a conta NÃO pode dizer "esta internação não
+ * teve cirurgia", que é a frase que faria o faturista fechar sem o item mais
+ * caro da conta.
+ */
+export async function carregarCirurgiasDoEpisodio(sb, atendimentoId) {
+  if (!sb || !atendimentoId) return { cirurgias: [], equipePorCirurgia: {}, naoLi: false };
+  const r = await sb(`cc_cirurgias?ps_atendimento_id=eq.${atendimentoId}&select=*&order=data`);
+  const cirurgias = listaLida(r);
+  if (naoDeuParaLer(cirurgias)) return { cirurgias: [], equipePorCirurgia: {}, naoLi: true };
+  if (!cirurgias.length) return { cirurgias: [], equipePorCirurgia: {}, naoLi: false };
+
+  const eq = await sb(`cc_equipe?cirurgia_id=in.(${cirurgias.map(c => c.id).join(",")})&select=*&order=id`);
+  const equipe = listaLida(eq);
+  const equipePorCirurgia = {};
+  for (const m of equipe) {
+    (equipePorCirurgia[m.cirurgia_id] ||= []).push(m);
+  }
+  // Falha ao ler a EQUIPE também é "não li": sem ela a conta sairia sem
+  // executante, que é pior que não sair.
+  return { cirurgias, equipePorCirurgia, naoLi: naoDeuParaLer(equipe) };
+}

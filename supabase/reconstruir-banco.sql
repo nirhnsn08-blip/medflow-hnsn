@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 104 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 105 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (104 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (105 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/104 — schema.sql
+-- │ 01/105 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/104 — migracao-registro-de-migracoes.sql
+-- │ 02/105 — migracao-registro-de-migracoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- REGISTRO DE MIGRAÇÕES — cada uma passa a se anotar ao rodar
@@ -1216,7 +1216,7 @@ FROM public.migracoes_aplicadas ORDER BY arquivo;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/104 — migracao-farmacia-faseA.sql
+-- │ 03/105 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1326,7 +1326,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/104 — migracao-farmacia-seed.sql
+-- │ 04/105 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1536,7 +1536,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/104 — migracao-farmacia-faseB.sql
+-- │ 05/105 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1577,7 +1577,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/104 — migracao-farmacia-clinica-fase1.sql
+-- │ 06/105 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1702,7 +1702,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/104 — migracao-farmacia-clinica-fase2.sql
+-- │ 07/105 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1824,7 +1824,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/104 — migracao-farmacia-clinica-fase3.sql
+-- │ 08/105 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1892,7 +1892,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/104 — migracao-farmacia-preparo.sql
+-- │ 09/105 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1926,7 +1926,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/104 — migracao-farmacia-custos.sql
+-- │ 10/105 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1939,7 +1939,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/104 — migracao-farmacia-nao-padronizados.sql
+-- │ 11/105 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1978,7 +1978,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/104 — migracao-farmacia-intervencoes.sql
+-- │ 12/105 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -2017,7 +2017,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/104 — migracao-leitos-kanban-metas.sql
+-- │ 13/105 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -2046,7 +2046,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/104 — migracao-leitos-saida-setor.sql
+-- │ 14/105 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -2072,7 +2072,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/104 — migracao-suprimentos-faseA.sql
+-- │ 15/105 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2210,7 +2210,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/104 — migracao-suprimentos-faseB.sql
+-- │ 16/105 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2262,7 +2262,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/104 — migracao-suprimentos-seed.sql
+-- │ 17/105 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2418,7 +2418,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/104 — migracao-suprimentos-faseC.sql
+-- │ 18/105 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2475,7 +2475,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/104 — migracao-suprimentos-inventario.sql
+-- │ 19/105 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2537,7 +2537,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/104 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 20/105 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2554,7 +2554,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/104 — migracao-suprimentos-cotacao.sql
+-- │ 21/105 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2602,7 +2602,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/104 — migracao-ps-salas.sql
+-- │ 22/105 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2651,7 +2651,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/104 — migracao-ps-salas-censo.sql
+-- │ 23/105 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2731,7 +2731,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/104 — migracao-ps-origem-elo.sql
+-- │ 24/105 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2771,7 +2771,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/104 — migracao-ps-checagem-medicacao.sql
+-- │ 25/105 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2824,7 +2824,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/104 — migracao-pep-fase1.sql
+-- │ 26/105 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3622,7 +3622,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/104 — migracao-pep-acessos.sql
+-- │ 27/105 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3688,7 +3688,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/104 — migracao-pep-sinais-spo2.sql
+-- │ 28/105 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3720,7 +3720,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/104 — migracao-pep-categoria-profissional.sql
+-- │ 29/105 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3774,7 +3774,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/104 — migracao-pep-perfis-update.sql
+-- │ 30/105 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3813,7 +3813,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 31/104 — migracao-pep-fase3.sql
+-- │ 31/105 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4123,7 +4123,7 @@ order by c.relname;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 32/104 — migracao-perfis-acesso.sql
+-- │ 32/105 — migracao-perfis-acesso.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS DE ACESSO — o cargo vira um pacote de permissões
@@ -4426,7 +4426,7 @@ select p.chave, p.nome, count(pp.modulo) as modulos,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 33/104 — migracao-leitos-nir-regulacao.sql
+-- │ 33/105 — migracao-leitos-nir-regulacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"
@@ -4467,7 +4467,7 @@ select 'regulação NIR ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 34/104 — migracao-suprimentos-aprovacao.sql
+-- │ 34/105 — migracao-suprimentos-aprovacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Aprovação de pedidos de compra pela matriz
@@ -4502,7 +4502,7 @@ select 'aprovação de compras ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 35/104 — migracao-ps-comorbidades.sql
+-- │ 35/105 — migracao-ps-comorbidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Comorbidades na triagem
@@ -4528,7 +4528,7 @@ select 'comorbidades ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 36/104 — migracao-ps-triagem-tipo.sql
+-- │ 36/105 — migracao-ps-triagem-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)
@@ -4564,7 +4564,7 @@ select 'triagem_tipo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 37/104 — migracao-ps-faixas-pediatricas.sql
+-- │ 37/105 — migracao-ps-faixas-pediatricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)
@@ -4633,7 +4633,7 @@ select 'ps_faixas_pediatricas ok — ' || count(*) || ' faixas' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 38/104 — migracao-ps-faixas-obstetricas.sql
+-- │ 38/105 — migracao-ps-faixas-obstetricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)
@@ -4699,7 +4699,7 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 39/104 — migracao-enf-escalas-lpp.sql
+-- │ 39/105 — migracao-enf-escalas-lpp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)
@@ -4826,7 +4826,7 @@ select 'enf: escalas/lpp/faixas ok — ' || count(*) || ' cortes semeados' as re
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 40/104 — migracao-enf-sae.sql
+-- │ 40/105 — migracao-enf-sae.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)
@@ -5042,7 +5042,7 @@ select 'enf SAE: catálogo semeado — ' || count(*) || ' itens (' ||
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 41/104 — migracao-pacientes-identificacao.sql
+-- │ 41/105 — migracao-pacientes-identificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário
@@ -5236,7 +5236,7 @@ from public.pacientes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 42/104 — migracao-atendimento-recepcao.sql
+-- │ 42/105 — migracao-atendimento-recepcao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital
@@ -5574,7 +5574,7 @@ select last_value as ultimo_prontuario_emitido from public.prontuario_seq;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 43/104 — migracao-atendimento-fk.sql
+-- │ 43/105 — migracao-atendimento-fk.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)
@@ -5683,7 +5683,7 @@ select exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 44/104 — migracao-nsp-incidentes.sql
+-- │ 44/105 — migracao-nsp-incidentes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes
@@ -5773,7 +5773,7 @@ select 'NSP: nsp_incidentes + nsp_incidente_eventos ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 45/104 — migracao-atendimento-fase2.sql
+-- │ 45/105 — migracao-atendimento-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde
@@ -6080,7 +6080,7 @@ select 'dominios cadastrados pelo hospital', count(*)::text from public.at_domin
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 46/104 — migracao-atendimento-agenda.sql
+-- │ 46/105 — migracao-atendimento-agenda.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia
@@ -6302,7 +6302,7 @@ select 'trava de vaga unica instalada', (exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 47/104 — migracao-nsp-rca-plano.sql
+-- │ 47/105 — migracao-nsp-rca-plano.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)
@@ -6379,7 +6379,7 @@ select 'NSP: nsp_rca + nsp_acoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 48/104 — migracao-atendimento-ciclo.sql
+-- │ 48/105 — migracao-atendimento-ciclo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro
@@ -6466,7 +6466,7 @@ select 'atendimentos cancelados ate agora', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 49/104 — migracao-nsp-metas.sql
+-- │ 49/105 — migracao-nsp-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)
@@ -6541,7 +6541,7 @@ select 'NSP: nsp_meta_faixas (' || (select count(*) from public.nsp_meta_faixas)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 50/104 — migracao-nsp-protocolos.sql
+-- │ 50/105 — migracao-nsp-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Protocolos gerenciados de segurança (Fase 2d)
@@ -6599,7 +6599,7 @@ values ('migracao-nsp-protocolos.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 51/104 — migracao-atendimento-responsavel.sql
+-- │ 51/105 — migracao-atendimento-responsavel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta
@@ -6767,7 +6767,7 @@ select 'politicas RLS (esperado 2)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 52/104 — migracao-atendimento-faturamento.sql
+-- │ 52/105 — migracao-atendimento-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — a conta do atendimento (fundação)
@@ -7011,7 +7011,7 @@ select 'politicas RLS (esperado 4)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 53/104 — migracao-faturamento-glosas.sql
+-- │ 53/105 — migracao-faturamento-glosas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — A GLOSA RECEBIDA E O RECURSO
@@ -7207,7 +7207,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 54/104 — migracao-glosas-rls.sql
+-- │ 54/105 — migracao-glosas-rls.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RLS DA at_glosas — o passo 2 de 2
@@ -7320,7 +7320,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 55/104 — migracao-faturamento-repasses.sql
+-- │ 55/105 — migracao-faturamento-repasses.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — O REPASSE (o dinheiro que ENTROU)
@@ -7509,7 +7509,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 56/104 — migracao-faturamento-precos.sql
+-- │ 56/105 — migracao-faturamento-precos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — PREÇO POR CONVÊNIO, COM VIGÊNCIA
@@ -7722,7 +7722,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 57/104 — migracao-faturamento-modulo.sql
+-- │ 57/105 — migracao-faturamento-modulo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO VIRA MÓDULO PRÓPRIO
@@ -7867,7 +7867,7 @@ order by 1, 2;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 58/104 — migracao-ambulatorio-especialidades.sql
+-- │ 58/105 — migracao-ambulatorio-especialidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AS ESPECIALIDADES DO AMBULATÓRIO SAEM DO CÓDIGO E VÃO PARA O CADASTRO
@@ -7977,7 +7977,7 @@ order by 1, 2;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 59/104 — migracao-nsp-capacitacoes.sql
+-- │ 59/105 — migracao-nsp-capacitacoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Capacitações em segurança do paciente (Fase 2d)
@@ -8020,7 +8020,7 @@ select 'NSP: nsp_capacitacoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 60/104 — migracao-nsp-comunicados.sql
+-- │ 60/105 — migracao-nsp-comunicados.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Comunicação / mural de segurança (Fase 2d)
@@ -8061,7 +8061,7 @@ select 'NSP: nsp_comunicados ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 61/104 — migracao-protocolos.sql
+-- │ 61/105 — migracao-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)
@@ -8188,7 +8188,7 @@ select 'PROTOCOLOS: prot_catalogo + prot_setor + prot_ativacoes + prot_bundle_it
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 62/104 — migracao-protocolos-iam.sql
+-- │ 62/105 — migracao-protocolos-iam.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)
@@ -8225,7 +8225,7 @@ select 'PROTOCOLOS 3b: template IAM ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 63/104 — migracao-protocolos-avc.sql
+-- │ 63/105 — migracao-protocolos-avc.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)
@@ -8265,7 +8265,7 @@ select 'PROTOCOLOS 3c: template AVC ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 64/104 — migracao-protocolos-tev.sql
+-- │ 64/105 — migracao-protocolos-tev.sql
 -- └────────────────────────────────────────────────────────────
 -- ===========================================================
 -- PROTOCOLOS CLINICOS -- Fase 3d: TEV / profilaxia (seed do template)
@@ -8307,7 +8307,7 @@ select count(*) as tev_templates from public.prot_catalogo where chave = 'tev';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 65/104 — migracao-perfis-nsp.sql
+-- │ 65/105 — migracao-perfis-nsp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS
@@ -8399,7 +8399,7 @@ select pa.chave as perfil,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 66/104 — migracao-sigtap.sql
+-- │ 66/105 — migracao-sigtap.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)
@@ -8682,7 +8682,7 @@ select 'SIGTAP: sigtap_procedimentos ok — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 67/104 — migracao-sigtap-valores.sql
+-- │ 67/105 — migracao-sigtap-valores.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — SIGTAP: valores, permanência e CID REAIS (SIH-SUS)
@@ -8941,7 +8941,7 @@ from public.sigtap_procedimentos where competencia = '2026-08';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 68/104 — migracao-perfis-faturamento.sql
+-- │ 68/105 — migracao-perfis-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GRANTS DO MÓDULO FATURAMENTO — migração avulsa (Tier 1 — Fase 4)
@@ -8972,7 +8972,7 @@ select 'FATURAMENTO: grants do módulo aplicados — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 69/104 — migracao-perfis-auditoria-diretor.sql
+-- │ 69/105 — migracao-perfis-auditoria-diretor.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUDITORIA: DIRETOR TÉCNICO PASSA A SÓ CONSULTAR A TRILHA
@@ -9010,7 +9010,7 @@ select perfil_chave, modulo, nivel,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 70/104 — migracao-suprimentos-integridade.sql
+-- │ 70/105 — migracao-suprimentos-integridade.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — integridade do saldo (travas duras no banco)
@@ -9165,7 +9165,7 @@ select 'trigger anti-exclusao do kardex',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 71/104 — migracao-suprimentos-ajuste-estorno.sql
+-- │ 71/105 — migracao-suprimentos-ajuste-estorno.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — ajuste de inventário rastreável e estorno com vínculo
@@ -9348,7 +9348,7 @@ select 'politica de desfecho da contagem',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 72/104 — migracao-suprimentos-unidade-compra.sql
+-- │ 72/105 — migracao-suprimentos-unidade-compra.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — unidade de compra × unidade de consumo
@@ -9433,7 +9433,7 @@ select 'materiais no total (todos com fator 1 = comportamento de antes)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 73/104 — migracao-auditoria-atribuivel.sql
+-- │ 73/105 — migracao-auditoria-atribuivel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUDITORIA — trilha atribuível e consultável
@@ -9532,7 +9532,7 @@ select 'registros ja atribuidos a uma conta (zero agora, e esperado)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 74/104 — migracao-suprimentos-alcada.sql
+-- │ 74/105 — migracao-suprimentos-alcada.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — alçada de aprovação de compra
@@ -9638,7 +9638,7 @@ select 'alcada configurada (0 = desligada, e o esperado agora)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 75/104 — migracao-pacientes-busca.sql
+-- │ 75/105 — migracao-pacientes-busca.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — BUSCA DE PACIENTE POR NOME (aditiva, sem destruir nada)
@@ -9815,7 +9815,7 @@ select 'linhas com nome_busca preenchido',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 76/104 — migracao-agenda-vaga-por-profissional.sql
+-- │ 76/105 — migracao-agenda-vaga-por-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — A VAGA É DO PROFISSIONAL, NÃO DA ESPECIALIDADE
@@ -9967,7 +9967,7 @@ select 'agendamentos vivos SEM profissional (caem na especialidade)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 77/104 — migracao-agenda-confirmacao.sql
+-- │ 77/105 — migracao-agenda-confirmacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — CONFIRMAÇÃO DA VÉSPERA E MOTIVO DA FALTA
@@ -10109,7 +10109,7 @@ select 'indice antigo por especialidade',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 78/104 — migracao-pacientes-nacionalidade-etnia.sql
+-- │ 78/105 — migracao-pacientes-nacionalidade-etnia.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — PACIENTE ESTRANGEIRO E ETNIA INDÍGENA
@@ -10237,7 +10237,7 @@ select 'nenhum CHECK novo em pacientes',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 79/104 — migracao-agenda-remarcacao.sql
+-- │ 79/105 — migracao-agenda-remarcacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — REMARCAÇÃO COM VÍNCULO
@@ -10383,7 +10383,7 @@ select 'agendamentos ja remarcados',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 80/104 — migracao-pacientes-obito.sql
+-- │ 80/105 — migracao-pacientes-obito.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — O ÓBITO CHEGA AO CADASTRO
@@ -10596,7 +10596,7 @@ select 'destes, quantos tinham consulta MARCADA a partir de hoje',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 81/104 — migracao-pacientes-recem-nascido.sql
+-- │ 81/105 — migracao-pacientes-recem-nascido.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — O RECÉM-NASCIDO ENTRA NO SISTEMA
@@ -10754,7 +10754,7 @@ select 'DNVs repetidas (tem que ser 0)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 82/104 — migracao-pacientes-municipio-ibge.sql
+-- │ 82/105 — migracao-pacientes-municipio-ibge.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CÓDIGO IBGE DO MUNICÍPIO DE RESIDÊNCIA
@@ -10810,7 +10810,7 @@ values ('migracao-pacientes-municipio-ibge.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 83/104 — migracao-faturamento-remessa.sql
+-- │ 83/105 — migracao-faturamento-remessa.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- REMESSA TRANSMITIDA — quem, quando, e sob qual protocolo
@@ -10893,7 +10893,7 @@ values ('migracao-faturamento-remessa.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 84/104 — migracao-pacientes-unificacao.sql
+-- │ 84/105 — migracao-pacientes-unificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- UNIFICAÇÃO DE PRONTUÁRIO — ligar duas fichas da mesma pessoa
@@ -11020,7 +11020,7 @@ values ('migracao-pacientes-unificacao.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 85/104 — migracao-farmacia-preparo-exige-baixa.sql
+-- │ 85/105 — migracao-farmacia-preparo-exige-baixa.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- A PRESCRIÇÃO SÓ FICA "PRONTA" SE SAIU DO ESTOQUE
@@ -11127,7 +11127,7 @@ values ('migracao-farmacia-preparo-exige-baixa.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 86/104 — migracao-farmacia-lote-vencido.sql
+-- │ 86/105 — migracao-farmacia-lote-vencido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- LOTE VENCIDO NÃO VAI PARA O PACIENTE
@@ -11213,7 +11213,7 @@ values ('migracao-farmacia-lote-vencido.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 87/104 — migracao-pep-episodio-retroativo.sql
+-- │ 87/105 — migracao-pep-episodio-retroativo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ABRE O EPISÓDIO DE QUEM JÁ ESTÁ INTERNADO
@@ -11290,7 +11290,7 @@ values ('migracao-pep-episodio-retroativo.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 88/104 — migracao-episodio-id-tipo.sql
+-- │ 88/105 — migracao-episodio-id-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- `episodio_id` DAS TABELAS DE ENFERMAGEM: uuid → bigint
@@ -11387,7 +11387,7 @@ values ('migracao-episodio-id-tipo.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 89/104 — migracao-farmacia-estorno-inventario.sql
+-- │ 89/105 — migracao-farmacia-estorno-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FARMÁCIA — estorno com vínculo e inventário cíclico
@@ -11603,7 +11603,7 @@ select 'migracao anotada no registro',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 90/104 — migracao-scih-germes-seed.sql
+-- │ 90/105 — migracao-scih-germes-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SCIH — base de germes inicial
@@ -11693,7 +11693,7 @@ from public.scih_germes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 91/104 — migracao-maternidade-fase0.sql
+-- │ 91/105 — migracao-maternidade-fase0.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — FASE 0: a fundação de dados
@@ -12012,7 +12012,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 92/104 — migracao-perfis-maternidade.sql
+-- │ 92/105 — migracao-perfis-maternidade.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE ENTRA NOS PERFIS — a porta do módulo no menu
@@ -12084,7 +12084,7 @@ values ('migracao-perfis-maternidade.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 93/104 — migracao-maternidade-partograma.sql
+-- │ 93/105 — migracao-maternidade-partograma.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — PARTOGRAMA: os toques ao longo do trabalho de parto
@@ -12235,7 +12235,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 94/104 — migracao-maternidade-parto.sql
+-- │ 94/105 — migracao-maternidade-parto.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — PARTO & CESÁREA: o registro do nascimento
@@ -12396,7 +12396,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 95/104 — migracao-maternidade-recem-nascido.sql
+-- │ 95/105 — migracao-maternidade-recem-nascido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — RECÉM-NASCIDO: a avaliação clínica do bebê
@@ -12545,7 +12545,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 96/104 — migracao-maternidade-alojamento.sql
+-- │ 96/105 — migracao-maternidade-alojamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — ALOJAMENTO CONJUNTO: a evolução do binômio
@@ -12743,7 +12743,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 97/104 — migracao-alertas-peso-gestacao.sql
+-- │ 97/105 — migracao-alertas-peso-gestacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FARMÁCIA CLÍNICA — RISCO NA GESTAÇÃO E DOSE MÁXIMA POR KG
@@ -12808,7 +12808,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 98/104 — migracao-farmacia-hospital.sql
+-- │ 98/105 — migracao-farmacia-hospital.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FARMÁCIA DO HOSPITAL — internação, validação, controlados e devolução
@@ -13265,7 +13265,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 99/104 — migracao-descricao-aux-farmacia.sql
+-- │ 99/105 — migracao-descricao-aux-farmacia.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUXILIAR DE FARMÁCIA: a descrição do perfil passou a mentir
@@ -13320,7 +13320,7 @@ from (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 100/104 — migracao-correcao-desfecho.sql
+-- │ 100/105 — migracao-correcao-desfecho.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CORRIGIR O DESFECHO — por registro novo, nunca por edição
@@ -13565,7 +13565,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 101/104 — migracao-correcao-desfecho-corrida.sql
+-- │ 101/105 — migracao-correcao-desfecho-corrida.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- A RECUSA POR CORRIDA NÃO FUNCIONAVA — e só o banco real mostrou
@@ -13742,7 +13742,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 102/104 — migracao-cirurgia-segura-registro.sql
+-- │ 102/105 — migracao-cirurgia-segura-registro.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CIRURGIA SEGURA VIRA REGISTRO, E NÃO UM BOOLEANO
@@ -14068,7 +14068,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 103/104 — migracao-cirurgia-paciente-equipe-codigo.sql
+-- │ 103/105 — migracao-cirurgia-paciente-equipe-codigo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- A CIRURGIA PASSA A TER PACIENTE, EQUIPE E CÓDIGO
@@ -14393,7 +14393,159 @@ select item, case when ok then '✅' else '❌' end as situacao from (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 104/104 — migracao-rls-leitura.sql
+-- │ 104/105 — migracao-cirurgia-elo-atendimento.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A CIRURGIA PASSA A SABER DE QUE ATENDIMENTO ELA É
+--
+-- 🔴 `cc_cirurgias` É A ÚNICA TABELA CLÍNICA SEM ELO COM O EPISÓDIO.
+--
+--   leitos.ps_atendimento_id          (migracao-ps-origem-elo)
+--   mat_episodios.ps_atendimento_id   (maternidade-fase0)
+--   pep_episodios.ps_atendimento_id   (pep-fase1)
+--   cc_cirurgias                      — nada
+--
+-- Enquanto isso não existe, a conta da cirurgia só pode ser montada
+-- ADIVINHANDO por prontuário + data. É exatamente o casamento que
+-- `escolherInternacao` já faz para o leito e que o próprio código lamenta:
+-- "o vínculo é por prontuário+período (a saída não guarda o atendimento),
+-- por isso a tela mostra a fonte". Para uma cirurgia — o procedimento de
+-- maior valor da conta — adivinhar o episódio é pior: a mesma pessoa pode
+-- ter dois atendimentos no mesmo dia (consulta de manhã, urgência à noite),
+-- e o palpite poria o porte cirúrgico na conta errada.
+--
+-- 💡 O ELO EXPLÍCITO. `ps_atendimento_id` nullable, com FK. Nullable porque
+-- cirurgia agendada com semanas de antecedência nasce ANTES de o episódio
+-- existir — o elo se faz quando o paciente chega.
+--
+-- ⚠️ O BACKFILL SÓ LIGA O QUE NÃO TEM DÚVIDA.
+-- Liga a cirurgia ao atendimento quando existe EXATAMENTE UM atendimento
+-- daquele prontuário cuja janela cobre o dia da cirurgia. Havendo dois, não
+-- liga nenhum — e isso é deliberado: elo errado é pior que elo ausente,
+-- porque a conta sai para o episódio errado e ninguém percebe. A ausência a
+-- tela mostra; o erro, não.
+--
+-- É a lição de `migracao-atendimento-fk.sql` sobre backfill que DEDUZ dado:
+-- "migração que deduz dado não pode alimentar decisão que depende de dado
+-- confiável". Aqui o dado alimenta a conta, então o critério é a certeza.
+--
+-- ADITIVA. IDEMPOTENTE.
+--
+-- COMO DESFAZER:
+--   alter table public.cc_cirurgias
+--     drop constraint if exists cc_cirurgias_atendimento_fk,
+--     drop column if exists ps_atendimento_id;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+alter table public.cc_cirurgias
+  add column if not exists ps_atendimento_id bigint;
+
+comment on column public.cc_cirurgias.ps_atendimento_id is
+  'De que episódio esta cirurgia é. NULL = ainda não ligada (cirurgia agendada antes de o paciente chegar).';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'cc_cirurgias_atendimento_fk'
+       and conrelid = 'public.cc_cirurgias'::regclass
+  ) then
+    alter table public.cc_cirurgias
+      add constraint cc_cirurgias_atendimento_fk
+      foreign key (ps_atendimento_id) references public.ps_atendimentos (id);
+  end if;
+exception when others then
+  raise notice 'ATENCAO: nao foi possivel criar a FK do elo (%). Veja a conferencia no fim.', sqlerrm;
+end $$;
+
+create index if not exists cc_cirurgias_atendimento_idx
+  on public.cc_cirurgias (ps_atendimento_id) where ps_atendimento_id is not null;
+
+
+-- ───────────────────────────────────────────────────────────
+-- O BACKFILL DO QUE NÃO TEM DÚVIDA
+--
+-- A janela do atendimento vai da chegada ao desfecho; em aberto, vai até
+-- hoje. O dia da cirurgia precisa cair dentro dela.
+--
+-- ⚠️ O dia civil sai de `chegada_em`/`desfecho_em` pelo fuso de São Paulo e
+-- NÃO por corte de texto: em UTC, depois das 21h já é amanhã, e uma
+-- cirurgia da noite cairia fora da janela do próprio episódio. É a mesma
+-- correção do PR do dia civil, aqui no SQL.
+-- ───────────────────────────────────────────────────────────
+with candidatos as (
+  select c.id as cirurgia_id, a.id as atendimento_id
+    from public.cc_cirurgias c
+    join public.ps_atendimentos a
+      on a.prontuario = c.prontuario
+     and c.data >= (a.chegada_em at time zone 'America/Sao_Paulo')::date
+     and c.data <= coalesce((a.desfecho_em at time zone 'America/Sao_Paulo')::date,
+                            (now() at time zone 'America/Sao_Paulo')::date)
+     and coalesce(a.status, '') <> 'cancelado'
+   where c.ps_atendimento_id is null
+     and c.prontuario is not null
+),
+sem_duvida as (
+  select cirurgia_id, min(atendimento_id) as atendimento_id
+    from candidatos
+   group by cirurgia_id
+  having count(*) = 1          -- 🔴 dois candidatos → não liga nenhum
+)
+update public.cc_cirurgias c
+   set ps_atendimento_id = s.atendimento_id,
+       updated_at = now()
+  from sem_duvida s
+ where c.id = s.cirurgia_id;
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-elo-atendimento.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'coluna cc_cirurgias.ps_atendimento_id' as item,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_cirurgias'
+                    and column_name = 'ps_atendimento_id') as ok
+  union all
+  select '🔴 FK cirurgia → atendimento',
+         exists (select 1 from pg_constraint where conname = 'cc_cirurgias_atendimento_fk')
+  union all
+  select 'índice do elo',
+         exists (select 1 from pg_class where relname = 'cc_cirurgias_atendimento_idx')
+  union all
+  -- Nenhum elo pode apontar para atendimento de OUTRO paciente. Se isto vier
+  -- ❌, o backfill casou errado e a conta sairia no episódio de outra pessoa.
+  select '🔴 nenhum elo aponta para outro paciente',
+         not exists (select 1 from public.cc_cirurgias c
+                      join public.ps_atendimentos a on a.id = c.ps_atendimento_id
+                     where a.prontuario is distinct from c.prontuario)
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-cirurgia-elo-atendimento.sql')
+) x;
+
+-- Quantas ficaram ligadas, e quantas seguem sem elo — não é erro, é o que
+-- a tela vai pedir para alguém resolver.
+select count(*) filter (where ps_atendimento_id is not null) as ligadas,
+       count(*) filter (where ps_atendimento_id is null)     as sem_elo,
+       count(*)                                              as total
+  from public.cc_cirurgias;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 105/105 — migracao-rls-leitura.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — RLS: quem LÊ e quem ESCREVE em cada tabela
@@ -15095,7 +15247,7 @@ select
 --
 -- ⚠️ FALTA UM PASSO: ANOTAR O REGISTRO DE MIGRAÇÕES.
 --
--- Só 28 das 104 migrações acima terminam se anotando em
+-- Só 29 das 105 migrações acima terminam se anotando em
 -- `migracoes_aplicadas`; as outras 76 são anteriores à regra
 -- (27/08/2026) e nunca foram reescritas.
 --
