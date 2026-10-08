@@ -14,7 +14,7 @@ import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS } from "./catalogo.js";
 import { addCcCirurgiaRemote, deleteCcSalaRemote, loadCcCirurgias, loadCcSalas, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import { useEffect, useState } from "react";
-import { listaLida } from "../util/leitura.js";
+import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
 // ── Página Bloco Cirúrgico ──
 export default function BlocoPage({ sb, currentUser, canEdit }) {
@@ -27,12 +27,22 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const [checklist, setChecklist] = useState(null); // { cirurgia, fase }
   const [sub, setSub] = useState("mapa"); // mapa | indicadores
   const [, setTick] = useState(0);
+  // Escrita que não se confirmou e leitura que não deu — as duas aparecem
+  // na tela, porque as duas mudam o que a pessoa deveria fazer em seguida.
+  const [erro, setErro] = useState(null);
+  const [leituraFalhou, setLeituraFalhou] = useState(false);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
-  function refresh(d = data) {
+  // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
+  // "Nenhuma sala cadastrada" e — pior — "Sala livre neste dia" para cada
+  // sala. A segunda é afirmação de ausência de cirurgia: alguém olha o mapa,
+  // vê sala livre e encaixa uma urgência na sala onde há cirurgia marcada.
+  async function refresh(d = data) {
     if (!sb) return;
-    loadCcSalas(sb).then(setSalas);
-    loadCcCirurgias(sb, d).then(setCirurgias);
+    const [s, c] = await Promise.all([loadCcSalas(sb), loadCcCirurgias(sb, d)]);
+    // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
+    setLeituraFalhou(algumaFalhou(s, c));
+    setSalas(s); setCirurgias(c);
   }
   useEffect(() => {
     refresh(data);
@@ -45,27 +55,42 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
   const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
 
+  // 🔴 A AUDITORIA SÓ É GRAVADA DEPOIS QUE A ESCRITA SE CONFIRMA.
+  //
+  // Antes, as quatro funções abaixo chamavam `registrarAuditoria` logo após
+  // o `await`, sem olhar o resultado. Com a RLS barrando, o PostgREST
+  // responde 2xx sem linha: nada ia para o banco e a TRILHA afirmava que
+  // tinha ido. No checklist de cirurgia segura isso é registro
+  // contraditório num evento sentinela — a trilha dizendo que a conferência
+  // aconteceu, e o campo apagado.
   async function salvarCirurgia(c, idEdicao) {
-    if (idEdicao) await updateCcCirurgiaRemote(sb, idEdicao, c);
-    else await addCcCirurgiaRemote(sb, { ...c, status: "agendada" }, currentUser);
+    const r = idEdicao
+      ? await updateCcCirurgiaRemote(sb, idEdicao, c)
+      : await addCcCirurgiaRemote(sb, { ...c, status: "agendada" }, currentUser);
+    if (!r.ok) { setErro(r.motivo); return; }
     registrarAuditoria(sb, currentUser, idEdicao ? "editar cirurgia" : "agendar cirurgia", `${c.iniciais} · ${c.procedimento}`, {});
-    setAgendando(false); setTimeout(() => refresh(), 400);
+    setErro(null); setAgendando(false); setTimeout(() => refresh(), 400);
   }
   async function cancelar(c, motivo) {
-    await updateCcCirurgiaRemote(sb, c.id, { status: "cancelada", cancelamento_motivo: motivo });
+    const r = await updateCcCirurgiaRemote(sb, c.id, { status: "cancelada", cancelamento_motivo: motivo });
+    if (!r.ok) { setErro(r.motivo); return; }
     registrarAuditoria(sb, currentUser, "cancelar cirurgia", `${c.iniciais} · ${motivo}`, {});
-    setCancelando(null); setTimeout(() => refresh(), 300);
+    setErro(null); setCancelando(null); setTimeout(() => refresh(), 300);
   }
   async function marcar(c, campos, acao) {
-    await updateCcCirurgiaRemote(sb, c.id, campos);
+    const r = await updateCcCirurgiaRemote(sb, c.id, campos);
+    if (!r.ok) { setErro(`${acao}: ${r.motivo}`); return; }
     registrarAuditoria(sb, currentUser, `bloco: ${acao}`, c.iniciais, {});
-    setTimeout(() => refresh(), 300);
+    setErro(null); setTimeout(() => refresh(), 300);
   }
   async function concluirChecklist(c, faseKey) {
     const fase = CHECKLIST_OMS[faseKey];
-    await updateCcCirurgiaRemote(sb, c.id, { [fase.campo]: true });
+    const r = await updateCcCirurgiaRemote(sb, c.id, { [fase.campo]: true });
+    // O modal NÃO fecha quando a gravação não se confirmou: fechar daria a
+    // impressão de concluído, e é a impressão que leva a equipe adiante.
+    if (!r.ok) { setErro(`Checklist ${fase.label}: ${r.motivo}`); return; }
     registrarAuditoria(sb, currentUser, `bloco: checklist ${fase.label}`, c.iniciais, {});
-    setChecklist(null); setTimeout(() => refresh(), 300);
+    setErro(null); setChecklist(null); setTimeout(() => refresh(), 300);
   }
 
   const ativas = cirurgias.filter(c => c.status !== "cancelada");
@@ -174,6 +199,24 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       {sub === "indicadores" && <BlocoIndicadores sb={sb} salasAtivas={salasAtivas} />}
 
       {sub === "mapa" && (<>
+      {/* Escrita que não se confirmou. Fica no topo porque muda o que a
+          pessoa deve fazer AGORA: conferir antes de seguir o fluxo. */}
+      {erro && (
+        <div role="alert" style={{ marginBottom: 14, background: "#f43f5e10", border: "1px solid #f43f5e55",
+                                   borderLeft: "3px solid #f43f5e", borderRadius: 8, padding: "10px 13px",
+                                   fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+          {erro}
+        </div>
+      )}
+      {/* Leitura que falhou. O mapa continua desenhado — o que não pode é
+          ele passar por completo. */}
+      {leituraFalhou && (
+        <div role="alert" style={{ marginBottom: 14, background: "#fbbf2410", border: "1px solid #fbbf2455",
+                                   borderLeft: "3px solid #fbbf24", borderRadius: 8, padding: "10px 13px",
+                                   fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+          {avisoDeFalha("as salas e as cirurgias deste dia")} <strong>Não encaixe cirurgia por este mapa enquanto ele estiver assim.</strong>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Dia do mapa</label>
         <input type="date" value={data} onChange={e => setData(e.target.value)} style={inp} />
@@ -191,7 +234,9 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       <div style={secLbl}>Mapa cirúrgico — {new Date(data + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" })}</div>
       {salasAtivas.length === 0 ? (
         <div style={{ background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 10, padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginBottom: "1.25rem" }}>
-          Nenhuma sala cadastrada. {canEdit ? "Clique em Salas para cadastrar as salas do bloco." : ""}
+          {leituraFalhou
+            ? "Não consegui ler o catálogo de salas — não sei se há salas cadastradas. Recarregue."
+            : <>Nenhuma sala cadastrada. {canEdit ? "Clique em Salas para cadastrar as salas do bloco." : ""}</>}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: "1.25rem" }}>
@@ -202,7 +247,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
                 <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{lista.length} cirurgia(s)</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {lista.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", padding: "10px 0" }}>Sala livre neste dia.</div>}
+                {lista.length === 0 && <div style={{ fontSize: 12, color: leituraFalhou ? "#fbbf24" : "var(--text-muted)", textAlign: "center", padding: "10px 0" }}>{leituraFalhou ? "Não consegui ler as cirurgias — NÃO é \"livre\"." : "Sala livre neste dia."}</div>}
                 {lista.map(c => <CirurgiaCard key={c.id} c={c} />)}
               </div>
             </div>
@@ -225,7 +270,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       )}
       </>)}
 
-      {agendando && <AgendarCirurgiaModal cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
+      {agendando && <AgendarCirurgiaModal sb={sb} cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
       {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
       {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={() => concluirChecklist(checklist.cirurgia, checklist.fase)} />}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(sb, s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(sb, n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
@@ -234,7 +279,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
 }
 
 // Modal de agendamento (nova cirurgia ou edição) com detecção de conflito de sala
-function AgendarCirurgiaModal({ cirurgia, data, salas, cirurgiasDoDia, onClose, onSave }) {
+function AgendarCirurgiaModal({ sb, cirurgia, data, salas, cirurgiasDoDia, onClose, onSave }) {
   const [f, setF] = useState({
     data: cirurgia?.data || data, hora_prevista: cirurgia?.hora_prevista?.slice(0, 5) || "",
     duracao_prev_min: cirurgia?.duracao_prev_min || "", sala: cirurgia?.sala || "",
@@ -246,9 +291,45 @@ function AgendarCirurgiaModal({ cirurgia, data, salas, cirurgiasDoDia, onClose, 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const lbl = { fontSize: 11, fontWeight: 700, color: "var(--text-3)", display: "block", marginBottom: 5 };
-  const conflitos = f.data === data ? conflitosDeSala(cirurgiasDoDia, f.sala, f.hora_prevista, f.duracao_prev_min, cirurgia?.id) : [];
+  // 🔴 A CONFERÊNCIA DE CONFLITO SEGUE O DIA QUE A PESSOA ESCOLHEU.
+  //
+  // Antes era `f.data === data ? conflitosDeSala(...) : []` — ou seja, só
+  // conferia quando a cirurgia era para o dia do mapa aberto. Mas mapa
+  // cirúrgico se monta com dias de antecedência: marcar para outro dia é o
+  // caso NORMAL, e nele a barreira ficava desligada em silêncio, sem a
+  // faixa laranja e sem o aviso. Duas cirurgias às 08:00 na mesma sala de
+  // amanhã entravam as duas, caladas — e o cabeçalho de `agenda.js` marca
+  // isso como 🔴: "paciente anestesiado esperando sala, ou cirurgia adiada
+  // com o paciente já em jejum desde a véspera".
+  //
+  // A regra pura já existia e já tinha teste. Só não estava sendo chamada.
+  const mesmoDia = f.data === data;
+  const [doOutroDia, setDoOutroDia] = useState(null);   // null = ainda não li
+  useEffect(() => {
+    if (mesmoDia || !sb || !f.data) { setDoOutroDia(null); return; }
+    let vivo = true;
+    setDoOutroDia(null);
+    loadCcCirurgias(sb, f.data).then(r => { if (vivo) setDoOutroDia(r); });
+    return () => { vivo = false; };
+  }, [sb, f.data, mesmoDia]);
+
+  const base = mesmoDia ? cirurgiasDoDia : doOutroDia;
+  // "Ainda não li" e "não deu para ler" são a mesma coisa para quem decide:
+  // nos dois casos a conferência NÃO foi feita, e isso tem de ser dito.
+  const naoConferi = base == null || naoDeuParaLer(base);
+  const conflitos = naoConferi
+    ? []
+    : conflitosDeSala(base, f.sala, f.hora_prevista, f.duracao_prev_min, cirurgia?.id);
+
   async function salvar() {
     if (!f.iniciais.trim() || !f.procedimento.trim()) { alert("Informe ao menos as iniciais do paciente e o procedimento."); return; }
+    // O rótulo do campo diz `Prontuário *` desde sempre e nada conferia. Um
+    // asterisco que mente é pior que a ausência dele, porque a pessoa
+    // acredita que o sistema está olhando — e cirurgia sem prontuário não
+    // fatura, não entra no prontuário do paciente, e torna indistinguíveis
+    // dois pacientes com as mesmas iniciais no mesmo dia (Meta 1 da OMS).
+    if (!f.prontuario.trim()) { alert("Informe o prontuário do paciente. Sem ele a cirurgia não identifica quem vai ser operado — e é por ele que o Sign In confere a identidade."); return; }
+    if (naoConferi && !confirm(`NÃO consegui conferir se a sala ${f.sala || "escolhida"} já tem cirurgia em ${f.data} nesse horário.\n\nAgendar sem essa conferência?`)) return;
     if (conflitos.length && !confirm(`Atenção: a sala ${f.sala} já tem ${conflitos.length} cirurgia(s) nesse horário (${conflitos.map(c => c.iniciais).join(", ")}). Agendar mesmo assim?`)) return;
     setBusy(true);
     await onSave({
@@ -277,6 +358,10 @@ function AgendarCirurgiaModal({ cirurgia, data, salas, cirurgiasDoDia, onClose, 
           <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="J.S.M." style={inp} /></div>
           <div><label style={lbl}>Prontuário *</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="48213" style={inp} /></div>
         </div>
+        {/* A ausência de faixa laranja sempre significou "conferi e não há
+            conflito". Quando a conferência NÃO foi feita, a tela tem de
+            dizer isso — senão o silêncio continua passando por aprovação. */}
+        {naoConferi && <div style={{ background: "#3a2d06", border: "1px solid #fbbf2466", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#fbbf24", fontWeight: 600, marginBottom: 10 }}>Ainda NÃO conferi se a sala já está ocupada em {f.data}. A ausência de aviso aqui não quer dizer que está livre.</div>}
         {conflitos.length > 0 && <div style={{ background: "#3d2206", border: "1px solid #f9731666", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#f97316", fontWeight: 600, marginBottom: 10 }}>Conflito de sala: já há {conflitos.length} cirurgia(s) na {f.sala} nesse intervalo.</div>}
         <div style={{ marginBottom: 10 }}><label style={lbl}>Procedimento *</label><input value={f.procedimento} onChange={e => set("procedimento", e.target.value)} placeholder="Ex.: Colecistectomia videolaparoscópica" style={inp} /></div>
         <div style={{ marginBottom: 10 }}><label style={lbl}>Cirurgião</label><input value={f.cirurgiao} onChange={e => set("cirurgiao", e.target.value)} placeholder="Sobrenome do cirurgião" style={inp} /></div>
@@ -497,7 +582,7 @@ function CcSalasModal({ salas, onClose, onSave, onDelete, isMaster }) {
           <button onClick={() => { if (nome.trim()) { onSave({ nome: nome.trim(), ordem: salas.length, ativa: true }); setNome(""); } }} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>+ Salvar</button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {salas.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "10px" }}>Nenhuma sala cadastrada.</div>}
+          {salas.length === 0 && <div style={{ fontSize: 13, color: naoDeuParaLer(salas) ? "#fbbf24" : "var(--text-muted)", textAlign: "center", padding: "10px" }}>{naoDeuParaLer(salas) ? "Não consegui ler o catálogo — não sei se há salas." : "Nenhuma sala cadastrada."}</div>}
           {salas.map(s => (
             <div key={s.nome} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px" }}>
               <strong style={{ flex: 1 }}>{s.nome}</strong>
