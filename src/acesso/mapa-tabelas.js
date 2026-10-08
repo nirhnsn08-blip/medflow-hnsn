@@ -117,6 +117,7 @@ export const MAPA_TABELAS = {
   pep_acessos:              ["auditoria"],
 
   // ── Bloco cirúrgico ───────────────────────────────────────
+  cc_checklist:             ["bloco"],
   cc_cirurgias:             ["bloco"],
   cc_salas:                 [TODOS],
 
@@ -315,7 +316,7 @@ export const SENSIVEIS = new Set([
   "ag_agendamentos", "at_conta_itens", "at_contas", "at_desfecho_correcoes",
   "at_glosas", "at_repasses",
   "at_responsaveis",
-  "auditoria", "cc_cirurgias",
+  "auditoria", "cc_checklist", "cc_cirurgias",
   "enf_escalas", "enf_lesao_pressao", "enf_sae_checagem",
   "enf_sae_diagnosticos", "enf_sae_historico",
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
