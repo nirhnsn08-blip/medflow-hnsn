@@ -97,3 +97,66 @@ export async function updateCcCirurgiaRemote(sb, id, campos) {
   });
   return conferir(r, "cirurgia");
 }
+
+// ── CIRURGIA SEGURA — a trilha ──────────────────────────────
+
+/**
+ * As conferências (e os pulos) de uma cirurgia, da mais recente para a mais
+ * antiga.
+ *
+ * ⚠️ "Não consegui ler" NÃO é "nunca foi conferido". Sem essa diferença,
+ * uma oscilação de rede faria uma cirurgia com checklist completo parecer
+ * uma que nunca passou por conferência — e é sob essa leitura que alguém
+ * decide se pode seguir para a incisão.
+ */
+export async function loadCcChecklist(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_checklist?cirurgia_id=eq.${cirurgiaId}&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava uma linha da trilha. O gatilho acende o selo no MESMO insert.
+ *
+ * A frase de recusa vem do BANCO: é ele que sabe se a contagem não fecha,
+ * se faltou item sem explicação ou se a cirurgia está cancelada. Repetir
+ * essas regras aqui só criaria duas versões para divergirem.
+ */
+export async function registrarChecklist(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_checklist", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, linha: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}
+
+/**
+ * A mensagem que o Postgres mandou, quando mandou.
+ *
+ * `sbFetch` devolve o corpo do erro como texto/objeto. A recusa do gatilho
+ * é escrita para ser lida por quem está na sala — jogá-la fora e mostrar
+ * "não foi possível" transformaria seis motivos distintos num só.
+ */
+function motivoDoBanco(r) {
+  if (!r) return null;
+  const bruto = typeof r === "string" ? r : JSON.stringify(r);
+  const m = /"message"\s*:\s*"([^"]+)"/.exec(bruto);
+  if (m) return m[1];
+  return typeof r?.message === "string" ? r.message : null;
+}
+
+/**
+ * A trilha de TODAS as cirurgias de um dia, numa consulta só.
+ *
+ * Por dia e não por cartão: um mapa com doze cirurgias faria doze pedidos,
+ * e o painel do bloco recarrega a cada 30s.
+ */
+export async function loadCcChecklistDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_checklist?cirurgia_id=in.(${lista.join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}

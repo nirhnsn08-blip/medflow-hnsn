@@ -8,13 +8,30 @@
 // ═══════════════════════════════════════════════════════════
 
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { assinaturaDe } from "../clinico/papeis.js";
 import { MONTHS, MONTHS_FULL, btnContorno } from "../ui/base.jsx";
 import { diffMin, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
-import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS } from "./catalogo.js";
-import { addCcCirurgiaRemote, deleteCcSalaRemote, loadCcCirurgias, loadCcSalas, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
+import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
+import { addCcCirurgiaRemote, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcSalas, registrarChecklist, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
+
+/**
+ * A assinatura de quem conduziu, carimbada NO ATO.
+ *
+ * Nome + conselho + registro, como o resto do PEP faz (CFM 2.299/2021,
+ * COFEN 754/2024). Carimbada e não referenciada porque o cadastro muda e
+ * o registro não: quem assinou o Sign In de hoje assinou com o conselho
+ * que tinha hoje.
+ */
+function assinaturaTexto(user) {
+  const a = assinaturaDe(user);
+  if (!a?.profissional_nome) return null;
+  return [a.profissional_nome, a.conselho && a.registro_conselho ? `${a.conselho} ${a.registro_conselho}` : null]
+    .filter(Boolean).join(" · ");
+}
 
 // ── Página Bloco Cirúrgico ──
 export default function BlocoPage({ sb, currentUser, canEdit }) {
@@ -31,6 +48,8 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   // na tela, porque as duas mudam o que a pessoa deveria fazer em seguida.
   const [erro, setErro] = useState(null);
   const [leituraFalhou, setLeituraFalhou] = useState(false);
+  // A trilha de cirurgia segura do dia, numa consulta só.
+  const [trilha, setTrilha] = useState([]);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
@@ -40,9 +59,15 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   async function refresh(d = data) {
     if (!sb) return;
     const [s, c] = await Promise.all([loadCcSalas(sb), loadCcCirurgias(sb, d)]);
+    // A trilha depende dos ids, então vem num segundo tempo — mas o estado
+    // é aplicado TUDO JUNTO, num render só. Com `setTrilha` depois de um
+    // `await` solto, o mapa renderizava duas vezes a cada atualização (e
+    // esta tela se atualiza sozinha a cada 30s); o segundo render trocava
+    // os nós do DOM por baixo de quem estava clicando.
+    const t = await loadCcChecklistDoDia(sb, (Array.isArray(c) ? c : []).map(x => x.id));
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
-    setSalas(s); setCirurgias(c);
+    setSalas(s); setCirurgias(c); setTrilha(t);
   }
   useEffect(() => {
     refresh(data);
@@ -83,14 +108,55 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     registrarAuditoria(sb, currentUser, `bloco: ${acao}`, c.iniciais, {});
     setErro(null); setTimeout(() => refresh(), 300);
   }
-  async function concluirChecklist(c, faseKey) {
+  /**
+   * Grava a CONFERÊNCIA na trilha. O gatilho acende o selo no mesmo INSERT.
+   *
+   * Antes isto escrevia só `chk_<fase> = true` e os itens marcados morriam
+   * no estado do modal. Agora vai a linha inteira — quais itens, o que
+   * divergiu, a contagem em número — porque é o REGISTRO que a RDC 36/2013
+   * exige, não a marcação.
+   */
+  async function concluirChecklist(c, faseKey, { marcados, divergencia, contagem } = {}) {
     const fase = CHECKLIST_OMS[faseKey];
-    const r = await updateCcCirurgiaRemote(sb, c.id, { [fase.campo]: true });
+    const r = await registrarChecklist(sb, linhaDaConferencia({
+      cirurgia: c, fase: faseKey, marcados, divergencia, contagem, assinatura: assinaturaTexto(currentUser),
+    }), currentUser);
     // O modal NÃO fecha quando a gravação não se confirmou: fechar daria a
     // impressão de concluído, e é a impressão que leva a equipe adiante.
-    if (!r.ok) { setErro(`Checklist ${fase.label}: ${r.motivo}`); return; }
+    if (!r.ok) return { erro: `Checklist ${fase.label}: ${r.motivo}` };
     registrarAuditoria(sb, currentUser, `bloco: checklist ${fase.label}`, c.iniciais, {});
     setErro(null); setChecklist(null); setTimeout(() => refresh(), 300);
+    return { ok: true };
+  }
+
+  /**
+   * Registra que um momento do checklist foi PULADO, e por quê.
+   *
+   * 🔴 Hoje pular não deixa rastro: a tela pergunta "entrar em sala mesmo
+   * assim?" e quem clica OK segue. No mês seguinte o único vestígio é a
+   * adesão caindo de 100% para 94% — sem saber em qual cirurgia, por
+   * decisão de quem, nem por quê. É exatamente o que a análise de causa
+   * raiz de um evento sentinela procura e não acha.
+   *
+   * Não trava: há politrauma em choque e cesárea de emergência, e travar a
+   * porta do bloco por campo inverteria a prioridade. Custa uma frase.
+   */
+  async function pularChecklist(c, faseKey) {
+    const fase = CHECKLIST_OMS[faseKey];
+    const motivo = prompt(
+      `Seguir SEM o ${fase.label} (${fase.quando}).\n\n` +
+      "Por quê? A justificativa fica gravada com seu nome na trilha de cirurgia segura — " +
+      "é o que alguém vai ler se este caso virar análise de evento.");
+    if (motivo === null) return false;
+    const falta = conferirPulo({ cirurgia: c, fase: faseKey, motivo });
+    if (falta) { setErro(falta); return false; }
+    const r = await registrarChecklist(sb, linhaDoPulo({
+      cirurgia: c, fase: faseKey, motivo, assinatura: assinaturaTexto(currentUser),
+    }), currentUser);
+    if (!r.ok) { setErro(`Não consegui registrar o pulo do ${fase.label}: ${r.motivo}`); return false; }
+    registrarAuditoria(sb, currentUser, `bloco: PULOU ${fase.label}`, c.iniciais, {});
+    setErro(null); setTimeout(() => refresh(), 300);
+    return true;
   }
 
   const ativas = cirurgias.filter(c => c.status !== "cancelada");
@@ -136,6 +202,28 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
         </div>
       )}
 
+      {/* 🔴 A TRILHA, NA LINHA DA CIRURGIA.
+          Sem ela, uma cirurgia com os três selos acesos e uma com três
+          momentos PULADOS com justificativa ficam idênticas no mapa — e são
+          opostas. O pulo não acende selo (o gatilho cuida disso), então sem
+          esta linha ele seria invisível exatamente como antes. */}
+      {(() => {
+        const minhas = trilha.filter(t => String(t.cirurgia_id) === String(c.id));
+        const r = resumoDaTrilha(minhas);
+        if (!r?.texto) return null;
+        return (
+          <div style={{ marginTop: 5, fontSize: 11, color: "#fbbf24", lineHeight: 1.5 }}>
+            ⚠ {r.texto}
+            {minhas.filter(t => t.tipo === "pulo" || (t.divergencia || "").trim()).map(t => (
+              <div key={t.id} style={{ color: "var(--text-muted)", fontStyle: "italic", marginTop: 1 }}>
+                {t.tipo === "pulo" ? "PULOU" : "divergência"} {CHECKLIST_OMS[t.fase]?.label || t.fase} — {t.divergencia}
+                {t.assinatura ? ` · ${t.assinatura}` : t.usuario ? ` · ${t.usuario}` : ""}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Tempos registrados */}
       {(c.entrada_sala_em || c.checkin_em) && c.status !== "cancelada" && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.7 }}>
@@ -159,16 +247,16 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
           </>}
           {c.status === "checkin" && <>
             {!c.chk_sign_in && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_in" })} style={btnContorno("#3b82f6")}>Cirurgia segura: Sign In</button>}
-            <button onClick={() => { if (!c.chk_sign_in && !confirm("O checklist Sign In ainda não foi concluído. Entrar em sala mesmo assim?")) return; marcar(c, { status: "em_cirurgia", entrada_sala_em: nowISO() }, "entrada na sala"); }} style={btnContorno("#22d3ee")}>Entrada na sala</button>
+            <button onClick={async () => { if (pendenteAntesDe(c, "entrada_sala") && !(await pularChecklist(c, "sign_in"))) return; marcar(c, { status: "em_cirurgia", entrada_sala_em: nowISO() }, "entrada na sala"); }} style={btnContorno("#22d3ee")}>Entrada na sala</button>
             <button onClick={() => setCancelando(c)} style={btnContorno("#f43f5e")}>Cancelar</button>
           </>}
           {c.status === "em_cirurgia" && <>
             {!c.inicio_anestesia_em && <button onClick={() => marcar(c, { inicio_anestesia_em: nowISO() }, "inicio anestesia")} style={btnContorno("var(--text-3)")}>Início da anestesia</button>}
             {!c.chk_time_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "time_out" })} style={btnContorno("#d97706")}>Cirurgia segura: Time Out</button>}
-            {!c.inicio_cirurgia_em && <button onClick={() => { if (!c.chk_time_out && !confirm("O checklist Time Out ainda não foi concluído. Registrar a incisão mesmo assim?")) return; marcar(c, { inicio_cirurgia_em: nowISO() }, "inicio cirurgia"); }} style={btnContorno("#22d3ee")}>Início da cirurgia</button>}
+            {!c.inicio_cirurgia_em && <button onClick={async () => { if (pendenteAntesDe(c, "incisao") && !(await pularChecklist(c, "time_out"))) return; marcar(c, { inicio_cirurgia_em: nowISO() }, "inicio cirurgia"); }} style={btnContorno("#22d3ee")}>Início da cirurgia</button>}
             {c.inicio_cirurgia_em && !c.fim_cirurgia_em && <button onClick={() => marcar(c, { fim_cirurgia_em: nowISO() }, "fim cirurgia")} style={btnContorno("#22d3ee")}>Fim da cirurgia</button>}
             {c.fim_cirurgia_em && !c.chk_sign_out && <button onClick={() => setChecklist({ cirurgia: c, fase: "sign_out" })} style={btnContorno("#34d399")}>Cirurgia segura: Sign Out</button>}
-            {c.fim_cirurgia_em && <button onClick={() => { if (!c.chk_sign_out && !confirm("O checklist Sign Out ainda não foi concluído. Enviar para a RPA mesmo assim?")) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnContorno("#d97706")}>Enviar para RPA</button>}
+            {c.fim_cirurgia_em && <button onClick={async () => { if (pendenteAntesDe(c, "rpa") && !(await pularChecklist(c, "sign_out"))) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnContorno("#d97706")}>Enviar para RPA</button>}
           </>}
           {c.status === "recuperacao" && (
             <button onClick={() => marcar(c, { status: "concluida", rpa_saida_em: nowISO() }, "alta da RPA")} style={btnContorno("#34d399")}>Alta da RPA — concluir</button>
@@ -272,7 +360,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
 
       {agendando && <AgendarCirurgiaModal sb={sb} cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
       {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
-      {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={() => concluirChecklist(checklist.cirurgia, checklist.fase)} />}
+      {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={dados => concluirChecklist(checklist.cirurgia, checklist.fase, dados)} />}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(sb, s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(sb, n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
     </div>
   );
@@ -537,17 +625,85 @@ function BlocoIndicadores({ sb, salasAtivas }) {
   );
 }
 
-// Checklist de Cirurgia Segura (OMS) — todos os itens precisam ser marcados
+// Checklist de Cirurgia Segura (OMS). Item não confirmado é PERMITIDO e custa
+// descrever o que houve — ver o docblock abaixo.
+/**
+ * O modal do checklist de Cirurgia Segura.
+ *
+ * 🔴 ANTES ELE EXIGIA TODOS OS ITENS MARCADOS (`disabled={!todos}`), e isso
+ * parecia rigor. É o contrário: uma equipe com divergência LEGÍTIMA — o
+ * antibiótico profilático não foi dado porque o paciente é alérgico, e a
+ * anestesia concordou — não conseguia registrar nada. A saída real, no
+ * balcão, é marcar a caixinha mentindo. Checklist que empurra para a mentira
+ * não mede segurança, mede obediência.
+ *
+ * Agora: item não confirmado é permitido e CUSTA descrever o que houve. É o
+ * que a OMS pede e é o que vale numa análise de causa raiz — "6 de 7, faltou
+ * o antibiótico, por alergia, decidido com a anestesia" é informação;
+ * "7 de 7" marcado por obrigação não é.
+ */
 function ChecklistOmsModal({ cirurgia, fase, onClose, onConfirm }) {
   const def = CHECKLIST_OMS[fase];
   const [marcados, setMarcados] = useState(() => def.itens.map(() => false));
+  const [divergencia, setDivergencia] = useState("");
+  const [contagem, setContagem] = useState({});
   const [busy, setBusy] = useState(false);
-  const todos = marcados.every(Boolean);
+  const [erro, setErro] = useState(null);
+
+  const total = def.itens.length;
+  const ok = confirmados(marcados);
+  const todos = ok === total;
+  const falta = conferirRegistro({ cirurgia, fase, marcados, divergencia, contagem });
+  const furos = fase === "sign_out" ? contagensQueNaoFecham(contagem) : [];
+
+  const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6,
+                padding: "7px 9px", color: "var(--text)", fontSize: 13, width: 72, textAlign: "center",
+                fontFamily: "JetBrains Mono, monospace", boxSizing: "border-box" };
+  const setC = (k, v) => setContagem(c => ({ ...c, [k]: v }));
+
+  // Um par de contagem: entrou × saiu. Dois números, não uma caixinha —
+  // "a contagem estava correta" marcado por alguém sem identificação tem
+  // valor probatório zero, e corpo estranho retido é never event.
+  // Função, NÃO componente: definido dentro do render, um componente novo
+  // nasce a cada tecla e o React REMONTA o input — o nó some debaixo de
+  // quem está digitando (perde foco, e um clique guardado erra o alvo).
+  const par = (rotulo, chave, obrigatorio) => {
+    const fecha = contagemFecha({ inicial: contagem[chave + "_inicial"], final: contagem[chave + "_final"] });
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
+        <span style={{ fontSize: 12.5, color: "var(--text-2)", width: 120 }}>
+          {rotulo}{obrigatorio && <span style={{ color: "#f43f5e" }}> *</span>}
+        </span>
+        <input type="number" min="0" aria-label={rotulo + " — contagem inicial"} placeholder="entrou"
+          value={contagem[chave + "_inicial"] ?? ""} onChange={e => setC(chave + "_inicial", e.target.value)} style={inp} />
+        <span style={{ color: "var(--text-muted)" }}>→</span>
+        <input type="number" min="0" aria-label={rotulo + " — contagem final"} placeholder="saiu"
+          value={contagem[chave + "_final"] ?? ""} onChange={e => setC(chave + "_final", e.target.value)} style={inp} />
+        {fecha === true && <span style={{ color: "#34d399", fontSize: 12, fontWeight: 700 }}>fecha</span>}
+        {fecha === false && <span style={{ color: "#f43f5e", fontSize: 12, fontWeight: 700 }}>NÃO FECHA</span>}
+      </div>
+    );
+  };
+
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 560, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>Cirurgia Segura — <span style={{ color: def.cor }}>{def.label}</span></div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Momento: {def.quando} · Paciente {cirurgia.iniciais} · {cirurgia.procedimento}</div>
+
+        {/* O sítio e o lado, ao lado do item que manda conferi-los. O
+            checklist pedia para a equipe confirmar um dado que o sistema
+            não guardava. */}
+        {fase === "sign_in" && (
+          <div style={{ fontSize: 12, marginBottom: 8, padding: "7px 10px", borderRadius: 7,
+                        background: cirurgia.sitio_cirurgico ? "var(--surface-2)" : "#fbbf2410",
+                        border: `1px solid ${cirurgia.sitio_cirurgico ? "var(--border)" : "#fbbf2455"}` }}>
+            {cirurgia.sitio_cirurgico
+              ? <>Sítio: <strong>{cirurgia.sitio_cirurgico}</strong>{cirurgia.lateralidade ? <> · lado <strong>{LATERALIDADE[cirurgia.lateralidade] || cirurgia.lateralidade}</strong></> : null}</>
+              : <span style={{ color: "#fbbf24" }}>Sítio cirúrgico <strong>não registrado</strong> — confirme com a equipe e preencha na cirurgia antes de conferir este item.</span>}
+          </div>
+        )}
+
         <div style={{ fontSize: 11.5, color: "var(--text-3)", marginBottom: 14, lineHeight: 1.5 }}>Protocolo de Cirurgia Segura (OMS/Anvisa). Confirme cada item EM VOZ ALTA com a equipe antes de marcar.</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
           {def.itens.map((item, i) => (
@@ -557,13 +713,58 @@ function ChecklistOmsModal({ cirurgia, fase, onClose, onConfirm }) {
             </label>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 11.5, color: todos ? def.cor : "var(--text-muted)", fontWeight: 700 }}>{marcados.filter(Boolean).length}/{def.itens.length} itens confirmados</span>
+
+        {fase === "sign_out" && (
+          <div style={{ marginBottom: 14, padding: "11px 13px", background: "var(--surface-2)", border: "1px solid var(--border-2)", borderRadius: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 9 }}>
+              Contagem — entrou → saiu
+            </div>
+            {par("Compressas", "compressas", true)}
+            {par("Instrumentais", "instrumentais")}
+            {par("Agulhas", "agulhas")}
+          </div>
+        )}
+
+        {/* A divergência aparece quando é exigida — pedir sempre faria dela
+            mais um campo a ignorar. */}
+        {(!todos || furos.length > 0) && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: "#fbbf24", display: "block", marginBottom: 5 }}>
+              {furos.length > 0
+                ? `A contagem NÃO fecha (${furos.map(f => `${f.nome} ${f.inicial}/${f.final}`).join(", ")}). O que foi feito? *`
+                : `Faltou confirmar ${total - ok} de ${total}. O que não foi confirmado, e como a equipe resolveu? *`}
+            </label>
+            <textarea value={divergencia} onChange={e => { setDivergencia(e.target.value); setErro(null); }} rows={2}
+              placeholder="Ex.: antibiótico não administrado — paciente alérgico, conduta definida com a anestesia."
+              style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "Inter, sans-serif" }} />
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
+              {divergencia.trim().length}/{MOTIVO_MIN} — isto é o que alguém vai ler numa análise de causa raiz.
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, color: todos ? def.cor : "#fbbf24", fontWeight: 700 }}>{ok}/{total} itens confirmados</span>
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={onClose} style={{ background: "var(--surface)", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 16px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Voltar</button>
-            <button onClick={async () => { setBusy(true); await onConfirm(); }} disabled={!todos || busy} style={{ background: todos ? def.cor : "var(--surface-3)", color: todos ? "#fff" : "var(--text-muted)", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: todos ? "pointer" : "default", fontSize: 13 }}>{busy ? "…" : `Concluir ${def.label}`}</button>
+            <button
+              onClick={async () => {
+                if (falta) { setErro(falta); return; }
+                setBusy(true); setErro(null);
+                const r = await onConfirm({ marcados, divergencia, contagem });
+                setBusy(false);
+                // O modal NÃO fecha sozinho: quem fecha é quem chamou, e só
+                // depois de a gravação se confirmar.
+                if (r && r.erro) setErro(r.erro);
+              }}
+              disabled={busy}
+              title={falta || undefined}
+              style={{ background: falta ? "var(--surface-3)" : def.cor, color: falta ? "var(--text-muted)" : "#fff", border: "none", borderRadius: 6, padding: "9px 20px", fontWeight: 700, cursor: busy ? "default" : "pointer", fontSize: 13 }}>
+              {busy ? "…" : `Concluir ${def.label}`}
+            </button>
           </div>
         </div>
+        {erro && <div role="alert" style={{ marginTop: 10, color: "#fb7185", fontSize: 12.5, lineHeight: 1.45 }}>{erro}</div>}
       </div>
     </div>
   );

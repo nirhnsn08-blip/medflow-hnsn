@@ -169,10 +169,14 @@ describe("🔴 o checklist de cirurgia segura não fecha sem ter gravado", () =>
     data: "2026-10-07", hora_prevista: "08:00", status: "checkin",
   };
 
+  // "Voltar" só existe dentro do modal, e é um texto exato — o título
+  // ("Cirurgia Segura — Sign In") é partido entre div e span, e casar
+  // nele dependia de como a testing-library junta nó de texto.
+  const modalAberto = () => !!screen.queryByText("Voltar");
+
   async function marcarTudoEConcluir() {
     fireEvent.click(await screen.findByText(/Cirurgia segura: Sign In/i));
-    await screen.findByText(/Cirurgia Segura —/);
-    // marca todos os itens (os checkboxes do modal)
+    await screen.findByText("Voltar");
     for (const cb of document.querySelectorAll('input[type="checkbox"]')) fireEvent.click(cb);
     fireEvent.click(screen.getByText(/Concluir Sign In/i));
   }
@@ -184,7 +188,7 @@ describe("🔴 o checklist de cirurgia segura não fecha sem ter gravado", () =>
     await screen.findByText(/Nada foi gravado/i);
     // o modal continua na tela — fechar daria a impressão de concluído, e é
     // a impressão que leva a equipe para a indução anestésica
-    expect(screen.queryByText(/Cirurgia Segura —/)).toBeTruthy();
+    expect(modalAberto()).toBe(true);
     expect(sb.pedidos.some(p => p.url.startsWith("auditoria") && p.metodo === "POST")).toBe(false);
   });
 
@@ -192,7 +196,7 @@ describe("🔴 o checklist de cirurgia segura não fecha sem ter gravado", () =>
     const sb = banco({ cirurgias: [cirurgiaEmSala], escrita: [{ id: 5, chk_sign_in: true }] });
     abrir(sb);
     await marcarTudoEConcluir();
-    await waitFor(() => expect(screen.queryByText(/Cirurgia Segura —/)).toBeNull());
+    await waitFor(() => expect(modalAberto()).toBe(false));
     expect(sb.pedidos.some(p => p.url.startsWith("auditoria") && p.metodo === "POST")).toBe(true);
   });
 });

@@ -290,6 +290,10 @@ const ORDEM = [
   // sem ele, duas correções simultâneas gravavam as duas trilhas e só uma
   // valia. Substitui só a função, então vem logo depois dela.
   "migracao-correcao-desfecho-corrida.sql",
+  // Cirurgia segura vira REGISTRO (PR do Bloco, 08/10): tabela append-only
+  // cc_checklist + gatilho que acende o selo no mesmo INSERT, mais sítio e
+  // lateralidade em cc_cirurgias. Antes do rls-leitura, que já cita a tabela.
+  "migracao-cirurgia-segura-registro.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

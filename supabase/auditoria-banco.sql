@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 107 tabelas, 1742 colunas.
+-- Cobertura atual: 108 tabelas, 1762 colunas.
 -- ============================================================
 
 with
@@ -34,6 +34,7 @@ tabelas(nome, origem) as (values
   ('at_responsaveis','atendimento-responsavel'),
   ('atendimentos','schema'),
   ('auditoria','schema'),
+  ('cc_checklist','cirurgia-segura-registro'),
   ('cc_cirurgias','schema'),
   ('cc_salas','schema'),
   ('cid_referencia','schema'),
@@ -334,6 +335,23 @@ colunas(tabela, coluna, origem) as (values
   ('auditoria','ts','schema'),
   ('auditoria','usuario','schema'),
   ('auditoria','usuario_id','auditoria-atribuivel'),
+  ('cc_checklist','agulhas_final','cirurgia-segura-registro'),
+  ('cc_checklist','agulhas_inicial','cirurgia-segura-registro'),
+  ('cc_checklist','assinatura','cirurgia-segura-registro'),
+  ('cc_checklist','cirurgia_id','cirurgia-segura-registro'),
+  ('cc_checklist','compressas_final','cirurgia-segura-registro'),
+  ('cc_checklist','compressas_inicial','cirurgia-segura-registro'),
+  ('cc_checklist','criado_em','cirurgia-segura-registro'),
+  ('cc_checklist','divergencia','cirurgia-segura-registro'),
+  ('cc_checklist','fase','cirurgia-segura-registro'),
+  ('cc_checklist','id','cirurgia-segura-registro'),
+  ('cc_checklist','instrumentais_final','cirurgia-segura-registro'),
+  ('cc_checklist','instrumentais_inicial','cirurgia-segura-registro'),
+  ('cc_checklist','itens','cirurgia-segura-registro'),
+  ('cc_checklist','itens_confirmados','cirurgia-segura-registro'),
+  ('cc_checklist','itens_total','cirurgia-segura-registro'),
+  ('cc_checklist','tipo','cirurgia-segura-registro'),
+  ('cc_checklist','usuario','cirurgia-segura-registro'),
   ('cc_cirurgias','anestesista','schema'),
   ('cc_cirurgias','cancelamento_motivo','schema'),
   ('cc_cirurgias','checkin_em','schema'),
@@ -341,6 +359,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','chk_sign_out','schema'),
   ('cc_cirurgias','chk_time_out','schema'),
   ('cc_cirurgias','cirurgiao','schema'),
+  ('cc_cirurgias','consentimento_em','cirurgia-segura-registro'),
   ('cc_cirurgias','data','schema'),
   ('cc_cirurgias','duracao_prev_min','schema'),
   ('cc_cirurgias','entrada_sala_em','schema'),
@@ -350,6 +369,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','iniciais','schema'),
   ('cc_cirurgias','inicio_anestesia_em','schema'),
   ('cc_cirurgias','inicio_cirurgia_em','schema'),
+  ('cc_cirurgias','lateralidade','cirurgia-segura-registro'),
   ('cc_cirurgias','observacao','schema'),
   ('cc_cirurgias','opme','schema'),
   ('cc_cirurgias','procedimento','schema'),
@@ -358,6 +378,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','rpa_saida_em','schema'),
   ('cc_cirurgias','saida_sala_em','schema'),
   ('cc_cirurgias','sala','schema'),
+  ('cc_cirurgias','sitio_cirurgico','cirurgia-segura-registro'),
   ('cc_cirurgias','status','schema'),
   ('cc_cirurgias','tipo_anestesia','schema'),
   ('cc_cirurgias','updated_at','schema'),

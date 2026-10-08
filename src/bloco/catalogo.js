@@ -71,3 +71,15 @@ export const CHECKLIST_OMS = {
     ],
   },
 };
+
+/**
+ * Lateralidade — domínio FECHADO, e isso é a razão de ser do campo.
+ *
+ * "D", "dto", "direito" e "DIREITA" na mesma coluna tornariam o campo
+ * inútil para conferência, que é exatamente o que o Sign In manda fazer.
+ * O banco tem a mesma lista em `cc_cir_lateralidade_ck`.
+ */
+export const LATERALIDADE = {
+  direito: "direito", esquerdo: "esquerdo",
+  bilateral: "bilateral", nao_se_aplica: "não se aplica",
+};
