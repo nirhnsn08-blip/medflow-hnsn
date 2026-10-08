@@ -264,11 +264,22 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
                 {vendoEquipe === c.id ? "fechar" : "equipe"}
               </button>
             )}
-            {pend.map((a, i) => (
-              <div key={i} style={{ color: "#fbbf24", fontSize: 11, marginTop: 2 }}>⚠ {a}</div>
-            ))}
+            {/* ⚠️ OS AVISOS FICAM SEMPRE DENTRO DESTE DIV, mesmo quando não
+                há nenhum — e isso não é estilo, é correção de defeito.
+                Antes eles eram irmãos soltos do painel de equipe: ao
+                registrar o cirurgião, o aviso sumia, o número de filhos
+                mudava, o React REMONTAVA o `EquipeDaCirurgia` e o
+                formulário se esvaziava no meio do uso (achado caminhando
+                pela tela — o teste não pegava, porque o teste não
+                acrescenta um membro e continua digitando). Com o contêiner
+                fixo, a posição do painel entre os irmãos não muda. */}
+            <div>
+              {pend.map((a, i) => (
+                <div key={i} style={{ color: "#fbbf24", fontSize: 11, marginTop: 2 }}>⚠ {a}</div>
+              ))}
+            </div>
             {vendoEquipe === c.id && (
-              <EquipeDaCirurgia membros={minha} perfis={profissionais}
+              <EquipeDaCirurgia key={`equipe-${c.id}`} membros={minha} perfis={profissionais}
                 onAdd={d => acrescentarMembro(c, d)} onTirar={m => tirarMembro(c, m)} />
             )}
           </div>

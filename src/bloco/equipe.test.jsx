@@ -251,6 +251,39 @@ describe("🔴 acrescentar membro carimba o CBO do cadastro", () => {
     expect(sb.pedidos.some(p => p.url.startsWith("cc_equipe") && p.metodo === "POST")).toBe(false);
   });
 
+  // 🔴 ESTE TESTE NASCEU CAMINHANDO PELA TELA, não de mutação.
+  //
+  // Ao registrar o cirurgião, o aviso de faturamento desaparecia — e com
+  // ele um IRMÃO do painel de equipe. O React então remontava o
+  // `EquipeDaCirurgia` e o formulário se esvaziava NO MEIO DO USO: quem
+  // fosse acrescentar o anestesista em seguida encontrava os campos
+  // limpos, sem entender por quê.
+  //
+  // O teste anterior não pegava porque não acrescentava um membro e
+  // continuava digitando. É o tipo de defeito que só aparece percorrendo
+  // a sequência real de uso.
+  it("🔴 a posição do painel entre os irmãos NÃO muda quando o aviso some", async () => {
+    // A invariante é estrutural: com e sem aviso, o painel tem de ocupar a
+    // MESMA posição entre os irmãos. Se o número de irmãos variar, o React
+    // remonta o componente e o formulário se esvazia no meio do uso.
+    async function posicaoDoPainel(equipe) {
+      cleanup();
+      render(<BlocoPage sb={banco({ cirurgias: [CIRURGIA], equipe })} currentUser={{ name: "T" }} canEdit={true} />);
+      fireEvent.click(await screen.findByText("equipe"));
+      const campo = await screen.findByLabelText("Função na sala");
+      // o painel é o ancestral que é filho direto do bloco do cartão
+      const painel = campo.closest("div[style]").parentElement;
+      const irmaos = [...painel.parentElement.children];
+      return { indice: irmaos.indexOf(painel), total: irmaos.length };
+    }
+
+    const comAviso = await posicaoDoPainel([]);                       // sem cirurgião → avisa
+    const semAviso = await posicaoDoPainel([                          // completo → não avisa
+      { id: 1, cirurgia_id: 7, papel: "cirurgiao", nome: "Ana", cbo: "225125", registro_conselho: "1" },
+    ]);
+    expect(comAviso).toEqual(semAviso);
+  });
+
   it("perfil sem CBO avisa na hora de escolher, não depois", async () => {
     render(<BlocoPage sb={banco({ cirurgias: [CIRURGIA] })} currentUser={{ name: "T" }} canEdit={true} />);
     fireEvent.click(await screen.findByText("equipe"));
