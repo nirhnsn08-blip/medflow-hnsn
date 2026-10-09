@@ -32,8 +32,9 @@ import { situacaoAlergica } from "../clinico/alergias.js";
 import { aguardandoIdentificacao } from "./recepcao.js";
 import { DOMINIOS } from "./ficha.js";
 import { STATUS_ATENDIMENTO, atendimentoAberto } from "./ciclo.js";
-import { PAPEIS, VINCULO_POR_CHAVE } from "./responsavel.js";
+import { PAPEIS, VINCULO_POR_CHAVE, papelExigido, pendenciaDeResponsavel } from "./responsavel.js";
 import { diaLocal } from "../util/datas.js";
+import { naoDeuParaLer } from "../util/leitura.js";
 
 /** O piso do PNSP. Menos que isso não é identificação, é palpite. */
 export const MINIMO_IDENTIFICADORES = 2;
@@ -220,6 +221,102 @@ export function rotuloDominio(catalogos, chave, codigo) {
 }
 
 /**
+ * O AVISO QUE VAI NO PAPEL quando a lista de responsáveis não pôde ser lida.
+ *
+ * Separado em constante porque é a frase que alguém vai querer encurtar, e
+ * cada pedaço dela está respondendo a uma pergunta de quem segura a folha
+ * às 3h da manhã: por que está em branco, o que isso NÃO quer dizer, e o
+ * que fazer em vez de confiar nela.
+ */
+export const AVISO_RESPONSAVEIS_NAO_LIDOS =
+  "NÃO FOI POSSÍVEL LER A LISTA DE RESPONSÁVEIS — esta via saiu sem ela. " +
+  "O espaço em branco aqui NÃO significa que ninguém está registrado: " +
+  "confira na recepção antes de entregar o paciente a alguém.";
+
+/** A linha a mais, para quem não decide sozinho. */
+export const AVISO_RESPONSAVEIS_MENOR =
+  "Este paciente não decide sozinho — NÃO O ENTREGUE a ninguém com base nesta folha.";
+
+/**
+ * Quem responde pelo episódio, nos TRÊS estados que o papel precisa
+ * distinguir.
+ *
+ *   "registrado" — há gente na lista, e ela sai impressa
+ *   "nenhum"     — leu e não há ninguém
+ *   "nao_lido"   — a leitura falhou (`FALHA` de util/leitura.js)
+ *
+ * 🔴 POR QUE NÃO RECUSA A EMISSÃO quando não se consegue ler a lista de um
+ * menor de idade — a pergunta foi feita, e a resposta é não:
+ *
+ *   1. Recusar não devolve a lista; tira a FOLHA. O paciente desce para o
+ *      leito sem identificação, sem o campo de alergia e sem a queixa — e
+ *      quem o recebe fica com menos informação do que tinha, não com mais.
+ *      É a mesma conta que já decidiu a pulseira neste arquivo: pulseira
+ *      incompleta é melhor que pulseira nenhuma.
+ *   2. Falha de leitura é condição de REDE, não de cadastro. Recusar faria
+ *      um soluço de rede impedir a recepção de imprimir ficha de criança —
+ *      um travamento de disponibilidade no caminho mais sensível do balcão,
+ *      criado pela própria trava de segurança.
+ *   3. A trava seria contornada em minutos (imprime de outra tela, escreve
+ *      à mão), e controle que se contorna ensina a contornar controle.
+ *   4. O risco real era o papel MUDO, não o papel emitido. Com o aviso
+ *      carimbado, o silêncio que podia ser lido como "ninguém registrado"
+ *      deixa de existir — que era o defeito.
+ *
+ * E a mesma lógica obriga o contrário: quando a lista foi lida e está
+ * VAZIA para um paciente que não decide sozinho, o papel também fala.
+ * Senão a folha mais barulhenta seria a do erro de rede, e a mais calada
+ * justamente a do menor que não tem ninguém para recebê-lo.
+ * `pendenciaDeResponsavel` já sabe cobrar isso — aqui só se imprime o que
+ * ela diz, em vez de inventar um vocabulário paralelo.
+ */
+export function responsaveisDaFicha({ paciente, responsaveis = [], agora = new Date() } = {}) {
+  // ⚠️ ANTES de qualquer `.filter`: a marca de `FALHA` é a identidade do
+  // array e não sobrevive a transformação (util/leitura.js). Normalizado
+  // UMA VEZ, junto da assinatura, também para o censo de cargas enxergar
+  // que a origem é parâmetro — ele olha 30 linhas para trás, e guarda no
+  // meio de função longa ele classifica como "?" (mesmo motivo de
+  // `conta-cirurgia.js`).
+  const naoLido = naoDeuParaLer(responsaveis);
+  const lista = Array.isArray(responsaveis) ? responsaveis : [];
+
+  if (naoLido) {
+    const exigencia = papelExigido(paciente, agora);
+    // Menor de idade, ou idade desconhecida: nos dois casos o sistema não
+    // pode afirmar que o paciente se entrega a si mesmo.
+    const grave = exigencia.exigido || exigencia.incerto;
+    return {
+      estado: "nao_lido",
+      lista: [],
+      gravidade: "alta",
+      aviso: grave
+        ? `${AVISO_RESPONSAVEIS_NAO_LIDOS} ${AVISO_RESPONSAVEIS_MENOR} ${exigencia.motivo}`
+        : AVISO_RESPONSAVEIS_NAO_LIDOS,
+    };
+  }
+
+  const impressos = lista
+    .filter(r => r?.ativo !== false && String(r?.nome ?? "").trim())
+    .map(r => ({
+      nome: String(r.nome).trim(),
+      vinculo: VINCULO_POR_CHAVE[r.vinculo]?.label || r.vinculo || "",
+      papel: PAPEIS[r.papel]?.label || r.papel || "",
+      cpf: r.cpf ? formatarCPF(r.cpf) : "",
+      telefone: r.telefone || "",
+      recebeAlta: !!r.recebe_alta,
+    }));
+
+  // A cobrança é a mesma da tela — uma regra só, no arquivo que é dono dela.
+  const pendencia = pendenciaDeResponsavel({ paciente, responsaveis: lista, hoje: agora });
+  return {
+    estado: impressos.length ? "registrado" : "nenhum",
+    lista: impressos,
+    gravidade: pendencia?.gravidade || null,
+    aviso: pendencia?.texto || "",
+  };
+}
+
+/**
  * A ficha que acompanha o paciente em papel.
  *
  * Traz a identificação inteira porque é a folha que fica no prontuário
@@ -241,6 +338,20 @@ export function rotuloDominio(catalogos, chave, codigo) {
  *                     "sem registro" nessa via seria uma negativa que
  *                     ninguém apurou, no papel que acompanha o paciente até
  *                     a beira do leito.
+ *
+ * `responsaveis` tem os MESMOS TRÊS ESTADOS, pela mesma razão — e aqui o
+ * preço do colapso é mais alto, porque esta lista é a única forma de a
+ * enfermagem do turno da noite saber a quem NÃO entregar a criança:
+ *   lista com itens — há responsável registrado
+ *   lista vazia     — leu e não há ninguém
+ *   `FALHA`         — NÃO DEU PARA LER (util/leitura.js). Até 09/10/2026
+ *                     este caso saía como seção AUSENTE, indistinguível de
+ *                     "não há ninguém" — e papel não tem como ser
+ *                     recarregado depois. Agora o aviso é CARIMBADO na
+ *                     folha, como já se faz com identificação incompleta.
+ *
+ * ⚠️ A MARCA É A IDENTIDADE DO ARRAY e morre em `.filter`, então
+ * `naoDeuParaLer` é consultado ANTES de qualquer transformação.
  */
 export function dadosDaFicha({
   paciente, atendimento, convenio, plano, procedimento,
@@ -249,7 +360,10 @@ export function dadosDaFicha({
 } = {}) {
   const idade = idadeDetalhada(paciente?.data_nascimento, agora);
   const conf = conferirPulseira(paciente);
-  const consultouAlergias = Array.isArray(alergias);
+  // Leitura que FALHOU entra aqui como "não consultado", e não como "sem
+  // registro": as duas são "não sei", e "ninguém perguntou ainda" seria uma
+  // afirmação sobre o prontuário que esta via não tem como fazer.
+  const consultouAlergias = Array.isArray(alergias) && !naoDeuParaLer(alergias);
   const alerg = consultouAlergias
     ? situacaoAlergica(alergias, alergiasTextoLegado)
     : { estado: "nao_consultado", itens: [] };
@@ -318,16 +432,7 @@ export function dadosDaFicha({
     // enfermagem do turno da noite saber a quem NÃO entregar a criança.
     // Acompanhante aparece com o rótulo dele: quem só acompanha não recebe
     // alta, e o papel impresso é o que impede a confusão no corredor.
-    responsaveis: (Array.isArray(responsaveis) ? responsaveis : [])
-      .filter(r => r?.ativo !== false && String(r?.nome ?? "").trim())
-      .map(r => ({
-        nome: String(r.nome).trim(),
-        vinculo: VINCULO_POR_CHAVE[r.vinculo]?.label || r.vinculo || "",
-        papel: PAPEIS[r.papel]?.label || r.papel || "",
-        cpf: r.cpf ? formatarCPF(r.cpf) : "",
-        telefone: r.telefone || "",
-        recebeAlta: !!r.recebe_alta,
-      })),
+    responsaveis: responsaveisDaFicha({ paciente, responsaveis, agora }),
     identificadores: conf.identificadores,
     pulseira: { estado: conf.estado, selo: conf.selo, aviso: conf.aviso },
     rodape: {
