@@ -297,6 +297,9 @@ const ORDEM = [
   // Paciente (FK), equipe com CBO carimbado, código de procedimento,
   // caráter e autoria do cancelamento. Depende de pacientes e at_dominios.
   "migracao-cirurgia-paciente-equipe-codigo.sql",
+  // O elo cirurgia → atendimento, sem o qual a conta da cirurgia teria de
+  // adivinhar o episódio por prontuário+data. Depois do FK do paciente.
+  "migracao-cirurgia-elo-atendimento.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

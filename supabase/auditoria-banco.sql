@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 109 tabelas, 1779 colunas.
+-- Cobertura atual: 109 tabelas, 1780 colunas.
 -- ============================================================
 
 with
@@ -379,6 +379,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','procedimento','schema'),
   ('cc_cirurgias','procedimento_cod','cirurgia-paciente-equipe-codigo'),
   ('cc_cirurgias','prontuario','schema'),
+  ('cc_cirurgias','ps_atendimento_id','cirurgia-elo-atendimento'),
   ('cc_cirurgias','rpa_entrada_em','schema'),
   ('cc_cirurgias','rpa_saida_em','schema'),
   ('cc_cirurgias','saida_sala_em','schema'),

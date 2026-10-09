@@ -293,6 +293,73 @@ describe("🔴 acrescentar membro carimba o CBO do cadastro", () => {
   });
 });
 
+// 🔴 ACHADO CAMINHANDO, de novo: a migração criou `ps_atendimento_id` e o
+// backfill ligou o que não tinha dúvida — mas NÃO HAVIA CAMPO para ligar o
+// resto. Cirurgia agendada com antecedência nasce antes de o episódio
+// existir, então o backfill nunca a alcança, e sem elo ela não vira conta
+// de ninguém. É a mesma falha do sítio/lateralidade no PR anterior: coluna
+// sem input.
+describe("🔴 o elo com o episódio tem campo", () => {
+  const ATEND = [
+    { id: 212, chegada_em: "2026-10-08T12:00:00Z", desfecho_em: null, tipo_atendimento: "emergencia" },
+    { id: 100, chegada_em: "2026-09-01T12:00:00Z", desfecho_em: "2026-09-02T12:00:00Z", tipo_atendimento: "ambulatorial" },
+  ];
+  const bancoComAtend = () => {
+    const base = banco();
+    const sb = async (url, o) => {
+      if (String(url).startsWith("ps_atendimentos") && !o?.method) return ATEND;
+      return base(url, o);
+    };
+    sb.pedidos = base.pedidos;
+    return sb;
+  };
+
+  it("oferece os atendimentos do paciente, com o aberto marcado", async () => {
+    render(<BlocoPage sb={bancoComAtend()} currentUser={{ name: "T" }} canEdit={true} />);
+    fireEvent.click(await screen.findByText(/\+ Agendar cirurgia/i));
+    await screen.findByText("Agendar");
+    fireEvent.change(screen.getByPlaceholderText("48213"), { target: { value: "T1" } });
+    const sel = await screen.findByLabelText("Atendimento a que esta cirurgia pertence");
+    await waitFor(() => expect([...sel.options].length).toBeGreaterThan(1));
+    const textos = [...sel.options].map(o => o.text);
+    expect(textos.join(" ")).toMatch(/#212/);
+    expect(textos.join(" ")).toMatch(/EM ABERTO/);
+  });
+
+  it("sem elo, diz que a cirurgia não entra na conta de ninguém", async () => {
+    render(<BlocoPage sb={banco()} currentUser={{ name: "T" }} canEdit={true} />);
+    fireEvent.click(await screen.findByText(/\+ Agendar cirurgia/i));
+    await screen.findByText("Agendar");
+    expect(screen.getByText(/Sem episódio, a cirurgia não entra na conta de ninguém/)).toBeTruthy();
+  });
+
+  it("paciente sem atendimento aberto recebe a frase certa — não a genérica", async () => {
+    render(<BlocoPage sb={banco()} currentUser={{ name: "T" }} canEdit={true} />);
+    fireEvent.click(await screen.findByText(/\+ Agendar cirurgia/i));
+    await screen.findByText("Agendar");
+    fireEvent.change(screen.getByPlaceholderText("48213"), { target: { value: "T_SEM" } });
+    await screen.findByText(/não tem atendimento aberto/i);
+    expect(screen.getByText(/ligue depois, pela edição/)).toBeTruthy();
+  });
+
+  it("o elo escolhido vai para o banco como número", async () => {
+    const sb = bancoComAtend();
+    render(<BlocoPage sb={sb} currentUser={{ name: "T" }} canEdit={true} />);
+    fireEvent.click(await screen.findByText(/\+ Agendar cirurgia/i));
+    await screen.findByText("Agendar");
+    fireEvent.change(screen.getByPlaceholderText("J.S.M."), { target: { value: "M.O." } });
+    fireEvent.change(screen.getByPlaceholderText("48213"), { target: { value: "T1" } });
+    fireEvent.change(screen.getByPlaceholderText(/Colecistectomia videolaparoscópica/), { target: { value: "Artroplastia" } });
+    const sel = await screen.findByLabelText("Atendimento a que esta cirurgia pertence");
+    await waitFor(() => expect([...sel.options].length).toBeGreaterThan(1));
+    fireEvent.change(sel, { target: { value: "212" } });
+    fireEvent.click(screen.getByText("Agendar"));
+    await waitFor(() => expect(sb.pedidos.some(p => p.url.startsWith("cc_cirurgias") && p.metodo === "POST")).toBe(true));
+    const corpo = sb.pedidos.find(p => p.url.startsWith("cc_cirurgias") && p.metodo === "POST").corpo;
+    expect(corpo.ps_atendimento_id).toBe(212);   // número, não string
+  });
+});
+
 describe("🔴 o agendamento ganha código, sítio, lado e caráter", () => {
   it("sem código, avisa que não vira conta", async () => {
     render(<BlocoPage sb={banco()} currentUser={{ name: "T" }} canEdit={true} />);
