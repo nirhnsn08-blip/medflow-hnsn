@@ -239,3 +239,22 @@ export async function loadProfissionaisDoBloco(sb) {
   const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,uf_conselho,cbo&order=nome");
   return listaLida(r);
 }
+
+/**
+ * Os atendimentos deste paciente, para LIGAR a cirurgia ao episódio.
+ *
+ * Sem este elo a cirurgia não vira conta — e o backfill da migração só
+ * liga o que não tem dúvida, de propósito. O resto se liga aqui, por quem
+ * sabe de qual episódio a cirurgia é.
+ *
+ * Os mais recentes primeiro: cirurgia se liga ao episódio em curso, não a
+ * um de dois anos atrás.
+ */
+export async function loadAtendimentosDoPaciente(sb, prontuario) {
+  const p = String(prontuario ?? "").trim();
+  if (!sb || !p) return [];
+  const rows = await sb(
+    `ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}&status=neq.cancelado` +
+    `&select=id,chegada_em,desfecho_em,status,tipo_atendimento,procedimento_cod&order=chegada_em.desc&limit=10`);
+  return listaLida(rows);
+}

@@ -1177,6 +1177,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                     <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                       <th style={{ padding: "6px 8px" }}>Tipo</th>
                       <th style={{ padding: "6px 8px" }}>Item</th>
+                      <th style={{ padding: "6px 8px" }}>Executante</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Qtd</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Valor unit.</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Subtotal</th>
@@ -1194,6 +1195,20 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                             <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
                               {cod && it.descricao ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{cod} · </span> : null}{it.origem}
                             </div>
+                          </td>
+                          {/* 🔴 QUEM EXECUTA, E O CBO. A proposta mostrava Tipo/Item/Qtd/Valor
+                              e nada mais — e o CBO é justamente o campo que, errado ou
+                              ausente, DERRUBA o registro inteiro no SISAIH01/BPA. O aviso
+                              já dizia quem estava sem; faltava poder conferir item a item
+                              antes de lançar. */}
+                          <td style={{ padding: "8px", fontSize: 12 }}>
+                            {it.executante ? (<>
+                              <div style={{ color: "var(--text-2)" }}>{it.executante}</div>
+                              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                                            color: it.executante_cbo ? "var(--text-muted)" : "#f59e0b" }}>
+                                {it.executante_cbo ? "CBO " + it.executante_cbo : "sem CBO"}
+                              </div>
+                            </>) : <span style={{ color: "var(--text-muted)" }}>—</span>}
                           </td>
                           <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Number(it.quantidade)}</td>
                           <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: it.valor_unitario == null ? "#f59e0b" : "var(--text)" }}>

@@ -10,12 +10,12 @@
 import { registrarAuditoria } from "../auditoria/dados.js";
 import { assinaturaDe } from "../clinico/papeis.js";
 import { MONTHS, MONTHS_FULL, btnContorno } from "../ui/base.jsx";
-import { diffMin, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
+import { diffMin, fmtDataBR, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
 import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
 import { CARATER, PAPEIS_EQUIPE, PAPEL_POR_CHAVE, conferirMembro, linhaDeEquipe, pendenciasDeFaturamento, resumoDaEquipe, procedimentoEscolhido } from "./equipe.js";
-import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcEquipeDoDia, loadCcSalas, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
@@ -458,6 +458,7 @@ function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, c
     iniciais: cirurgia?.iniciais || "", prontuario: cirurgia?.prontuario || "",
     procedimento: cirurgia?.procedimento || "", cirurgiao: cirurgia?.cirurgiao || "",
     procedimento_cod: cirurgia?.procedimento_cod || "",
+    ps_atendimento_id: cirurgia?.ps_atendimento_id || "",
     carater_cod: cirurgia?.carater_cod || "",
     sitio_cirurgico: cirurgia?.sitio_cirurgico || "", lateralidade: cirurgia?.lateralidade || "",
     opme: cirurgia?.opme || "", observacao: cirurgia?.observacao || "",
@@ -488,6 +489,25 @@ function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, c
     return () => { vivo = false; };
   }, [sb, f.data, mesmoDia]);
 
+  // 🔴 SEM ELO, A CIRURGIA NÃO VIRA CONTA.
+  //
+  // `cc_cirurgias` era a única tabela clínica sem `ps_atendimento_id`.
+  // A migração liga o que não tem dúvida (um único atendimento cobrindo
+  // o dia) e deixa o resto em branco de propósito — adivinhar poria o
+  // porte cirúrgico na conta do episódio errado. O que sobra se liga
+  // AQUI, por quem sabe de qual episódio a cirurgia é.
+  //
+  // E é indispensável para a cirurgia AGENDADA com antecedência: ela
+  // nasce antes de o episódio existir, então o backfill nunca a alcança.
+  const [atendimentos, setAtendimentos] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    const pront = f.prontuario.trim();
+    if (!sb || !pront) { setAtendimentos([]); return; }
+    loadAtendimentosDoPaciente(sb, pront).then(r => { if (vivo) setAtendimentos(r); });
+    return () => { vivo = false; };
+  }, [sb, f.prontuario]);
+
   const base = mesmoDia ? cirurgiasDoDia : doOutroDia;
   // "Ainda não li" e "não deu para ler" são a mesma coisa para quem decide:
   // nos dois casos a conferência NÃO foi feita, e isso tem de ser dito.
@@ -512,6 +532,7 @@ function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, c
       sala: f.sala || null, iniciais: f.iniciais.trim(), prontuario: f.prontuario.trim() || null,
       procedimento: f.procedimento.trim(), cirurgiao: f.cirurgiao.trim() || null,
       procedimento_cod: f.procedimento_cod || null,
+      ps_atendimento_id: f.ps_atendimento_id ? Number(f.ps_atendimento_id) : null,
       carater_cod: f.carater_cod || null,
       sitio_cirurgico: f.sitio_cirurgico.trim() || null,
       lateralidade: f.lateralidade || null,
@@ -542,6 +563,28 @@ function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, c
             dizer isso — senão o silêncio continua passando por aprovação. */}
         {naoConferi && <div style={{ background: "#3a2d06", border: "1px solid #fbbf2466", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#fbbf24", fontWeight: 600, marginBottom: 10 }}>Ainda NÃO conferi se a sala já está ocupada em {f.data}. A ausência de aviso aqui não quer dizer que está livre.</div>}
         {conflitos.length > 0 && <div style={{ background: "#3d2206", border: "1px solid #f9731666", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#f97316", fontWeight: 600, marginBottom: 10 }}>Conflito de sala: já há {conflitos.length} cirurgia(s) na {f.sala} nesse intervalo.</div>}
+        {/* O EPISÓDIO a que esta cirurgia pertence. */}
+        <div style={{ marginBottom: 10 }}>
+          <label style={lbl}>Atendimento (episódio)</label>
+          <select value={f.ps_atendimento_id} onChange={e => set("ps_atendimento_id", e.target.value)} style={inp}
+            aria-label="Atendimento a que esta cirurgia pertence">
+            <option value="">— ainda não ligada</option>
+            {atendimentos.map(a => (
+              <option key={a.id} value={a.id}>
+                #{a.id} · {fmtDataBR(a.chegada_em)} · {a.tipo_atendimento || "emergência"}
+                {a.desfecho_em ? "" : " · EM ABERTO"}
+              </option>
+            ))}
+          </select>
+          {!f.ps_atendimento_id && (
+            <div style={{ fontSize: 10.5, color: "#fbbf24", marginTop: 3 }}>
+              {f.prontuario.trim() && atendimentos.length === 0
+                ? "Este paciente não tem atendimento aberto. A cirurgia fica sem episódio até ele chegar — ligue depois, pela edição."
+                : "Sem episódio, a cirurgia não entra na conta de ninguém."}
+            </div>
+          )}
+        </div>
+
         {/* 🔴 O CÓDIGO, não só o nome. Cirurgia é o procedimento de maior
             valor da tabela: sem SIGTAP não há AIH, sem TUSS não há guia
             TISS. Antes era um input livre, e o faturista redigitava tudo
