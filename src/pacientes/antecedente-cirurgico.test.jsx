@@ -21,7 +21,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import {
   antecedenteCirurgico, descricaoVigenteDe, equipeDe,
-  montarTimeline, resumoLocalPaciente, sentinelaPaciente,
+  montarTimeline, quantasOperou, resumoLocalPaciente, sentinelaPaciente,
 } from "./paciente360.js";
 import { FALHA } from "../util/leitura.js";
 import PacientePage from "./Paciente360.jsx";
@@ -254,5 +254,50 @@ describe("🔴 a marca de falha atravessa as regras", () => {
     // E a tela distingue — é o teste acima que prova isso. Aqui o ponto é
     // que as REGRAS não afirmam nada a partir de uma lista marcada.
     expect(resumoLocalPaciente("T1", d, [], [])).not.toMatch(/Antecedente cirúrgico/);
+  });
+});
+
+// ── ANTECEDENTE É PASSADO ───────────────────────────────────
+//
+// 🔴 ACHADO CAMINHANDO PELO DEMO (09/10/2026), não por teste.
+// Ordenado só por data, uma cirurgia AGENDADA para dezembro encabeçava a
+// seção e vinha ACIMA da que aconteceu em outubro. Quem bate o olho lê
+// "este paciente fez uma colecistectomia" — e não fez: está marcada. E o
+// título contava as três juntas, inflando o histórico de quem lê a anamnese.
+describe("🔴 o que aconteceu vem antes do que está marcado", () => {
+  const feita = { ...CIR, id: 7, data: "2026-10-08", inicio_cirurgia_em: "2026-10-08T12:00:00Z" };
+  const marcada = { ...CIR, id: 5, data: "2026-12-15", status: "agendada",
+                    entrada_sala_em: null, inicio_cirurgia_em: null, procedimento: "Colecistectomia" };
+  const cancelada = { ...CIR, id: 4, data: "2026-09-01", status: "cancelada",
+                      entrada_sala_em: null, inicio_cirurgia_em: null };
+
+  it("a agendada do futuro NÃO encabeça o antecedente", () => {
+    const a = antecedenteCirurgico(base({ cirurgias: [marcada, feita, cancelada] }));
+    expect(a.map(x => x.id)).toEqual([7, 5, 4]);
+    // E o primeiro item é um ato, não uma promessa.
+    expect(a[0].semAto).toBe(false);
+  });
+
+  it("entre as que aconteceram, a mais recente primeiro — é o que a anamnese procura", () => {
+    const antiga = { ...feita, id: 2, data: "2019-03-03", inicio_cirurgia_em: "2019-03-03T12:00:00Z" };
+    const a = antecedenteCirurgico(base({ cirurgias: [antiga, feita] }));
+    expect(a.map(x => x.id)).toEqual([7, 2]);
+  });
+
+  it("entre as marcadas, a mais PRÓXIMA primeiro — é a que importa", () => {
+    const longe = { ...marcada, id: 9, data: "2027-06-01" };
+    const a = antecedenteCirurgico(base({ cirurgias: [longe, marcada] }));
+    expect(a.map(x => x.id)).toEqual([5, 9]);
+  });
+
+  it("🔴 a contagem do título é só do que o paciente FEZ", () => {
+    const a = antecedenteCirurgico(base({ cirurgias: [marcada, feita, cancelada] }));
+    expect(a).toHaveLength(3);
+    expect(quantasOperou(a)).toBe(1);
+  });
+
+  it("sem nada, a contagem é zero e não quebra", () => {
+    expect(quantasOperou([])).toBe(0);
+    expect(quantasOperou()).toBe(0);
   });
 });

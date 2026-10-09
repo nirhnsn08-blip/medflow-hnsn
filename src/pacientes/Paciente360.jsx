@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import CadastroPaciente from "./CadastroPaciente.jsx";
 import ProntuarioInternado from "../prontuario/ProntuarioInternado.jsx";
-import { TIPOS_EVOLUCAO, antecedenteCirurgico, montarTimeline, resumoLocalPaciente, sentinelaPaciente } from "./paciente360.js";
+import { TIPOS_EVOLUCAO, antecedenteCirurgico, montarTimeline, quantasOperou, resumoLocalPaciente, sentinelaPaciente } from "./paciente360.js";
 import { addEvolucaoRemote, buscarPacientes, loadPaciente360 } from "./dados.js";
 import { comoExibir, conferirCadastro, idadeMesesParaTriagem, rotuloSexo } from "./identidade.js";
 import { situacaoAlergica } from "../clinico/alergias.js";
@@ -358,7 +358,9 @@ export default function PacientePage({ sb, currentUser, canEdit }) {
               (CFM 1.638/2002), não um por módulo. */}
           {(cirurgiasNaoLidas || antecedente.length > 0) && (
             <div style={{ marginBottom: 16 }}>
-              <div style={secLbl}>Antecedente cirúrgico{cirurgiasNaoLidas ? "" : ` (${antecedente.length})`}</div>
+              {/* A contagem é das que ACONTECERAM. Somar agendada e cancelada
+                  infla o histórico de quem lê a anamnese. */}
+              <div style={secLbl}>Antecedente cirúrgico{cirurgiasNaoLidas ? "" : ` (${quantasOperou(antecedente)})`}</div>
 
               {/* ⚠️ "Não consegui ler" NUNCA vira "nunca operou". Sem este
                   aviso, uma oscilação de rede faria o médico decidir risco

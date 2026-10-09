@@ -44,11 +44,38 @@ export function descricaoVigenteDe(d, cirurgiaId) {
  * meses depois procura, da cirurgia mais recente para a mais antiga.
  */
 export function antecedenteCirurgico(d) {
-  return (d?.cirurgias || [])
+  const linhas = (d?.cirurgias || [])
     .map(c => linhaDoAntecedente({
       cirurgia: c, equipe: equipeDe(d, c.id), descricao: descricaoVigenteDe(d, c.id),
-    }))
-    .sort((a, b) => String(b.dia || "").localeCompare(String(a.dia || "")));
+    }));
+  const porDiaDesc = (a, b) => String(b.dia || "").localeCompare(String(a.dia || ""));
+  const porDiaAsc = (a, b) => String(a.dia || "").localeCompare(String(b.dia || ""));
+
+  // 🔴 ANTECEDENTE É PASSADO — achado caminhando pelo demo (09/10/2026).
+  //
+  // Ordenado só por data, uma cirurgia AGENDADA para dezembro encabeçava a
+  // seção e aparecia ACIMA da que realmente aconteceu. Quem bate o olho lê
+  // "este paciente fez uma colecistectomia" — e não fez: está marcada.
+  //
+  // Três blocos, nesta ordem: o que ACONTECEU (mais recente primeiro, que é
+  // o que se procura numa anamnese), depois o que está MARCADO (a mais
+  // próxima primeiro, que é a que importa) e por fim o que foi cancelado.
+  return [
+    ...linhas.filter(l => !l.cancelada && !l.semAto).sort(porDiaDesc),
+    ...linhas.filter(l => l.semAto).sort(porDiaAsc),
+    ...linhas.filter(l => l.cancelada).sort(porDiaDesc),
+  ];
+}
+
+/**
+ * Quantas cirurgias o paciente de fato FEZ.
+ *
+ * O título da seção contava as três listas juntas, então "(3)" incluía uma
+ * agendada e uma cancelada. Número de antecedente cirúrgico é dado de
+ * anamnese: contar o que não aconteceu infla o histórico do paciente.
+ */
+export function quantasOperou(linhas = []) {
+  return linhas.filter(l => !l.cancelada && !l.semAto).length;
 }
 
 export const TIPOS_EVOLUCAO = {
