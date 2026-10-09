@@ -1,10 +1,12 @@
 // ═══════════════════════════════════════════════════════════
 // PACIENTE 360 — ACESSO AO BANCO
 //
-// 🔴 `loadPaciente360` LÊ NOVE TABELAS DE UMA VEZ, de cinco módulos:
-// cadastro, atendimentos do PS, leito atual, saídas, casos do SCIH,
-// evoluções, alergias. É a única leitura do sistema que atravessa o
-// hospital inteiro por um prontuário.
+// 🔴 `loadPaciente360` LÊ ONZE TABELAS, de seis módulos: cadastro,
+// atendimentos do PS, leito atual, saídas, casos do SCIH, evoluções,
+// alergias, registros do PS e — desde 10/2026 — as cirurgias com a equipe
+// que operou e a descrição cirúrgica. É a única leitura do sistema que
+// atravessa o hospital inteiro por um prontuário, e é de propósito: o
+// prontuário é legalmente ÚNICO (CFM 1.638/2002), não um por módulo.
 //
 // ⚠️ As tabelas que podem não existir num banco sem a migração do PEP
 // levam `.catch(() => [])` individual: uma tabela ausente não pode apagar
@@ -19,7 +21,7 @@ import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 
 export async function loadPaciente360(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
-  const [cad, ps, leitoAtual, saidas, scih, evolucoes, alergias] = await Promise.all([
+  const [cad, ps, leitoAtual, saidas, scih, evolucoes, alergias, cirurgiasBruto] = await Promise.all([
     sb(`pacientes?prontuario=eq.${p}&select=*`),
     sb(`ps_atendimentos?prontuario=eq.${p}&select=*&order=chegada_em.desc`),
     sb(`leitos?prontuario=eq.${p}&status=eq.ocupado&select=*`),
@@ -34,6 +36,13 @@ export async function loadPaciente360(sb, prontuario) {
     // desta leitura, e a última que ainda lia por um número só — a alergia
     // registrada na ficha antiga não aparecia no Paciente 360 da que vale.
     carregarAlergiasDoPaciente(sb, prontuario),
+    // 🔴 ANTECEDENTE CIRÚRGICO (10/2026). Faltava — e a falta era pior
+    // que um campo vazio: o Paciente 360 mostrava a linha do tempo inteira
+    // SEM as cirurgias, então quem atende seis meses depois lia um
+    // prontuário completo e concluía que o paciente nunca foi operado.
+    // Antecedente cirúrgico é anamnese, risco anestésico e diagnóstico
+    // diferencial. O prontuário é legalmente ÚNICO (CFM 1.638/2002).
+    sb(`cc_cirurgias?prontuario=eq.${p}&select=*&order=data.desc`).catch(() => null),
   ]);
   const psRows = listaLida(ps);
   let registrosPS = [];
@@ -42,6 +51,22 @@ export async function loadPaciente360(sb, prontuario) {
     const regs = await sb(`ps_registros?atendimento_id=in.(${ids})&select=*&order=criado_em.desc`).catch(() => []);
     registrosPS = listaLida(regs);
   }
+
+  // Equipe e descrição das cirurgias deste paciente — DUAS consultas, não
+  // duas por cirurgia: a tela abre com tudo de uma vez e um paciente pode
+  // ter oito cirurgias na vida.
+  const cirurgias = listaLida(cirurgiasBruto);
+  let equipeCirurgias = [], descricoesCirurgias = [];
+  if (cirurgias.length) {
+    const ids = cirurgias.map(c => c.id).filter(Boolean).join(",");
+    const [eq, de] = await Promise.all([
+      sb(`cc_equipe?cirurgia_id=in.(${ids})&select=*&order=id`).catch(() => null),
+      sb(`cc_descricao?cirurgia_id=in.(${ids})&select=*&order=versao.desc`).catch(() => null),
+    ]);
+    equipeCirurgias = listaLida(eq);
+    descricoesCirurgias = listaLida(de);
+  }
+
   return {
     cadastro: Array.isArray(cad) && cad[0] ? cad[0] : null,
     ps: psRows, leitoAtual: listaLida(leitoAtual),
@@ -49,6 +74,10 @@ export async function loadPaciente360(sb, prontuario) {
     evolucoes: listaLida(evolucoes),
     alergias: listaLida(alergias),
     registrosPS,
+    // ⚠️ A MARCA DE FALHA SOBREVIVE até a tela, e é o que importa aqui:
+    // lista vazia de cirurgia lida como "nunca operou" é omissão de
+    // informação assistencial, e é indistinguível de rede ruim sem isto.
+    cirurgias, equipeCirurgias, descricoesCirurgias,
   };
 }
 

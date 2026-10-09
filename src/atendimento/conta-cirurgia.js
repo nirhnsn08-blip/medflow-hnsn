@@ -32,6 +32,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { diaLocal } from "../util/datas.js";
+import { codigoParaFaturar } from "../bloco/descricao.js";
 
 const texto = v => String(v ?? "").trim();
 const num = v => (v == null || v === "" ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
@@ -73,7 +74,7 @@ function doPapel(equipe, papel) {
  * Devolve `{ itens, avisos }` no mesmo formato que `montar-conta.js` usa,
  * para o motor existente só concatenar.
  */
-export function itensDaCirurgia({ cirurgia, equipe = [], procCatalogo = null, sigRow = null, via = null } = {}) {
+export function itensDaCirurgia({ cirurgia, equipe = [], procCatalogo = null, sigRow = null, via = null, descricao = null } = {}) {
   const impedida = motivoParaNaoFaturar(cirurgia);
   if (impedida) return { itens: [], avisos: [] };
 
@@ -87,8 +88,18 @@ export function itensDaCirurgia({ cirurgia, equipe = [], procCatalogo = null, si
   const avisos = [];
   const itens = [];
   const data = dataDaExecucao(c);
-  const cod = texto(c.procedimento_cod) || null;
-  const nome = texto(procCatalogo?.nome) || texto(c.procedimento) || "(cirurgia sem nome)";
+
+  // 🔴 O CÓDIGO É O DO ATO QUE ACONTECEU, não o do agendamento (10/2026).
+  //
+  // Videolaparoscopia que converte para laparotomia é outro porte, outro
+  // código, outra conta. Até aqui o motor cobrava
+  // `cc_cirurgias.procedimento_cod`, que é o que foi MARCADO — então a conta
+  // fechava batendo com o agendamento, errada e sem ninguém notar.
+  const escolha = codigoParaFaturar(c, descricao);
+  const cod = escolha.codigo;
+  const nome = texto(procCatalogo?.nome)
+    || texto(descricao?.procedimento_realizado)
+    || texto(c.procedimento) || "(cirurgia sem nome)";
   const rotulo = cod ? `${cod} (${nome})` : nome;
 
   // ── 1) o ato cirúrgico ──────────────────────────────────
@@ -109,6 +120,26 @@ export function itensDaCirurgia({ cirurgia, equipe = [], procCatalogo = null, si
     avisos.push(`Cirurgia ${rotulo} entra sem preço — nem o catálogo do hospital nem o SIGTAP têm valor para ela.`);
   }
 
+  // De onde o código saiu, quando ele não é o do agendamento. Faturista que
+  // vê um código diferente do que foi marcado e não sabe por quê desconfia
+  // do sistema — e tem razão.
+  if (escolha.divergente) {
+    avisos.push(
+      `Cirurgia #${c.id}: a conta cobra o código REALIZADO (${cod}), não o agendado ` +
+      `(${texto(c.procedimento_cod)}). A fonte é a descrição cirúrgica — é o ato que aconteceu.`);
+  }
+  if (!descricao) {
+    // ⚠️ Não bloqueia a conta: o faturamento não pode ficar preso ao
+    // cirurgião lembrar de escrever. Mas quem fecha precisa saber que o
+    // código em cima da mesa é o do agendamento.
+    avisos.push(
+      `Cirurgia ${rotulo} SEM descrição cirúrgica registrada. O código cobrado é o do ` +
+      `AGENDAMENTO — se o ato foi outro (conversão, procedimento a mais), a conta sai errada.`);
+  }
+  if (descricao?.conversao) {
+    avisos.push(`Cirurgia #${c.id} foi CONVERTIDA de via. Conversão quase sempre muda o porte: confira o código antes de fechar.`);
+  }
+
   const cirurgiao = doPapel(membros, "cirurgiao");
   if (!cirurgiao) {
     avisos.push(`Cirurgia ${rotulo} sem cirurgião registrado — o item vai sem executante, e sem executante o procedimento não é pago.`);
@@ -127,7 +158,8 @@ export function itensDaCirurgia({ cirurgia, equipe = [], procCatalogo = null, si
     data_execucao: data,
     cobrar_do_paciente: false,
     origem: `Cirurgia #${c.id}${c.sala ? ` · ${c.sala}` : ""}`,
-    fonte: "cc_cirurgias.procedimento_cod",
+    fonte: escolha.fonte === "descrição cirúrgica"
+      ? "cc_descricao.procedimento_cod" : "cc_cirurgias.procedimento_cod",
     fonteValor,
   });
 
@@ -193,14 +225,20 @@ export function itensDaCirurgia({ cirurgia, equipe = [], procCatalogo = null, si
  * Um episódio pode ter mais de uma (reoperação, segundo tempo), e cada uma
  * é um ato próprio com equipe própria.
  */
-export function itensDasCirurgias({ cirurgias = [], equipePorCirurgia = {}, catalogoPorCodigo = {}, sigtapPorCodigo = {}, via = null } = {}) {
+export function itensDasCirurgias({ cirurgias = [], equipePorCirurgia = {}, descricaoPorCirurgia = {}, catalogoPorCodigo = {}, sigtapPorCodigo = {}, via = null } = {}) {
   const itens = [];
   const avisos = [];
   for (const c of (Array.isArray(cirurgias) ? cirurgias : [])) {
-    const cod = texto(c?.procedimento_cod);
+    const descricao = descricaoPorCirurgia[c?.id] || null;
+    // ⚠️ O catálogo e o SIGTAP são buscados pelo código QUE VAI SER COBRADO.
+    // Buscar pelo agendado traria o preço do procedimento que não aconteceu —
+    // o código certo com o valor errado é pior que o código errado, porque
+    // passa pela conferência.
+    const cod = texto(codigoParaFaturar(c, descricao).codigo);
     const r = itensDaCirurgia({
       cirurgia: c,
       equipe: equipePorCirurgia[c?.id] || [],
+      descricao,
       procCatalogo: cod ? catalogoPorCodigo[cod] || null : null,
       sigRow: cod ? sigtapPorCodigo[cod] || null : null,
       via,

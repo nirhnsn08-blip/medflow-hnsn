@@ -258,3 +258,47 @@ export async function loadAtendimentosDoPaciente(sb, prontuario) {
     `&select=id,chegada_em,desfecho_em,status,tipo_atendimento,procedimento_cod&order=chegada_em.desc&limit=10`);
   return listaLida(rows);
 }
+
+// ── A DESCRIÇÃO CIRÚRGICA ───────────────────────────────────
+
+/**
+ * As versões da descrição de uma cirurgia, da mais nova para a mais antiga.
+ *
+ * ⚠️ "Não consegui ler" NÃO é "não tem descrição". Sem essa diferença, uma
+ * oscilação de rede faria a tela oferecer "registrar descrição" numa
+ * cirurgia que já tem uma — e o banco recusaria só depois de a pessoa ter
+ * escrito o documento inteiro.
+ */
+export async function loadCcDescricoes(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_descricao?cirurgia_id=eq.${cirurgiaId}&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/** As descrições de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcDescricoesDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_descricao?cirurgia_id=in.(${lista.join(",")})&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava o documento. O gatilho calcula a versão e acende o selo no MESMO
+ * insert — a tela nunca manda `versao`.
+ *
+ * A frase de recusa vem do BANCO: é ele que sabe se a cirurgia está
+ * cancelada, se ainda não entrou em sala, se já existe descrição vigente ou
+ * se a correção aponta para a cirurgia errada. Repetir essas regras aqui só
+ * criaria duas versões para divergirem.
+ */
+export async function registrarDescricao(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_descricao", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, descricao: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}

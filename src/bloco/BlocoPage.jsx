@@ -15,7 +15,9 @@ import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
 import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
 import { CARATER, PAPEIS_EQUIPE, PAPEL_POR_CHAVE, conferirMembro, linhaDeEquipe, pendenciasDeFaturamento, resumoDaEquipe, procedimentoEscolhido } from "./equipe.js";
-import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcDescricoesDoDia, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, registrarDescricao, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import DescricaoCirurgicaModal from "./DescricaoCirurgica.jsx";
+import { horasSemDescricao, jaOperou, semDescricao } from "./descricao.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
@@ -56,6 +58,9 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const [profissionais, setProfissionais] = useState([]);
   // Qual cirurgia está com o painel de equipe aberto.
   const [vendoEquipe, setVendoEquipe] = useState(null);
+  // As descrições cirúrgicas do dia, e qual está aberta para escrever.
+  const [descricoes, setDescricoes] = useState([]);
+  const [descrevendo, setDescrevendo] = useState(null);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
@@ -71,10 +76,12 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // esta tela se atualiza sozinha a cada 30s); o segundo render trocava
     // os nós do DOM por baixo de quem estava clicando.
     const ids = (Array.isArray(c) ? c : []).map(x => x.id);
-    const [t, eq] = await Promise.all([loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids)]);
+    const [t, eq, de] = await Promise.all([
+      loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids), loadCcDescricoesDoDia(sb, ids),
+    ]);
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
-    setSalas(s); setCirurgias(c); setTrilha(t); setEquipe(eq);
+    setSalas(s); setCirurgias(c); setTrilha(t); setEquipe(eq); setDescricoes(de);
   }
   // O catálogo de procedimentos não muda com o dia do mapa: carrega uma
   // vez, e não a cada 30s junto com o resto.
@@ -170,6 +177,25 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     if (!r.ok) return { erro: r.motivo };
     registrarAuditoria(sb, currentUser, "bloco: equipe +" + dados.papel, c.iniciais, {});
     setErro(null); await refresh();
+    return { ok: true };
+  }
+
+  /**
+   * Grava a DESCRIÇÃO CIRÚRGICA. O gatilho calcula a versão e acende o selo
+   * `descricao_em` no mesmo INSERT.
+   *
+   * ⚠️ O modal NÃO fecha quando a gravação não se confirmou — e aqui isso
+   * custa mais que no checklist: a pessoa acabou de escrever três
+   * parágrafos. Fechar daria a impressão de documento gravado, e o
+   * prontuário ficaria sem ele.
+   */
+  async function gravarDescricao(c, corpo) {
+    const r = await registrarDescricao(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser,
+      corpo.corrige_id ? "bloco: corrigir descrição cirúrgica" : "bloco: descrição cirúrgica",
+      `${c.iniciais} · ${corpo.procedimento_realizado || "?"}`, {});
+    setErro(null); setTimeout(() => refresh(), 300);
     return { ok: true };
   }
 
@@ -322,6 +348,29 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
         </div>
       )}
 
+      {/* 🔴 A DESCRIÇÃO CIRÚRGICA — fora do bloco de ações acima, e de
+          propósito: aquele bloco esconde tudo quando a cirurgia está
+          `concluida`, que é exatamente quando o documento mais falta. Era o
+          caminho para o documento exigido pela CFM 1.638/2002 ficar
+          inalcançável justamente na cirurgia terminada. */}
+      {jaOperou(c) && c.status !== "cancelada" && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => setDescrevendo(c)}
+            style={btnContorno(c.descricao_em ? "var(--text-3)" : "#8b5cf6")}>
+            {c.descricao_em ? "Ver / corrigir descrição cirúrgica" : "Escrever a descrição cirúrgica"}
+          </button>
+          {!c.descricao_em && (() => {
+            const h = horasSemDescricao(c);
+            return (
+              <span style={{ fontSize: 11.5, color: "#f43f5e", lineHeight: 1.5 }}>
+                SEM descrição cirúrgica{h != null ? ` há ${h}h` : ""} — é exigência legal, e o
+                faturamento cobra o código do agendamento até ela existir.
+              </span>
+            );
+          })()}
+        </div>
+      )}
+
       {canEdit && c.status !== "cancelada" && c.status !== "concluida" && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {c.status === "agendada" && <>
@@ -389,6 +438,23 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
           {avisoDeFalha("as salas e as cirurgias deste dia")} <strong>Não encaixe cirurgia por este mapa enquanto ele estiver assim.</strong>
         </div>
       )}
+      {/* 🔴 O PASSIVO DOCUMENTAL DO DIA, somado.
+          Cartão por cartão a falta aparece; somada, ela vira trabalho a
+          fazer antes de o plantão acabar — e é essa a leitura que faz
+          alguém escrever a descrição hoje, e não na véspera da auditoria.
+          Usa o SELO `descricao_em`, que o gatilho mantém. */}
+      {(() => {
+        const faltam = semDescricao(cirurgias);
+        if (!faltam.length) return null;
+        return (
+          <div style={{ marginBottom: 14, background: "#8b5cf610", border: "1px solid #8b5cf655",
+                        borderLeft: "3px solid #8b5cf6", borderRadius: 8, padding: "10px 13px",
+                        fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+            <strong>{faltam.length} cirurgia(s) deste dia sem descrição cirúrgica</strong> — {faltam.map(c => c.iniciais).join(", ")}.
+            O documento é exigência da CFM 1.638/2002, e até ele existir a conta cobra o código do agendamento.
+          </div>
+        );
+      })()}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Dia do mapa</label>
         <input type="date" value={data} onChange={e => setData(e.target.value)} style={inp} />
@@ -445,6 +511,21 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       {agendando && <AgendarCirurgiaModal sb={sb} procedimentos={procedimentos} cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
       {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
       {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={dados => concluirChecklist(checklist.cirurgia, checklist.fase, dados)} />}
+      {descrevendo && (
+        <DescricaoCirurgicaModal
+          cirurgia={descrevendo}
+          /* ⚠️ Filtra da lista do dia, mas a MARCA de falha precisa chegar
+             ao modal: `descricoes` é o array marcado, e filtrar devolve um
+             array comum. Por isso o modal recebe a lista crua quando a
+             leitura falhou — é ela que decide entre "não tem descrição" e
+             "não consegui ler". */
+          descricoes={naoDeuParaLer(descricoes) ? descricoes
+            : descricoes.filter(d => String(d.cirurgia_id) === String(descrevendo.id))}
+          procedimentos={procedimentos}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setDescrevendo(null)}
+          onConfirm={corpo => gravarDescricao(descrevendo, corpo)} />
+      )}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(sb, s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(sb, n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
     </div>
   );
