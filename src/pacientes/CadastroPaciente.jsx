@@ -582,8 +582,8 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
             <strong>Iniciais gravadas: {divergenciaIniciais.gravadas} — não são as do nome ({divergenciaIniciais.derivadas}).</strong>
             <div style={{ color: "var(--text-2)", marginTop: 3 }}>
               Um dos dois campos é de outra pessoa, e o sistema não tem como saber qual.
-              Confira o nome com o documento: ao salvar, as iniciais passam a ser <strong>{divergenciaIniciais.derivadas}</strong>.
-              O Bloco Cirúrgico confere a identidade do paciente por iniciais.
+              Confira o nome com o documento: ao salvar, as iniciais passam a ser <strong>{divergenciaIniciais.derivadas}</strong>{" "}
+              — o Bloco Cirúrgico confere a identidade do paciente por iniciais.
             </div>
           </div>
         )}
