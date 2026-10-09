@@ -39,7 +39,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   validarCPF, formatarCPF, validarCNS, formatarCNS, tipoCNS, limparDoc,
-  iniciaisDe, idadeDetalhada, conferirCadastro, possiveisDuplicatas,
+  iniciaisDe, idadeDetalhada, conferirCadastro, conferirIniciais, possiveisDuplicatas,
   normalizarSexo, documentoEmUso, mensagemDocumentoEmUso,
   NACIONALIDADES, normalizarNacionalidade, nascidoNoBrasil, autodeclaradoIndigena,
   limparCamposInaplicaveis, temIdentificadorMinimo,
@@ -228,6 +228,10 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
   // impediria consertar o endereço de um registro legado sem nome.
   const podeGravar = edicao || temIdentificadorMinimo(f);
   const pendenciasSus = conferencia.pendencias.filter(x => x.nivel === "sus");
+  // A divergência entre a coluna `iniciais` e o nome. Fica fora de
+  // `pendenciasSus` porque não é exigência de faturamento — é contradição
+  // entre dois campos preenchidos, e tem aviso próprio no topo da ficha.
+  const divergenciaIniciais = useMemo(() => conferirIniciais(f), [f.iniciais, f.nome_completo, f.nome_social]);
   const noBrasil = nascidoNoBrasil(f);
   const indigena = autodeclaradoIndigena(f);
   const cpfPreenchido = limparDoc(f.cpf).length > 0;
@@ -564,6 +568,25 @@ export default function CadastroPaciente({ sb, prontuario, paciente, canEdit, cu
       {/* IDENTIFICAÇÃO */}
       <div style={cartao}>
         <div style={rotulo}>Identificação</div>
+
+        {/* 🔴 AS INICIAIS GRAVADAS NÃO SÃO AS DO NOME.
+            Duas fontes de verdade para a mesma coisa, e elas divergem de
+            fato no acervo (T9060: nome "Clara Lima Barbosa", iniciais
+            "E.A."). O sistema NÃO sabe qual dos dois campos é de outra
+            pessoa, então não escolhe: mostra os dois e pede a conferência
+            com o documento. Salvar recarimba a partir do nome — por isso o
+            aviso precisa aparecer ANTES, e dizer isso. */}
+        {divergenciaIniciais.divergem && (
+          <div role="alert" style={{ background: "#3d2206", border: "1px solid #f9731666", borderRadius: 8,
+                                     padding: "9px 12px", marginBottom: 12, fontSize: 12, lineHeight: 1.55, color: "#f97316" }}>
+            <strong>Iniciais gravadas: {divergenciaIniciais.gravadas} — não são as do nome ({divergenciaIniciais.derivadas}).</strong>
+            <div style={{ color: "var(--text-2)", marginTop: 3 }}>
+              Um dos dois campos é de outra pessoa, e o sistema não tem como saber qual.
+              Confira o nome com o documento: ao salvar, as iniciais passam a ser <strong>{divergenciaIniciais.derivadas}</strong>{" "}
+              — o Bloco Cirúrgico confere a identidade do paciente por iniciais.
+            </div>
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 10 }}>
           <Campo label="Nome completo" valor={f.nome_completo} onChange={v => set("nome_completo", v)}
             placeholder="Como está no documento"

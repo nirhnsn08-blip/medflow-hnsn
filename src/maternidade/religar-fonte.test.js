@@ -94,3 +94,47 @@ describe("religar o leito ao prontuário emitido", () => {
     expect(r.motivo).toContain("T7777");               // o número emitido não se perde
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 A FÁBRICA DA DIVERGÊNCIA DE INICIAIS
+//
+// Este arquivo tinha o SEU PRÓPRIO `iniciaisDe`, que partia o nome por
+// espaço e pegava a primeira letra de cada pedaço — inclusive das
+// partículas. "Maria de Souza Lima" saía "M.D.S.L." aqui e "M.S.L." no
+// `identidade.js`, que descarta "de/da/do/dos/e" porque partícula não
+// identifica ninguém.
+//
+// O efeito não ficava neste arquivo: a gestante NASCIA com
+// `pacientes.iniciais` já divergindo do próprio `nome_completo`, e o resto
+// do sistema (que deriva de `comoExibir`) passava a mostrar um rótulo
+// diferente do gravado — a mesma pessoa com dois rótulos em telas
+// diferentes. É a divergência que o mapa cirúrgico agora acusa.
+//
+// Nenhum teste pegava: os nomes usados aqui ("Ana Lima") não têm partícula,
+// e as duas implementações concordavam neles.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 as iniciais da gestante saem da fonte única", () => {
+  it("partícula não vira inicial: 'Maria de Souza Lima' grava M.S.L.", async () => {
+    const sb = bancoFalso();
+    await cadastrarGestante(sb, { nome_completo: "Maria de Souza Lima", data_nascimento: "1998-03-02" }, USER);
+    const post = sb.req.find(r => r.metodo === "POST" && r.url === "pacientes");
+    expect(post.corpo.iniciais).toBe("M.S.L.");
+  });
+
+  it("acento não muda a inicial: 'Ângela Souza' grava A.S.", async () => {
+    const sb = bancoFalso();
+    await cadastrarGestante(sb, { nome_completo: "Ângela Souza", data_nascimento: "1998-03-02" }, USER);
+    const post = sb.req.find(r => r.metodo === "POST" && r.url === "pacientes");
+    expect(post.corpo.iniciais).toBe("A.S.");
+  });
+
+  // A coluna não deve guardar string vazia — a função compartilhada devolve
+  // "" onde a cópia local devolvia null.
+  it("o que vai para a coluna nunca é string vazia", async () => {
+    const sb = bancoFalso();
+    await cadastrarGestante(sb, { nome_completo: "Ana Lima", data_nascimento: "1998-03-02" }, USER);
+    const post = sb.req.find(r => r.metodo === "POST" && r.url === "pacientes");
+    expect(post.corpo.iniciais).toBe("A.L.");
+    expect(post.corpo.iniciais).not.toBe("");
+  });
+});

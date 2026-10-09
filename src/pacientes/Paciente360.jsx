@@ -127,7 +127,21 @@ export default function PacientePage({ sb, currentUser, canEdit }) {
   const alergiaLegado = dados?.ps?.[0]?.alergias || "";
   const alergia = dados ? situacaoAlergica(dados.alergias, alergiaLegado) : { estado: "sem_registro", itens: [] };
   const internadoAgora = (dados?.leitoAtual?.length || 0) > 0;
-  const iniciaisConhecidas = dados?.cadastro?.iniciais
+  // 🔴 O CABEÇALHO LIA A COLUNA GRAVADA, E ELA DIVERGE DO NOME.
+  //
+  // Achado caminhando pelo demo em 09/10/2026, com os testes desta frente
+  // já todos verdes: o T9060 ("Clara Lima Barbosa") abria como "E.A. ·
+  // prontuário T9060" — o número certo com o rótulo de outra pessoa, na
+  // tela que se chama Registro Clínico Integrado. A lista de resultados
+  // logo acima já fazia `comoExibir(s) || s.iniciais`; só o cabeçalho
+  // tinha ficado para trás.
+  //
+  // `comoExibir` deriva do nome (social antes do de registro) e cai na
+  // coluna gravada quando não há nome — que é o acervo importado e os
+  // órfãos adotados pela migração do bloco. Os outros candidatos (leito,
+  // PS, saídas, SCIH) são CARIMBOS de outras tabelas e seguem depois, na
+  // mesma ordem: valem quando o cadastro não sabe nomear ninguém.
+  const iniciaisConhecidas = comoExibir(dados?.cadastro)
     || dados?.leitoAtual[0]?.iniciais || dados?.ps[0]?.iniciais || dados?.saidas[0]?.iniciais || dados?.scih[0]?.iniciais || null;
 
   return (

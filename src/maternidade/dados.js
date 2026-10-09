@@ -12,12 +12,19 @@ import { medidaMaisRecente } from "./vigilancia.js";
 import { emitirProntuario, cadastrarRecemNascido } from "../atendimento/dados.js";
 // Reuso deliberado: uma segunda busca de paciente divergiria da primeira.
 export { buscarPacientes, carregarPaciente } from "../atendimento/dados.js";
-
-/** Iniciais a partir do nome ("Maria Silva Souza" → "M.S.S."). */
-function iniciaisDe(nome) {
-  const partes = String(nome || "").trim().split(/\s+/).filter(Boolean);
-  return partes.length ? partes.map(p => p[0].toUpperCase()).join(".") + "." : null;
-}
+// 🔴 ESTE ARQUIVO TINHA O SEU PRÓPRIO `iniciaisDe`, E ELE DIVERGIA.
+//
+// A cópia local partia o nome por espaço e pegava a primeira letra de cada
+// pedaço — inclusive das partículas. "Maria de Souza Lima" saía "M.D.S.L."
+// aqui e "M.S.L." no `identidade.js`, que descarta "de/da/do/dos/e" porque
+// partícula não identifica ninguém.
+//
+// O efeito não ficava neste arquivo: a gestante NASCIA com
+// `pacientes.iniciais` já divergindo do próprio `nome_completo`, e o resto
+// do sistema (que deriva) passava a mostrar um rótulo diferente do gravado.
+// Ou seja, a cópia era uma FÁBRICA da divergência que `conferirIniciais`
+// agora acusa na tela de cadastro.
+import { iniciaisDe } from "../pacientes/identidade.js";
 
 const RECUSA =
   "O banco recusou. Confira: a gestante precisa estar cadastrada (prontuário), " +
@@ -143,7 +150,9 @@ export async function cadastrarGestante(sb, dados, user, vinculo = {}) {
   const corpo = {
     prontuario: pront.prontuario,
     nome_completo: nome,
-    iniciais: iniciaisDe(nome),
+    // `|| null` porque a função compartilhada devolve "" onde a cópia local
+    // devolvia null, e a coluna não deve guardar string vazia.
+    iniciais: iniciaisDe(nome) || null,
     data_nascimento: dados.data_nascimento || null,
     cpf: String(dados.cpf ?? "").replace(/\D/g, "") || null,
     cns: String(dados.cns ?? "").replace(/\D/g, "") || null,
