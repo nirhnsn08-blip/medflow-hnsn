@@ -354,4 +354,25 @@ describe("🔴 agendar não aceita mais iniciais digitadas quando o cadastro sab
     fireEvent.change(screen.getByPlaceholderText("J.S.M."), { target: { value: "Q.Q." } });
     expect(screen.getByPlaceholderText("J.S.M.").value).toBe("Q.Q.");
   });
+
+  // ⚠️ As duas notas abaixo têm a MESMA consequência (nada conferido, campo
+  // livre) e mensagens diferentes de propósito — e é só aqui que a diferença
+  // fica visível, porque no cartão do mapa as duas situações dizem a mesma
+  // frase. Sem estes dois testes, perder o `naoDeuParaLer` do
+  // `indexarCadastros` passava sem nenhum teste vermelho: a pessoa levada a
+  // conferir o NÚMERO quando o problema era a REDE mexe no campo certo pelo
+  // motivo errado, e o número continua certo.
+  it("leitura falhou → a nota manda desconfiar da LEITURA, não do número", async () => {
+    await abrirForm(banco({ falhar: ["pacientes"] }));
+    fireEvent.change(screen.getByPlaceholderText("48213"), { target: { value: "T9060" } });
+    await screen.findByText(/Não conferi o cadastro deste prontuário/i);
+    expect(screen.queryByText(/não encontrado no cadastro/i)).toBeNull();
+  });
+
+  it("leitura OK e prontuário ausente → a nota manda conferir o NÚMERO", async () => {
+    await abrirForm(banco({ pacientes: [CLARA] }));
+    fireEvent.change(screen.getByPlaceholderText("48213"), { target: { value: "T0001" } });
+    await screen.findByText(/Prontuário não encontrado no cadastro/i);
+    expect(screen.queryByText(/Não conferi o cadastro deste prontuário/i)).toBeNull();
+  });
 });
