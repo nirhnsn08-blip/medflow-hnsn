@@ -1067,7 +1067,17 @@ function ChecklistOmsModal({ cirurgia, fase, identidade, onClose, onConfirm }) {
                      background: identidade.grave ? "#f43f5e18" : "#fbbf2410",
                      border: `1px solid ${identidade.grave ? "#f43f5e66" : "#fbbf2455"}`,
                      color: identidade.grave ? "#f43f5e" : "#fbbf24" }}>
-            {identidade.grave ? "🔴 " : "⚠ "}{identidade.aviso}
+            {/* A frase de comando é PRÓPRIA DESTE MODAL, e não repete a do
+                cartão de propósito: aqui o próximo gesto da pessoa é marcar
+                a caixinha da identidade, e é esse gesto que tem de parar.
+                "Confirme antes de seguir" no mapa é orientação; aqui é
+                instrução sobre o item que está na tela. */}
+            <div style={{ marginBottom: 2 }}>
+              {identidade.grave
+                ? "🔴 NÃO marque o item de identidade antes de resolver isto:"
+                : "⚠ A identidade deste paciente NÃO foi conferida com o cadastro:"}
+            </div>
+            {identidade.aviso}
           </div>
         )}
 

@@ -264,14 +264,42 @@ describe("🔴 o cartão do mapa mostra QUEM É, e acusa a divergência", () => 
   });
 });
 
+// ⚠️ ESTE BLOCO NASCEU DE UMA MUTAÇÃO QUE PASSOU BATIDA.
+//
+// A primeira versão procurava o aviso com `getAllByRole("alert")` e juntava
+// os textos. Mas o CARTÃO do mapa continua na tela por trás do modal, com um
+// alerta de mesmo texto — então apagar o aviso de dentro do modal deixava o
+// teste VERDE. Tirar o aviso justamente da tela onde se confere a identidade
+// era o pior lugar para ficar descoberto.
+//
+// A frase de comando do modal ("NÃO marque o item...") não existe no cartão,
+// e é por ela que estes testes procuram.
 describe("🔴 o Sign In não confere identidade contra o rótulo de outra pessoa", () => {
-  it("o aviso de divergência aparece no modal, ANTES dos itens", async () => {
+  it("o aviso de divergência aparece DENTRO do modal, ANTES dos itens", async () => {
     abrir(banco({ cirurgias: [{ ...CIRURGIA, status: "checkin" }], pacientes: [CLARA] }));
     fireEvent.click(await screen.findByText(/Cirurgia segura: Sign In/i));
     await screen.findByText("Voltar");
-    const alertas = screen.getAllByRole("alert").map(n => n.textContent).join(" ");
-    expect(alertas).toMatch(/CONFIRME a identidade/i);
-    expect(alertas).toMatch(/Clara Lima Barbosa/);
+    // frase que só o modal tem
+    const bloco = await screen.findByText(/NÃO marque o item de identidade/i);
+    expect(bloco.closest("[role=alert]").textContent).toMatch(/Clara Lima Barbosa/);
+    // e ela vem ANTES das caixinhas do checklist no DOM
+    const primeiraCaixa = document.querySelector('input[type="checkbox"]');
+    expect(bloco.compareDocumentPosition(primeiraCaixa) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("sem conseguir ler o cadastro, o modal diz que a identidade NÃO foi conferida", async () => {
+    abrir(banco({ cirurgias: [{ ...CIRURGIA, status: "checkin" }], pacientes: [CLARA], falhar: ["pacientes"] }));
+    fireEvent.click(await screen.findByText(/Cirurgia segura: Sign In/i));
+    await screen.findByText("Voltar");
+    expect(screen.getByText(/A identidade deste paciente NÃO foi conferida com o cadastro/i)).toBeTruthy();
+  });
+
+  it("quando conferem, o modal não traz aviso de identidade nenhum", async () => {
+    abrir(banco({ cirurgias: [{ ...CIRURGIA, iniciais: "C.L.B.", status: "checkin" }], pacientes: [CLARA] }));
+    fireEvent.click(await screen.findByText(/Cirurgia segura: Sign In/i));
+    await screen.findByText("Voltar");
+    expect(screen.queryByText(/NÃO marque o item de identidade/i)).toBeNull();
+    expect(screen.queryByText(/NÃO foi conferida com o cadastro/i)).toBeNull();
   });
 
   it("o cabeçalho do modal mostra o paciente do CADASTRO", async () => {
