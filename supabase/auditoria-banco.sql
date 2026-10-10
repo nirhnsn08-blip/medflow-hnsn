@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 109 tabelas, 1780 colunas.
+-- Cobertura atual: 110 tabelas, 1803 colunas.
 -- ============================================================
 
 with
@@ -36,6 +36,7 @@ tabelas(nome, origem) as (values
   ('auditoria','schema'),
   ('cc_checklist','cirurgia-segura-registro'),
   ('cc_cirurgias','schema'),
+  ('cc_descricao','cirurgia-descricao'),
   ('cc_equipe','cirurgia-paciente-equipe-codigo'),
   ('cc_salas','schema'),
   ('cid_referencia','schema'),
@@ -365,6 +366,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','cirurgiao','schema'),
   ('cc_cirurgias','consentimento_em','cirurgia-segura-registro'),
   ('cc_cirurgias','data','schema'),
+  ('cc_cirurgias','descricao_em','cirurgia-descricao'),
   ('cc_cirurgias','duracao_prev_min','schema'),
   ('cc_cirurgias','entrada_sala_em','schema'),
   ('cc_cirurgias','fim_cirurgia_em','schema'),
@@ -389,6 +391,28 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','tipo_anestesia','schema'),
   ('cc_cirurgias','updated_at','schema'),
   ('cc_cirurgias','usuario','schema'),
+  ('cc_descricao','achados','cirurgia-descricao'),
+  ('cc_descricao','amostra_enviada','cirurgia-descricao'),
+  ('cc_descricao','amostras','cirurgia-descricao'),
+  ('cc_descricao','assinatura','cirurgia-descricao'),
+  ('cc_descricao','cid_pos','cirurgia-descricao'),
+  ('cc_descricao','cirurgia_id','cirurgia-descricao'),
+  ('cc_descricao','conversao','cirurgia-descricao'),
+  ('cc_descricao','conversao_motivo','cirurgia-descricao'),
+  ('cc_descricao','corrige_id','cirurgia-descricao'),
+  ('cc_descricao','criado_em','cirurgia-descricao'),
+  ('cc_descricao','descricao','cirurgia-descricao'),
+  ('cc_descricao','drenos','cirurgia-descricao'),
+  ('cc_descricao','hemotransfusao','cirurgia-descricao'),
+  ('cc_descricao','id','cirurgia-descricao'),
+  ('cc_descricao','intercorrencias','cirurgia-descricao'),
+  ('cc_descricao','motivo_correcao','cirurgia-descricao'),
+  ('cc_descricao','procedimento_cod','cirurgia-descricao'),
+  ('cc_descricao','procedimento_realizado','cirurgia-descricao'),
+  ('cc_descricao','sangramento_ml','cirurgia-descricao'),
+  ('cc_descricao','usuario','cirurgia-descricao'),
+  ('cc_descricao','versao','cirurgia-descricao'),
+  ('cc_descricao','via_acesso','cirurgia-descricao'),
   ('cc_equipe','cbo','cirurgia-paciente-equipe-codigo'),
   ('cc_equipe','cirurgia_id','cirurgia-paciente-equipe-codigo'),
   ('cc_equipe','conselho','cirurgia-paciente-equipe-codigo'),

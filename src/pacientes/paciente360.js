@@ -21,7 +21,62 @@ import { atendimentoAberto } from "../atendimento/ciclo.js";
 import { ISOLAMENTOS, precaucaoDe } from "../clinico/isolamento.js";
 import { diasDesde, sinalLeito } from "../clinico/leitos.js";
 import { MANCHESTER, PS_DESFECHOS, PS_EVOL_CATEGORIAS, fmtSinaisVitais } from "../ps/catalogo.js";
-import { horaFmt } from "../util/datas.js";
+import { jaOperou, linhaDoAntecedente, resumoDaDescricao, versaoVigente } from "../bloco/descricao.js";
+import { diaLocal, horaFmt } from "../util/datas.js";
+
+/** A equipe de UMA cirurgia, da lista que veio junto com o paciente. */
+export function equipeDe(d, cirurgiaId) {
+  return (d?.equipeCirurgias || []).filter(m => String(m.cirurgia_id) === String(cirurgiaId));
+}
+
+/**
+ * A descrição VIGENTE de uma cirurgia. Versão corrigida não é a que vale —
+ * mostrar a antiga no prontuário seria mostrar o que o cirurgião retificou.
+ */
+export function descricaoVigenteDe(d, cirurgiaId) {
+  const minhas = (d?.descricoesCirurgias || [])
+    .filter(x => String(x.cirurgia_id) === String(cirurgiaId));
+  return versaoVigente(minhas) || null;
+}
+
+/**
+ * O ANTECEDENTE CIRÚRGICO do paciente — o que o médico que atende seis
+ * meses depois procura, da cirurgia mais recente para a mais antiga.
+ */
+export function antecedenteCirurgico(d) {
+  const linhas = (d?.cirurgias || [])
+    .map(c => linhaDoAntecedente({
+      cirurgia: c, equipe: equipeDe(d, c.id), descricao: descricaoVigenteDe(d, c.id),
+    }));
+  const porDiaDesc = (a, b) => String(b.dia || "").localeCompare(String(a.dia || ""));
+  const porDiaAsc = (a, b) => String(a.dia || "").localeCompare(String(b.dia || ""));
+
+  // 🔴 ANTECEDENTE É PASSADO — achado caminhando pelo demo (09/10/2026).
+  //
+  // Ordenado só por data, uma cirurgia AGENDADA para dezembro encabeçava a
+  // seção e aparecia ACIMA da que realmente aconteceu. Quem bate o olho lê
+  // "este paciente fez uma colecistectomia" — e não fez: está marcada.
+  //
+  // Três blocos, nesta ordem: o que ACONTECEU (mais recente primeiro, que é
+  // o que se procura numa anamnese), depois o que está MARCADO (a mais
+  // próxima primeiro, que é a que importa) e por fim o que foi cancelado.
+  return [
+    ...linhas.filter(l => !l.cancelada && !l.semAto).sort(porDiaDesc),
+    ...linhas.filter(l => l.semAto).sort(porDiaAsc),
+    ...linhas.filter(l => l.cancelada).sort(porDiaDesc),
+  ];
+}
+
+/**
+ * Quantas cirurgias o paciente de fato FEZ.
+ *
+ * O título da seção contava as três listas juntas, então "(3)" incluía uma
+ * agendada e uma cancelada. Número de antecedente cirúrgico é dado de
+ * anamnese: contar o que não aconteceu infla o histórico do paciente.
+ */
+export function quantasOperou(linhas = []) {
+  return linhas.filter(l => !l.cancelada && !l.semAto).length;
+}
 
 export const TIPOS_EVOLUCAO = {
   evolucao_medica: { label: "Evolução médica",        cor: "#3b82f6" },
@@ -56,6 +111,36 @@ export function montarTimeline(d) {
   d.evolucoes.forEach(e => {
     push(e.criado_em, TIPOS_EVOLUCAO[e.tipo]?.label || "Evolução", TIPOS_EVOLUCAO[e.tipo]?.cor || "#3b82f6", TIPOS_EVOLUCAO[e.tipo]?.label || e.tipo, e.texto);
   });
+  // ── CIRURGIA ────────────────────────────────────────────────
+  // 🔴 Faltava inteira até 10/2026. A linha do tempo mostrava PS, leito,
+  // SCIH e evolução — e um paciente operado aparecia como paciente que
+  // nunca entrou em sala.
+  (d.cirurgias || []).forEach(c => {
+    if (c.status === "cancelada") {
+      // Cirurgia cancelada ENTRA, e não é detalhe: cancelamento por jejum
+      // inadequado ou por condição clínica é história do paciente, e é o que
+      // explica por que ele voltou três semanas depois.
+      push(c.cancelado_em || (c.data ? c.data + "T12:00:00" : null), "Bloco", "#f43f5e",
+        `Cirurgia CANCELADA: ${c.procedimento || "—"}`, c.cancelamento_motivo || null);
+      return;
+    }
+    const desc = descricaoVigenteDe(d, c.id);
+    const l = linhaDoAntecedente({ cirurgia: c, equipe: equipeDe(d, c.id), descricao: desc });
+    const quando = c.inicio_cirurgia_em || c.entrada_sala_em
+      || (c.data ? c.data + "T12:00:00" : null);
+    const detalhe = [
+      l.via ? `via ${l.via.toLowerCase()}` : null,
+      l.convertida ? "CONVERTIDA" : null,
+      l.cirurgiao ? `cirurgião: ${l.cirurgiao}` : null,
+      l.cid_pos ? `CID pós-op ${l.cid_pos}` : null,
+      l.intercorrencias ? `intercorrências: ${l.intercorrencias}` : null,
+      // ⚠️ A ausência do documento aparece COMO ausência. Cirurgia feita sem
+      // descrição é buraco no prontuário, não "cirurgia sem nada a relatar".
+      jaOperou(c) && !l.temDescricao ? "SEM descrição cirúrgica registrada" : null,
+    ].filter(Boolean).join(" · ") || null;
+    if (jaOperou(c)) push(quando, "Bloco", "#8b5cf6", `Cirurgia: ${l.procedimento}`, detalhe);
+    else push(quando, "Bloco", "#8d99ab", `Cirurgia AGENDADA: ${c.procedimento || "—"}`, c.sala || null);
+  });
   (d.registrosPS || []).forEach(r => {
     if (r.tipo === "evolucao") { const ec = PS_EVOL_CATEGORIAS[r.categoria] || PS_EVOL_CATEGORIAS.medica; push(r.criado_em, "PS", ec.cor, ec.label + " no PS", r.texto); }
     else if (r.tipo === "prescricao") push(r.criado_em, "PS", "#6366f1", "Prescrição no PS", r.texto);
@@ -82,7 +167,31 @@ export function sentinelaPaciente(d) {
       if (dias != null && dias >= 3) alertas.push({ cor: "#fbbf24", texto: `Cultura coletada há ${dias}d sem resultado registrado` });
     }
   });
+
+  // ── CIRURGIA ────────────────────────────────────────────────
+  // Gatilho estreito, como os de cima: só o que ainda está em curso e só o
+  // buraco documental que alguém precisa fechar. Listar as oito cirurgias da
+  // vida do paciente aqui faria a sentinela virar paisagem.
+  (d.cirurgias || []).forEach(c => {
+    if (c.status === "em_cirurgia")
+      alertas.push({ cor: "#8b5cf6", texto: `Paciente está EM CIRURGIA agora (${c.procedimento || "procedimento não informado"})` });
+    else if (c.status === "recuperacao")
+      alertas.push({ cor: "#d97706", texto: `Paciente está na recuperação pós-anestésica (RPA)` });
+    else if (c.status === "concluida" && !c.descricao_em)
+      // 🔴 A descrição cirúrgica é exigência legal (CFM 1.638/2002), e a
+      // falta dela não aparece em lugar nenhum até alguém pedir o prontuário
+      // — o que costuma ser uma auditoria ou um processo.
+      alertas.push({ cor: "#f43f5e", texto: `Cirurgia de ${fmtDiaCurto(c.data)} SEM descrição cirúrgica registrada` });
+  });
   return alertas;
+}
+
+/** Dia no formato curto brasileiro, ou "—" quando não há dia. */
+function fmtDiaCurto(dia) {
+  const d = diaLocal(dia);
+  if (!d) return "—";
+  const [a, m, x] = d.split("-");
+  return `${x}/${m}/${a}`;
 }
 
 // Resumo automático de passagem de plantão — gerado localmente, sem custo e
@@ -119,6 +228,17 @@ export function resumoLocalPaciente(prontuario, dados, timeline, alertas) {
   scihAtivo.forEach(c => {
     frases.push(`Vigilância SCIH ativa${c.germe ? `: ${c.germe}${c.multirresistente ? " (multirresistente)" : ""}` : ""}${precaucaoDe(c.isolamento) ? `, isolamento de ${ISOLAMENTOS[c.isolamento].label.toLowerCase()}` : ""}${c.antibiotico ? `, em uso de ${c.antibiotico}` : ""}.`);
   });
+
+  // 🔴 ANTECEDENTE CIRÚRGICO — entra na passagem de plantão porque é risco
+  // anestésico e é diagnóstico diferencial. A mais recente com detalhe; o
+  // resto como contagem, para a frase não virar um parágrafo.
+  const cirs = antecedenteCirurgico(dados).filter(c => !c.cancelada && !c.semAto);
+  if (cirs.length) {
+    const u = cirs[0];
+    frases.push(`Antecedente cirúrgico: ${cirs.length} cirurgia(s) no sistema; a mais recente`
+      + `${u.dia ? ` em ${fmtDiaCurto(u.dia)}` : ""} — ${resumoDaDescricao(u)}.`
+      + (u.temDescricao ? "" : " ⚠️ SEM descrição cirúrgica registrada."));
+  }
 
   // Última evolução
   const ultEv = dados.evolucoes[0];

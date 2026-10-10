@@ -212,3 +212,92 @@ describe("🔴 ponta a ponta: a conta do episódio passa a incluir a cirurgia", 
     expect(r.itens.some(i => /Cirurgia #/.test(i.origem || ""))).toBe(false);
   });
 });
+
+// ── O QUE FOI FEITO × O QUE FOI MARCADO ─────────────────────
+//
+// 🔴 Videolaparoscopia que converte para laparotomia é outro porte, outro
+// código, outra conta. Até 10/2026 o motor cobrava
+// `cc_cirurgias.procedimento_cod`, que é o do AGENDAMENTO — então a conta
+// fechava batendo com o agendamento, errada e sem ninguém notar. A fonte do
+// código agora é a descrição cirúrgica, que é o ato que aconteceu.
+describe("🔴 a conta cobra o REALIZADO, não o agendado", () => {
+  const DESC = { cirurgia_id: 9, versao: 1, procedimento_cod: "0407010050", procedimento_realizado: "Colecistectomia aberta" };
+  const CAT_ABERTA = { codigo: "0407010050", nome: "Colecistectomia", valor_sus: 1200 };
+
+  it("com descrição, o item sai com o código realizado e o preço DELE", () => {
+    const { itens } = itensDasCirurgias({
+      cirurgias: [CIR], equipePorCirurgia: { 9: EQUIPE },
+      descricaoPorCirurgia: { 9: DESC },
+      catalogoPorCodigo: { "0407010173": CAT, "0407010050": CAT_ABERTA },
+    });
+    const ato = itens[0];
+    expect(ato.codigo).toBe("0407010050");
+    // ⚠️ O preço tem de ser o do código COBRADO. Buscar o catálogo pelo
+    // agendado traria o valor do procedimento que não aconteceu — código
+    // certo com valor errado passa pela conferência.
+    expect(ato.valor_unitario).toBe(1200);
+    expect(ato.fonte).toBe("cc_descricao.procedimento_cod");
+  });
+
+  it("🔴 a divergência é dita, com os dois códigos", () => {
+    const r = itensDaCirurgia({ cirurgia: CIR, equipe: EQUIPE, procCatalogo: CAT_ABERTA, descricao: DESC });
+    expect(r.avisos.join(" ")).toMatch(/cobra o código REALIZADO \(0407010050\), não o agendado \(0407010173\)/);
+  });
+
+  it("código igual não gera ruído", () => {
+    const r = itensDaCirurgia({
+      cirurgia: CIR, equipe: EQUIPE, procCatalogo: CAT,
+      descricao: { ...DESC, procedimento_cod: "0407010173" },
+    });
+    expect(r.avisos.join(" ")).not.toMatch(/REALIZADO/);
+  });
+
+  it("🔴 cirurgia SEM descrição avisa que o código é o do agendamento", () => {
+    // Não bloqueia a conta — o faturamento não pode ficar preso ao cirurgião
+    // lembrar de escrever. Mas quem fecha precisa saber qual código está em
+    // cima da mesa.
+    const r = itensDaCirurgia({ cirurgia: CIR, equipe: EQUIPE, procCatalogo: CAT, descricao: null });
+    expect(r.itens).toHaveLength(2);        // o ato e a anestesia continuam
+    expect(r.avisos.join(" ")).toMatch(/SEM descrição cirúrgica registrada/);
+    expect(r.avisos.join(" ")).toMatch(/se o ato foi outro \(conversão/);
+  });
+
+  it("com descrição, o aviso de ausência SOME", () => {
+    const r = itensDaCirurgia({ cirurgia: CIR, equipe: EQUIPE, procCatalogo: CAT, descricao: { ...DESC, procedimento_cod: "0407010173" } });
+    expect(r.avisos.join(" ")).not.toMatch(/SEM descrição cirúrgica/);
+  });
+
+  it("🔴 conversão de via manda conferir o porte", () => {
+    const r = itensDaCirurgia({
+      cirurgia: CIR, equipe: EQUIPE, procCatalogo: CAT_ABERTA,
+      descricao: { ...DESC, conversao: true },
+    });
+    expect(r.avisos.join(" ")).toMatch(/foi CONVERTIDA de via.*muda o porte/);
+  });
+
+  it("descrição sem código não derruba o do agendamento", () => {
+    const r = itensDaCirurgia({
+      cirurgia: CIR, equipe: EQUIPE, procCatalogo: CAT,
+      descricao: { ...DESC, procedimento_cod: null },
+    });
+    expect(r.itens[0].codigo).toBe("0407010173");
+    expect(r.itens[0].fonte).toBe("cc_cirurgias.procedimento_cod");
+  });
+
+  it("o nome do item cai no realizado quando o catálogo não tem o código", () => {
+    const r = itensDaCirurgia({ cirurgia: CIR, equipe: EQUIPE, procCatalogo: null, descricao: DESC });
+    expect(r.itens[0].descricao).toBe("Colecistectomia aberta");
+  });
+
+  it("ponta a ponta: a conta do episódio usa o código da descrição", () => {
+    const atend = { id: 501, prontuario: "T1", chegada_em: "2026-10-08T12:00:00Z" };
+    const r = montarContaDoProntuario({
+      atendimento: atend, convenio: { tipo: "sus" },
+      procedimentos: [CAT, CAT_ABERTA],
+      cirurgias: [CIR], equipePorCirurgia: { 9: EQUIPE },
+      descricaoPorCirurgia: { 9: DESC },
+    });
+    expect(r.itens.some(i => i.codigo === "0407010050")).toBe(true);
+    expect(r.itens.some(i => i.codigo === "0407010173" && /Cirurgia #/.test(i.origem || ""))).toBe(false);
+  });
+});

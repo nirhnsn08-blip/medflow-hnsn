@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from "react";
 import CadastroPaciente from "./CadastroPaciente.jsx";
 import ProntuarioInternado from "../prontuario/ProntuarioInternado.jsx";
-import { TIPOS_EVOLUCAO, montarTimeline, resumoLocalPaciente, sentinelaPaciente } from "./paciente360.js";
+import { TIPOS_EVOLUCAO, antecedenteCirurgico, montarTimeline, quantasOperou, resumoLocalPaciente, sentinelaPaciente } from "./paciente360.js";
 import { addEvolucaoRemote, buscarPacientes, loadPaciente360 } from "./dados.js";
 import { comoExibir, conferirCadastro, idadeMesesParaTriagem, rotuloSexo } from "./identidade.js";
 import { situacaoAlergica } from "../clinico/alergias.js";
@@ -25,6 +25,7 @@ import { HOSPITAL_NOME, HOSPITAL_SIGLA, VX, btnContorno } from "../ui/base.jsx";
 import { fmtDataBR, horaFmt, nowISO } from "../util/datas.js";
 import PrimeiroUso from "../ui/PrimeiroUso.jsx";
 import { useChecagens } from "../ui/usar-checagens.js";
+import { naoDeuParaLer } from "../util/leitura.js";
 
 // O cadastro que sustenta esta tela. Sem paciente nenhum, a busca não acha
 // nada — e "não achei" é indistinguível de "ninguém foi cadastrado ainda".
@@ -126,6 +127,11 @@ export default function PacientePage({ sb, currentUser, canEdit }) {
   // vive no último atendimento de PS, até o front migrar a escrita.
   const alergiaLegado = dados?.ps?.[0]?.alergias || "";
   const alergia = dados ? situacaoAlergica(dados.alergias, alergiaLegado) : { estado: "sem_registro", itens: [] };
+  // 🔴 ANTECEDENTE CIRÚRGICO. A marca de falha é conferida ANTES de
+  // qualquer filtro — `naoDeuParaLer` é a IDENTIDADE do array, e
+  // `.filter()` devolve um array novo e comum.
+  const cirurgiasNaoLidas = naoDeuParaLer(dados?.cirurgias);
+  const antecedente = dados ? antecedenteCirurgico(dados) : [];
   const internadoAgora = (dados?.leitoAtual?.length || 0) > 0;
   // 🔴 O CABEÇALHO LIA A COLUNA GRAVADA, E ELA DIVERGE DO NOME.
   //
@@ -355,6 +361,61 @@ export default function PacientePage({ sb, currentUser, canEdit }) {
               {alertas.map((a, i) => (
                 <div key={i} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${a.cor}`, borderRadius: 8, padding: "8px 13px", fontSize: 12.5, color: "var(--text-2)", fontWeight: 600 }}>{a.texto}</div>
               ))}
+            </div>
+          )}
+
+          {/* 🔴 ANTECEDENTE CIRÚRGICO — a seção que não existia.
+              O Paciente 360 mostrava PS, leito, SCIH e evolução, e um
+              paciente operado aparecia como paciente que nunca entrou em
+              sala. Antecedente cirúrgico é anamnese, risco anestésico e
+              diagnóstico diferencial; o prontuário é legalmente ÚNICO
+              (CFM 1.638/2002), não um por módulo. */}
+          {(cirurgiasNaoLidas || antecedente.length > 0) && (
+            <div style={{ marginBottom: 16 }}>
+              {/* A contagem é das que ACONTECERAM. Somar agendada e cancelada
+                  infla o histórico de quem lê a anamnese. */}
+              <div style={secLbl}>Antecedente cirúrgico{cirurgiasNaoLidas ? "" : ` (${quantasOperou(antecedente)})`}</div>
+
+              {/* ⚠️ "Não consegui ler" NUNCA vira "nunca operou". Sem este
+                  aviso, uma oscilação de rede faria o médico decidir risco
+                  anestésico com base numa ausência que não foi medida. */}
+              {cirurgiasNaoLidas ? (
+                <div role="alert" style={{ background: "#f43f5e10", border: "1px solid #f43f5e55", borderLeft: "3px solid #f43f5e",
+                                           borderRadius: 8, padding: "10px 13px", fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55 }}>
+                  Não consegui ler as cirurgias deste paciente. <strong>Isto não significa que ele nunca foi
+                  operado</strong> — recarregue antes de concluir qualquer coisa sobre antecedente cirúrgico.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  {antecedente.map(c => (
+                    <div key={c.id} style={{ background: "var(--surface)", border: "1px solid var(--border)",
+                                             borderLeft: `3px solid ${c.cancelada ? "#f43f5e" : c.semAto ? "#8d99ab" : "#8b5cf6"}`,
+                                             borderRadius: 8, padding: "9px 13px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-2)" }}>
+                        {c.cancelada ? "CANCELADA — " : c.semAto ? "AGENDADA — " : ""}{c.procedimento}
+                        {c.dia && <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> · {fmtDataBR(c.dia)}</span>}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "var(--text-3)", lineHeight: 1.6 }}>
+                        {[c.via, c.convertida ? "CONVERTIDA de via" : null, c.cirurgiao ? `cirurgião: ${c.cirurgiao}` : null,
+                          c.cid_pos ? `CID pós-op ${c.cid_pos}` : null].filter(Boolean).join(" · ") || "sem detalhes registrados"}
+                      </div>
+                      {c.intercorrencias && (
+                        <div style={{ fontSize: 12, color: "#fbbf24", lineHeight: 1.55, marginTop: 3 }}>
+                          Intercorrências: {c.intercorrencias}
+                        </div>
+                      )}
+                      {/* A ausência do documento aparece COMO ausência. Cirurgia
+                          feita sem descrição é buraco no prontuário, e quem lê
+                          precisa saber que não está lendo "nada a relatar". */}
+                      {!c.temDescricao && !c.cancelada && !c.semAto && (
+                        <div style={{ fontSize: 11.5, color: "#f43f5e", lineHeight: 1.55, marginTop: 3 }}>
+                          SEM descrição cirúrgica registrada — o que foi feito não está no prontuário.
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

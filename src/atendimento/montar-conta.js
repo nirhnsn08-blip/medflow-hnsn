@@ -453,6 +453,10 @@ export function montarContaDoProntuario({
   // parâmetro, como todo o resto: este motor não lê banco.
   cirurgias = [],
   equipePorCirurgia = {},
+  // A descrição cirúrgica VIGENTE de cada cirurgia. É dela que sai o código
+  // do que foi REALIZADO — que vence o do agendamento, porque é o ato que
+  // aconteceu.
+  descricaoPorCirurgia = {},
 } = {}) {
   if (!atendimento?.id) {
     return {
@@ -504,7 +508,7 @@ export function montarContaDoProntuario({
   // os auxiliares para conferência, sem valor — o percentual depende
   // do contrato da operadora, e preço aqui nunca é inventado.
   const cir = itensDasCirurgias({
-    cirurgias, equipePorCirurgia, via,
+    cirurgias, equipePorCirurgia, descricaoPorCirurgia, via,
     catalogoPorCodigo: Object.fromEntries([...idxProc.entries()]),
     sigtapPorCodigo: Object.fromEntries([...idxSig.entries()]),
   });
