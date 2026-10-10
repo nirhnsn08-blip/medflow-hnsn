@@ -27,6 +27,7 @@ import { iniciaisDe } from "../pacientes/identidade.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
+import { versaoVigente } from "../bloco/descricao.js";
 import { camposDaProducao } from "./producao.js";
 import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
@@ -1959,19 +1960,44 @@ export async function corrigirDesfecho(sb, { atendimentoId, de, para, motivo }, 
  * caro da conta.
  */
 export async function carregarCirurgiasDoEpisodio(sb, atendimentoId) {
-  if (!sb || !atendimentoId) return { cirurgias: [], equipePorCirurgia: {}, naoLi: false };
+  const vazio = { cirurgias: [], equipePorCirurgia: {}, descricaoPorCirurgia: {}, naoLi: false };
+  if (!sb || !atendimentoId) return vazio;
   const r = await sb(`cc_cirurgias?ps_atendimento_id=eq.${atendimentoId}&select=*&order=data`);
   const cirurgias = listaLida(r);
-  if (naoDeuParaLer(cirurgias)) return { cirurgias: [], equipePorCirurgia: {}, naoLi: true };
-  if (!cirurgias.length) return { cirurgias: [], equipePorCirurgia: {}, naoLi: false };
+  if (naoDeuParaLer(cirurgias)) return { ...vazio, naoLi: true };
+  if (!cirurgias.length) return vazio;
 
-  const eq = await sb(`cc_equipe?cirurgia_id=in.(${cirurgias.map(c => c.id).join(",")})&select=*&order=id`);
+  const ids = cirurgias.map(c => c.id).join(",");
+  const [eq, de] = await Promise.all([
+    sb(`cc_equipe?cirurgia_id=in.(${ids})&select=*&order=id`),
+    sb(`cc_descricao?cirurgia_id=in.(${ids})&select=*&order=versao.desc`),
+  ]);
   const equipe = listaLida(eq);
   const equipePorCirurgia = {};
   for (const m of equipe) {
     (equipePorCirurgia[m.cirurgia_id] ||= []).push(m);
   }
+
+  // A descrição VIGENTE de cada cirurgia — a corrigida não é a que vale, e
+  // é dela que sai o código do que foi REALIZADO.
+  const descricoes = listaLida(de);
+  const porCirurgia = {};
+  for (const x of descricoes) (porCirurgia[x.cirurgia_id] ||= []).push(x);
+  const descricaoPorCirurgia = {};
+  for (const [id, lista] of Object.entries(porCirurgia)) {
+    const v = versaoVigente(lista);
+    if (v) descricaoPorCirurgia[id] = v;
+  }
+
   // Falha ao ler a EQUIPE também é "não li": sem ela a conta sairia sem
   // executante, que é pior que não sair.
-  return { cirurgias, equipePorCirurgia, naoLi: naoDeuParaLer(equipe) };
+  //
+  // ⚠️ E falha ao ler a DESCRIÇÃO entra na mesma conta, por um motivo
+  // diferente e pior: sem ela o motor cobra o código do AGENDAMENTO sem
+  // saber que não o leu, e uma conversão de via passaria batida — a conta
+  // fecharia com o porte errado, batendo com o agendamento.
+  return {
+    cirurgias, equipePorCirurgia, descricaoPorCirurgia,
+    naoLi: naoDeuParaLer(equipe) || naoDeuParaLer(descricoes),
+  };
 }

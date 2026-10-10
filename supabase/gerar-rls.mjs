@@ -27,6 +27,116 @@ import { MAPA_TABELAS, TODOS, PROPRIO, ESCRITA_ABERTA, LEITURA_EXTRA, leitoresDe
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 
+
+/**
+ * AS FUNÇÕES DE PERMISSÃO — texto único, usado por DOIS arquivos.
+ *
+ * 🔴 POR QUE ELAS SAÍRAM DO `migracao-rls-leitura.sql` (08/10/2026).
+ *
+ * O `reconstruir-banco.sql` — o caminho do hospital NOVO — monta as
+ * migrações numa ordem em que o rls-leitura vem POR ÚLTIMO, de propósito:
+ * ele reescreve as políticas de SELECT de todas as tabelas criadas antes.
+ * Só que as funções moravam dentro dele. Resultado: 24 políticas criadas
+ * no meio do caminho citavam `public.pode_ver_algum`, que só nasceria 7.400
+ * linhas depois — e o banco novo MORRIA em `at_glosas_leitura`, a 55% do
+ * script. Medido em PGlite: com as funções criadas antes, as 1.846
+ * declarações rodam e as 109 tabelas nascem.
+ *
+ * Ninguém tinha percebido porque nenhum teste EXECUTAVA a reconstrução —
+ * `migracoes-na-ordem.test.js` conferia presença, não execução. Agora
+ * `banco-novo-nasce.test.js` roda o arquivo inteiro.
+ *
+ * ⚠️ UM TEXTO, DOIS ARQUIVOS, de propósito: `migracao-acesso-funcoes.sql`
+ * (nova, cedo na ordem) e a PARTE 1 do `migracao-rls-leitura.sql`, que
+ * segue autossuficiente para quem reexecutar só ela. Duas CÓPIAS à mão
+ * divergiriam; uma const compartilhada não pode.
+ */
+const FUNCOES = `-- O nível efetivo desta pessoa neste módulo: nenhum | leitura | escrita.
+create or replace function public.meu_nivel(p_modulo text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $meu_nivel$
+  with me as (
+    select id, role, perfil from public.profiles where id = auth.uid()
+  ),
+  bruto as (
+    select coalesce(
+      -- 1) a exceção individual manda (serve para AMPLIAR e para REDUZIR)
+      (select up.nivel from public.usuarios_permissoes up, me
+        where up.user_id = me.id and up.modulo = p_modulo),
+      -- 2) o pacote do cargo
+      (select pp.nivel from public.perfis_permissoes pp, me
+        where pp.perfil_chave = me.perfil and pp.modulo = p_modulo),
+      -- 3) sem perfil é sem acesso — falha FECHADA
+      'nenhum'
+    ) as nivel
+  )
+  select case
+    -- Trava anti-trancamento: Usuários e Perfis é sempre, e só, do
+    -- adm_master. Sem isto, um perfil configurado errado tranca o
+    -- administrador do lado de fora e só se resolve pelo painel.
+    when p_modulo = 'users' then
+      case when (select role from me) = 'adm_master' then 'escrita' else 'nenhum' end
+    -- Teto do visualizador: nunca escreve, tenha o perfil que tiver.
+    when (select role from me) = 'visualizador' and (select nivel from bruto) = 'escrita' then
+      'leitura'
+    else (select nivel from bruto)
+  end
+$meu_nivel$;
+
+-- Pode ABRIR o módulo? (leitura ou escrita)
+create or replace function public.pode_ver(p_modulo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_ver$
+  select public.meu_nivel(p_modulo) in ('leitura', 'escrita')
+$pode_ver$;
+
+-- Pode abrir ALGUM destes? Uma tela lê tabela de vizinho por bom motivo:
+-- o Giro de Leitos monta o mapa de risco com as escalas de enfermagem, o
+-- Paciente 360 junta PS, leito, SCIH e PEP na mesma consulta.
+create or replace function public.pode_ver_algum(variadic p_modulos text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_ver_algum$
+  select exists (select 1 from unnest(p_modulos) m where public.pode_ver(m))
+$pode_ver_algum$;
+
+-- Pode LANÇAR no módulo? Ainda não é usada por política nenhuma — a
+-- escrita continua decidida por \`role\`. Fica pronta para a fase seguinte.
+create or replace function public.pode_editar(p_modulo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_editar$
+  select public.meu_nivel(p_modulo) = 'escrita'
+$pode_editar$;
+
+-- Escreve em ALGUM destes módulos? Espelha \`pode_ver_algum\`, para a tabela
+-- que serve a mais de um módulo (\`sup_itens\` é do almoxarifado e da
+-- farmácia; quem tem escrita em qualquer um dos dois grava nela).
+create or replace function public.pode_editar_algum(variadic p_modulos text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_editar_algum$
+  select exists (select 1 from unnest(p_modulos) m where public.pode_editar(m))
+$pode_editar_algum$;
+`;
+
 /** As tabelas que o banco deveria ter, lidas do auditoria-banco.sql gerado. */
 export function tabelasDoBanco(sqlAuditoria) {
   const bloco = sqlAuditoria.match(/tabelas\(nome, origem\) as \(values([\s\S]*?)\n\),/);
@@ -165,96 +275,16 @@ set search_path = public, extensions, pg_temp;
 -- ════════════════════════════════════════════════════════════
 -- PARTE 1/5 — AS FUNÇÕES DE PERMISSÃO
 --
+-- ⚠️ O MESMO TEXTO está em \`migracao-acesso-funcoes.sql\`, que roda CEDO na
+-- reconstrução do banco: aqui elas vêm por último, e 24 políticas criadas
+-- no meio do caminho já as citam. Os dois saem da const FUNCOES do gerador.
+--
 -- Espelham \`src/acesso/permissoes.js\`, nesta ordem: perfil → exceção
 -- individual → travas. \`security definer\` porque a função precisa ler
 -- \`profiles\` e \`perfis_permissoes\` por baixo do RLS delas.
 -- ════════════════════════════════════════════════════════════
 
--- O nível efetivo desta pessoa neste módulo: nenhum | leitura | escrita.
-create or replace function public.meu_nivel(p_modulo text)
-returns text
-language sql
-stable
-security definer
-set search_path = public
-as $meu_nivel$
-  with me as (
-    select id, role, perfil from public.profiles where id = auth.uid()
-  ),
-  bruto as (
-    select coalesce(
-      -- 1) a exceção individual manda (serve para AMPLIAR e para REDUZIR)
-      (select up.nivel from public.usuarios_permissoes up, me
-        where up.user_id = me.id and up.modulo = p_modulo),
-      -- 2) o pacote do cargo
-      (select pp.nivel from public.perfis_permissoes pp, me
-        where pp.perfil_chave = me.perfil and pp.modulo = p_modulo),
-      -- 3) sem perfil é sem acesso — falha FECHADA
-      'nenhum'
-    ) as nivel
-  )
-  select case
-    -- Trava anti-trancamento: Usuários e Perfis é sempre, e só, do
-    -- adm_master. Sem isto, um perfil configurado errado tranca o
-    -- administrador do lado de fora e só se resolve pelo painel.
-    when p_modulo = 'users' then
-      case when (select role from me) = 'adm_master' then 'escrita' else 'nenhum' end
-    -- Teto do visualizador: nunca escreve, tenha o perfil que tiver.
-    when (select role from me) = 'visualizador' and (select nivel from bruto) = 'escrita' then
-      'leitura'
-    else (select nivel from bruto)
-  end
-$meu_nivel$;
-
--- Pode ABRIR o módulo? (leitura ou escrita)
-create or replace function public.pode_ver(p_modulo text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $pode_ver$
-  select public.meu_nivel(p_modulo) in ('leitura', 'escrita')
-$pode_ver$;
-
--- Pode abrir ALGUM destes? Uma tela lê tabela de vizinho por bom motivo:
--- o Giro de Leitos monta o mapa de risco com as escalas de enfermagem, o
--- Paciente 360 junta PS, leito, SCIH e PEP na mesma consulta.
-create or replace function public.pode_ver_algum(variadic p_modulos text[])
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $pode_ver_algum$
-  select exists (select 1 from unnest(p_modulos) m where public.pode_ver(m))
-$pode_ver_algum$;
-
--- Pode LANÇAR no módulo? Ainda não é usada por política nenhuma — a
--- escrita continua decidida por \`role\`. Fica pronta para a fase seguinte.
-create or replace function public.pode_editar(p_modulo text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $pode_editar$
-  select public.meu_nivel(p_modulo) = 'escrita'
-$pode_editar$;
-
--- Escreve em ALGUM destes módulos? Espelha \`pode_ver_algum\`, para a tabela
--- que serve a mais de um módulo (\`sup_itens\` é do almoxarifado e da
--- farmácia; quem tem escrita em qualquer um dos dois grava nela).
-create or replace function public.pode_editar_algum(variadic p_modulos text[])
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $pode_editar_algum$
-  select exists (select 1 from unnest(p_modulos) m where public.pode_editar(m))
-$pode_editar_algum$;
-
+${FUNCOES}
 
 -- ════════════════════════════════════════════════════════════
 -- PARTE 2/5 — DESARMAR AS POLÍTICAS "FOR ALL"
@@ -556,9 +586,86 @@ order by ord, situacao, item;
 `;
 }
 
+/**
+ * O ARQUIVO SÓ DAS FUNÇÕES, que roda CEDO na reconstrução do banco.
+ *
+ * Não cria tabela, não mexe em política, não toca em dado: só define as
+ * cinco funções de permissão. É por isso que ele pode rodar cedo — basta
+ * que `profiles`, `perfis_permissoes` e `usuarios_permissoes` já existam,
+ * porque uma função `language sql` tem o corpo conferido na criação.
+ */
+export function gerarSqlFuncoes() {
+  return `-- ============================================================
+-- Valentrax — AS FUNÇÕES DE PERMISSÃO (leitura e escrita por módulo)
+--
+-- ⚠️ ARQUIVO GERADO — não edite à mão.
+--    Regenere com:  node supabase/gerar-rls.mjs
+--
+-- 🔴 POR QUE ESTE ARQUIVO EXISTE, SEPARADO (08/10/2026)
+--
+-- As cinco funções nasceram dentro de \`migracao-rls-leitura.sql\`, que é a
+-- ÚLTIMA migração do \`reconstruir-banco.sql\` — e por bom motivo: ela
+-- reescreve as políticas de SELECT de todas as tabelas criadas antes.
+--
+-- Só que 24 políticas criadas no MEIO do caminho já citam
+-- \`public.pode_ver_algum(...)\`. Num banco NOVO essas políticas são criadas
+-- antes de a função existir, e \`create policy\` resolve a função na hora:
+-- a reconstrução morria em \`at_glosas_leitura\`, a 55% do script. O hospital
+-- novo não nascia — e ninguém sabia, porque nenhum teste EXECUTAVA o
+-- arquivo; o que havia conferia presença de migração, não execução.
+--
+-- Medido em PGlite: com as funções antes, as 1.846 declarações rodam e as
+-- 109 tabelas nascem. \`banco-novo-nasce.test.js\` é a catraca.
+--
+-- ⚠️ O MESMO TEXTO segue na PARTE 1 do \`migracao-rls-leitura.sql\`, para quem
+--    reexecutar só ela não ficar sem função. Os dois saem da MESMA const
+--    do gerador — duas cópias à mão divergiriam.
+--
+-- ADITIVA. IDEMPOTENTE (\`create or replace\`). Em banco que já rodou o
+-- rls-leitura, substitui as funções pelo mesmo corpo: nada muda.
+-- ============================================================
+
+set valentrax.quem = 'adauam';
+
+-- Espelham \`src/acesso/permissoes.js\`, nesta ordem: perfil → exceção
+-- individual → travas. \`security definer\` porque a função precisa ler
+-- \`profiles\` e \`perfis_permissoes\` por baixo do RLS delas.
+
+${FUNCOES}
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-acesso-funcoes.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'função public.' || f as item,
+         exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = f) as ok
+    from unnest(array['meu_nivel','pode_ver','pode_ver_algum','pode_editar','pode_editar_algum']) f
+  union all
+  -- 🔴 A conferência que importa: a função RESPONDE. Se o corpo cita uma
+  -- tabela que não existe, ela é criada e estoura no primeiro uso — que
+  -- seria dentro de uma política de RLS, com o hospital aberto.
+  select '🔴 pode_ver_algum responde sem estourar',
+         (select public.pode_ver_algum('overview')) is not null
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-acesso-funcoes.sql')
+) x;
+`;
+}
 /** Caminhos dos dois arquivos, para o gerador e para o teste usarem os mesmos. */
 export const ARQUIVO_AUDITORIA = path.join(dir, "auditoria-banco.sql");
 export const ARQUIVO_RLS = path.join(dir, "migracao-rls-leitura.sql");
+export const ARQUIVO_FUNCOES = path.join(dir, "migracao-acesso-funcoes.sql");
 
 // ── execução ────────────────────────────────────────────────
 // Só quando chamado pela linha de comando: o teste importa as funções
@@ -574,8 +681,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     process.exit(1);
   }
 
+  fs.writeFileSync(ARQUIVO_FUNCOES, gerarSqlFuncoes(), "utf8");
   fs.writeFileSync(ARQUIVO_RLS, gerarSql(tabelas), "utf8");
   const abertas = tabelas.filter(t => MAPA_TABELAS[t].includes(TODOS)).length;
+  console.log("migracao-acesso-funcoes.sql gerado: 5 funções de permissão.");
   console.log(`migracao-rls-leitura.sql gerado: ${tabelas.length} tabelas `
     + `(${tabelas.length - abertas} por módulo, ${abertas} de catálogo/referência).`);
 }

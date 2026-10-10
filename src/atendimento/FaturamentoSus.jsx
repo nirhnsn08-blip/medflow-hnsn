@@ -896,13 +896,16 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         internacao,
         cirurgias: cirurgico.cirurgias,
         equipePorCirurgia: cirurgico.equipePorCirurgia,
+        descricaoPorCirurgia: cirurgico.descricaoPorCirurgia,
       });
       // 🔴 "Não consegui ler" não pode virar "não teve cirurgia". Sem este
       // aviso, uma oscilação de rede faria o faturista fechar a conta sem
       // o item mais caro dela — e a falta só apareceria no processamento.
       if (cirurgico.naoLi) {
         conta.avisos = [...(conta.avisos || []),
-          "Não consegui ler as cirurgias deste episódio. Se houve cirurgia, ela NÃO está nesta conta — recarregue antes de fechar."];
+          "Não consegui ler as cirurgias deste episódio (ou a equipe, ou a descrição cirúrgica). " +
+          "Se houve cirurgia, ela pode NÃO estar nesta conta — e, se estiver, o código pode ser o do " +
+          "AGENDAMENTO e não o do que foi feito. Recarregue antes de fechar."];
       }
       setResultado({ conta, atendimento, fonteInternacao: internacao?.fonte || null });
     } catch {

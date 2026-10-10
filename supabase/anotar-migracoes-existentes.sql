@@ -6,7 +6,7 @@
 -- ⚠️ ARQUIVO GERADO — não edite à mão (node supabase/gerar-conferencia.mjs).
 --
 -- ⚠️ O QUE ELE ASSUME, E COMO CONFERIR ANTES DE ACREDITAR
--- Ele marca as 97 migrações do repositório como aplicadas. A
+-- Ele marca as 107 migrações do repositório como aplicadas. A
 -- suposição é que o esquema deste banco está completo — razoável num
 -- sistema em uso, mas NÃO é fato até alguém olhar.
 --
@@ -18,6 +18,7 @@
 
 insert into public.migracoes_aplicadas (arquivo, aplicada_por, observacao)
 values
+  ('migracao-acesso-funcoes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-agenda-confirmacao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-agenda-remarcacao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-agenda-vaga-por-profissional.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -31,6 +32,14 @@ values
   ('migracao-atendimento-recepcao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-atendimento-responsavel.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-auditoria-atribuivel.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-anestesia-rpa.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-descricao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-elo-atendimento.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-paciente-equipe-codigo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-segura-registro.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-correcao-desfecho-corrida.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-correcao-desfecho.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-descricao-aux-farmacia.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-enf-escalas-lpp.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-enf-sae.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-episodio-id-tipo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -41,6 +50,7 @@ values
   ('migracao-farmacia-estorno-inventario.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-faseA.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-faseB.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-farmacia-hospital.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-intervencoes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-lote-vencido.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-nao-padronizados.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -121,4 +131,4 @@ select
   case when (select count(*) from public.pacientes) >= 40
        then 'DEMO (banco de teste)' else 'PRINCIPAL (hospital)' end as banco,
   (select count(*) from public.migracoes_aplicadas) as registradas,
-  97 as esperadas;
+  107 as esperadas;

@@ -18,7 +18,7 @@ import {
   NACIONALIDADES, normalizarNacionalidade, rotuloNacionalidade, nascidoNoBrasil,
   autodeclaradoIndigena, limparCamposInaplicaveis,
   avisoDeObito, origemDoObito, desfechoEhObito,
-  temIdentificadorMinimo,
+  temIdentificadorMinimo, conferirIniciais, chaveDasIniciais,
 } from "./identidade.js";
 
 const CPF_OK = "529.982.247-25";
@@ -730,5 +730,108 @@ describe("temIdentificadorMinimo", () => {
 
   it("espaço em branco não vira nome", () => {
     expect(temIdentificadorMinimo({ nome_completo: "   " })).toBe(false);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 `pacientes.iniciais` × `iniciaisDe(nome_completo)` — DUAS FONTES
+//
+// No banco demo, T9060 tem nome "Clara Lima Barbosa" e iniciais "E.A."
+// gravadas: o Faturamento (que deriva) mostra C.L.B. e quem lê a coluna
+// mostra E.A. A decisão foi NÃO escolher por dedução — o sistema não sabe
+// qual dos dois campos é de outra pessoa — e sim fazer a contradição
+// aparecer na tela de cadastro. O argumento inteiro está em identidade.js.
+// ═══════════════════════════════════════════════════════════
+describe("conferirIniciais — a coluna gravada contra o nome", () => {
+  it("🔴 o caso do demo: nome Clara Lima Barbosa com E.A. gravadas", () => {
+    const r = conferirIniciais({ nome_completo: "Clara Lima Barbosa", iniciais: "E.A." });
+    expect(r.divergem).toBe(true);
+    expect(r.gravadas).toBe("E.A.");
+    expect(r.derivadas).toBe("C.L.B.");
+  });
+
+  it("quando batem, não divergem", () => {
+    expect(conferirIniciais({ nome_completo: "Clara Lima Barbosa", iniciais: "C.L.B." }).divergem).toBe(false);
+  });
+
+  it("formato não é divergência: 'clb' e 'C L B' são a mesma coisa", () => {
+    for (const v of ["clb", "C L B", "c.l.b", "CLB"])
+      expect(conferirIniciais({ nome_completo: "Clara Lima Barbosa", iniciais: v }).divergem).toBe(false);
+  });
+
+  it("acento não é divergência", () => {
+    expect(conferirIniciais({ nome_completo: "Ângela Souza", iniciais: "A.S." }).divergem).toBe(false);
+  });
+
+  it("partícula não conta, dos dois lados", () => {
+    expect(conferirIniciais({ nome_completo: "Maria de Souza Lima", iniciais: "M.S.L." }).divergem).toBe(false);
+    // e é justamente a diferença que a cópia local da maternidade criava
+    expect(conferirIniciais({ nome_completo: "Maria de Souza Lima", iniciais: "M.D.S.L." }).divergem).toBe(true);
+  });
+
+  // 🔴 A regra que impede o alarme inútil: sem nome, a coluna é a ÚNICA
+  // fonte (órfãos adotados pela migração do bloco têm iniciais e nome
+  // vazio). Chamar isso de divergência inventaria defeito onde há cadastro
+  // incompleto — que já tem pendência própria.
+  it("cadastro SEM NOME não divergem: o campo gravado é a única fonte", () => {
+    const r = conferirIniciais({ nome_completo: "", iniciais: "J.P." });
+    expect(r.divergem).toBe(false);
+    expect(r.semNome).toBe(true);
+  });
+
+  it("nome sem iniciais gravadas não divergem — não há contradição, há campo vazio", () => {
+    expect(conferirIniciais({ nome_completo: "Clara Lima Barbosa", iniciais: "" }).divergem).toBe(false);
+  });
+
+  it("nome social OU de registro: basta um bater (Decreto 8.727/2016)", () => {
+    const p = { nome_completo: "João Silva", nome_social: "Maria Silva" };
+    expect(conferirIniciais({ ...p, iniciais: "J.S." }).divergem).toBe(false);
+    expect(conferirIniciais({ ...p, iniciais: "M.S." }).divergem).toBe(false);
+    expect(conferirIniciais({ ...p, iniciais: "Z.Z." }).divergem).toBe(true);
+  });
+
+  it("não estoura com null", () => {
+    expect(() => conferirIniciais(null)).not.toThrow();
+    expect(conferirIniciais(null).divergem).toBe(false);
+  });
+
+  it("chaveDasIniciais é a mesma normalização para todos os comparadores", () => {
+    expect(chaveDasIniciais("M.S.F.")).toBe("MSF");
+    expect(chaveDasIniciais("m s f")).toBe("MSF");
+    expect(chaveDasIniciais("Â.S.")).toBe("AS");
+    expect(chaveDasIniciais(null)).toBe("");
+  });
+});
+
+describe("conferirCadastro — a divergência de iniciais aparece, sem mexer no percentual", () => {
+  const base = {
+    nome_completo: "Clara Lima Barbosa", data_nascimento: "1980-05-02", sexo: "F",
+    nome_mae: "Rosa Barbosa", naturalidade_municipio: "Joinville", naturalidade_uf: "SC",
+    end_logradouro: "Rua A", end_municipio: "Joinville",
+  };
+
+  it("entra como pendência de nível `identificacao`", () => {
+    const r = conferirCadastro({ ...base, iniciais: "E.A." });
+    const p = r.pendencias.find(x => x.campo === "iniciais");
+    expect(p).toBeTruthy();
+    expect(p.nivel).toBe("identificacao");
+    expect(p.label).toMatch(/E\.A\./);
+    expect(p.label).toMatch(/C\.L\.B\./);
+  });
+
+  // 🔴 Somar isto ao denominador faria um cadastro completo parecer
+  // incompleto, e o percentual é o que a recepção persegue. Aqui não falta
+  // campo: há dois campos preenchidos que se contradizem.
+  it("NÃO muda `percentual` nem `completo` — não é campo que falta", () => {
+    const sem = conferirCadastro({ ...base, iniciais: "C.L.B." });
+    const com = conferirCadastro({ ...base, iniciais: "E.A." });
+    expect(com.percentual).toBe(sem.percentual);
+    expect(com.completo).toBe(sem.completo);
+    expect(com.faltamEssenciais).toBe(sem.faltamEssenciais);
+  });
+
+  it("cadastro sem nome não ganha a pendência (a coluna é a única fonte)", () => {
+    const r = conferirCadastro({ iniciais: "J.P." });
+    expect(r.pendencias.find(x => x.campo === "iniciais")).toBeUndefined();
   });
 });

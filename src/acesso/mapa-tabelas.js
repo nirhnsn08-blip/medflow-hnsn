@@ -118,6 +118,9 @@ export const MAPA_TABELAS = {
 
   // ── Bloco cirúrgico ───────────────────────────────────────
   cc_checklist:             ["bloco"],
+  cc_anestesia:             ["bloco"],
+  cc_descricao:             ["bloco"],
+  cc_rpa_aldrete:           ["bloco"],
   cc_equipe:                ["bloco"],
   cc_cirurgias:             ["bloco"],
   cc_salas:                 [TODOS],
@@ -317,7 +320,8 @@ export const SENSIVEIS = new Set([
   "ag_agendamentos", "at_conta_itens", "at_contas", "at_desfecho_correcoes",
   "at_glosas", "at_repasses",
   "at_responsaveis",
-  "auditoria", "cc_checklist", "cc_cirurgias", "cc_equipe",
+  "auditoria", "cc_anestesia", "cc_checklist", "cc_cirurgias", "cc_descricao",
+  "cc_equipe", "cc_rpa_aldrete",
   "enf_escalas", "enf_lesao_pressao", "enf_sae_checagem",
   "enf_sae_diagnosticos", "enf_sae_historico",
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
@@ -369,6 +373,31 @@ export const LEITURA_EXTRA = {
   pep_prescricao_eventos: ["farmacia"],   // item suspenso não se dispensa
   pep_alergias:           ["farmacia"],   // a mesma lista que imprime a pulseira
   farm_validacoes:        ["paciente"],   // o prescritor vê a avaliação da farmácia
+
+  // 🔴 ANTECEDENTE CIRÚRGICO É DADO DE ANAMNESE (10/2026).
+  //
+  // O médico que atende o paciente seis meses depois precisa saber que ele
+  // foi operado: é risco anestésico, é aderência, é diagnóstico diferencial.
+  // Até aqui `cc_cirurgias` era gated só por `bloco`, então o Paciente 360
+  // de quem não trabalha no centro cirúrgico recebia lista vazia — e lista
+  // vazia na tela é "nunca operou", que é omissão de informação
+  // assistencial. O prontuário é legalmente ÚNICO (CFM 1.638/2002), não um
+  // por módulo.
+  //
+  // Leitura, não escrita: quem edita cadastro de paciente não agenda
+  // cirurgia nem registra equipe. A escrita fica onde estava, no `bloco`.
+  // ⚠️ SÓ `paciente`. A regra que me contive de quebrar: amplia-se a
+  // leitura onde uma TELA de fato lê. Hoje só o Paciente 360 lê cirurgia;
+  // dar `ps` e `leitos` "por utilidade" ampliaria alcance a dado cirúrgico
+  // sem nenhuma tela do outro lado — e alcance que ninguém usa é só risco.
+  cc_cirurgias:           ["paciente"],
+  cc_equipe:              ["paciente"],   // quem operou faz parte do antecedente
+  cc_descricao:           ["paciente"],   // a descrição cirúrgica É prontuário
+  // 🔴 Via aérea difícil é dado da PESSOA, não do episódio: precede toda
+  // anestesia futura dela. E a ficha de recuperação fecha o trio da
+  // CFM 1.638/2002 — o prontuário é único.
+  cc_anestesia:           ["paciente"],
+  cc_rpa_aldrete:         ["paciente"],
 };
 
 /** Quem LÊ a tabela: a lista do mapa mais os leitores extras. */

@@ -15,7 +15,12 @@ import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
 import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
 import { CARATER, PAPEIS_EQUIPE, PAPEL_POR_CHAVE, conferirMembro, linhaDeEquipe, pendenciasDeFaturamento, resumoDaEquipe, procedimentoEscolhido } from "./equipe.js";
-import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcAldreteDoDia, loadCcAnestesiaDoDia, loadCcDescricoesDoDia, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadPacientesDoMapa, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarAldrete, registrarAnestesia, registrarChecklist, registrarDescricao, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import DescricaoCirurgicaModal from "./DescricaoCirurgica.jsx";
+import { horasSemDescricao, jaOperou, semDescricao } from "./descricao.js";
+import { FichaAnestesicaModal, RecuperacaoModal } from "./AnestesiaRpa.jsx";
+import { resumoDaFicha } from "./anestesia.js";
+import { conferirIniciaisDaCirurgia, indexarCadastros, iniciaisDoAgendamento } from "./identidade-cirurgia.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
@@ -52,10 +57,22 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   // A trilha de cirurgia segura do dia, numa consulta só.
   const [trilha, setTrilha] = useState([]);
   const [equipe, setEquipe] = useState([]);
+  // O cadastro dos pacientes do mapa, indexado por prontuário. `null`
+  // enquanto não li — e `null` também quando a leitura falha, porque o
+  // cartão tem de dizer "não conferi" em vez de "confere".
+  const [cadastros, setCadastros] = useState(null);
   const [procedimentos, setProcedimentos] = useState([]);
   const [profissionais, setProfissionais] = useState([]);
   // Qual cirurgia está com o painel de equipe aberto.
   const [vendoEquipe, setVendoEquipe] = useState(null);
+  // As descrições cirúrgicas do dia, e qual está aberta para escrever.
+  const [descricoes, setDescricoes] = useState([]);
+  const [descrevendo, setDescrevendo] = useState(null);
+  // A ficha anestésica e a recuperação pós-anestésica do dia.
+  const [fichas, setFichas] = useState([]);
+  const [aldrete, setAldrete] = useState([]);
+  const [anestesiando, setAnestesiando] = useState(null);
+  const [recuperando, setRecuperando] = useState(null);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
@@ -71,10 +88,19 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // esta tela se atualiza sozinha a cada 30s); o segundo render trocava
     // os nós do DOM por baixo de quem estava clicando.
     const ids = (Array.isArray(c) ? c : []).map(x => x.id);
-    const [t, eq] = await Promise.all([loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids)]);
+    const pronts = (Array.isArray(c) ? c : []).map(x => x.prontuario);
+    const [t, eq, de, pac, fi, al] = await Promise.all([
+      loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids),
+      loadCcDescricoesDoDia(sb, ids), loadPacientesDoMapa(sb, pronts),
+      loadCcAnestesiaDoDia(sb, ids), loadCcAldreteDoDia(sb, ids),
+    ]);
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
+    // `indexarCadastros` devolve null quando a leitura falhou: é o que faz
+    // o cartão dizer "não conferi" em vez de inventar "não cadastrado".
     setSalas(s); setCirurgias(c); setTrilha(t); setEquipe(eq);
+    setDescricoes(de); setCadastros(indexarCadastros(pac));
+    setFichas(fi); setAldrete(al);
   }
   // O catálogo de procedimentos não muda com o dia do mapa: carrega uma
   // vez, e não a cada 30s junto com o resto.
@@ -173,6 +199,59 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     return { ok: true };
   }
 
+  /**
+   * Grava a DESCRIÇÃO CIRÚRGICA. O gatilho calcula a versão e acende o selo
+   * `descricao_em` no mesmo INSERT.
+   *
+   * ⚠️ O modal NÃO fecha quando a gravação não se confirmou — e aqui isso
+   * custa mais que no checklist: a pessoa acabou de escrever três
+   * parágrafos. Fechar daria a impressão de documento gravado, e o
+   * prontuário ficaria sem ele.
+   */
+  async function gravarDescricao(c, corpo) {
+    const r = await registrarDescricao(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser,
+      corpo.corrige_id ? "bloco: corrigir descrição cirúrgica" : "bloco: descrição cirúrgica",
+      `${c.iniciais} · ${corpo.procedimento_realizado || "?"}`, {});
+    setErro(null); setTimeout(() => refresh(), 300);
+    return { ok: true };
+  }
+
+  /** Grava a ficha anestésica. O gatilho calcula a versão e acende o selo. */
+  async function gravarAnestesia(c, corpo) {
+    const r = await registrarAnestesia(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser,
+      corpo.corrige_id ? "bloco: corrigir ficha anestésica" : "bloco: ficha anestésica", c.iniciais, {});
+    setErro(null); setTimeout(() => refresh(), 300);
+    return { ok: true };
+  }
+
+  /** Grava uma avaliação da recuperação. O `total` é coluna gerada no banco. */
+  async function gravarAldrete(c, corpo) {
+    const r = await registrarAldrete(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser, "bloco: avaliação da RPA (Aldrete)", c.iniciais, {});
+    setErro(null); await refresh();
+    return { ok: true };
+  }
+
+  /**
+   * 🔴 A ALTA DA RPA, que deixou de ser um clique.
+   *
+   * A frase de recusa vem do BANCO — é o gatilho que sabe qual foi o melhor
+   * escore e qual parâmetro está zerado. Repetir a regra aqui criaria duas
+   * versões para divergirem, e a do banco é a que vale.
+   */
+  async function altaDaRpa(c) {
+    const r = await updateCcCirurgiaRemote(sb, c.id, { status: "concluida", rpa_saida_em: nowISO() });
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser, "bloco: alta da RPA", c.iniciais, {});
+    setErro(null); await refresh();
+    return { ok: true };
+  }
+
   async function tirarMembro(c, membro) {
     if (!confirm(`Tirar ${membro.nome} (${PAPEL_POR_CHAVE[membro.papel]?.label || membro.papel}) da equipe desta cirurgia?`)) return;
     const r = await removerMembroEquipe(sb, membro.id);
@@ -217,15 +296,35 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const StatusBadge = ({ st }) => { const v = CC_STATUS[st]; if (!v) return null;
     return <span style={{ background: v.cor + "22", color: v.cor, border: `1px solid ${v.cor}55`, borderRadius: 99, padding: "2px 10px", fontSize: 11, fontWeight: 800 }}>{v.label}</span>; };
 
-  const CirurgiaCard = ({ c }) => (
+  const CirurgiaCard = ({ c }) => {
+   // 🔴 QUEM VAI SER OPERADO VEM DO CADASTRO, PELO PRONTUÁRIO — não do que
+   // alguém digitou no agendamento. O carimbo não some: vira o aviso.
+   const id = conferirIniciaisDaCirurgia(c, cadastros);
+   return (
     <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `4px solid ${CC_STATUS[c.status]?.cor || "var(--border)"}`, borderRadius: 8, padding: "10px 13px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontFamily: "JetBrains Mono, monospace", fontWeight: 800, fontSize: 13 }}>{c.hora_prevista ? c.hora_prevista.slice(0, 5) : "—"}</span>
-        <strong>{c.iniciais}</strong>
+        <strong>{id.exibir}</strong>
         {c.prontuario && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>reg. {c.prontuario}</span>}
+        {id.estado === "divergem" && (
+          <span style={{ background: "#f43f5e22", color: "#f43f5e", border: "1px solid #f43f5e66", borderRadius: 99, padding: "2px 9px", fontSize: 10.5, fontWeight: 800 }}>
+            iniciais divergem do cadastro
+          </span>
+        )}
         <StatusBadge st={c.status} />
         <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)" }}>{c.duracao_prev_min ? `${c.duracao_prev_min}min prev.` : ""}</span>
       </div>
+      {/* O aviso por extenso, com os dois valores e o nome — é por ele que
+          alguém decide se o cartão aponta para a pessoa certa. Vermelho só
+          na divergência: "não conferi" é cinza-âmbar, e dizer as duas
+          coisas no mesmo tom treinaria a equipe a ignorar as duas. */}
+      {id.aviso && (
+        <div role={id.grave ? "alert" : undefined}
+          style={{ fontSize: 11.5, marginTop: 4, fontWeight: id.grave ? 700 : 500,
+                   color: id.grave ? "#f43f5e" : "var(--text-muted)" }}>
+          {id.grave ? "🔴 " : ""}{id.aviso}
+        </div>
+      )}
       <div style={{ fontSize: 12.5, color: "var(--text-2)", marginTop: 4 }}>{c.procedimento}{c.cirurgiao ? ` · Dr(a). ${c.cirurgiao}` : ""}</div>
       {c.opme && <div style={{ fontSize: 11.5, color: "#d97706", marginTop: 3 }}>OPME/materiais: {c.opme}</div>}
       {c.observacao && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Obs.: {c.observacao}</div>}
@@ -322,6 +421,46 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
         </div>
       )}
 
+      {/* 🔴 A DESCRIÇÃO CIRÚRGICA — fora do bloco de ações acima, e de
+          propósito: aquele bloco esconde tudo quando a cirurgia está
+          `concluida`, que é exatamente quando o documento mais falta. Era o
+          caminho para o documento exigido pela CFM 1.638/2002 ficar
+          inalcançável justamente na cirurgia terminada. */}
+      {jaOperou(c) && c.status !== "cancelada" && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button onClick={() => setDescrevendo(c)}
+            style={btnContorno(c.descricao_em ? "var(--text-3)" : "#8b5cf6")}>
+            {c.descricao_em ? "Ver / corrigir descrição cirúrgica" : "Escrever a descrição cirúrgica"}
+          </button>
+          <button onClick={() => setAnestesiando(c)}
+            style={btnContorno(c.anestesia_em ? "var(--text-3)" : "#8b5cf6")}>
+            {c.anestesia_em ? "Ver / corrigir ficha anestésica" : "Escrever a ficha anestésica"}
+          </button>
+          {/* A ficha anestésica resumida no cartão: é o que a equipe da RPA
+              lê antes de receber o paciente — e "via aérea difícil" é a
+              linha que muda a conduta se ele precisar ser reintubado. */}
+          {(() => {
+            const f = fichas.find(x => String(x.cirurgia_id) === String(c.id)
+              && !fichas.some(y => String(y.corrige_id) === String(x.id)));
+            if (!f) return null;
+            return (
+              <span style={{ fontSize: 11.5, color: f.via_aerea_dificil ? "#f43f5e" : "var(--text-3)", lineHeight: 1.5 }}>
+                {resumoDaFicha(f)}
+              </span>
+            );
+          })()}
+          {!c.descricao_em && (() => {
+            const h = horasSemDescricao(c);
+            return (
+              <span style={{ fontSize: 11.5, color: "#f43f5e", lineHeight: 1.5 }}>
+                SEM descrição cirúrgica{h != null ? ` há ${h}h` : ""} — é exigência legal, e o
+                faturamento cobra o código do agendamento até ela existir.
+              </span>
+            );
+          })()}
+        </div>
+      )}
+
       {canEdit && c.status !== "cancelada" && c.status !== "concluida" && (
         <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
           {c.status === "agendada" && <>
@@ -343,12 +482,17 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
             {c.fim_cirurgia_em && <button onClick={async () => { if (pendenteAntesDe(c, "rpa") && !(await pularChecklist(c, "sign_out"))) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnContorno("#d97706")}>Enviar para RPA</button>}
           </>}
           {c.status === "recuperacao" && (
-            <button onClick={() => marcar(c, { status: "concluida", rpa_saida_em: nowISO() }, "alta da RPA")} style={btnContorno("#34d399")}>Alta da RPA — concluir</button>
+            /* 🔴 Era um clique que concluía a cirurgia. Agora ABRE a ficha de
+               recuperação: a alta só aparece depois de um escore que libere.
+               Não é uma trava a mais na frente do mesmo botão — é o botão
+               passando a fazer o que quem está na RPA ia fazer de todo jeito. */
+            <button onClick={() => setRecuperando(c)} style={btnContorno("#34d399")}>Recuperação (Aldrete) — avaliar e dar alta</button>
           )}
         </div>
       )}
     </div>
-  );
+   );
+  };
 
   return (
     <div style={{ padding: "1.25rem 1.5rem", overflowY: "auto", height: "100%" }}>
@@ -389,6 +533,23 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
           {avisoDeFalha("as salas e as cirurgias deste dia")} <strong>Não encaixe cirurgia por este mapa enquanto ele estiver assim.</strong>
         </div>
       )}
+      {/* 🔴 O PASSIVO DOCUMENTAL DO DIA, somado.
+          Cartão por cartão a falta aparece; somada, ela vira trabalho a
+          fazer antes de o plantão acabar — e é essa a leitura que faz
+          alguém escrever a descrição hoje, e não na véspera da auditoria.
+          Usa o SELO `descricao_em`, que o gatilho mantém. */}
+      {(() => {
+        const faltam = semDescricao(cirurgias);
+        if (!faltam.length) return null;
+        return (
+          <div style={{ marginBottom: 14, background: "#8b5cf610", border: "1px solid #8b5cf655",
+                        borderLeft: "3px solid #8b5cf6", borderRadius: 8, padding: "10px 13px",
+                        fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.5 }}>
+            <strong>{faltam.length} cirurgia(s) deste dia sem descrição cirúrgica</strong> — {faltam.map(c => c.iniciais).join(", ")}.
+            O documento é exigência da CFM 1.638/2002, e até ele existir a conta cobra o código do agendamento.
+          </div>
+        );
+      })()}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-3)" }}>Dia do mapa</label>
         <input type="date" value={data} onChange={e => setData(e.target.value)} style={inp} />
@@ -444,7 +605,46 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
 
       {agendando && <AgendarCirurgiaModal sb={sb} procedimentos={procedimentos} cirurgia={agendando === true ? null : agendando} data={data} salas={salasAtivas} cirurgiasDoDia={cirurgias} onClose={() => setAgendando(false)} onSave={salvarCirurgia} />}
       {cancelando && <CancelarCirurgiaModal cirurgia={cancelando} onClose={() => setCancelando(null)} onConfirm={cancelar} />}
-      {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} onClose={() => setChecklist(null)} onConfirm={dados => concluirChecklist(checklist.cirurgia, checklist.fase, dados)} />}
+      {/* A conferência de identidade vai COM a cirurgia para o modal: é ali
+          que o item 1 do Sign In manda confirmar a identidade, e era ali
+          que apareciam as iniciais digitadas. */}
+      {checklist && <ChecklistOmsModal cirurgia={checklist.cirurgia} fase={checklist.fase} identidade={conferirIniciaisDaCirurgia(checklist.cirurgia, cadastros)} onClose={() => setChecklist(null)} onConfirm={dados => concluirChecklist(checklist.cirurgia, checklist.fase, dados)} />}
+      {descrevendo && (
+        <DescricaoCirurgicaModal
+          cirurgia={descrevendo}
+          /* ⚠️ Filtra da lista do dia, mas a MARCA de falha precisa chegar
+             ao modal: `descricoes` é o array marcado, e filtrar devolve um
+             array comum. Por isso o modal recebe a lista crua quando a
+             leitura falhou — é ela que decide entre "não tem descrição" e
+             "não consegui ler". */
+          descricoes={naoDeuParaLer(descricoes) ? descricoes
+            : descricoes.filter(d => String(d.cirurgia_id) === String(descrevendo.id))}
+          procedimentos={procedimentos}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setDescrevendo(null)}
+          onConfirm={corpo => gravarDescricao(descrevendo, corpo)} />
+      )}
+      {anestesiando && (
+        <FichaAnestesicaModal
+          cirurgia={anestesiando}
+          /* A MARCA de falha precisa chegar ao modal: filtrar devolve um
+             array comum, e aí "não consegui ler" viraria "não tem ficha". */
+          fichas={naoDeuParaLer(fichas) ? fichas
+            : fichas.filter(f => String(f.cirurgia_id) === String(anestesiando.id))}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setAnestesiando(null)}
+          onConfirm={corpo => gravarAnestesia(anestesiando, corpo)} />
+      )}
+      {recuperando && (
+        <RecuperacaoModal
+          cirurgia={recuperando}
+          avaliacoes={naoDeuParaLer(aldrete) ? aldrete
+            : aldrete.filter(x => String(x.cirurgia_id) === String(recuperando.id))}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setRecuperando(null)}
+          onAvaliar={corpo => gravarAldrete(recuperando, corpo)}
+          onAlta={() => altaDaRpa(recuperando)} />
+      )}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(sb, s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(sb, n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
     </div>
   );
@@ -508,6 +708,42 @@ function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, c
     return () => { vivo = false; };
   }, [sb, f.prontuario]);
 
+  // 🔴 AS INICIAIS PARAM DE SER DIGITADAS QUANDO O CADASTRO SABE QUEM É.
+  //
+  // Enquanto o campo aceitava texto livre, cada agendamento era uma chance
+  // de inventar um rótulo para um paciente que o sistema já conhece pelo
+  // número — e foi assim que o T9060 ("Clara Lima Barbosa") ganhou três
+  // cirurgias como T.S.T., A.B.C. e M.O.S.
+  //
+  // `lido` separa "o cadastro não tem nome" de "ainda não perguntei": na
+  // segunda o campo fica livre MAS a nota diz que nada será conferido.
+  // Sem essa distinção, a tela em branco passaria por conferida.
+  const [cadastro, setCadastro] = useState(null);
+  const [cadastroLido, setCadastroLido] = useState(false);
+  useEffect(() => {
+    let vivo = true;
+    const pront = f.prontuario.trim();
+    setCadastro(null); setCadastroLido(false);
+    if (!sb || !pront) return;
+    loadPacientesDoMapa(sb, [pront]).then(r => {
+      if (!vivo) return;
+      // Leitura falhada NÃO vira "não cadastrado": `indexarCadastros`
+      // devolve null, e aí a nota diz que não consegui ler.
+      const mapa = indexarCadastros(r);
+      setCadastro(mapa ? (mapa.get(pront) || null) : null);
+      setCadastroLido(!!mapa);
+    });
+    return () => { vivo = false; };
+  }, [sb, f.prontuario]);
+
+  const doCadastro = iniciaisDoAgendamento(cadastro, { lido: cadastroLido });
+  // Quando o cadastro manda, o campo passa a ser espelho dele — inclusive
+  // na EDIÇÃO, e é de propósito: abrir e salvar uma cirurgia agendada com
+  // iniciais erradas passa a ser o caminho de conserto.
+  useEffect(() => {
+    if (doCadastro.travado && f.iniciais !== doCadastro.valor) set("iniciais", doCadastro.valor);
+  }, [doCadastro.travado, doCadastro.valor, f.iniciais]);
+
   const base = mesmoDia ? cirurgiasDoDia : doOutroDia;
   // "Ainda não li" e "não deu para ler" são a mesma coisa para quem decide:
   // nos dois casos a conferência NÃO foi feita, e isso tem de ser dito.
@@ -555,9 +791,23 @@ function AgendarCirurgiaModal({ sb, procedimentos = [], cirurgia, data, salas, c
               <option value="">— definir depois —</option>
               {salas.map(s => <option key={s.nome} value={s.nome}>{s.nome}</option>)}
             </select></div>
-          <div><label style={lbl}>Iniciais do paciente *</label><input value={f.iniciais} onChange={e => set("iniciais", e.target.value)} placeholder="J.S.M." style={inp} /></div>
+          <div><label style={lbl}>Iniciais do paciente *</label>
+            <input value={f.iniciais} onChange={e => set("iniciais", e.target.value)}
+              readOnly={doCadastro.travado} aria-readonly={doCadastro.travado || undefined}
+              title={doCadastro.travado ? "Vem do cadastro do prontuário — corrija no cadastro do paciente, não aqui." : undefined}
+              placeholder="J.S.M."
+              style={{ ...inp, ...(doCadastro.travado ? { background: "var(--surface-3)", color: "var(--text-2)", cursor: "not-allowed" } : {}) }} /></div>
           <div><label style={lbl}>Prontuário *</label><input value={f.prontuario} onChange={e => set("prontuario", e.target.value)} placeholder="48213" style={inp} /></div>
         </div>
+        {/* A nota explica POR QUE o campo está travado — ou avisa que o que
+            for digitado não será conferido. Campo travado sem explicação
+            vira chamado de suporte; campo livre sem aviso vira T.S.T. */}
+        {f.prontuario.trim() && (
+          <div style={{ fontSize: 10.5, marginTop: -4, marginBottom: 10,
+                        color: doCadastro.travado ? "var(--text-muted)" : "#fbbf24" }}>
+            {doCadastro.travado ? "🔒 " : "⚠ "}{doCadastro.nota}
+          </div>
+        )}
         {/* A ausência de faixa laranja sempre significou "conferi e não há
             conflito". Quando a conferência NÃO foi feita, a tela tem de
             dizer isso — senão o silêncio continua passando por aprovação. */}
@@ -920,7 +1170,7 @@ function EquipeDaCirurgia({ membros = [], perfis = [], onAdd, onTirar }) {
  * o antibiótico, por alergia, decidido com a anestesia" é informação;
  * "7 de 7" marcado por obrigação não é.
  */
-function ChecklistOmsModal({ cirurgia, fase, onClose, onConfirm }) {
+function ChecklistOmsModal({ cirurgia, fase, identidade, onClose, onConfirm }) {
   const def = CHECKLIST_OMS[fase];
   const [marcados, setMarcados] = useState(() => def.itens.map(() => false));
   const [divergencia, setDivergencia] = useState("");
@@ -967,7 +1217,35 @@ function ChecklistOmsModal({ cirurgia, fase, onClose, onConfirm }) {
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
       <div onClick={e => e.stopPropagation()} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.5rem", width: 600, maxWidth: "94vw", maxHeight: "92vh", overflowY: "auto" }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>Cirurgia Segura — <span style={{ color: def.cor }}>{def.label}</span></div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Momento: {def.quando} · Paciente {cirurgia.iniciais} · {cirurgia.procedimento}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>Momento: {def.quando} · Paciente {identidade?.exibir || cirurgia.iniciais} · {cirurgia.procedimento}</div>
+
+        {/* 🔴 A IDENTIDADE, NO ALTO DA TELA QUE MANDA CONFERI-LA.
+            O item 1 deste checklist é "Paciente confirmou identidade". O
+            cabeçalho mostrava as iniciais digitadas no agendamento, sem
+            nunca compará-las com o cadastro — a conferência de identidade
+            podia ser marcada contra o rótulo de outra pessoa. Aqui o aviso
+            vem ANTES dos itens, com o nome do cadastro, porque depois de
+            marcar já não serve. */}
+        {identidade?.aviso && (
+          <div role={identidade.grave ? "alert" : undefined}
+            style={{ fontSize: 12, marginBottom: 8, padding: "8px 11px", borderRadius: 7, lineHeight: 1.5,
+                     fontWeight: identidade.grave ? 700 : 500,
+                     background: identidade.grave ? "#f43f5e18" : "#fbbf2410",
+                     border: `1px solid ${identidade.grave ? "#f43f5e66" : "#fbbf2455"}`,
+                     color: identidade.grave ? "#f43f5e" : "#fbbf24" }}>
+            {/* A frase de comando é PRÓPRIA DESTE MODAL, e não repete a do
+                cartão de propósito: aqui o próximo gesto da pessoa é marcar
+                a caixinha da identidade, e é esse gesto que tem de parar.
+                "Confirme antes de seguir" no mapa é orientação; aqui é
+                instrução sobre o item que está na tela. */}
+            <div style={{ marginBottom: 2 }}>
+              {identidade.grave
+                ? "🔴 NÃO marque o item de identidade antes de resolver isto:"
+                : "⚠ A identidade deste paciente NÃO foi conferida com o cadastro:"}
+            </div>
+            {identidade.aviso}
+          </div>
+        )}
 
         {/* O sítio e o lado, ao lado do item que manda conferi-los. O
             checklist pedia para a equipe confirmar um dado que o sistema

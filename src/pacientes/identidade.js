@@ -174,6 +174,75 @@ export function comoExibir(paciente, { completo = false } = {}) {
   return String(paciente.iniciais ?? "").trim();
 }
 
+/**
+ * "M.S.F." / "msf" / "M S F" → "MSF". Só para COMPARAR iniciais.
+ *
+ * Exportada porque três telas comparam iniciais (chegada do PS, cadastro,
+ * mapa cirúrgico) e três normalizadores locais divergiriam — bastaria um
+ * deles não tirar acento para o mesmo par de valores bater num lugar e não
+ * bater no outro, que é precisamente o defeito que esta família de funções
+ * existe para impedir.
+ */
+export const chaveDasIniciais = t =>
+  String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .toUpperCase().replace(/[^A-Z]/g, "");
+
+/**
+ * As iniciais GRAVADAS em `pacientes.iniciais` correspondem ao nome?
+ *
+ * 🔴 DUAS FONTES DE VERDADE PARA A MESMA COISA, E ELAS DIVERGEM DE FATO.
+ * No banco de teste, o prontuário T9060 tem `nome_completo` "Clara Lima
+ * Barbosa" e `iniciais` "E.A." gravadas. Quem deriva mostra C.L.B.; quem lê
+ * a coluna mostra E.A. — o mesmo paciente com dois rótulos, em telas
+ * diferentes, sem ninguém avisar.
+ *
+ * ── POR QUE NÃO UNIFICAR APAGANDO A COLUNA ──────────────────
+ * Porque ela é a ÚNICA fonte para parte do acervo. A adoção de órfãos da
+ * `migracao-cirurgia-paciente-equipe-codigo.sql` criou cadastros com
+ * `origem_cadastro = 'backfill'`: iniciais preenchidas e nome vazio.
+ * Derivar ali devolveria "" — trocar um rótulo usável por nenhum.
+ *
+ * ── POR QUE NÃO UNIFICAR SOBRESCREVENDO A COLUNA ────────────
+ * Porque a divergência NÃO DIZ QUAL DOS DOIS ESTÁ ERRADO. "Clara Lima
+ * Barbosa" com "E.A." gravadas pode ser o nome digitado na ficha errada,
+ * ou as iniciais digitadas na ficha errada. Uma migração que carimbasse
+ * `iniciaisDe(nome_completo)` em cima apagaria o único sinal de que aquele
+ * cadastro tem um campo de outra pessoa — e apagaria calada, que é como
+ * este sistema já perdeu dado antes.
+ *
+ * ── A DECISÃO ───────────────────────────────────────────────
+ * Exibir DERIVA (é o que `comoExibir` já faz, e o módulo Atendimento já
+ * segue em 20 telas com `comoExibir(p) || p.iniciais`); a coluna fica como
+ * recuo para quem não tem nome; e a divergência APARECE na tela de
+ * cadastro, para uma pessoa decidir qual dos dois campos está errado.
+ * Ninguém decide isso por dedução.
+ *
+ * ── BASTA UMA DAS DUAS BATER ────────────────────────────────
+ * Nome social e nome de registro são os dois legítimos (Decreto
+ * 8.727/2016). Um cadastro com registro "João Silva" e social "Maria"
+ * pode ter "J.S." gravado sem erro nenhum. Exigir que batesse com o
+ * preferido faria toda pessoa trans virar divergência — alarme que aparece
+ * sempre é alarme que se clica sem ler, e aí deixa de proteger o caso real.
+ * Mesma regra de `conferirIniciaisDaChegada` no PS.
+ */
+export function conferirIniciais(paciente) {
+  const p = paciente || {};
+  const gravadas = String(p.iniciais ?? "").trim();
+  const doSocial = iniciaisDe(p.nome_social);
+  const doRegistro = iniciaisDe(p.nome_completo);
+  const derivadas = doSocial || doRegistro;
+  const aceitas = [doSocial, doRegistro].map(chaveDasIniciais).filter(Boolean);
+  return {
+    gravadas,
+    derivadas,
+    // Sem nome não há com o que comparar: o campo gravado é a única fonte,
+    // e chamar isso de divergência inventaria defeito onde há só cadastro
+    // incompleto — que já tem pendência própria ("Nome completo").
+    semNome: !derivadas,
+    divergem: !!gravadas && !!aceitas.length && !aceitas.includes(chaveDasIniciais(gravadas)),
+  };
+}
+
 // ── SEXO ────────────────────────────────────────────────────
 
 /**
@@ -459,6 +528,21 @@ export function conferirCadastro(paciente) {
   if (!vazio("cns") && !validarCNS(p.cns))
     pendencias.push({ campo: "cns", nivel: "sus", label: "Cartão SUS inválido",
       porque: "Os dígitos verificadores não conferem." });
+
+  // 🔴 Iniciais gravadas que não são as do nome — duas fontes divergindo.
+  //
+  // Nível próprio, `identificacao`, e NÃO `essencial`: o percentual mede o
+  // que falta para a norma de identificação (CFM 1.638), e aqui não falta
+  // campo — há dois campos preenchidos que se contradizem. Somar isto ao
+  // denominador faria um cadastro completo parecer incompleto; deixar de
+  // mostrar deixaria a contradição calada, que é pior.
+  const iniciais = conferirIniciais(p);
+  if (iniciais.divergem)
+    pendencias.push({ campo: "iniciais", nivel: "identificacao",
+      label: `Iniciais gravadas (${iniciais.gravadas}) não são as do nome (${iniciais.derivadas})`,
+      porque: "Um dos dois campos é de outra pessoa, e o sistema não tem como saber qual. " +
+              "As telas mostram as derivadas do nome; o Bloco Cirúrgico confere identidade por iniciais. " +
+              "Confira o nome com o documento antes de salvar — salvar recarimba as iniciais a partir do nome." });
 
   // O denominador conta só as regras QUE VALEM para esta pessoa. Somar as
   // que nunca serão cobradas faria o cadastro de um estrangeiro completo

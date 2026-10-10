@@ -258,3 +258,148 @@ export async function loadAtendimentosDoPaciente(sb, prontuario) {
     `&select=id,chegada_em,desfecho_em,status,tipo_atendimento,procedimento_cod&order=chegada_em.desc&limit=10`);
   return listaLida(rows);
 }
+
+// ── A DESCRIÇÃO CIRÚRGICA ───────────────────────────────────
+
+/**
+ * As versões da descrição de uma cirurgia, da mais nova para a mais antiga.
+ *
+ * ⚠️ "Não consegui ler" NÃO é "não tem descrição". Sem essa diferença, uma
+ * oscilação de rede faria a tela oferecer "registrar descrição" numa
+ * cirurgia que já tem uma — e o banco recusaria só depois de a pessoa ter
+ * escrito o documento inteiro.
+ */
+export async function loadCcDescricoes(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_descricao?cirurgia_id=eq.${cirurgiaId}&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/** As descrições de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcDescricoesDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_descricao?cirurgia_id=in.(${lista.join(",")})&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava o documento. O gatilho calcula a versão e acende o selo no MESMO
+ * insert — a tela nunca manda `versao`.
+ *
+ * A frase de recusa vem do BANCO: é ele que sabe se a cirurgia está
+ * cancelada, se ainda não entrou em sala, se já existe descrição vigente ou
+ * se a correção aponta para a cirurgia errada. Repetir essas regras aqui só
+ * criaria duas versões para divergirem.
+ */
+export async function registrarDescricao(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_descricao", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, descricao: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}
+
+/**
+ * O CADASTRO dos pacientes do mapa, para o cartão dizer de quem é a cirurgia.
+ *
+ * 🔴 Existe porque o mapa mostrava as iniciais DIGITADAS no agendamento, sem
+ * nunca compará-las com o cadastro — e é nesse cartão que o Sign In confere
+ * identidade (Meta 1 da OMS). O argumento inteiro está em
+ * `./identidade-cirurgia.js`.
+ *
+ * Por dia e numa consulta só, como a trilha e a equipe: um mapa com doze
+ * cirurgias faria doze pedidos, e esta tela recarrega a cada 30s.
+ *
+ * Só os quatro campos do rótulo. Cirurgia não precisa de CPF, endereço nem
+ * filiação para dizer quem vai ser operado, e trazer a ficha inteira para
+ * cada paciente do dia exporia dado que esta tela não usa.
+ */
+export async function loadPacientesDoMapa(sb, prontuarios = []) {
+  const lista = [...new Set(
+    (Array.isArray(prontuarios) ? prontuarios : [])
+      .map(p => String(p ?? "").trim())
+      // O prontuário deste hospital é alfanumérico ("T9060"). O que fugir
+      // do conjunto seguro fica FORA do filtro em vez de ser escapado na
+      // mão — valor estranho não vira sintaxe de consulta.
+      .filter(p => /^[A-Za-z0-9._-]{1,32}$/.test(p)))];
+  if (!sb || !lista.length) return [];
+  const rows = await sb(
+    `pacientes?prontuario=in.(${lista.map(p => `"${p}"`).join(",")})` +
+    `&select=prontuario,nome_completo,nome_social,iniciais`);
+  return listaLida(rows);
+}
+
+// ── A FICHA ANESTÉSICA E A RECUPERAÇÃO ──────────────────────
+
+/** As versões da ficha anestésica de uma cirurgia, da mais nova para a mais antiga. */
+export async function loadCcAnestesia(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_anestesia?cirurgia_id=eq.${cirurgiaId}&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/** As fichas anestésicas de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcAnestesiaDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_anestesia?cirurgia_id=in.(${lista.join(",")})&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava a ficha. O gatilho calcula a versão, acende `anestesia_em` e
+ * mantém a coluna antiga `tipo_anestesia` no mesmo insert.
+ */
+export async function registrarAnestesia(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_anestesia", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, ficha: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}
+
+/**
+ * As avaliações de Aldrete de uma cirurgia, da mais recente para a mais
+ * antiga.
+ *
+ * ⚠️ "Não consegui ler" NÃO é "nenhuma avaliação". Sem a diferença, a tela
+ * ofereceria a alta como se o paciente nunca tivesse sido avaliado — e o
+ * banco recusaria depois, o que ao menos é seguro; mas a tela também
+ * esconderia a CURVA, que é onde se vê o paciente piorando.
+ */
+export async function loadCcAldrete(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_rpa_aldrete?cirurgia_id=eq.${cirurgiaId}&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/** As avaliações de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcAldreteDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_rpa_aldrete?cirurgia_id=in.(${lista.join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava uma avaliação da recuperação. `total` NÃO vai daqui — é coluna
+ * gerada pelo banco, para a soma da tela não divergir da soma que o
+ * gatilho da alta usa.
+ */
+export async function registrarAldrete(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_rpa_aldrete", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, avaliacao: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}
