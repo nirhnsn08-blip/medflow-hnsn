@@ -48,6 +48,10 @@ set search_path = public, extensions, pg_temp;
 -- ════════════════════════════════════════════════════════════
 -- PARTE 1/5 — AS FUNÇÕES DE PERMISSÃO
 --
+-- ⚠️ O MESMO TEXTO está em `migracao-acesso-funcoes.sql`, que roda CEDO na
+-- reconstrução do banco: aqui elas vêm por último, e 24 políticas criadas
+-- no meio do caminho já as citam. Os dois saem da const FUNCOES do gerador.
+--
 -- Espelham `src/acesso/permissoes.js`, nesta ordem: perfil → exceção
 -- individual → travas. `security definer` porque a função precisa ler
 -- `profiles` e `perfis_permissoes` por baixo do RLS delas.

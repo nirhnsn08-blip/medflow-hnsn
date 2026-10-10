@@ -302,3 +302,33 @@ export async function registrarDescricao(sb, corpo, user) {
   if (Array.isArray(r) && r.length) return { ok: true, descricao: r[0] };
   return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
 }
+
+/**
+ * O CADASTRO dos pacientes do mapa, para o cartão dizer de quem é a cirurgia.
+ *
+ * 🔴 Existe porque o mapa mostrava as iniciais DIGITADAS no agendamento, sem
+ * nunca compará-las com o cadastro — e é nesse cartão que o Sign In confere
+ * identidade (Meta 1 da OMS). O argumento inteiro está em
+ * `./identidade-cirurgia.js`.
+ *
+ * Por dia e numa consulta só, como a trilha e a equipe: um mapa com doze
+ * cirurgias faria doze pedidos, e esta tela recarrega a cada 30s.
+ *
+ * Só os quatro campos do rótulo. Cirurgia não precisa de CPF, endereço nem
+ * filiação para dizer quem vai ser operado, e trazer a ficha inteira para
+ * cada paciente do dia exporia dado que esta tela não usa.
+ */
+export async function loadPacientesDoMapa(sb, prontuarios = []) {
+  const lista = [...new Set(
+    (Array.isArray(prontuarios) ? prontuarios : [])
+      .map(p => String(p ?? "").trim())
+      // O prontuário deste hospital é alfanumérico ("T9060"). O que fugir
+      // do conjunto seguro fica FORA do filtro em vez de ser escapado na
+      // mão — valor estranho não vira sintaxe de consulta.
+      .filter(p => /^[A-Za-z0-9._-]{1,32}$/.test(p)))];
+  if (!sb || !lista.length) return [];
+  const rows = await sb(
+    `pacientes?prontuario=in.(${lista.map(p => `"${p}"`).join(",")})` +
+    `&select=prontuario,nome_completo,nome_social,iniciais`);
+  return listaLida(rows);
+}

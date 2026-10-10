@@ -8,11 +8,12 @@
 // COMPARADOS. Regra pura, sem tela, para ser testada sozinha.
 // ═══════════════════════════════════════════════════════════
 
-import { comoExibir } from "../pacientes/identidade.js";
+// A normalização para COMPARAR iniciais mora em identidade.js, junto com
+// quem as deriva: ela era local aqui, e o mapa cirúrgico nasceu precisando
+// da mesma. Dois normalizadores com uma diferença (um tira acento, o outro
+// não) fazem o mesmo par bater numa tela e não bater na outra.
+import { chaveDasIniciais as soLetras, comoExibir } from "../pacientes/identidade.js";
 import { fmtDataBR } from "../util/datas.js";
-
-/** "M.S.F." / "msf" / "M S F" → "MSF". */
-const soLetras = t => String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z]/g, "");
 
 /**
  * Confere as iniciais digitadas contra o cadastro.

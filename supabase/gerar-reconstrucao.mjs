@@ -73,6 +73,21 @@ const ORDEM = [
   "migracao-pep-perfis-update.sql",
   "migracao-pep-fase3.sql",
   "migracao-perfis-acesso.sql",
+  // 🔴 AQUI, E NÃO NA ORDEM CRONOLÓGICA — é o conserto de 08/10/2026.
+  //
+  // As cinco funções de permissão (`pode_ver_algum` e companhia) moravam
+  // dentro do `migracao-rls-leitura.sql`, que fecha esta lista de propósito.
+  // Mas 24 políticas criadas no MEIO dela já citam `pode_ver_algum`, e
+  // `create policy` resolve a função na hora: num banco NOVO a reconstrução
+  // MORRIA em `at_glosas_leitura` (#53), a 55% do script. Medido em PGlite.
+  //
+  // Vem logo depois do `perfis-acesso` porque é dele que saem as três
+  // tabelas que o corpo das funções lê — e corpo de função `language sql`
+  // é conferido na criação, não no primeiro uso.
+  //
+  // `banco-novo-nasce.test.js` roda este arquivo inteiro e é o que impede
+  // a próxima função de nascer tarde de novo.
+  "migracao-acesso-funcoes.sql",
   "migracao-leitos-nir-regulacao.sql",
   "migracao-suprimentos-aprovacao.sql",
   "migracao-ps-comorbidades.sql",
