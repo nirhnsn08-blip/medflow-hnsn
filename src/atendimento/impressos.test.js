@@ -15,6 +15,10 @@
 //      documento que existe para conferir a data de nascimento.
 //   4. "NINGUÉM PERGUNTOU" NÃO É "NÃO TEM ALERGIA". Imprimir um pelo outro
 //      é a mentira mais cara que esta ficha poderia contar.
+//   5. "NÃO CONSEGUI LER" NÃO É "NÃO HÁ RESPONSÁVEL" — e no papel é pior
+//      que na tela, porque a folha não se recarrega. Quem a ler às 3h da
+//      manhã não tem como descobrir que a leitura falhou, então a própria
+//      folha tem de dizer.
 // ═══════════════════════════════════════════════════════════
 
 import { describe, it, expect } from "vitest";
@@ -24,8 +28,10 @@ import {
   rotuloDominio, dadosDaFicha, horaBR,
   declaracaoDeComparecimento, comprovanteDeAgendamento, ANTECEDENCIA_MINUTOS, O_QUE_TRAZER,
   documentosDoEpisodio,
+  responsaveisDaFicha, AVISO_RESPONSAVEIS_NAO_LIDOS, AVISO_RESPONSAVEIS_MENOR,
 } from "./impressos.js";
 import { TIPO_NENHUMA } from "../clinico/alergias.js";
+import { FALHA } from "../util/leitura.js";
 
 const HOJE = new Date("2026-07-30T10:00:00");
 
@@ -310,10 +316,11 @@ describe("ficha do atendimento", () => {
         { nome: "Vizinha", vinculo: "outro", papel: "acompanhante", recebe_alta: false },
       ],
     });
-    expect(f.responsaveis).toHaveLength(2);
-    expect(f.responsaveis[0]).toMatchObject({ nome: "Maria da Silva", vinculo: "Mãe", papel: "Representante legal", recebeAlta: true });
-    expect(f.responsaveis[1]).toMatchObject({ papel: "Acompanhante", recebeAlta: false });
-    expect(f.responsaveis[0].cpf).toBe("529.982.247-25");
+    expect(f.responsaveis.estado).toBe("registrado");
+    expect(f.responsaveis.lista).toHaveLength(2);
+    expect(f.responsaveis.lista[0]).toMatchObject({ nome: "Maria da Silva", vinculo: "Mãe", papel: "Representante legal", recebeAlta: true });
+    expect(f.responsaveis.lista[1]).toMatchObject({ papel: "Acompanhante", recebeAlta: false });
+    expect(f.responsaveis.lista[0].cpf).toBe("529.982.247-25");
   });
 
   it("responsável desligado não sai no papel de hoje", () => {
@@ -321,11 +328,119 @@ describe("ficha do atendimento", () => {
       ...base,
       responsaveis: [{ nome: "Ex-guardião", papel: "representante", ativo: false }],
     });
-    expect(f.responsaveis).toEqual([]);
+    expect(f.responsaveis.lista).toEqual([]);
   });
 
-  it("sem responsável a seção não existe, em vez de sair vazia", () => {
-    expect(dadosDaFicha(base).responsaveis).toEqual([]);
+  it("adulto sem responsável: a seção não existe, em vez de sair vazia", () => {
+    // Maior de idade se entrega a si mesmo — aqui não há nada a cobrar, e
+    // aviso que sempre aparece é aviso que ninguém lê.
+    const r = dadosDaFicha(base).responsaveis;
+    expect(r.estado).toBe("nenhum");
+    expect(r.lista).toEqual([]);
+    expect(r.aviso).toBe("");
+    expect(r.gravidade).toBe(null);
+  });
+
+  // ── LEITURA QUE FALHOU × NÃO HÁ RESPONSÁVEL ───────────────
+  //
+  // 🔴 O defeito que esta bateria existe para impedir: `carregarResponsaveis`
+  // devolve `FALHA` (util/leitura.js) quando não consegue ler, e o
+  // `.filter` que vinha em seguida apagava a marca — a ficha saía SEM a
+  // seção, indistinguível de "ninguém está registrado". Na tela isso é um
+  // recarregar; no papel que acompanha a criança até o leito, não há como
+  // desfazer.
+
+  const menor = () => pac({ data_nascimento: "2019-05-02", nome_completo: "Pedro Henrique Lima" });
+
+  it("leitura que falhou NÃO é impressa como 'não há responsável'", () => {
+    const r = dadosDaFicha({ ...base, responsaveis: FALHA }).responsaveis;
+    expect(r.estado).toBe("nao_lido");
+    expect(r.lista).toEqual([]);
+    // O papel diz o que aconteceu, e diz que o branco não é negativa.
+    expect(r.aviso).toContain("NÃO FOI POSSÍVEL LER");
+    expect(r.aviso).toContain("NÃO significa que ninguém está registrado");
+    expect(r.gravidade).toBe("alta");
+  });
+
+  it("lista lida e vazia é um estado DIFERENTE da lista não lida", () => {
+    const lido = dadosDaFicha({ ...base, responsaveis: [] }).responsaveis;
+    const naoLido = dadosDaFicha({ ...base, responsaveis: FALHA }).responsaveis;
+    expect(lido.estado).toBe("nenhum");
+    expect(naoLido.estado).toBe("nao_lido");
+    expect(lido.aviso).not.toBe(naoLido.aviso);
+  });
+
+  it("menor de idade com lista não lida: o papel manda NÃO entregar", () => {
+    // A emissão NÃO é recusada — ver o porquê em `responsaveisDaFicha`.
+    // Recusar tiraria a folha inteira (identificação, alergia, queixa) de
+    // quem recebe a criança. O que muda é o volume do aviso.
+    const r = dadosDaFicha({ ...base, paciente: menor(), responsaveis: FALHA }).responsaveis;
+    expect(r.estado).toBe("nao_lido");
+    expect(r.aviso).toContain(AVISO_RESPONSAVEIS_MENOR);
+    expect(r.aviso).toMatch(/absolutamente incapaz/i);
+    expect(r.gravidade).toBe("alta");
+  });
+
+  it("adulto com lista não lida: avisa, mas sem a linha do menor", () => {
+    const r = dadosDaFicha({ ...base, responsaveis: FALHA }).responsaveis;
+    expect(r.aviso).toBe(AVISO_RESPONSAVEIS_NAO_LIDOS);
+    expect(r.aviso).not.toContain(AVISO_RESPONSAVEIS_MENOR);
+  });
+
+  it("paciente sem data de nascimento com lista não lida é tratado como menor", () => {
+    // Assumir maioridade por falta de dado é exatamente como o sistema
+    // deixaria de cobrar responsável de uma criança sem documento.
+    const r = dadosDaFicha({
+      ...base,
+      paciente: { prontuario: "9061", iniciais: "NÃO IDENTIFICADO" },
+      responsaveis: FALHA,
+    }).responsaveis;
+    expect(r.aviso).toContain(AVISO_RESPONSAVEIS_MENOR);
+  });
+
+  it("menor com lista lida e VAZIA também fala no papel", () => {
+    // A folha mais barulhenta não pode ser a do erro de rede, e a mais
+    // calada justamente a do menor que não tem ninguém para recebê-lo.
+    const r = dadosDaFicha({ ...base, paciente: menor(), responsaveis: [] }).responsaveis;
+    expect(r.estado).toBe("nenhum");
+    expect(r.gravidade).toBe("alta");
+    expect(r.aviso).toMatch(/Ninguém foi registrado/i);
+  });
+
+  it("menor com apenas acompanhante: a pendência sai junto da lista", () => {
+    const r = dadosDaFicha({
+      ...base, paciente: menor(),
+      responsaveis: [{ nome: "Vizinha do lado", vinculo: "outro", papel: "acompanhante" }],
+    }).responsaveis;
+    expect(r.estado).toBe("registrado");
+    expect(r.lista).toHaveLength(1);
+    expect(r.aviso).toMatch(/Ninguém foi registrado/i);
+  });
+
+  it("a marca de falha é lida ANTES do filtro, que a destruiria", () => {
+    // `FALHA` é reconhecido pela IDENTIDADE do array, e `.filter` devolve
+    // um array novo e comum (util/leitura.js). Uma lista vazia COMUM tem de
+    // continuar sendo "nenhum" — senão a correção viraria aviso em toda
+    // ficha, e aviso que sempre aparece ninguém lê.
+    expect(responsaveisDaFicha({ paciente: pac(), responsaveis: FALHA }).estado).toBe("nao_lido");
+    expect(responsaveisDaFicha({ paciente: pac(), responsaveis: FALHA.filter(() => true) }).estado).toBe("nenhum");
+    expect(responsaveisDaFicha({ paciente: pac(), responsaveis: [] }).estado).toBe("nenhum");
+  });
+
+  it("nem `null` nem valor estranho derruba a ficha", () => {
+    expect(responsaveisDaFicha({ paciente: pac(), responsaveis: null }).estado).toBe("nenhum");
+    expect(responsaveisDaFicha({ paciente: pac() }).estado).toBe("nenhum");
+    expect(responsaveisDaFicha().estado).toBe("nenhum");
+  });
+
+  it("alergia que não deu para ler sai como NÃO CONSULTADO, não como 'sem registro'", () => {
+    // Mesma família de defeito, um campo acima: `FALHA` É um array, então
+    // `Array.isArray` sozinho o aceitava e `situacaoAlergica` concluía
+    // "ninguém perguntou ainda" — uma afirmação sobre o prontuário que
+    // esta via não tem como fazer.
+    const f = dadosDaFicha({ ...base, alergias: FALHA });
+    expect(f.alergias.estado).toBe("nao_consultado");
+    expect(f.alergias.texto).not.toMatch(/sem registro|nega/i);
   });
 
   it("carrega o estado da pulseira junto — é o mesmo balcão", () => {
