@@ -20,7 +20,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import {
-  antecedenteCirurgico, descricaoVigenteDe, equipeDe,
+  altaDaRpaDe, antecedenteCirurgico, descricaoVigenteDe, equipeDe,
   montarTimeline, quantasOperou, resumoLocalPaciente, sentinelaPaciente,
 } from "./paciente360.js";
 import { FALHA } from "../util/leitura.js";
@@ -44,7 +44,8 @@ const EQ = [{ cirurgia_id: 7, papel: "cirurgiao", nome: "Dra. Ana", cbo: "225125
 
 const base = (extra = {}) => ({
   ps: [], leitoAtual: [], saidas: [], scih: [], evolucoes: [], alergias: [], registrosPS: [],
-  cirurgias: [], equipeCirurgias: [], descricoesCirurgias: [], ...extra,
+  cirurgias: [], equipeCirurgias: [], descricoesCirurgias: [],
+  fichasAnestesicas: [], aldreteRpa: [], ...extra,
 });
 
 // ── A LEITURA POR CIRURGIA ──────────────────────────────────
@@ -299,5 +300,77 @@ describe("🔴 o que aconteceu vem antes do que está marcado", () => {
   it("sem nada, a contagem é zero e não quebra", () => {
     expect(quantasOperou([])).toBe(0);
     expect(quantasOperou()).toBe(0);
+  });
+});
+
+// ── A ANESTESIA E A RECUPERAÇÃO NO PRONTUÁRIO ───────────────
+//
+// 🔴 ACHADO CAMINHANDO PELO DEMO (10/10/2026), e é uma incoerência com a
+// regra que eu mesmo escrevi no PR anterior: "amplia-se a leitura onde uma
+// TELA de fato lê". Eu havia concedido leitura de `cc_rpa_aldrete` ao
+// módulo `paciente` e NENHUMA tela lia — alcance que ninguém usa é só
+// risco. Consertado pelo lado certo: a tela passou a mostrar.
+describe("🔴 a anestesia e a recuperação entram no prontuário", () => {
+  const FICHA = {
+    id: 1, cirurgia_id: 7, versao: 1, corrige_id: null, criado_em: "2026-04-10T15:00:00Z",
+    tecnicas: ["geral", "peridural"], asa: "III", via_aerea: "intubacao",
+    via_aerea_dificil: true, via_aerea_manejo: "Cormack IV, intubada com bougie na terceira tentativa.",
+  };
+  const comRpa = (saiu, escores) => base({
+    cirurgias: [{ ...CIR, rpa_saida_em: saiu }],
+    fichasAnestesicas: [FICHA],
+    aldreteRpa: escores,
+  });
+  const esc = (h, total) => ({
+    cirurgia_id: 7, criado_em: `2026-04-10T${h}:00:00Z`,
+    atividade: 2, respiracao: 2, circulacao: 2, consciencia: 2,
+    saturacao: total - 8,
+  });
+
+  it("🔴 via aérea difícil é alerta PERMANENTE, com o manejo junto", () => {
+    const a = sentinelaPaciente(comRpa(null, []));
+    const t = a.map(x => x.texto).join(" | ");
+    expect(t).toMatch(/VIA AÉREA DIFÍCIL em anestesia anterior/);
+    // Saber que vai ser difícil sem saber o que resolveu é meio aviso.
+    expect(t).toMatch(/intubada com bougie na terceira tentativa/);
+  });
+
+  it("a ficha anestésica resumida entra na linha do tempo", () => {
+    const ev = montarTimeline(comRpa(null, []));
+    const c = ev.find(x => x.modulo === "Bloco");
+    expect(c.detalhe).toMatch(/Geral \+ Peridural · ASA III · Intubação orotraqueal · VIA AÉREA DIFÍCIL/);
+  });
+
+  it("🔴 recuperação com percalço aparece — o pior escore e o da alta", () => {
+    const ev = montarTimeline(comRpa("2026-04-10T17:00:00Z", [esc("15", 8), esc("16", 10), esc("17", 9)]));
+    expect(ev.find(x => x.modulo === "Bloco").detalhe)
+      .toMatch(/RPA: 3 avaliações, pior Aldrete 8\/10, alta com 9\/10/);
+  });
+
+  it("recuperação tranquila NÃO vira linha — ruído faz parar de ler", () => {
+    const ev = montarTimeline(comRpa("2026-04-10T17:00:00Z", [esc("16", 10), esc("17", 10)]));
+    expect(ev.find(x => x.modulo === "Bloco").detalhe).not.toMatch(/RPA:/);
+  });
+
+  it("🔴 alta da RPA SEM escore nenhum aparece como ausência", () => {
+    // As históricas — o gatilho só vale daqui para a frente. Deixá-las sem
+    // marca as faria parecer recuperação tranquila.
+    const ev = montarTimeline(comRpa("2026-04-10T17:00:00Z", []));
+    expect(ev.find(x => x.modulo === "Bloco").detalhe)
+      .toMatch(/saiu da RPA SEM escore de Aldrete registrado/);
+  });
+
+  it("quem nunca saiu da RPA não ganha linha de recuperação", () => {
+    expect(altaDaRpaDe(comRpa(null, []), { id: 7, rpa_saida_em: null })).toBeNull();
+  });
+
+  it("ficha CORRIGIDA que dizia difícil não alarma para sempre", () => {
+    // Só as vigentes contam.
+    const retificada = base({
+      cirurgias: [CIR],
+      fichasAnestesicas: [FICHA, { ...FICHA, id: 2, versao: 2, corrige_id: 1, via_aerea_dificil: false }],
+    });
+    expect(sentinelaPaciente(retificada).map(x => x.texto).join(" "))
+      .not.toMatch(/VIA AÉREA DIFÍCIL/);
   });
 });

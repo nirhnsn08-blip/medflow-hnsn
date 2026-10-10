@@ -23,6 +23,7 @@ import { diasDesde, sinalLeito } from "../clinico/leitos.js";
 import { MANCHESTER, PS_DESFECHOS, PS_EVOL_CATEGORIAS, fmtSinaisVitais } from "../ps/catalogo.js";
 import { jaOperou, linhaDoAntecedente, resumoDaDescricao, versaoVigente } from "../bloco/descricao.js";
 import { fichaVigente, resumoDaFicha, viaAereaDificilPregressa } from "../bloco/anestesia.js";
+import { totalAldrete, ultimaAvaliacao } from "../bloco/aldrete.js";
 import { diaLocal, horaFmt } from "../util/datas.js";
 
 /** A equipe de UMA cirurgia, da lista que veio junto com o paciente. */
@@ -61,6 +62,29 @@ export function viaAereaDificilDoPaciente(d) {
     .map(c => fichaAnestesicaDe(d, c.id))
     .filter(Boolean);
   return viaAereaDificilPregressa(vigentes);
+}
+
+/**
+ * Como o paciente SAIU da recuperação pós-anestésica.
+ *
+ * 🔴 Devolve também o caso que mais interessa a quem lê depois: a
+ * cirurgia que saiu da RPA SEM escore nenhum. Essas são históricas — o
+ * gatilho só vale daqui para a frente —, e mostrá-las como ausência é o
+ * oposto de deixá-las parecendo recuperação tranquila.
+ */
+export function altaDaRpaDe(d, cirurgia) {
+  if (!cirurgia?.rpa_saida_em) return null;
+  const minhas = (d?.aldreteRpa || [])
+    .filter(x => String(x.cirurgia_id) === String(cirurgia.id));
+  const ultima = ultimaAvaliacao(minhas);
+  if (!ultima) return { semEscore: true };
+  const totais = minhas.map(totalAldrete).filter(t => t != null);
+  return {
+    semEscore: false,
+    alta: totalAldrete(ultima),
+    pior: totais.length ? Math.min(...totais) : null,
+    avaliacoes: minhas.length,
+  };
 }
 
 export function antecedenteCirurgico(d) {
@@ -146,6 +170,7 @@ export function montarTimeline(d) {
     }
     const desc = descricaoVigenteDe(d, c.id);
     const fichaAnest = fichaAnestesicaDe(d, c.id);
+    const rpa = altaDaRpaDe(d, c);
     const l = linhaDoAntecedente({ cirurgia: c, equipe: equipeDe(d, c.id), descricao: desc });
     const quando = c.inicio_cirurgia_em || c.entrada_sala_em
       || (c.data ? c.data + "T12:00:00" : null);
@@ -155,6 +180,12 @@ export function montarTimeline(d) {
       l.cirurgiao ? `cirurgião: ${l.cirurgiao}` : null,
       l.cid_pos ? `CID pós-op ${l.cid_pos}` : null,
       fichaAnest ? resumoDaFicha(fichaAnest) : null,
+      // A recuperação só vira linha quando teve percalço ou quando o
+      // registro falta: "saiu com 10/10" em toda cirurgia seria ruído,
+      // e ruído é o que faz parar de ler a linha do tempo.
+      rpa && rpa.semEscore ? "saiu da RPA SEM escore de Aldrete registrado" : null,
+      rpa && !rpa.semEscore && rpa.pior != null && rpa.pior < 9
+        ? `RPA: ${rpa.avaliacoes} avaliações, pior Aldrete ${rpa.pior}/10, alta com ${rpa.alta}/10` : null,
       l.intercorrencias ? `intercorrências: ${l.intercorrencias}` : null,
       // ⚠️ A ausência do documento aparece COMO ausência. Cirurgia feita sem
       // descrição é buraco no prontuário, não "cirurgia sem nada a relatar".
