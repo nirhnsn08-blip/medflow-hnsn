@@ -403,3 +403,101 @@ export async function registrarAldrete(sb, corpo, user) {
   if (Array.isArray(r) && r.length) return { ok: true, avaliacao: r[0] };
   return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
 }
+
+// ── OPME E RASTREABILIDADE DE LOTE ──────────────────────────
+
+/** O material registrado numa cirurgia, do mais recente para o mais antigo. */
+export async function loadCcOpme(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_opme?cirurgia_id=eq.${cirurgiaId}&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/** O material de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcOpmeDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_opme?cirurgia_id=in.(${lista.join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava uma linha de material. O gatilho decide a baixa no estoque e
+ * carimba `opme_em` no mesmo insert.
+ *
+ * A frase de recusa vem do BANCO: é ele que sabe se a cirurgia está
+ * cancelada, se o implante veio sem lote ou se o estorno aponta para a
+ * cirurgia errada.
+ */
+export async function registrarOpme(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_opme", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, linha: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}
+
+/** O catálogo do almoxarifado, para o material ter item e dar baixa. */
+export async function loadItensDoEstoque(sb) {
+  if (!sb) return [];
+  const rows = await sb("sup_itens?ativo=eq.true&select=id,nome,unidade&order=nome&limit=500");
+  return listaLida(rows);
+}
+
+/**
+ * 🔴 O RECALL: quem recebeu este lote.
+ *
+ * A consulta que justifica a tabela `cc_opme` existir. Entra por LOTE ou
+ * por número de série, atravessa para a cirurgia e dela para o paciente.
+ *
+ * ⚠️ Devolve `{ linhas, naoLi }`. Numa busca de recall, lista vazia por
+ * falha de rede lida como "ninguém recebeu" é o pior resultado possível
+ * deste sistema inteiro: o hospital deixaria de chamar de volta gente com
+ * um produto recolhido dentro do corpo.
+ *
+ * ⚠️ `ilike` com o termo inteiro, não `like` com fatia: lote vem de
+ * etiqueta digitada por gente, e maiúscula/minúscula não pode separar um
+ * paciente do seu implante.
+ */
+export async function rastrearLote(sb, termo) {
+  const t = String(termo ?? "").trim();
+  if (!sb || t.length < 2) return { linhas: [], naoLi: false };
+  const q = encodeURIComponent(t);
+  const rows = await sb(
+    `cc_opme?or=(lote.ilike.${q},numero_serie.ilike.${q})` +
+    `&select=*,cc_cirurgias(id,data,prontuario,iniciais,procedimento,status)` +
+    `&order=criado_em.desc&limit=500`);
+  if (!Array.isArray(rows)) return { linhas: [], naoLi: true };
+
+  // Só o que VALE: estornos e linhas estornadas saem. Chamar de volta
+  // alguém por um material que foi estornado é alarme falso, e alarme
+  // falso em recall queima a credibilidade do próximo.
+  const estornadas = new Set(rows.map(r => r.estorno_de).filter(x => x != null).map(String));
+  const valem = rows.filter(r => r.estorno_de == null && !estornadas.has(String(r.id)));
+
+  // Os cadastros, para a lista sair com NOME — quem conduz recall liga
+  // para pessoas, e "T9060" não atende telefone.
+  const pronts = [...new Set(valem.map(r => r.cc_cirurgias?.prontuario).filter(Boolean)
+    .filter(p => /^[A-Za-z0-9._-]{1,32}$/.test(p)))];
+  let porProntuario = {};
+  if (pronts.length) {
+    const pac = await sb(`pacientes?prontuario=in.(${pronts.map(p => `"${p}"`).join(",")})` +
+      `&select=prontuario,nome_completo,iniciais`);
+    if (Array.isArray(pac)) porProntuario = Object.fromEntries(pac.map(p => [p.prontuario, p]));
+  }
+
+  return {
+    linhas: valem.map(r => ({
+      ...r,
+      cirurgia_data: r.cc_cirurgias?.data || null,
+      procedimento: r.cc_cirurgias?.procedimento || null,
+      prontuario: r.cc_cirurgias?.prontuario || null,
+      iniciais: porProntuario[r.cc_cirurgias?.prontuario]?.iniciais || r.cc_cirurgias?.iniciais || null,
+      nome_completo: porProntuario[r.cc_cirurgias?.prontuario]?.nome_completo || null,
+    })),
+    naoLi: false,
+  };
+}
