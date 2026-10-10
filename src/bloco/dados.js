@@ -332,3 +332,74 @@ export async function loadPacientesDoMapa(sb, prontuarios = []) {
     `&select=prontuario,nome_completo,nome_social,iniciais`);
   return listaLida(rows);
 }
+
+// ── A FICHA ANESTÉSICA E A RECUPERAÇÃO ──────────────────────
+
+/** As versões da ficha anestésica de uma cirurgia, da mais nova para a mais antiga. */
+export async function loadCcAnestesia(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_anestesia?cirurgia_id=eq.${cirurgiaId}&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/** As fichas anestésicas de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcAnestesiaDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_anestesia?cirurgia_id=in.(${lista.join(",")})&select=*&order=versao.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava a ficha. O gatilho calcula a versão, acende `anestesia_em` e
+ * mantém a coluna antiga `tipo_anestesia` no mesmo insert.
+ */
+export async function registrarAnestesia(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_anestesia", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, ficha: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}
+
+/**
+ * As avaliações de Aldrete de uma cirurgia, da mais recente para a mais
+ * antiga.
+ *
+ * ⚠️ "Não consegui ler" NÃO é "nenhuma avaliação". Sem a diferença, a tela
+ * ofereceria a alta como se o paciente nunca tivesse sido avaliado — e o
+ * banco recusaria depois, o que ao menos é seguro; mas a tela também
+ * esconderia a CURVA, que é onde se vê o paciente piorando.
+ */
+export async function loadCcAldrete(sb, cirurgiaId) {
+  if (!sb || !cirurgiaId) return [];
+  const rows = await sb(`cc_rpa_aldrete?cirurgia_id=eq.${cirurgiaId}&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/** As avaliações de todas as cirurgias de um dia, numa consulta só. */
+export async function loadCcAldreteDoDia(sb, ids = []) {
+  const lista = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  if (!sb || !lista.length) return [];
+  const rows = await sb(`cc_rpa_aldrete?cirurgia_id=in.(${lista.join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(rows);
+}
+
+/**
+ * Grava uma avaliação da recuperação. `total` NÃO vai daqui — é coluna
+ * gerada pelo banco, para a soma da tela não divergir da soma que o
+ * gatilho da alta usa.
+ */
+export async function registrarAldrete(sb, corpo, user) {
+  if (!sb) return SEM_BANCO;
+  const r = await sb("cc_rpa_aldrete", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ ...corpo, usuario: user?.name || null }),
+  });
+  if (Array.isArray(r) && r.length) return { ok: true, avaliacao: r[0] };
+  return { ok: false, motivo: motivoDoBanco(r) || NAO_GRAVOU.motivo };
+}

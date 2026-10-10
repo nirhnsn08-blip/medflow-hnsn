@@ -319,6 +319,10 @@ const ORDEM = [
   // calcula a versão e acende o selo. Depende de `cc_cirurgias` existir e,
   // como cita `pode_ver_algum` na política, de `migracao-acesso-funcoes.sql`.
   "migracao-cirurgia-descricao.sql",
+  // A ficha anestésica e a ficha de recuperação pós-anestésica, que fecham
+  // os três documentos da CFM 1.638/2002, mais o gatilho que recusa a alta
+  // da RPA sem escore de Aldrete. Depois da descrição e antes do rls-leitura.
+  "migracao-cirurgia-anestesia-rpa.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

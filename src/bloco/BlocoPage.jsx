@@ -15,9 +15,11 @@ import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
 import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
 import { CARATER, PAPEIS_EQUIPE, PAPEL_POR_CHAVE, conferirMembro, linhaDeEquipe, pendenciasDeFaturamento, resumoDaEquipe, procedimentoEscolhido } from "./equipe.js";
-import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcDescricoesDoDia, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadPacientesDoMapa, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarChecklist, registrarDescricao, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcAldreteDoDia, loadCcAnestesiaDoDia, loadCcDescricoesDoDia, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadPacientesDoMapa, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarAldrete, registrarAnestesia, registrarChecklist, registrarDescricao, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import DescricaoCirurgicaModal from "./DescricaoCirurgica.jsx";
 import { horasSemDescricao, jaOperou, semDescricao } from "./descricao.js";
+import { FichaAnestesicaModal, RecuperacaoModal } from "./AnestesiaRpa.jsx";
+import { resumoDaFicha } from "./anestesia.js";
 import { conferirIniciaisDaCirurgia, indexarCadastros, iniciaisDoAgendamento } from "./identidade-cirurgia.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
@@ -66,6 +68,11 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   // As descrições cirúrgicas do dia, e qual está aberta para escrever.
   const [descricoes, setDescricoes] = useState([]);
   const [descrevendo, setDescrevendo] = useState(null);
+  // A ficha anestésica e a recuperação pós-anestésica do dia.
+  const [fichas, setFichas] = useState([]);
+  const [aldrete, setAldrete] = useState([]);
+  const [anestesiando, setAnestesiando] = useState(null);
+  const [recuperando, setRecuperando] = useState(null);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
@@ -82,9 +89,10 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // os nós do DOM por baixo de quem estava clicando.
     const ids = (Array.isArray(c) ? c : []).map(x => x.id);
     const pronts = (Array.isArray(c) ? c : []).map(x => x.prontuario);
-    const [t, eq, de, pac] = await Promise.all([
+    const [t, eq, de, pac, fi, al] = await Promise.all([
       loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids),
       loadCcDescricoesDoDia(sb, ids), loadPacientesDoMapa(sb, pronts),
+      loadCcAnestesiaDoDia(sb, ids), loadCcAldreteDoDia(sb, ids),
     ]);
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
@@ -92,6 +100,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // o cartão dizer "não conferi" em vez de inventar "não cadastrado".
     setSalas(s); setCirurgias(c); setTrilha(t); setEquipe(eq);
     setDescricoes(de); setCadastros(indexarCadastros(pac));
+    setFichas(fi); setAldrete(al);
   }
   // O catálogo de procedimentos não muda com o dia do mapa: carrega uma
   // vez, e não a cada 30s junto com o resto.
@@ -206,6 +215,40 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       corpo.corrige_id ? "bloco: corrigir descrição cirúrgica" : "bloco: descrição cirúrgica",
       `${c.iniciais} · ${corpo.procedimento_realizado || "?"}`, {});
     setErro(null); setTimeout(() => refresh(), 300);
+    return { ok: true };
+  }
+
+  /** Grava a ficha anestésica. O gatilho calcula a versão e acende o selo. */
+  async function gravarAnestesia(c, corpo) {
+    const r = await registrarAnestesia(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser,
+      corpo.corrige_id ? "bloco: corrigir ficha anestésica" : "bloco: ficha anestésica", c.iniciais, {});
+    setErro(null); setTimeout(() => refresh(), 300);
+    return { ok: true };
+  }
+
+  /** Grava uma avaliação da recuperação. O `total` é coluna gerada no banco. */
+  async function gravarAldrete(c, corpo) {
+    const r = await registrarAldrete(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser, "bloco: avaliação da RPA (Aldrete)", c.iniciais, {});
+    setErro(null); await refresh();
+    return { ok: true };
+  }
+
+  /**
+   * 🔴 A ALTA DA RPA, que deixou de ser um clique.
+   *
+   * A frase de recusa vem do BANCO — é o gatilho que sabe qual foi o melhor
+   * escore e qual parâmetro está zerado. Repetir a regra aqui criaria duas
+   * versões para divergirem, e a do banco é a que vale.
+   */
+  async function altaDaRpa(c) {
+    const r = await updateCcCirurgiaRemote(sb, c.id, { status: "concluida", rpa_saida_em: nowISO() });
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser, "bloco: alta da RPA", c.iniciais, {});
+    setErro(null); await refresh();
     return { ok: true };
   }
 
@@ -389,6 +432,23 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
             style={btnContorno(c.descricao_em ? "var(--text-3)" : "#8b5cf6")}>
             {c.descricao_em ? "Ver / corrigir descrição cirúrgica" : "Escrever a descrição cirúrgica"}
           </button>
+          <button onClick={() => setAnestesiando(c)}
+            style={btnContorno(c.anestesia_em ? "var(--text-3)" : "#8b5cf6")}>
+            {c.anestesia_em ? "Ver / corrigir ficha anestésica" : "Escrever a ficha anestésica"}
+          </button>
+          {/* A ficha anestésica resumida no cartão: é o que a equipe da RPA
+              lê antes de receber o paciente — e "via aérea difícil" é a
+              linha que muda a conduta se ele precisar ser reintubado. */}
+          {(() => {
+            const f = fichas.find(x => String(x.cirurgia_id) === String(c.id)
+              && !fichas.some(y => String(y.corrige_id) === String(x.id)));
+            if (!f) return null;
+            return (
+              <span style={{ fontSize: 11.5, color: f.via_aerea_dificil ? "#f43f5e" : "var(--text-3)", lineHeight: 1.5 }}>
+                {resumoDaFicha(f)}
+              </span>
+            );
+          })()}
           {!c.descricao_em && (() => {
             const h = horasSemDescricao(c);
             return (
@@ -422,7 +482,11 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
             {c.fim_cirurgia_em && <button onClick={async () => { if (pendenteAntesDe(c, "rpa") && !(await pularChecklist(c, "sign_out"))) return; marcar(c, { status: "recuperacao", saida_sala_em: nowISO(), rpa_entrada_em: nowISO() }, "envio RPA"); }} style={btnContorno("#d97706")}>Enviar para RPA</button>}
           </>}
           {c.status === "recuperacao" && (
-            <button onClick={() => marcar(c, { status: "concluida", rpa_saida_em: nowISO() }, "alta da RPA")} style={btnContorno("#34d399")}>Alta da RPA — concluir</button>
+            /* 🔴 Era um clique que concluía a cirurgia. Agora ABRE a ficha de
+               recuperação: a alta só aparece depois de um escore que libere.
+               Não é uma trava a mais na frente do mesmo botão — é o botão
+               passando a fazer o que quem está na RPA ia fazer de todo jeito. */
+            <button onClick={() => setRecuperando(c)} style={btnContorno("#34d399")}>Recuperação (Aldrete) — avaliar e dar alta</button>
           )}
         </div>
       )}
@@ -559,6 +623,27 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
           assinatura={assinaturaTexto(currentUser)}
           onClose={() => setDescrevendo(null)}
           onConfirm={corpo => gravarDescricao(descrevendo, corpo)} />
+      )}
+      {anestesiando && (
+        <FichaAnestesicaModal
+          cirurgia={anestesiando}
+          /* A MARCA de falha precisa chegar ao modal: filtrar devolve um
+             array comum, e aí "não consegui ler" viraria "não tem ficha". */
+          fichas={naoDeuParaLer(fichas) ? fichas
+            : fichas.filter(f => String(f.cirurgia_id) === String(anestesiando.id))}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setAnestesiando(null)}
+          onConfirm={corpo => gravarAnestesia(anestesiando, corpo)} />
+      )}
+      {recuperando && (
+        <RecuperacaoModal
+          cirurgia={recuperando}
+          avaliacoes={naoDeuParaLer(aldrete) ? aldrete
+            : aldrete.filter(x => String(x.cirurgia_id) === String(recuperando.id))}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setRecuperando(null)}
+          onAvaliar={corpo => gravarAldrete(recuperando, corpo)}
+          onAlta={() => altaDaRpa(recuperando)} />
       )}
       {showSalas && <CcSalasModal salas={salas} onClose={() => setShowSalas(false)} onSave={async s => { await upsertCcSalaRemote(sb, s, currentUser); refresh(); }} onDelete={async n => { await deleteCcSalaRemote(sb, n); refresh(); }} isMaster={currentUser?.role === "adm_master"} />}
     </div>

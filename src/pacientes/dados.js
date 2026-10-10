@@ -56,15 +56,20 @@ export async function loadPaciente360(sb, prontuario) {
   // duas por cirurgia: a tela abre com tudo de uma vez e um paciente pode
   // ter oito cirurgias na vida.
   const cirurgias = listaLida(cirurgiasBruto);
-  let equipeCirurgias = [], descricoesCirurgias = [];
+  let equipeCirurgias = [], descricoesCirurgias = [], fichasAnestesicas = [];
   if (cirurgias.length) {
     const ids = cirurgias.map(c => c.id).filter(Boolean).join(",");
-    const [eq, de] = await Promise.all([
+    const [eq, de, an] = await Promise.all([
       sb(`cc_equipe?cirurgia_id=in.(${ids})&select=*&order=id`).catch(() => null),
       sb(`cc_descricao?cirurgia_id=in.(${ids})&select=*&order=versao.desc`).catch(() => null),
+      // 🔴 VIA AÉREA DIFÍCIL É DADO DA PESSOA, não do episódio: precede
+      // toda anestesia futura dela, e a única forma de o próximo
+      // anestesista saber é o prontuário dizer.
+      sb(`cc_anestesia?cirurgia_id=in.(${ids})&select=*&order=versao.desc`).catch(() => null),
     ]);
     equipeCirurgias = listaLida(eq);
     descricoesCirurgias = listaLida(de);
+    fichasAnestesicas = listaLida(an);
   }
 
   return {
@@ -77,7 +82,7 @@ export async function loadPaciente360(sb, prontuario) {
     // ⚠️ A MARCA DE FALHA SOBREVIVE até a tela, e é o que importa aqui:
     // lista vazia de cirurgia lida como "nunca operou" é omissão de
     // informação assistencial, e é indistinguível de rede ruim sem isto.
-    cirurgias, equipeCirurgias, descricoesCirurgias,
+    cirurgias, equipeCirurgias, descricoesCirurgias, fichasAnestesicas,
   };
 }
 

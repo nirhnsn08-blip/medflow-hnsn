@@ -217,7 +217,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 110 tabelas ficam abertas a
+-- a mesma coisa em português. 25 das 112 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -261,10 +261,12 @@ begin
       ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
       ('atendimentos', 'public.pode_ver_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
+      ('cc_anestesia', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
       ('cc_checklist', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
       ('cc_cirurgias', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
       ('cc_descricao', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
       ('cc_equipe', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                                -- bloco, paciente
+      ('cc_rpa_aldrete', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                           -- bloco, paciente
       ('cc_salas', 'true'),                                                                           -- todos os autenticados
       ('cid_referencia', 'true'),                                                                     -- todos os autenticados
       ('enf_escala_faixas', 'true'),                                                                  -- todos os autenticados
@@ -456,10 +458,12 @@ begin
       ('at_repasses', 'public.pode_editar_algum(''faturamento'')'),                                   -- faturamento
       ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
       ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
+      ('cc_anestesia', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
       ('cc_checklist', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
       ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
       ('cc_descricao', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
       ('cc_equipe', 'public.pode_editar_algum(''bloco'')'),                                           -- bloco
+      ('cc_rpa_aldrete', 'public.pode_editar_algum(''bloco'')'),                                      -- bloco
       ('enf_escalas', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                          -- paciente, leitos
       ('enf_lesao_pressao', 'public.pode_editar_algum(''paciente'', ''leitos'', ''nsp'')'),           -- paciente, leitos, nsp
       ('enf_sae_checagem', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                     -- paciente, leitos
