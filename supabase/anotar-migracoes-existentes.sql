@@ -6,7 +6,7 @@
 -- ⚠️ ARQUIVO GERADO — não edite à mão (node supabase/gerar-conferencia.mjs).
 --
 -- ⚠️ O QUE ELE ASSUME, E COMO CONFERIR ANTES DE ACREDITAR
--- Ele marca as 107 migrações do repositório como aplicadas. A
+-- Ele marca as 108 migrações do repositório como aplicadas. A
 -- suposição é que o esquema deste banco está completo — razoável num
 -- sistema em uso, mas NÃO é fato até alguém olhar.
 --
@@ -35,6 +35,7 @@ values
   ('migracao-cirurgia-anestesia-rpa.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-cirurgia-descricao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-cirurgia-elo-atendimento.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-opme.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-cirurgia-paciente-equipe-codigo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-cirurgia-segura-registro.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-correcao-desfecho-corrida.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -131,4 +132,4 @@ select
   case when (select count(*) from public.pacientes) >= 40
        then 'DEMO (banco de teste)' else 'PRINCIPAL (hospital)' end as banco,
   (select count(*) from public.migracoes_aplicadas) as registradas,
-  107 as esperadas;
+  108 as esperadas;

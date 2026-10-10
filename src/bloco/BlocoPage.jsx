@@ -15,11 +15,13 @@ import { conflitosDeSala, diasUteisNoMes } from "./agenda.js";
 import { CC_MOTIVOS_CANCELAMENTO, CC_STATUS, CHECKLIST_OMS, LATERALIDADE } from "./catalogo.js";
 import { MOTIVO_MIN, confirmados, conferirRegistro, contagensQueNaoFecham, contagemFecha, linhaDaConferencia, linhaDoPulo, conferirPulo, resumoDaTrilha, pendenteAntesDe } from "./cirurgia-segura.js";
 import { CARATER, PAPEIS_EQUIPE, PAPEL_POR_CHAVE, conferirMembro, linhaDeEquipe, pendenciasDeFaturamento, resumoDaEquipe, procedimentoEscolhido } from "./equipe.js";
-import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcAldreteDoDia, loadCcAnestesiaDoDia, loadCcDescricoesDoDia, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadPacientesDoMapa, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, registrarAldrete, registrarAnestesia, registrarChecklist, registrarDescricao, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
+import { addCcCirurgiaRemote, addMembroEquipe, deleteCcSalaRemote, loadCcChecklistDoDia, loadCcCirurgias, loadCcAldreteDoDia, loadCcAnestesiaDoDia, loadCcOpmeDoDia, loadItensDoEstoque, loadCcDescricoesDoDia, loadCcEquipeDoDia, loadCcSalas, loadAtendimentosDoPaciente, loadPacientesDoMapa, loadProcedimentosDoCatalogo, loadProfissionaisDoBloco, rastrearLote, registrarAldrete, registrarAnestesia, registrarOpme, registrarChecklist, registrarDescricao, removerMembroEquipe, updateCcCirurgiaRemote, upsertCcSalaRemote } from "./dados.js";
 import DescricaoCirurgicaModal from "./DescricaoCirurgica.jsx";
 import { horasSemDescricao, jaOperou, semDescricao } from "./descricao.js";
 import { FichaAnestesicaModal, RecuperacaoModal } from "./AnestesiaRpa.jsx";
 import { resumoDaFicha } from "./anestesia.js";
+import { OpmeModal, RastrearLote } from "./Opme.jsx";
+import { implantesVigentes, resumoDoMaterial } from "./opme.js";
 import { conferirIniciaisDaCirurgia, indexarCadastros, iniciaisDoAgendamento } from "./identidade-cirurgia.js";
 import { useEffect, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
@@ -73,6 +75,10 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const [aldrete, setAldrete] = useState([]);
   const [anestesiando, setAnestesiando] = useState(null);
   const [recuperando, setRecuperando] = useState(null);
+  // O material do dia, o catálogo do almoxarifado e a cirurgia aberta.
+  const [materiais, setMateriais] = useState([]);
+  const [itensEstoque, setItensEstoque] = useState([]);
+  const [materiando, setMateriando] = useState(null);
   const subBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "8px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13 });
 
   // 🔴 "Não li" nunca vira "não tem". Com a rede caída, esta tela afirmava
@@ -89,10 +95,10 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // os nós do DOM por baixo de quem estava clicando.
     const ids = (Array.isArray(c) ? c : []).map(x => x.id);
     const pronts = (Array.isArray(c) ? c : []).map(x => x.prontuario);
-    const [t, eq, de, pac, fi, al] = await Promise.all([
+    const [t, eq, de, pac, fi, al, op] = await Promise.all([
       loadCcChecklistDoDia(sb, ids), loadCcEquipeDoDia(sb, ids),
       loadCcDescricoesDoDia(sb, ids), loadPacientesDoMapa(sb, pronts),
-      loadCcAnestesiaDoDia(sb, ids), loadCcAldreteDoDia(sb, ids),
+      loadCcAnestesiaDoDia(sb, ids), loadCcAldreteDoDia(sb, ids), loadCcOpmeDoDia(sb, ids),
     ]);
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
@@ -100,7 +106,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // o cartão dizer "não conferi" em vez de inventar "não cadastrado".
     setSalas(s); setCirurgias(c); setTrilha(t); setEquipe(eq);
     setDescricoes(de); setCadastros(indexarCadastros(pac));
-    setFichas(fi); setAldrete(al);
+    setFichas(fi); setAldrete(al); setMateriais(op);
   }
   // O catálogo de procedimentos não muda com o dia do mapa: carrega uma
   // vez, e não a cada 30s junto com o resto.
@@ -108,6 +114,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     if (!sb) return;
     loadProcedimentosDoCatalogo(sb).then(setProcedimentos);
     loadProfissionaisDoBloco(sb).then(setProfissionais);
+    loadItensDoEstoque(sb).then(setItensEstoque);
   }, [sb]);
 
   useEffect(() => {
@@ -248,6 +255,20 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     const r = await updateCcCirurgiaRemote(sb, c.id, { status: "concluida", rpa_saida_em: nowISO() });
     if (!r.ok) return { ok: false, motivo: r.motivo };
     registrarAuditoria(sb, currentUser, "bloco: alta da RPA", c.iniciais, {});
+    setErro(null); await refresh();
+    return { ok: true };
+  }
+
+  /**
+   * Grava uma linha de material. O gatilho decide a baixa no kardex e,
+   * quando ela falha, registra a pendência SEM derrubar o rastreio.
+   */
+  async function gravarOpme(c, corpo) {
+    const r = await registrarOpme(sb, corpo, currentUser);
+    if (!r.ok) return { ok: false, motivo: r.motivo };
+    registrarAuditoria(sb, currentUser,
+      corpo.estorno_de ? "bloco: estorno de OPME" : "bloco: OPME",
+      `${c.iniciais} · ${corpo.descricao || "?"}${corpo.lote ? ` · lote ${corpo.lote}` : ""}`, {});
     setErro(null); await refresh();
     return { ok: true };
   }
@@ -432,6 +453,21 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
             style={btnContorno(c.descricao_em ? "var(--text-3)" : "#8b5cf6")}>
             {c.descricao_em ? "Ver / corrigir descrição cirúrgica" : "Escrever a descrição cirúrgica"}
           </button>
+          <button onClick={() => setMateriando(c)}
+            style={btnContorno(c.opme_em ? "var(--text-3)" : "#8b5cf6")}>
+            {c.opme_em ? "Ver / registrar material" : "Material e OPME"}
+          </button>
+          {/* Os implantes no próprio cartão: é o que a equipe confere no
+              fim da sala, e é o que falta quando chega um recall. */}
+          {(() => {
+            const meus = implantesVigentes(materiais.filter(m => String(m.cirurgia_id) === String(c.id)));
+            if (!meus.length) return null;
+            return (
+              <span style={{ fontSize: 11.5, color: "#8b5cf6", lineHeight: 1.5 }}>
+                {meus.length} implante(s): {meus.map(resumoDoMaterial).join(" | ")}
+              </span>
+            );
+          })()}
           <button onClick={() => setAnestesiando(c)}
             style={btnContorno(c.anestesia_em ? "var(--text-3)" : "#8b5cf6")}>
             {c.anestesia_em ? "Ver / corrigir ficha anestésica" : "Escrever a ficha anestésica"}
@@ -510,9 +546,19 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       <div style={{ display: "flex", gap: 8, marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <button onClick={() => setSub("mapa")} style={subBtn(sub === "mapa")}>Mapa do dia</button>
         <button onClick={() => setSub("indicadores")} style={subBtn(sub === "indicadores")}>Indicadores</button>
+        {/* 🔴 A aba que justifica a tabela de OPME existir. Fica no
+            primeiro nível porque quem a abre está com um comunicado de
+            recall na mão — não é relatório para procurar em submenu. */}
+        <button onClick={() => setSub("rastreio")} style={subBtn(sub === "rastreio")}>Rastrear lote</button>
       </div>
 
       {sub === "indicadores" && <BlocoIndicadores sb={sb} salasAtivas={salasAtivas} />}
+      {sub === "rastreio" && (
+        <div style={{ padding: "0 0 1.5rem" }}>
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Rastrear lote de OPME</div>
+          <RastrearLote onBuscar={t => rastrearLote(sb, t)} />
+        </div>
+      )}
 
       {sub === "mapa" && (<>
       {/* Escrita que não se confirmou. Fica no topo porque muda o que a
@@ -623,6 +669,19 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
           assinatura={assinaturaTexto(currentUser)}
           onClose={() => setDescrevendo(null)}
           onConfirm={corpo => gravarDescricao(descrevendo, corpo)} />
+      )}
+      {materiando && (
+        <OpmeModal
+          cirurgia={materiando}
+          /* A marca de FALHA precisa chegar ao modal: filtrar devolve
+             array comum, e aqui "não li" viraria "não usou material". */
+          materiais={naoDeuParaLer(materiais) ? materiais
+            : materiais.filter(m => String(m.cirurgia_id) === String(materiando.id))}
+          itens={itensEstoque}
+          assinatura={assinaturaTexto(currentUser)}
+          onClose={() => setMateriando(null)}
+          onRegistrar={corpo => gravarOpme(materiando, corpo)}
+          onEstornar={corpo => gravarOpme(materiando, corpo)} />
       )}
       {anestesiando && (
         <FichaAnestesicaModal

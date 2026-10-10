@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 112 tabelas, 1832 colunas.
+-- Cobertura atual: 113 tabelas, 1854 colunas.
 -- ============================================================
 
 with
@@ -39,6 +39,7 @@ tabelas(nome, origem) as (values
   ('cc_cirurgias','schema'),
   ('cc_descricao','cirurgia-descricao'),
   ('cc_equipe','cirurgia-paciente-equipe-codigo'),
+  ('cc_opme','cirurgia-opme'),
   ('cc_rpa_aldrete','cirurgia-anestesia-rpa'),
   ('cc_salas','schema'),
   ('cid_referencia','schema'),
@@ -397,6 +398,7 @@ colunas(tabela, coluna, origem) as (values
   ('cc_cirurgias','lateralidade','cirurgia-segura-registro'),
   ('cc_cirurgias','observacao','schema'),
   ('cc_cirurgias','opme','schema'),
+  ('cc_cirurgias','opme_em','cirurgia-opme'),
   ('cc_cirurgias','procedimento','schema'),
   ('cc_cirurgias','procedimento_cod','cirurgia-paciente-equipe-codigo'),
   ('cc_cirurgias','prontuario','schema'),
@@ -445,6 +447,27 @@ colunas(tabela, coluna, origem) as (values
   ('cc_equipe','uf_conselho','cirurgia-paciente-equipe-codigo'),
   ('cc_equipe','updated_at','cirurgia-paciente-equipe-codigo'),
   ('cc_equipe','usuario','cirurgia-paciente-equipe-codigo'),
+  ('cc_opme','assinatura','cirurgia-opme'),
+  ('cc_opme','baixa_estoque','cirurgia-opme'),
+  ('cc_opme','baixa_motivo','cirurgia-opme'),
+  ('cc_opme','cirurgia_id','cirurgia-opme'),
+  ('cc_opme','consignado','cirurgia-opme'),
+  ('cc_opme','criado_em','cirurgia-opme'),
+  ('cc_opme','descricao','cirurgia-opme'),
+  ('cc_opme','estorno_de','cirurgia-opme'),
+  ('cc_opme','estorno_motivo','cirurgia-opme'),
+  ('cc_opme','fabricante','cirurgia-opme'),
+  ('cc_opme','fornecedor_id','cirurgia-opme'),
+  ('cc_opme','id','cirurgia-opme'),
+  ('cc_opme','implante','cirurgia-opme'),
+  ('cc_opme','item_id','cirurgia-opme'),
+  ('cc_opme','lote','cirurgia-opme'),
+  ('cc_opme','movimento_id','cirurgia-opme'),
+  ('cc_opme','numero_serie','cirurgia-opme'),
+  ('cc_opme','quantidade','cirurgia-opme'),
+  ('cc_opme','registro_anvisa','cirurgia-opme'),
+  ('cc_opme','usuario','cirurgia-opme'),
+  ('cc_opme','validade','cirurgia-opme'),
   ('cc_rpa_aldrete','assinatura','cirurgia-anestesia-rpa'),
   ('cc_rpa_aldrete','atividade','cirurgia-anestesia-rpa'),
   ('cc_rpa_aldrete','circulacao','cirurgia-anestesia-rpa'),
