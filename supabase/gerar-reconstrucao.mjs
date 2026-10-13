@@ -326,6 +326,7 @@ const ORDEM = [
   // OPME com lote: responde "em quem implantamos este lote" (RDC 751/2022).
   // Depende de sup_itens e sup_movimentos — o gatilho dá baixa no kardex.
   "migracao-cirurgia-opme.sql",
+  "migracao-sadt-exames.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

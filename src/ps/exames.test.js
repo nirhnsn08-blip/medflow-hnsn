@@ -1,15 +1,31 @@
 // ═══════════════════════════════════════════════════════════
 // O CICLO DE VIDA DO EXAME
 //
-// 🔴 O vocabulário destes três estados vivia em TRÊS cópias, e nenhuma tinha
+// 🔴 O vocabulário destes estados vivia em TRÊS cópias, e nenhuma tinha
 // teste. O que se protege aqui não é o rótulo na tela — é a diferença entre
 // "o laboratório ainda não respondeu" e "respondeu e ninguém leu". Somar as
 // duas dá um número maior e mais calmo do que a verdade.
+//
+// 🔴 ERAM TRÊS ESTADOS; SÃO CINCO (13/10/2026). `coletado` e `cancelado`
+// entraram com as tabelas do SADT (`migracao-sadt-exames.sql`), e os dois
+// tinham de entrar AQUI — não ao lado:
+//
+//   · `coletado` separa "ninguém puncionou ainda" de "o material está no
+//     laboratório". É dali que o prazo do laboratório conta, e era a
+//     diferença que a enfermagem não tinha como registrar;
+//   · `cancelado` existe porque exame que não vai ser feito ficava pendente
+//     para sempre — e exame pendente trava a alta.
+//
+// ⚠️ O cabeçalho de `exames.js` previu exatamente o defeito que esses dois
+// causariam se o vocabulário não crescesse junto: "um quarto estado no banco
+// faria a tela mostrar um rótulo, o BI contar como pendente e o painel do
+// plantão contar como aguardando". Os testes abaixo são a cobrança disso.
 // ═══════════════════════════════════════════════════════════
 
 import { describe, it, expect } from "vitest";
 import {
-  EXAME_CATEGORIAS, EXAME_ESTADOS, EXAME_RESULTADO, EXAME_SOLICITADO, EXAME_VISTO,
+  EXAME_CANCELADO, EXAME_CATEGORIAS, EXAME_COLETADO, EXAME_ESTADOS, EXAME_PENDENTES,
+  EXAME_RESULTADO, EXAME_SOLICITADO, EXAME_VISTO,
   acaoDoExame, contarExames, estadoDoExame, resultadosNaoVistos, temResultado,
 } from "./exames.js";
 import { PS_EXAME_CATEGORIAS } from "./catalogo.js";
@@ -17,15 +33,31 @@ import { PS_EXAME_CATEGORIAS } from "./catalogo.js";
 const ex = status => ({ id: Math.random(), texto: "Hemograma", status });
 
 describe("🔴 estadoDoExame — o desconhecido é PENDENTE, não resolvido", () => {
-  it("lê os três estados", () => {
-    expect(estadoDoExame(ex(EXAME_SOLICITADO)).label).toBe("Aguardando resultado");
+  it("lê os cinco estados", () => {
+    // ⚠️ "Aguardando COLETA", e não mais "aguardando resultado": com
+    // `coletado` no vocabulário, o primeiro estado passou a significar que
+    // nem o material saiu — que é o que a enfermagem precisa ver.
+    expect(estadoDoExame(ex(EXAME_SOLICITADO)).label).toBe("Aguardando coleta");
+    expect(estadoDoExame(ex(EXAME_COLETADO)).label).toBe("Coletado, aguardando");
     expect(estadoDoExame(ex(EXAME_RESULTADO)).label).toBe("Resultado disponível");
     expect(estadoDoExame(ex(EXAME_VISTO)).label).toBe("Visto pelo médico");
+    expect(estadoDoExame(ex(EXAME_CANCELADO)).label).toBe("Cancelado");
+  });
+
+  it("🔴 os cinco são EXATAMENTE os cinco do check do banco", () => {
+    // Se o banco aceitar um sexto, a tela cai no fallback `solicitado` e o
+    // exame parece pendente para sempre — travando a alta de quem já foi
+    // embora. É a pergunta que ninguém faz sozinho.
+    expect(EXAME_ESTADOS.map(e => e.chave)).toEqual(
+      ["solicitado", "coletado", "resultado_disponivel", "visto", "cancelado"]);
   });
 
   it("🔴 status ausente, nulo ou desconhecido cai em SOLICITADO", () => {
     // Cair em "visto" sumiria com o exame da tela de quem espera o resultado.
-    for (const s of [undefined, null, "", "cancelado", "coletado", 0]) {
+    // ⚠️ `cancelado` e `coletado` SAÍRAM desta lista: eles existem agora, e
+    // ler um cancelado como "aguardando coleta" o traria de volta para a
+    // fila do laboratório.
+    for (const s of [undefined, null, "", "extraviado", "em_transito", 0]) {
       expect(estadoDoExame({ status: s }).chave, String(s)).toBe(EXAME_SOLICITADO);
     }
   });
@@ -36,8 +68,13 @@ describe("🔴 estadoDoExame — o desconhecido é PENDENTE, não resolvido", ()
     expect(estadoDoExame(undefined).chave).toBe(EXAME_SOLICITADO);
   });
 
-  it("⚠️ a ordem da lista É o ciclo: solicitado → resultado → visto", () => {
-    expect(EXAME_ESTADOS.map(e => e.chave)).toEqual([EXAME_SOLICITADO, EXAME_RESULTADO, EXAME_VISTO]);
+  it("⚠️ a ordem da lista É o ciclo: solicitado → coletado → resultado → visto", () => {
+    // ⚠️ `cancelado` fecha a lista e NÃO está no meio: ele não é uma etapa
+    // do caminho, é a saída dele. Pô-lo entre `coletado` e `resultado` faria
+    // qualquer tela que lê a ordem para oferecer "o próximo passo" sugerir
+    // cancelar um exame que acabou de ser coletado.
+    expect(EXAME_ESTADOS.map(e => e.chave)).toEqual(
+      [EXAME_SOLICITADO, EXAME_COLETADO, EXAME_RESULTADO, EXAME_VISTO, EXAME_CANCELADO]);
   });
 
   it("todo estado tem rótulo e cor", () => {
@@ -110,7 +147,17 @@ describe("🔴 resultadosNaoVistos — o resultado voltou e ninguém olhou", () 
   });
 
   it("⚠️ status desconhecido NÃO entra — não se acusa o que não se sabe ler", () => {
-    expect(resultadosNaoVistos([{ status: "coletado" }, null, undefined])).toEqual([]);
+    expect(resultadosNaoVistos([{ status: "extraviado" }, null, undefined])).toEqual([]);
+  });
+
+  it("⚠️ coletado não entra: o laboratório ainda não respondeu", () => {
+    // É pendência DELES, não do médico. A lista existe para acusar o
+    // silêncio de quem já recebeu a resposta.
+    expect(resultadosNaoVistos([{ status: EXAME_COLETADO }])).toEqual([]);
+  });
+
+  it("⚠️ cancelado não entra: não há resultado para ninguém ler", () => {
+    expect(resultadosNaoVistos([{ status: EXAME_CANCELADO }])).toEqual([]);
   });
 
   it("entradas estranhas devolvem lista vazia", () => {
@@ -123,8 +170,10 @@ describe("🔴 resultadosNaoVistos — o resultado voltou e ninguém olhou", () 
 describe("🔴 contarExames — aguardando é só o que não voltou", () => {
   const lista = [ex(EXAME_SOLICITADO), ex(EXAME_SOLICITADO), ex(EXAME_RESULTADO), ex(EXAME_VISTO)];
 
-  it("separa as três contas", () => {
-    expect(contarExames(lista)).toEqual({ total: 4, aguardando: 2, prontos: 1, vistos: 1 });
+  it("separa as contas", () => {
+    expect(contarExames(lista)).toEqual({
+      total: 4, aguardando: 2, coletados: 0, prontos: 1, vistos: 1, cancelados: 0,
+    });
   });
 
   it("🔴 'prontos' NÃO entra em 'aguardando'", () => {
@@ -132,18 +181,50 @@ describe("🔴 contarExames — aguardando é só o que não voltou", () => {
     // quando um deles é resultado parado na mão do médico.
     const c = contarExames(lista);
     expect(c.aguardando).toBe(2);
-    expect(c.aguardando + c.prontos + c.vistos).toBe(c.total);
+    expect(c.aguardando + c.prontos + c.vistos + c.cancelados).toBe(c.total);
+  });
+
+  it("🔴 'coletado' SOMA em aguardando — e os baldes fecham com o total", () => {
+    // Era o defeito previsto no cabeçalho de `exames.js`, acontecendo: com
+    // `coletado` novo no banco e `aguardando` contando só `solicitado`, o
+    // exame coletado desaparecia das DUAS pontas — não aparecia como
+    // pendente nem como pronto, e sumia da conta sem reduzir o total.
+    const c = contarExames([
+      ex(EXAME_SOLICITADO), ex(EXAME_COLETADO), ex(EXAME_COLETADO),
+      ex(EXAME_RESULTADO), ex(EXAME_VISTO), ex(EXAME_CANCELADO),
+    ]);
+    expect(c.total).toBe(6);
+    expect(c.aguardando).toBe(3);
+    expect(c.coletados).toBe(2);
+    expect(c.cancelados).toBe(1);
+    expect(c.aguardando + c.prontos + c.vistos + c.cancelados).toBe(c.total);
+  });
+
+  it("🔴 cancelado NÃO entra em aguardando — exame pendente trava a alta", () => {
+    const c = contarExames([ex(EXAME_CANCELADO), ex(EXAME_CANCELADO)]);
+    expect(c.aguardando).toBe(0);
+    expect(c.cancelados).toBe(2);
   });
 
   it("status desconhecido conta como aguardando, e não some do total", () => {
-    const c = contarExames([{ status: "coletado" }, ex(EXAME_VISTO)]);
-    expect(c).toEqual({ total: 2, aguardando: 1, prontos: 0, vistos: 1 });
+    const c = contarExames([{ status: "extraviado" }, ex(EXAME_VISTO)]);
+    expect(c).toEqual({
+      total: 2, aguardando: 1, coletados: 0, prontos: 0, vistos: 1, cancelados: 0,
+    });
   });
 
   it("lista vazia é tudo zero, e não estoura", () => {
     for (const v of [[], null, undefined, "x"]) {
-      expect(contarExames(v), String(v)).toEqual({ total: 0, aguardando: 0, prontos: 0, vistos: 0 });
+      expect(contarExames(v), String(v)).toEqual({
+        total: 0, aguardando: 0, coletados: 0, prontos: 0, vistos: 0, cancelados: 0,
+      });
     }
+  });
+
+  it("EXAME_PENDENTES é a lista que 'aguardando' soma", () => {
+    // Lista, e não comparação solta: foi um `=== "solicitado"` espalhado que
+    // fez este vocabulário se multiplicar em três cópias.
+    expect(EXAME_PENDENTES).toEqual([EXAME_SOLICITADO, EXAME_COLETADO]);
   });
 });
 

@@ -247,6 +247,21 @@ export const MAPA_TABELAS = {
   // A farmácia lê a prescrição do PS para preparar e dispensar.
   ps_prescricao_itens:      ["ps", "paciente", "farmacia"],
   ps_registros:             ["ps", "paciente", "farmacia"],
+
+  // ── Exames (SADT) ─────────────────────────────────────────
+  // O pedido e o resultado são prontuário: quem cuida do paciente lê.
+  // O exame é pedido no PS, no ambulatório e na internação — e lido
+  // sobretudo por quem NÃO pediu, que é o plantão seguinte.
+  sadt_pedidos:             ["ps", "paciente", "ambulatorio"],
+  sadt_itens:               ["ps", "paciente", "ambulatorio"],
+  sadt_resultados:          ["ps", "paciente", "ambulatorio"],
+  // 🔴 O catálogo e os ANALITOS são referência sem dado de paciente — e
+  // o analito precisa ser legível por quem lê o resultado, porque é dele
+  // que vêm a unidade e a faixa. Catálogo escondido faria o laudo
+  // aparecer sem referência, que é o estado de onde saímos.
+  sadt_catalogo:            [TODOS],
+  sadt_analitos:            [TODOS],
+
   // Fila de internação: nasce no PS, é trabalhada pelo NIR no Giro.
   solicitacoes:             ["ps", "leitos"],
 
@@ -343,6 +358,7 @@ export const SENSIVEIS = new Set([
   "prot_ativacoes", "prot_bundle_itens",
   "ps_administracoes", "ps_atendimentos", "ps_prescricao_itens",
   "ps_registros", "ps_salas", "ps_sinais",
+  "sadt_itens", "sadt_pedidos", "sadt_resultados",
   "scih_casos", "solicitacoes",
 ]);
 

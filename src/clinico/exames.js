@@ -22,6 +22,9 @@ import { EXAME_CATEGORIAS as CATS, temResultado } from "../ps/exames.js";
 const CHAVES = new Set(CATS.map(c => c.chave));
 
 // Minutos entre solicitação e resultado. null se faltar data ou vier invertido.
+//
+// ⚠️ `criado_em` do ITEM não existe — quem tem a hora do pedido é o PEDIDO.
+// Quem chama monta a linha com as duas datas já no lugar (`examesParaBI`).
 function minutosAteResultado(e) {
   if (!e || !e.criado_em || !e.resultado_em) return null;
   const ini = new Date(e.criado_em), fim = new Date(e.resultado_em);

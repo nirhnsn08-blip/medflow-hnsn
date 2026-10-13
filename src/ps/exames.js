@@ -18,8 +18,10 @@
 import { PS_EXAME_CATEGORIAS } from "./catalogo.js";
 
 export const EXAME_SOLICITADO = "solicitado";
+export const EXAME_COLETADO   = "coletado";
 export const EXAME_RESULTADO  = "resultado_disponivel";
 export const EXAME_VISTO      = "visto";
+export const EXAME_CANCELADO  = "cancelado";
 
 /**
  * Os três estados, na ordem em que acontecem.
@@ -29,10 +31,20 @@ export const EXAME_VISTO      = "visto";
  * um objeto solto.
  */
 export const EXAME_ESTADOS = [
-  { chave: EXAME_SOLICITADO, label: "Aguardando resultado", cor: "#d97706" },
+  { chave: EXAME_SOLICITADO, label: "Aguardando coleta",    cor: "#d97706" },
+  { chave: EXAME_COLETADO,   label: "Coletado, aguardando", cor: "#f59e0b" },
   { chave: EXAME_RESULTADO,  label: "Resultado disponível", cor: "#3b82f6" },
   { chave: EXAME_VISTO,      label: "Visto pelo médico",    cor: "#34d399" },
+  { chave: EXAME_CANCELADO,  label: "Cancelado",            cor: "#64748b" },
 ];
+
+/**
+ * Os estados em que o exame ainda está PENDENTE com o laboratório.
+ *
+ * ⚠️ Lista, não comparação solta: foi exatamente um `=== "solicitado"`
+ * espalhado que fez o vocabulário se multiplicar em três cópias.
+ */
+export const EXAME_PENDENTES = [EXAME_SOLICITADO, EXAME_COLETADO];
 
 const POR_CHAVE = Object.fromEntries(EXAME_ESTADOS.map(e => [e.chave, e]));
 
@@ -69,8 +81,15 @@ export function temResultado(status) {
  */
 export function acaoDoExame(reg) {
   const chave = estadoDoExame(reg).chave;
-  if (chave === EXAME_SOLICITADO) return "lancar_resultado";
+  // ⚠️ `coletado` oferece a MESMA ação que `solicitado`: o material já saiu
+  // da mão da enfermagem, e quem lança resultado é o laboratório de qualquer
+  // jeito. A coleta é um marco de tempo, não um portão.
+  if (chave === EXAME_SOLICITADO || chave === EXAME_COLETADO) return "lancar_resultado";
   if (chave === EXAME_RESULTADO)  return "marcar_visto";
+  // 🔴 `cancelado` e `visto` são finais e não oferecem nada. Relançar por
+  // cima de um `visto` apagaria o que o médico leu para decidir a conduta;
+  // lançar em `cancelado` é resultado de exame que não foi feito — e o
+  // gatilho do banco recusa isso de qualquer forma.
   return null;
 }
 
@@ -98,10 +117,17 @@ export function resultadosNaoVistos(exames) {
 export function contarExames(exames) {
   const lista = (Array.isArray(exames) ? exames : []).filter(Boolean);
   const porEstado = c => lista.filter(e => estadoDoExame(e).chave === c).length;
+  // 🔴 `aguardando` SOMA solicitado e coletado, e os quatro baldes têm de
+  // fechar com o total. Quando `coletado` entrou no vocabulário, contar só
+  // `solicitado` fazia o exame coletado desaparecer das duas pontas: não
+  // aparecia como pendente nem como pronto. Era o defeito que o cabeçalho
+  // deste arquivo previu, acontecendo de novo.
   return {
     total: lista.length,
-    aguardando: porEstado(EXAME_SOLICITADO),
+    aguardando: porEstado(EXAME_SOLICITADO) + porEstado(EXAME_COLETADO),
+    coletados: porEstado(EXAME_COLETADO),
     prontos: porEstado(EXAME_RESULTADO),
     vistos: porEstado(EXAME_VISTO),
+    cancelados: porEstado(EXAME_CANCELADO),
   };
 }

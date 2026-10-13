@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest";
 import {
   loadPsAtendimentos, loadPsFinalizadosHoje, loadPsAtendimentosPeriodo,
-  loadPsSinais, loadPsRegistros, loadPsExamesPendentes, loadPsSalas, loadPsProtocolos,
+  loadPsSinais, loadPsRegistros, loadPsSalas, loadPsProtocolos,
   loadPsPrescricaoItens, loadPsPrescricaoItensByAtendimentos,
   loadPsAdministracoes, loadPsAdministracoesByAtendimentos,
   addPsAtendimentoRemote, updatePsAtendimentoRemote, patchPsAtendimentoDireto,
@@ -93,7 +93,11 @@ describe("o `sb` é o primeiro argumento de todas", () => {
   it("🔴 lista de ids vazia não vira consulta sem filtro", async () => {
     // `in.()` sem nada dentro traz a tabela INTEIRA. Em `ps_prescricao_itens`
     // isso é o navegador travando, não um erro visível.
-    for (const fn of [loadPsPrescricaoItensByAtendimentos, loadPsAdministracoesByAtendimentos, loadPsExamesPendentes]) {
+    // ⚠️ `loadPsExamesPendentes` saiu desta lista porque saiu do arquivo: o
+    // exame foi para as tabelas do SADT. A MESMA guarda vive agora em
+    // `src/sadt/dados.test.js`, sobre as cinco cargas que recebem lista de
+    // ids — a propriedade não some junto com a função.
+    for (const fn of [loadPsPrescricaoItensByAtendimentos, loadPsAdministracoesByAtendimentos]) {
       const sb = espiao([]);
       const r = await fn(sb, []);
       expect(r, fn.name).toEqual([]);

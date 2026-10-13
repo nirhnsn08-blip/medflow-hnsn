@@ -75,12 +75,6 @@ export async function loadPsAtendimentosPeriodo(sb, ano, mes) {
   return listaLida(rows);
 }
 
-export async function loadPsExamesPeriodo(sb, ano, mes) {
-  const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
-  const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
-  const rows = await sb(`ps_registros?tipo=eq.exame&criado_em=gte.${ini.toISOString()}&criado_em=lt.${fim.toISOString()}&select=categoria,status,criado_em,resultado_em&order=criado_em.asc`);
-  return listaLida(rows);
-}
 
 export async function addPsAtendimentoRemote(sb, at, user) {
   if (!sb) return null;
@@ -160,12 +154,27 @@ export async function loadPsRegistros(sb, atendimentoId) {
   return listaLida(rows);
 }
 
-export async function loadPsExamesPendentes(sb, ids) {
-  if (!ids.length) return [];
-  const rows = await sb(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.exame&status=neq.visto&select=atendimento_id,status`);
-  return listaLida(rows);
-}
 
+/**
+ * 🔴 `loadPsExamesPeriodo` E `loadPsExamesPendentes` SAÍRAM DAQUI (13/10/2026).
+ *
+ * O exame deixou de ser uma linha de `ps_registros` com `tipo='exame'` e
+ * passou às tabelas do SADT (`migracao-sadt-exames.sql`), que levou o que
+ * havia no backfill. Os substitutos são `loadSadtExamesPeriodo` e
+ * `loadSadtPendentesPorAtendimento`, em `src/sadt/dados.js`, e devolvem o
+ * MESMO formato de propósito — `contarExames` e `resumoExamesPorCategoria`
+ * são as réguas da fila e do relatório, e régua é uma só.
+ *
+ * ⚠️ APAGADOS, e não deixados de lado: enquanto existissem, haveria dois
+ * caminhos para "os exames do paciente" — um deles lendo uma tabela que já
+ * não recebe exame novo. Duas fontes concordando por sorte foi o defeito
+ * que este módulo inteiro existe para desfazer.
+ *
+ * ⚠️ `neq.visto` da versão antiga virou uma lista explícita de estados no
+ * substituto: com `cancelado` no vocabulário, `neq.visto` faria exame
+ * cancelado contar como pendente e travar a alta de um paciente por um
+ * exame que ninguém vai fazer.
+ */
 export async function addPsRegistroRemote(sb, reg, user) {
   if (!sb) return null;
   return await sb("ps_registros", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
