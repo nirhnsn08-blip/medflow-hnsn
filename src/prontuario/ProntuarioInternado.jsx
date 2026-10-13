@@ -14,7 +14,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
    diasInternacao, prescricaoVigente, itensAtivos,
-  horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce,
+  horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce, ESCALA_ALERTA,
   timelineEpisodio,
 } from "../clinico/prontuario.js";
 import { situacaoAlergica } from "../clinico/alergias.js";
@@ -462,6 +462,22 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
 }
 
 // ── SINAIS VITAIS ───────────────────────────────────────────
+/**
+ * 🔴 `o2_dispositivo` e `o2_fluxo` existiam no banco desde
+ * `migracao-pep-sinais-spo2.sql` e NÃO tinham campo — colunas sem input,
+ * e coluna vazia não dá erro.
+ *
+ * Não entram no escore (o NEWS pontua O₂ sim/não, não o fluxo), mas
+ * entram no registro: "em O₂" sem dizer sob o quê não permite comparar
+ * a aferição de agora com a de duas horas atrás, que é como se decide
+ * desmame.
+ */
+export const DISPOSITIVOS_O2 = [
+  ["cateter", "Cateter nasal"], ["mascara", "Máscara"],
+  ["venturi", "Máscara de Venturi"], ["reservatorio", "Máscara com reservatório"],
+  ["vni", "VNI"], ["tot", "Tubo orotraqueal"], ["traqueo", "Traqueostomia"],
+];
+
 const CAMPOS_SV = [
   ["pa_sist", "PA sist"], ["pa_diast", "PA diast"], ["fc", "FC"], ["fr", "FR"],
   ["temp", "Temp °C"], ["spo2", "SpO₂ %"], ["glicemia", "Glicemia"], ["dor", "Dor 0-10"],
@@ -477,11 +493,30 @@ function Sinais({ serie, ep, canEdit, sb, user, onOk }) {
     for (const [k] of CAMPOS_SV) if (f[k] !== "" && f[k] != null) sv[k] = Number(f[k]);
     if (!Object.keys(sv).length) return;
     setSalvando(true);
-    await registrarSinais(sb, ep, { ...sv, consciencia: f.consciencia || "A", o2_suplementar: !!f.o2_suplementar }, user);
+    const corpo = {
+      ...sv,
+      consciencia: f.consciencia || "A",
+      o2_suplementar: !!f.o2_suplementar,
+      // Dispositivo e fluxo só fazem sentido com O₂ ligado: gravá-los
+      // soltos deixaria "cateter nasal" num paciente em ar ambiente.
+      o2_dispositivo: f.o2_suplementar ? (f.o2_dispositivo || null) : null,
+      o2_fluxo: f.o2_suplementar && f.o2_fluxo !== "" && f.o2_fluxo != null
+        ? Number(f.o2_fluxo) : null,
+    };
+    // 🔴 O ESCORE VAI CARIMBADO, e as colunas existiam desde a pep-fase1
+    // sem ninguém escrever nelas. É o que o sistema DISSE no momento da
+    // aferição — e é por ele que alguém decidiu (ou não) chamar o médico.
+    // A tela segue mostrando o escore recalculado, para uma correção na
+    // fórmula valer para trás; o carimbo é o registro, não a verdade.
+    const n = scoreAlertaPrecoce(corpo);
+    if (n) { corpo.score_alerta = n.score; corpo.escala_alerta = ESCALA_ALERTA; }
+    await registrarSinais(sb, ep, corpo, user);
     setF({}); setSalvando(false); onOk();
   }
 
-  const previa = scoreAlertaPrecoce({ ...f, consciencia: f.consciencia || "A" });
+  // ⚠️ `o2_suplementar` entra na PRÉVIA também: sem isso a tela mostraria
+  // um NEWS e gravaria outro, dois pontos acima.
+  const previa = scoreAlertaPrecoce({ ...f, consciencia: f.consciencia || "A", o2_suplementar: !!f.o2_suplementar });
 
   return (
     <div>
@@ -499,8 +534,22 @@ function Sinais({ serie, ep, canEdit, sb, user, onOk }) {
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={!!f.o2_suplementar} onChange={e => set("o2_suplementar", e.target.checked)} />
-              Em O₂ suplementar
+              Em O₂ suplementar <strong style={{ color: "#d97706" }}>(+2 no NEWS)</strong>
             </label>
+            {/* Só aparecem com o O₂ ligado — e num container fixo, para o
+                campo ao lado não remontar quando eles somem. */}
+            <div key="o2-detalhe" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {f.o2_suplementar && (<>
+                <select value={f.o2_dispositivo || ""} onChange={e => set("o2_dispositivo", e.target.value)}
+                  style={{ ...inp, width: 170 }}>
+                  <option value="">— dispositivo —</option>
+                  {DISPOSITIVOS_O2.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+                <input type="number" step="any" min="0" placeholder="L/min"
+                  value={f.o2_fluxo ?? ""} onChange={e => set("o2_fluxo", e.target.value)}
+                  style={{ ...inp, width: 90 }} />
+              </>)}
+            </div>
             {previa && (
               <span style={{ fontSize: 12, fontWeight: 700, color: previa.nivel === "alto" ? "#f43f5e" : previa.nivel === "medio" ? "#d97706" : "#34d399" }}>
                 NEWS previsto: {previa.score} ({previa.nivel})
