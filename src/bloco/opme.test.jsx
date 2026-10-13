@@ -21,7 +21,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, cleanup, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   NATUREZAS, agruparRecall, conferirEstorno, conferirOpme, estornada,
-  implantesVigentes, linhaDeEstorno, linhaDeOpme, pendentesDeBaixa,
+  formularioVazio, implantesVigentes, linhaDeEstorno, linhaDeOpme, pendentesDeBaixa,
+  proximoFormulario,
   resumoDoMaterial, termoDeBusca, vigentes,
 } from "./opme.js";
 import { OpmeModal, RastrearLote } from "./Opme.jsx";
@@ -318,5 +319,66 @@ describe("o modal do material", () => {
   it("🔴 leitura falhada avisa que a lista pode não ser tudo", () => {
     abrir({ materiais: FALHA });
     expect(screen.getByText(/Não consegui ler o material desta cirurgia/)).toBeTruthy();
+  });
+});
+
+// ── O QUE SOBRA NA TELA DEPOIS DE GRAVAR ────────────────────
+//
+// 🔴 ACHADO CAMINHANDO PELO DEMO (13/10/2026), e eram DOIS defeitos num.
+// Registrei uma prótese consignada e depois dois descartáveis; os três
+// saíram marcados como consignado — e os dois últimos com o fabricante da
+// prótese. Nenhum teste pegaria: cada registro, sozinho, estava certo.
+describe("🔴 o próximo item não herda dado do anterior", () => {
+  it("o formulário vazio não traz nada marcado", () => {
+    const f = formularioVazio();
+    expect(f.consignado).toBe(false);
+    expect(f.fabricante).toBe("");
+    expect(f.item_id).toBe("");
+    expect(f.quantidade).toBe(1);
+  });
+
+  it("🔴 `consignado` NÃO sobrevive — é o campo que decide se o kardex é tocado", () => {
+    const depois = proximoFormulario({ natureza: "descartavel", consignado: true });
+    expect(depois.consignado).toBe(false);
+  });
+
+  it("🔴 `fabricante` e `validade` NÃO sobrevivem — seriam dado de OUTRO produto", () => {
+    const depois = proximoFormulario({
+      natureza: "implante", fabricante: "OrtoMed Implantes", validade: "2030-01-01",
+      lote: "LOT-A77", numero_serie: "SN-1", registro_anvisa: "801", item_id: "7", descricao: "Protese",
+    });
+    expect(depois.fabricante).toBe("");
+    expect(depois.validade).toBe("");
+    expect(depois.lote).toBe("");
+    expect(depois.numero_serie).toBe("");
+    expect(depois.registro_anvisa).toBe("");
+    expect(depois.item_id).toBe("");
+    expect(depois.descricao).toBe("");
+  });
+
+  it("só a NATUREZA sobrevive — é modo de trabalho, não descreve produto", () => {
+    // Registrar cinco descartáveis seguidos é o caso normal.
+    expect(proximoFormulario({ natureza: "descartavel" }).natureza).toBe("descartavel");
+    expect(proximoFormulario({}).natureza).toBe("implante");
+  });
+
+  it("🔴 na TELA: depois de gravar um consignado, o próximo não nasce consignado", async () => {
+    const onRegistrar = vi.fn(async () => ({ ok: true }));
+    render(<OpmeModal cirurgia={CIR} materiais={[]} itens={[{ id: 2, nome: "Compressa" }]}
+      onClose={vi.fn()} onRegistrar={onRegistrar} onEstornar={vi.fn()} />);
+    const marca = () => [...document.querySelectorAll('input[type="checkbox"]')]
+      .find(c => /Consignado/.test(c.closest("label")?.textContent || ""));
+
+    fireEvent.change(screen.getByPlaceholderText(/como está na etiqueta/), { target: { value: "Protese" } });
+    fireEvent.change(screen.getByPlaceholderText(/como está na embalagem/), { target: { value: "LOT-A77" } });
+    fireEvent.click(marca());
+    expect(marca().checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /Registrar material/ }));
+    await waitFor(() => expect(onRegistrar).toHaveBeenCalled());
+
+    // O item seguinte começa limpo.
+    await waitFor(() => expect(marca().checked).toBe(false));
+    expect(screen.getByPlaceholderText(/como está na etiqueta/).value).toBe("");
+    expect(screen.getByPlaceholderText(/como está na embalagem/).value).toBe("");
   });
 });

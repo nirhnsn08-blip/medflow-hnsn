@@ -18,7 +18,8 @@ import { fmtDataBR } from "../util/datas.js";
 import { naoDeuParaLer } from "../util/leitura.js";
 import {
   NATUREZAS, agruparRecall, conferirEstorno, conferirOpme, estornada,
-  linhaDeEstorno, linhaDeOpme, pendentesDeBaixa, resumoDoMaterial, vigentes,
+  formularioVazio, linhaDeEstorno, linhaDeOpme, pendentesDeBaixa,
+  proximoFormulario, resumoDoMaterial, vigentes,
 } from "./opme.js";
 
 const fundo = { position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 };
@@ -32,10 +33,7 @@ export function OpmeModal({ cirurgia, materiais = [], itens = [], assinatura = n
   const valem = vigentes(materiais);
   const pendentes = pendentesDeBaixa(materiais);
 
-  const [form, setForm] = useState({
-    natureza: "implante", descricao: "", item_id: "", lote: "", numero_serie: "",
-    registro_anvisa: "", fabricante: "", validade: "", quantidade: 1, consignado: false,
-  });
+  const [form, setForm] = useState(() => formularioVazio());
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState(null);
 
@@ -49,7 +47,10 @@ export function OpmeModal({ cirurgia, materiais = [], itens = [], assinatura = n
     const r = await onRegistrar(linhaDeOpme({ cirurgia, form, assinatura }));
     setBusy(false);
     if (!r?.ok) { setErro(r?.motivo || "Nada foi gravado."); return; }
-    setForm(f => ({ ...f, descricao: "", lote: "", numero_serie: "", registro_anvisa: "", quantidade: 1 }));
+    // ⚠️ Limpa TUDO que descreve o produto. Guardar `consignado`,
+    // `fabricante` ou `validade` faz o próximo item herdar dado do
+    // anterior — ver `proximoFormulario`.
+    setForm(proximoFormulario);
   }
 
   async function estornar(linha) {

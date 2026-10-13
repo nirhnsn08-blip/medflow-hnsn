@@ -133,6 +133,35 @@ export function conferirEstorno({ linha, motivo = "", todas = [] } = {}) {
   return null;
 }
 
+/** O formulário vazio. `natureza` é o único campo que é MODO, não dado. */
+export function formularioVazio(natureza = "implante") {
+  return {
+    natureza, descricao: "", item_id: "", lote: "", numero_serie: "",
+    registro_anvisa: "", fabricante: "", validade: "", quantidade: 1, consignado: false,
+  };
+}
+
+/**
+ * 🔴 O QUE SOBRA NA TELA DEPOIS DE GRAVAR — achado caminhando pelo demo
+ * (13/10/2026), e eram DOIS defeitos num.
+ *
+ * O reset guardava `consignado`, `fabricante`, `validade` e `item_id` do
+ * item anterior:
+ *
+ *   1. `consignado` é o campo que decide se o KARDEX é tocado. Marcado
+ *      uma vez para a prótese, ele seguiu marcado, e os dois descartáveis
+ *      seguintes não baixaram estoque — em silêncio, sem ninguém pedir.
+ *   2. `fabricante` vazou "OrtoMed Implantes" para um protetor facial e
+ *      um avental. É DADO ERRADO ATRIBUÍDO A OUTRO PRODUTO, numa tabela
+ *      cuja razão de existir é dizer de quem é o produto que está no
+ *      paciente. Um recall por fabricante acharia o que não é dele.
+ *
+ * Só a NATUREZA sobrevive: ela é modo de trabalho (registrar cinco
+ * descartáveis seguidos é o caso normal) e não descreve produto nenhum.
+ */
+export function proximoFormulario(form = {}) {
+  return formularioVazio(form.natureza || "implante");
+}
 /** A linha para gravar. A baixa de estoque é decidida pelo BANCO. */
 export function linhaDeOpme({ cirurgia, form = {}, assinatura = null } = {}) {
   const nat = NATUREZA_POR_CHAVE[txt(form.natureza)] || null;
