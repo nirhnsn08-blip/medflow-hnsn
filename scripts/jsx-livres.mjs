@@ -32,9 +32,24 @@ const P = process.argv[2];
 if (!P) { console.error("uso: node scripts/jsx-livres.mjs <arquivo.jsx>"); process.exit(2); }
 const txt = fs.readFileSync(P, "utf8");
 
+// ⚠️ SEM OS COMENTÁRIOS — terceiro falso positivo desta lista.
+//
+// O `BlocoPage.jsx` explica, em prosa, que `<CirurgiaCard c={c} />` ERA o
+// defeito (componente definido dentro do render) — e o detector leu a
+// explicação como uso. Arquivo que documenta o próprio erro é a regra
+// nesta casa, então o detector tem de ler só código.
+//
+// ⚠️ Tira bloco `/*…*/` e a linha que COMEÇA com `//` — nunca um `//` no
+// meio da linha: cortar em `"https://…"` apagaria o resto e poderia
+// esconder um `<Componente />` de verdade. Falso NEGATIVO num detector de
+// tela quebrada é pior que falso positivo.
+const codigo = txt
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .split(/\r?\n/).filter(l => !l.trim().startsWith("//")).join("\n");
+
 // nomes de componente usados em JSX: <Algo ...> e <Algo.Sub ...>
 const usados = new Set(
-  [...txt.matchAll(/<([A-Z][\w$.]*)/g)].map(m => m[1].split(".")[0]));
+  [...codigo.matchAll(/<([A-Z][\w$.]*)/g)].map(m => m[1].split(".")[0]));
 
 const definidos = new Set();
 // declarações, em qualquer indentação
