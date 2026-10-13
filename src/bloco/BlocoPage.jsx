@@ -85,7 +85,29 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   // "Nenhuma sala cadastrada" e — pior — "Sala livre neste dia" para cada
   // sala. A segunda é afirmação de ausência de cirurgia: alguém olha o mapa,
   // vê sala livre e encaixa uma urgência na sala onde há cirurgia marcada.
-  async function refresh(d = data) {
+  /**
+   * 🔴 `vivo` NÃO É ENFEITE — o CI do merge do #277 ficou vermelho por
+   * causa da falta dele, com 4.342 testes PASSANDO:
+   *
+   *     ReferenceError: window is not defined
+   *      ❯ refresh src/bloco/BlocoPage.jsx:104
+   *     This error was caught after test environment was torn down.
+   *
+   * Esta função espera DUAS rodadas de leitura — hoje nove tabelas — e
+   * só então aplica o estado. Se a pessoa sair da tela no meio (ou o
+   * teste desmontar o componente), o `setState` acontece num componente
+   * que não existe mais. Em produção isso é vazamento silencioso; no
+   * vitest, o ambiente já foi derrubado e o React estoura em `window`.
+   *
+   * ⚠️ O defeito estava aqui desde sempre — o que mudou foi o TEMPO: o
+   * PR do OPME acrescentou a sétima leitura ao `Promise.all`, e a
+   * resolução passou a cair depois do teardown numa máquina mais lenta
+   * que a minha. Não foi "CI instável": foi um guarda que faltava
+   * ficando visível.
+   *
+   * É o mesmo padrão que o Paciente 360 já usa no efeito do catálogo.
+   */
+  async function refresh(d = data, vivo = () => true) {
     if (!sb) return;
     const [s, c] = await Promise.all([loadCcSalas(sb), loadCcCirurgias(sb, d)]);
     // A trilha depende dos ids, então vem num segundo tempo — mas o estado
@@ -100,6 +122,8 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       loadCcDescricoesDoDia(sb, ids), loadPacientesDoMapa(sb, pronts),
       loadCcAnestesiaDoDia(sb, ids), loadCcAldreteDoDia(sb, ids), loadCcOpmeDoDia(sb, ids),
     ]);
+    // Saiu da tela enquanto as nove leituras voltavam: nada a aplicar.
+    if (!vivo()) return;
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
     // `indexarCadastros` devolve null quando a leitura falhou: é o que faz
@@ -112,17 +136,26 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   // vez, e não a cada 30s junto com o resto.
   useEffect(() => {
     if (!sb) return;
-    loadProcedimentosDoCatalogo(sb).then(setProcedimentos);
-    loadProfissionaisDoBloco(sb).then(setProfissionais);
-    loadItensDoEstoque(sb).then(setItensEstoque);
+    // Mesma guarda: três leituras que podem voltar depois de a tela sair.
+    let vivo = true;
+    loadProcedimentosDoCatalogo(sb).then(r => { if (vivo) setProcedimentos(r); });
+    loadProfissionaisDoBloco(sb).then(r => { if (vivo) setProfissionais(r); });
+    loadItensDoEstoque(sb).then(r => { if (vivo) setItensEstoque(r); });
+    return () => { vivo = false; };
   }, [sb]);
 
   useEffect(() => {
-    refresh(data);
-    const onFocus = () => refresh(data);
+    let vivo = true;
+    const naTela = () => vivo;
+    refresh(data, naTela);
+    const onFocus = () => refresh(data, naTela);
     window.addEventListener("focus", onFocus);
     const id = setInterval(() => setTick(t => t + 1), 30000);
-    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
+    return () => {
+      vivo = false;
+      window.removeEventListener("focus", onFocus);
+      clearInterval(id);
+    };
   }, [data]);
 
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
