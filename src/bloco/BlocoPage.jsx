@@ -23,7 +23,7 @@ import { resumoDaFicha } from "./anestesia.js";
 import { OpmeModal, RastrearLote } from "./Opme.jsx";
 import { implantesVigentes, resumoDoMaterial } from "./opme.js";
 import { conferirIniciaisDaCirurgia, indexarCadastros, iniciaisDoAgendamento } from "./identidade-cirurgia.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listaLida, naoDeuParaLer, algumaFalhou, avisoDeFalha } from "../util/leitura.js";
 
 /**
@@ -52,6 +52,15 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   const [checklist, setChecklist] = useState(null); // { cirurgia, fase }
   const [sub, setSub] = useState("mapa"); // mapa | indicadores
   const [, setTick] = useState(0);
+  // 🔴 Ver o comentário de `refresh`: é o que impede gravar estado numa
+  // tela que a pessoa já deixou.
+  const naTela = useRef(true);
+  const timers = useRef(new Set());
+  /** Recarrega depois de um instante, e cancela se a tela sair antes. */
+  const refreshDepois = (ms = 300) => {
+    const t = setTimeout(() => { timers.current.delete(t); refresh(); }, ms);
+    timers.current.add(t);
+  };
   // Escrita que não se confirmou e leitura que não deu — as duas aparecem
   // na tela, porque as duas mudam o que a pessoa deveria fazer em seguida.
   const [erro, setErro] = useState(null);
@@ -86,28 +95,33 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   // sala. A segunda é afirmação de ausência de cirurgia: alguém olha o mapa,
   // vê sala livre e encaixa uma urgência na sala onde há cirurgia marcada.
   /**
-   * 🔴 `vivo` NÃO É ENFEITE — o CI do merge do #277 ficou vermelho por
-   * causa da falta dele, com 4.342 testes PASSANDO:
+   * 🔴 A BANDEIRA É DO COMPONENTE, NÃO DO EFEITO — e a primeira versão
+   * deste conserto errou exatamente nisso.
+   *
+   * O merge do #277 deixou a main vermelha com 4.342 testes passando:
    *
    *     ReferenceError: window is not defined
    *      ❯ refresh src/bloco/BlocoPage.jsx:104
    *     This error was caught after test environment was torn down.
    *
-   * Esta função espera DUAS rodadas de leitura — hoje nove tabelas — e
-   * só então aplica o estado. Se a pessoa sair da tela no meio (ou o
-   * teste desmontar o componente), o `setState` acontece num componente
-   * que não existe mais. Em produção isso é vazamento silencioso; no
-   * vitest, o ambiente já foi derrubado e o React estoura em `window`.
+   * `refresh` espera DUAS rodadas de leitura — hoje nove tabelas — e só
+   * então aplica o estado. Saindo da tela no meio, o `setState` cai num
+   * componente que não existe mais: em produção é vazamento silencioso;
+   * no vitest o ambiente já foi derrubado e o React estoura em `window`.
    *
-   * ⚠️ O defeito estava aqui desde sempre — o que mudou foi o TEMPO: o
-   * PR do OPME acrescentou a sétima leitura ao `Promise.all`, e a
-   * resolução passou a cair depois do teardown numa máquina mais lenta
-   * que a minha. Não foi "CI instável": foi um guarda que faltava
-   * ficando visível.
+   * ⚠️ MINHA PRIMEIRA TENTATIVA PASSOU O SINAL POR PARÂMETRO, a partir do
+   * efeito — e o CI continuou vermelho, agora duas linhas abaixo. O
+   * motivo: `refresh` é chamado de OUTROS TREZE lugares (toda gravação
+   * faz `setTimeout(() => refresh(), 300)` ou `await refresh()`), e
+   * todos usavam o padrão "estou viva". O arquivo que quebrava era
+   * justamente `equipe.test.jsx`, que grava equipe.
    *
-   * É o mesmo padrão que o Paciente 360 já usa no efeito do catálogo.
+   * Guarda parcial é pior que guarda nenhuma: parece resolvido.
+   *
+   * Com `useRef` a bandeira vale para TODO caminho, inclusive o timer
+   * que dispara 300 ms depois de a pessoa já ter trocado de tela.
    */
-  async function refresh(d = data, vivo = () => true) {
+  async function refresh(d = data) {
     if (!sb) return;
     const [s, c] = await Promise.all([loadCcSalas(sb), loadCcCirurgias(sb, d)]);
     // A trilha depende dos ids, então vem num segundo tempo — mas o estado
@@ -123,7 +137,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       loadCcAnestesiaDoDia(sb, ids), loadCcAldreteDoDia(sb, ids), loadCcOpmeDoDia(sb, ids),
     ]);
     // Saiu da tela enquanto as nove leituras voltavam: nada a aplicar.
-    if (!vivo()) return;
+    if (!naTela.current) return;
     // A marca é a IDENTIDADE do array — conferir ANTES de filtrar.
     setLeituraFalhou(algumaFalhou(s, c));
     // `indexarCadastros` devolve null quando a leitura falhou: é o que faz
@@ -145,18 +159,27 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
   }, [sb]);
 
   useEffect(() => {
-    let vivo = true;
-    const naTela = () => vivo;
-    refresh(data, naTela);
-    const onFocus = () => refresh(data, naTela);
+    refresh(data);
+    const onFocus = () => refresh(data);
     window.addEventListener("focus", onFocus);
     const id = setInterval(() => setTick(t => t + 1), 30000);
-    return () => {
-      vivo = false;
-      window.removeEventListener("focus", onFocus);
-      clearInterval(id);
-    };
+    return () => { window.removeEventListener("focus", onFocus); clearInterval(id); };
   }, [data]);
+
+  /**
+   * A bandeira sobe no primeiro render e cai na saída, uma vez só. Os
+   * timers que as gravações agendam são cancelados junto: sem isso, a tela
+   * que a pessoa já deixou dispara nove leituras 300 ms depois, para
+   * jogar fora.
+   */
+  useEffect(() => {
+    naTela.current = true;
+    return () => {
+      naTela.current = false;
+      for (const t of timers.current) clearTimeout(t);
+      timers.current.clear();
+    };
+  }, []);
 
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" };
   const secLbl = { fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
@@ -175,7 +198,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
       : await addCcCirurgiaRemote(sb, { ...c, status: "agendada" }, currentUser);
     if (!r.ok) { setErro(r.motivo); return; }
     registrarAuditoria(sb, currentUser, idEdicao ? "editar cirurgia" : "agendar cirurgia", `${c.iniciais} · ${c.procedimento}`, {});
-    setErro(null); setAgendando(false); setTimeout(() => refresh(), 400);
+    setErro(null); setAgendando(false); refreshDepois(400);
   }
   async function cancelar(c, motivo) {
     // Autor e hora: cirurgia CANCELADA na véspera e SUSPENSA com o
@@ -188,13 +211,13 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     });
     if (!r.ok) { setErro(r.motivo); return; }
     registrarAuditoria(sb, currentUser, "cancelar cirurgia", `${c.iniciais} · ${motivo}`, {});
-    setErro(null); setCancelando(null); setTimeout(() => refresh(), 300);
+    setErro(null); setCancelando(null); refreshDepois(300);
   }
   async function marcar(c, campos, acao) {
     const r = await updateCcCirurgiaRemote(sb, c.id, campos);
     if (!r.ok) { setErro(`${acao}: ${r.motivo}`); return; }
     registrarAuditoria(sb, currentUser, `bloco: ${acao}`, c.iniciais, {});
-    setErro(null); setTimeout(() => refresh(), 300);
+    setErro(null); refreshDepois(300);
   }
   /**
    * Grava a CONFERÊNCIA na trilha. O gatilho acende o selo no mesmo INSERT.
@@ -213,7 +236,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     // impressão de concluído, e é a impressão que leva a equipe adiante.
     if (!r.ok) return { erro: `Checklist ${fase.label}: ${r.motivo}` };
     registrarAuditoria(sb, currentUser, `bloco: checklist ${fase.label}`, c.iniciais, {});
-    setErro(null); setChecklist(null); setTimeout(() => refresh(), 300);
+    setErro(null); setChecklist(null); refreshDepois(300);
     return { ok: true };
   }
 
@@ -254,7 +277,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     registrarAuditoria(sb, currentUser,
       corpo.corrige_id ? "bloco: corrigir descrição cirúrgica" : "bloco: descrição cirúrgica",
       `${c.iniciais} · ${corpo.procedimento_realizado || "?"}`, {});
-    setErro(null); setTimeout(() => refresh(), 300);
+    setErro(null); refreshDepois(300);
     return { ok: true };
   }
 
@@ -264,7 +287,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     if (!r.ok) return { ok: false, motivo: r.motivo };
     registrarAuditoria(sb, currentUser,
       corpo.corrige_id ? "bloco: corrigir ficha anestésica" : "bloco: ficha anestésica", c.iniciais, {});
-    setErro(null); setTimeout(() => refresh(), 300);
+    setErro(null); refreshDepois(300);
     return { ok: true };
   }
 
@@ -328,7 +351,7 @@ export default function BlocoPage({ sb, currentUser, canEdit }) {
     }), currentUser);
     if (!r.ok) { setErro(`Não consegui registrar o pulo do ${fase.label}: ${r.motivo}`); return false; }
     registrarAuditoria(sb, currentUser, `bloco: PULOU ${fase.label}`, c.iniciais, {});
-    setErro(null); setTimeout(() => refresh(), 300);
+    setErro(null); refreshDepois(300);
     return true;
   }
 

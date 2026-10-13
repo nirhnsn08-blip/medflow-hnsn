@@ -46,31 +46,51 @@ import BlocoPage from "./BlocoPage.jsx";
 afterEach(cleanup);
 
 const FONTE = () => fs.readFileSync(path.join(__dirname, "BlocoPage.jsx"), "utf8");
-const semComentario = s => s.split(/\r?\n/).map(l => l.replace(/\/\/.*$/, "")).join("\n");
+/**
+ * A fonte SEM comentário — de linha e de BLOCO.
+ *
+ * ⚠️ O de bloco não é detalhe: este arquivo explica o defeito em prosa, e
+ * a prosa cita `setTimeout(() => refresh(), 300)` como o que NÃO se deve
+ * fazer. Sem tirar `/* ... *\/`, a asserção acha a própria explicação e
+ * acusa um defeito que não existe. É a mesma armadilha que
+ * `migracoes-na-ordem.test.js` documenta para os `--` do SQL.
+ */
+const semComentario = s => s
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .split(/\r?\n/).map(l => l.replace(/\/\/.*$/, "")).join("\n");
 
 describe("🔴 o guarda que faltava", () => {
   it("`refresh` confere se ainda está na tela ANTES de aplicar o estado", () => {
     const s = semComentario(FONTE());
     // A ordem é o que importa: a guarda tem de vir antes do primeiro
     // `set...`, senão ela não guarda nada.
-    const guarda = s.indexOf("if (!vivo()) return;");
+    const guarda = s.indexOf("if (!naTela.current) return;");
     const primeiroSet = s.indexOf("setLeituraFalhou(");
-    expect(guarda, "sumiu a guarda `if (!vivo()) return;` de refresh").toBeGreaterThan(0);
+    expect(guarda, "sumiu a guarda `if (!naTela.current) return;` de refresh").toBeGreaterThan(0);
     expect(guarda, "a guarda ficou DEPOIS do primeiro setState — não guarda nada")
       .toBeLessThan(primeiroSet);
   });
 
-  it("🔴 OS DOIS efeitos desligam o sinal na limpeza", () => {
-    // Achado por mutação: eu só exigia UM `vivo = false`, e apagar o do
-    // efeito dos catálogos passava batido — aquele efeito ficaria com a
-    // bandeira presa em `true` para sempre, que é o defeito de volta.
+  it("🔴 a bandeira é do COMPONENTE, e TODO caminho passa por ela", () => {
+    // Minha primeira versão passava o sinal por PARÂMETRO, a partir do
+    // efeito — e o CI continuou vermelho, porque `refresh` é chamado de
+    // outros treze lugares (toda gravação). Guarda parcial é pior que
+    // guarda nenhuma: parece resolvido.
     const s = semComentario(FONTE());
-    const liga = [...s.matchAll(/let vivo = true;/g)].length;
-    const desliga = [...s.matchAll(/vivo = false;/g)].length;
-    expect(liga, "nenhum efeito liga a bandeira").toBeGreaterThanOrEqual(2);
-    expect(desliga, "algum efeito liga `vivo` e nunca desliga").toBe(liga);
+    expect(s, "a bandeira voltou a ser local do efeito")
+      .not.toMatch(/async function refresh\([^)]*vivo/);
+    expect(s).toContain("const naTela = useRef(true);");
+    expect(s).toContain("naTela.current = false;");
   });
 
+  it("🔴 nenhuma gravação agenda refresh com setTimeout cru", () => {
+    // O timer de 300 ms dispara depois de a pessoa trocar de tela.
+    // `refreshDepois` registra para cancelar na saída.
+    const s = semComentario(FONTE());
+    expect(s, "voltou um setTimeout(() => refresh()) sem cancelamento")
+      .not.toContain("setTimeout(() => refresh()");
+    expect(s).toContain("for (const t of timers.current) clearTimeout(t);");
+  });
   it("o efeito dos catálogos também guarda as três leituras", () => {
     const s = semComentario(FONTE());
     for (const carga of ["setProcedimentos", "setProfissionais", "setItensEstoque"]) {
