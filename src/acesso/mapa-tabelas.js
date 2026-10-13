@@ -122,6 +122,8 @@ export const MAPA_TABELAS = {
   cc_descricao:             ["bloco"],
   cc_rpa_aldrete:           ["bloco"],
   cc_equipe:                ["bloco"],
+  // Suprimentos LÊ para conduzir recall de lote; a escrita fica no bloco.
+  cc_opme:                  ["bloco", "suprimentos"],
   cc_cirurgias:             ["bloco"],
   cc_salas:                 [TODOS],
 
@@ -321,7 +323,7 @@ export const SENSIVEIS = new Set([
   "at_glosas", "at_repasses",
   "at_responsaveis",
   "auditoria", "cc_anestesia", "cc_checklist", "cc_cirurgias", "cc_descricao",
-  "cc_equipe", "cc_rpa_aldrete",
+  "cc_equipe", "cc_opme", "cc_rpa_aldrete",
   "enf_escalas", "enf_lesao_pressao", "enf_sae_checagem",
   "enf_sae_diagnosticos", "enf_sae_historico",
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
@@ -398,6 +400,9 @@ export const LEITURA_EXTRA = {
   // CFM 1.638/2002 — o prontuário é único.
   cc_anestesia:           ["paciente"],
   cc_rpa_aldrete:         ["paciente"],
+  // Implante é dado vitalício da pessoa: compatibilidade com ressonância,
+  // cirurgia de revisão, e o telefonema do recall.
+  cc_opme:                ["paciente"],
 };
 
 /** Quem LÊ a tabela: a lista do mapa mais os leitores extras. */

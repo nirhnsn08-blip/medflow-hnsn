@@ -323,6 +323,9 @@ const ORDEM = [
   // os três documentos da CFM 1.638/2002, mais o gatilho que recusa a alta
   // da RPA sem escore de Aldrete. Depois da descrição e antes do rls-leitura.
   "migracao-cirurgia-anestesia-rpa.sql",
+  // OPME com lote: responde "em quem implantamos este lote" (RDC 751/2022).
+  // Depende de sup_itens e sup_movimentos — o gatilho dá baixa no kardex.
+  "migracao-cirurgia-opme.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
