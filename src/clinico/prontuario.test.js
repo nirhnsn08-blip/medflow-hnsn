@@ -255,3 +255,79 @@ describe("timeline do episódio", () => {
     expect(timelineEpisodio({})).toEqual([]);
   });
 });
+
+// ── O OXIGÊNIO NO NEWS ──────────────────────────────────────
+//
+// 🔴 A COLUNA EXISTIA PARA ISSO, E O ESCORE NUNCA A LEU (13/10/2026).
+//
+// `migracao-pep-sinais-spo2.sql` criou `o2_suplementar` dizendo no próprio
+// cabeçalho por quê: "o NEWS pontua o paciente em oxigênio mesmo com
+// saturação normal — respirar 95% em ar ambiente e respirar 95% sob cateter
+// são situações clínicas diferentes."
+//
+// A caixa foi para a tela, a enfermagem marcava, o banco gravava — e
+// `scoreAlertaPrecoce` nunca leu. O paciente em O₂ saía DOIS PONTOS ABAIXO,
+// e sub-triagem é a direção que mata.
+describe("🔴 o NEWS pontua o oxigênio suplementar", () => {
+  // Paciente com sinais todos normais: NEWS 0 em ar ambiente.
+  const estavel = { fr: 16, spo2: 98, temp: 36.5, pa_sist: 120, fc: 70, consciencia: "A" };
+
+  it("em ar ambiente, o escore não muda", () => {
+    expect(scoreAlertaPrecoce(estavel).score).toBe(0);
+    expect(scoreAlertaPrecoce({ ...estavel, o2_suplementar: false }).score).toBe(0);
+  });
+
+  it("🔴 o MESMO paciente em O₂ vale 2 — é a diferença clínica que a migração descreveu", () => {
+    const r = scoreAlertaPrecoce({ ...estavel, o2_suplementar: true });
+    expect(r.score).toBe(2);
+    expect(r.oxigenio).toBe(true);
+    expect(r.nivel).toBe("baixo");   // deixa de ser "normal"
+  });
+
+  it("🔴 e isso ATRAVESSA o gatilho da sepse", () => {
+    // NEWS 3 em ar ambiente fica abaixo do gatilho (≥5); em O₂, chega a 5.
+    const quase = { fr: 22, spo2: 94, temp: 36.5, pa_sist: 120, fc: 70, consciencia: "A" };
+    expect(scoreAlertaPrecoce(quase).score).toBe(3);
+    expect(scoreAlertaPrecoce({ ...quase, o2_suplementar: true }).score).toBe(5);
+    expect(scoreAlertaPrecoce({ ...quase, o2_suplementar: true }).nivel).toBe("medio");
+  });
+
+  it("a coluna ANTIGA também conta — linha velha não perde ponto por nome", () => {
+    // `pep_sinais_vitais` tem DUAS colunas para a mesma coisa:
+    // `o2_suplementar` (pep-sinais-spo2, que a tela grava) e `suporte_o2`
+    // (pep-fase1, que ninguém escreveu).
+    expect(scoreAlertaPrecoce({ ...estavel, suporte_o2: true }).score).toBe(2);
+    // A nova manda quando as duas vêm.
+    expect(scoreAlertaPrecoce({ ...estavel, o2_suplementar: false, suporte_o2: true }).score).toBe(0);
+  });
+
+  it("🔴 o oxigênio NÃO conta como parâmetro aferido para a trava dos três", () => {
+    // "Ar ambiente" vale 0, mas é um zero que o sistema ASSUME (booleano com
+    // default false). Se contasse, uma aferição com dois sinais passaria da
+    // trava — e a trava existe para o escore não sair de meia medição.
+    expect(scoreAlertaPrecoce({ fc: 80, temp: 36.5, o2_suplementar: true })).toBeNull();
+    const r = scoreAlertaPrecoce({ fc: 80, temp: 36.5, fr: 16, o2_suplementar: true });
+    expect(r.parametros).toBe(3);
+    expect(r.score).toBe(2);
+  });
+});
+
+// ── A FAIXA DE FEBRE ALTA ───────────────────────────────────
+describe("🔴 febre alta vale 2, não 3", () => {
+  const base = { fr: 16, spo2: 98, pa_sist: 120, fc: 70, consciencia: "A" };
+
+  it("39,5 °C pontua 2 — caía no fallback e valia 3", () => {
+    // Sobrepontuar não mata ninguém, mas alarme que exagera é alarme que se
+    // aprende a descontar — e aí o que importa some junto.
+    expect(scoreAlertaPrecoce({ ...base, temp: 39.5 }).score).toBe(2);
+    expect(scoreAlertaPrecoce({ ...base, temp: 41 }).score).toBe(2);
+  });
+
+  it("as faixas vizinhas continuam como o NEWS manda", () => {
+    expect(scoreAlertaPrecoce({ ...base, temp: 38.5 }).score).toBe(1);
+    expect(scoreAlertaPrecoce({ ...base, temp: 36.5 }).score).toBe(0);
+    expect(scoreAlertaPrecoce({ ...base, temp: 35.5 }).score).toBe(1);
+    // ≤ 35,0 continua no fallback 3, que é o certo.
+    expect(scoreAlertaPrecoce({ ...base, temp: 34.0 }).score).toBe(3);
+  });
+});

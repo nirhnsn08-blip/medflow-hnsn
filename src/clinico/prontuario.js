@@ -181,11 +181,33 @@ export function serieSinaisVitais(registros) {
 }
 
 /**
- * NEWS simplificado (National Early Warning Score) — detecção de
- * deterioração clínica. Padrão do NHS, adotado amplamente no Brasil.
+ * NEWS (National Early Warning Score) — detecção de deterioração clínica.
+ * Padrão do NHS, adotado amplamente no Brasil.
  *
  * APOIO À DECISÃO: não substitui avaliação. Devolve null quando faltam
  * dados demais — pontuar com metade dos parâmetros dá falsa segurança.
+ *
+ * 🔴 O OXIGÊNIO NÃO PONTUAVA, E A COLUNA EXISTIA PARA ISSO (13/10/2026).
+ *
+ * `migracao-pep-sinais-spo2.sql` criou `o2_suplementar` dizendo, no próprio
+ * cabeçalho, por quê: "o NEWS pontua o paciente em oxigênio mesmo com
+ * saturação normal — respirar 95% em ar ambiente e respirar 95% sob cateter
+ * são situações clínicas diferentes."
+ *
+ * A caixa foi para a tela, a enfermagem marcava, o banco gravava — e esta
+ * função nunca leu o campo. O paciente em O₂ saía DOIS PONTOS ABAIXO do que
+ * o NEWS manda, e sub-triagem é a direção que mata. Pior que não ter o
+ * campo: com a caixa na tela, quem marca tem toda razão de achar que o
+ * sistema sabe.
+ *
+ * O mesmo escore é o gatilho do protocolo de sepse (`avaliarGatilhoSepse`,
+ * NEWS ≥ 5), então o erro atravessava para lá.
+ *
+ * ⚠️ DUAS COLUNAS PARA A MESMA COISA: `pep_sinais_vitais` tem
+ * `o2_suplementar` (de `pep-sinais-spo2`, que a tela grava) e `suporte_o2`
+ * (de `pep-fase1`, que ninguém nunca escreveu). Aqui as duas são lidas, com
+ * a nova na frente — linha antiga que só tenha a velha não pode perder os
+ * dois pontos por causa de um nome.
  */
 export function scoreAlertaPrecoce(sv) {
   if (!sv) return null;
@@ -202,23 +224,44 @@ export function scoreAlertaPrecoce(sv) {
 
   p(Number(sv.fr),      [[12, 20, 0], [21, 24, 2], [9, 11, 1]]);
   p(Number(sv.spo2),    [[96, 100, 0], [94, 95, 1], [92, 93, 2]]);
-  p(Number(sv.temp),    [[36.1, 38.0, 0], [38.1, 39.0, 1], [35.1, 36.0, 1]]);
+  // ⚠️ A faixa de febre ALTA faltava e caía no fallback: 39,5 °C valia 3
+  // pontos, e o NEWS diz 2. Sobrepontuar não mata ninguém, mas alarme que
+  // exagera é alarme que se aprende a descontar — e aí o que importa some
+  // junto. O ≤ 35,0 continua caindo no fallback 3, que é o certo.
+  p(Number(sv.temp),    [[36.1, 38.0, 0], [38.1, 39.0, 1], [39.1, 99, 2], [35.1, 36.0, 1]]);
   p(Number(sv.pa_sist), [[111, 219, 0], [101, 110, 1], [91, 100, 2]]);
   p(Number(sv.fc),      [[51, 90, 0], [91, 110, 1], [111, 130, 2], [41, 50, 1]]);
   if (sv.consciencia && sv.consciencia !== "A") pontos.push(3);
 
-  if (pontos.length < 3) return null;   // dados insuficientes
+  // 🔴 A SUFICIÊNCIA É CONTADA ANTES DO OXIGÊNIO, e isso é deliberado.
+  //
+  // "Ar ambiente" vale 0 no NEWS, mas é um zero que o sistema ASSUME: o
+  // campo é booleano com default false, então toda linha "tem" oxigênio
+  // respondido. Se ele contasse como parâmetro aferido, uma aferição com
+  // só dois sinais vitais passaria da trava dos três — e a trava existe
+  // justamente para o escore não sair de meia medição.
+  const aferidos = pontos.length;
+  if (aferidos < 3) return null;
+
+  // Qualquer O₂ suplementar: +2. As duas colunas, a nova na frente.
+  const emOxigenio = sv.o2_suplementar ?? sv.suporte_o2 ?? false;
+  if (emOxigenio) pontos.push(2);
+
   const total = pontos.reduce((a, b) => a + b, 0);
   return {
     score: total,
     nivel: total >= 7 ? "alto" : total >= 5 ? "medio" : total >= 1 ? "baixo" : "normal",
-    parametros: pontos.length,
+    parametros: aferidos,
+    oxigenio: !!emOxigenio,
     conduta: total >= 7 ? "Avaliação médica imediata e considerar cuidados intensivos."
            : total >= 5 ? "Avaliação médica urgente. Aumentar frequência das aferições."
            : total >= 1 ? "Manter monitorização; reavaliar conforme protocolo."
            : "Manter rotina de aferição.",
   };
 }
+
+/** A escala usada, carimbada junto do escore para o registro saber de onde veio. */
+export const ESCALA_ALERTA = "NEWS";
 
 // ── TIMELINE ────────────────────────────────────────────────
 
