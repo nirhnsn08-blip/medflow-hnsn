@@ -138,13 +138,27 @@ export function pendenciasParaEmitir({ guia, conta, convenio, itens = [], profis
   // 🔴 OS QUATRO CAMPOS DO PROFISSIONAL. Conselho sem UF não identifica
   // ninguém: o mesmo CRM 1234 existe em 27 estados.
   const prof = profissional || guia || {};
-  const falta = [
+  const campos = [
     [prof.profissional_conselho ?? prof.conselho, "conselho"],
     [prof.profissional_registro ?? prof.registro_conselho, "número"],
     [prof.profissional_uf ?? prof.uf_conselho, "UF"],
     [prof.profissional_cbo ?? prof.cbo, "CBO"],
-  ].filter(([v]) => !texto(v)).map(([, nome]) => nome);
-  if (falta.length) {
+  ];
+  const falta = campos.filter(([v]) => !texto(v)).map(([, nome]) => nome);
+
+  // 🔴 "NÃO HÁ PROFISSIONAL" ≠ "O PROFISSIONAL ESTÁ INCOMPLETO", e os dois
+  // se consertam em lugares diferentes. Visto ANDANDO no demo: o
+  // atendimento #280 não tinha médico nenhum (`medico` nulo), e a tela
+  // dizia "o profissional está sem conselho, número, UF, CBO" mandando
+  // consertar no cadastro DELE — um cadastro que não existe. Quem lesse
+  // isso iria procurar o profissional errado.
+  const temAlgum = texto(prof.profissional_nome ?? prof.nome) || falta.length < campos.length;
+  if (!temAlgum) {
+    add("sem_profissional",
+      "A guia não tem profissional executante. Ninguém está registrado como quem atendeu — " +
+      "e a guia leva conselho, número, UF e CBO de quem executou.",
+      "esta tela, escolhendo quem executou");
+  } else if (falta.length) {
     add("profissional_incompleto",
       `O profissional está sem ${falta.join(", ")}. A guia leva conselho, número, UF e CBO — ` +
       "conselho sem UF não identifica ninguém, porque o mesmo número existe em 27 estados.",

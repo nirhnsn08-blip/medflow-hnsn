@@ -1020,8 +1020,20 @@ const CAMPOS_CONTA = [
   "faturada_em", "faturada_por", "remessa_protocolo",
 ].join(",");
 
+// 🔴 `tabela` ENTROU AQUI em 14/10/2026 — e foi o QUARTO lugar que a mesma
+// coluna precisou, descoberto um de cada vez andando no demo:
+//
+//   1. a coluna                 (migracao-tiss-guias.sql)
+//   2. o campo na tela          (Faturamento.jsx)
+//   3. a lista de ESCRITA       (camposDoItem, em faturamento.js)
+//   4. a lista de LEITURA       (aqui)
+//
+// Faltando qualquer um, o dado não chega — e os sintomas são diferentes:
+// sem o 3 ele morre a caminho do banco; sem o 4 ele está no banco e a tela
+// age como se não estivesse. Foi este: o item tinha `tabela='tuss'` gravada
+// e a guia seguia dizendo "3 de 3 itens sem a tabela do código".
 const CAMPOS_ITEM = [
-  "id", "conta_id", "tipo", "codigo", "descricao", "quantidade",
+  "id", "conta_id", "tipo", "codigo", "tabela", "descricao", "quantidade",
   "valor_unitario", "valor_total", "executante", "executante_cbo",
   "data_execucao", "cobrar_do_paciente", "observacao", "cancelado", "criado_em",
 ].join(",");

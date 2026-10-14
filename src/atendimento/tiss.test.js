@@ -19,6 +19,8 @@
 // escrevível no dia em que o arquivo estiver em mãos.
 // ═══════════════════════════════════════════════════════════
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   TIPOS_GUIA, CARATERES, STATUS_GUIA, MIN_MOTIVO_CANCELAMENTO,
@@ -319,5 +321,50 @@ describe("🔴 conta de convênio fechada e SEM guia é dinheiro não cobrado", 
     // tranquilo, e não pode sair de uma lista que não desceu.
     expect(contasSemGuia(FALHA, [])).toBeNull();
     expect(contasSemGuia(contas, FALHA)).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 "NÃO HÁ PROFISSIONAL" ≠ "O PROFISSIONAL ESTÁ INCOMPLETO"
+//
+// Visto ANDANDO no demo (14/10/2026): o atendimento #280 não tinha médico
+// nenhum (`ps_atendimentos.medico` nulo), e a tela dizia "o profissional
+// está sem conselho, número, UF, CBO" mandando consertar no cadastro DELE —
+// um cadastro que não existe. Quem lesse isso iria procurar o profissional
+// errado, e não acharia.
+//
+// Os dois se consertam em lugares diferentes, então são pendências
+// diferentes.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 sem profissional × profissional incompleto", () => {
+  it("sem nenhum: diz que NÃO HÁ, e manda escolher nesta tela", () => {
+    const p = pendenciasParaEmitir(ctx({ profissional: null, guia: GUIA }));
+    const x = p.find(y => y.chave === "sem_profissional");
+    expect(x).toBeTruthy();
+    expect(x.texto).toMatch(/não tem profissional executante/);
+    expect(x.onde).toMatch(/escolhendo quem executou/);
+    expect(p.map(y => y.chave)).not.toContain("profissional_incompleto");
+  });
+
+  it("com nome mas sem os campos: diz que está INCOMPLETO, e manda ao cadastro", () => {
+    const p = pendenciasParaEmitir(ctx({ profissional: { nome: "Dra. Ana" } }));
+    const x = p.find(y => y.chave === "profissional_incompleto");
+    expect(x).toBeTruthy();
+    expect(x.onde).toMatch(/cadastro do profissional/);
+    expect(p.map(y => y.chave)).not.toContain("sem_profissional");
+  });
+
+  it("com alguns campos e sem nome ainda é 'incompleto' — há alguém ali", () => {
+    const p = pendenciasParaEmitir(ctx({ profissional: { conselho: "CRM", registro_conselho: "1" } }));
+    expect(p.map(y => y.chave)).toContain("profissional_incompleto");
+    expect(p.map(y => y.chave)).not.toContain("sem_profissional");
+  });
+
+  it("🔴 EXISTE O SELETOR NA TELA — era beco sem saída sem ele", () => {
+    // Com o atendimento sem médico e sem seletor, a guia era impossível de
+    // emitir por esta tela e nada oferecia saída.
+    const tela = readFileSync(join(__dirname, "GuiaTiss.jsx"), "utf8");
+    expect(tela).toMatch(/Profissional executante/);
+    expect(tela).toMatch(/setEscolhido/);
   });
 });

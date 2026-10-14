@@ -18,11 +18,13 @@
 //      mês anterior — que é justamente o que já foi transmitido.
 // ═══════════════════════════════════════════════════════════
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   centavos, reais, competenciaDe, competenciaLabel, VIAS, viaDeFaturamento, internouPeloSus,
   TIPOS_ITEM, totalDaConta, conferirItem, STATUS_CONTA, validarFechamento,
-  resumoDaConta, camposDaConta, camposDoItem,
+  resumoDaConta, camposDaConta, camposDoItem, tabelaPadraoDaVia,
 } from "./faturamento.js";
 
 const sus = { id: 1, nome: "SUS", tipo: "sus" };
@@ -426,5 +428,79 @@ describe("validarFechamento — pré-glosa", () => {
     expect(v.ok).toBe(false);
     expect(v.erros.filter(e => /Impedimento de glosa/.test(e))).toHaveLength(1);
     expect(v.avisos.some(a => /CID A00/.test(a))).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 A TABELA DO CÓDIGO — o segundo "coluna sem campo" da mesma entrega
+//
+// `at_conta_itens.tabela` nasceu com a guia TISS (14/10/2026) e por um
+// momento não teve input: a guia acusava "item sem a tabela do código" e
+// não havia onde consertar. Achado ANDANDO no demo, na mesma caminhada que
+// achou o `codigo_prestador` impreenchível.
+//
+// ⚠️ Código sem tabela é ambíguo: "10101012" existe no SIGTAP e no TUSS
+// querendo dizer coisas diferentes.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 de qual tabela vem o código do item", () => {
+  it("as vias do SUS usam SIGTAP", () => {
+    for (const v of ["bpa", "apac", "aih"]) expect(tabelaPadraoDaVia(v), v).toBe("sigtap");
+  });
+
+  it("operadora usa TUSS", () => expect(tabelaPadraoDaVia("tiss")).toBe("tuss"));
+  it("particular usa tabela própria", () => expect(tabelaPadraoDaVia("direta")).toBe("proprio"));
+  it("aceita maiúscula e espaço — o dado vem do banco", () => {
+    expect(tabelaPadraoDaVia(" TISS ")).toBe("tuss");
+  });
+
+  it("🔴 via desconhecida devolve null, NÃO 'sigtap'", () => {
+    // Chutar faria o item sair com a tabela errada numa conta que o sistema
+    // nem sabe classificar — e tabela errada é pior que tabela ausente:
+    // ausente aparece como pendência, errada é cobrada.
+    for (const v of ["", null, undefined, "convenio", "xpto"]) {
+      expect(tabelaPadraoDaVia(v), String(v)).toBeNull();
+    }
+  });
+
+  it("🔴 EXISTE O CAMPO NA TELA — era a metade que faltava", () => {
+    const tela = readFileSync(join(__dirname, "Faturamento.jsx"), "utf8");
+    expect(tela).toMatch(/Tabela do código/);
+    expect(tela).toMatch(/tabela: e\.target\.value|\.\.\.p, tabela:/);
+  });
+
+  it("🔴 e o item LEVA a tabela ao gravar", () => {
+    // Sem esta linha o campo existe, a pessoa escolhe, e nada chega ao banco.
+    const tela = readFileSync(join(__dirname, "Faturamento.jsx"), "utf8");
+    expect(tela).toMatch(/tabela: novo\.tabela \|\| tabelaPadraoDaVia/);
+  });
+});
+
+describe("🔴 a tabela ATRAVESSA até o corpo que vai ao banco", () => {
+  it("camposDoItem leva a tabela", () => {
+    // ⚠️ `camposDoItem` é lista FECHADA, e foi por isso que o conserto da
+    // tela não bastou: o campo chegava do formulário e morria aqui. É o
+    // terceiro elo da mesma corrente — coluna, campo, campo ACEITO — e
+    // faltando qualquer um o dado não chega.
+    expect(camposDoItem({ conta_id: 1, tabela: "tuss" }).tabela).toBe("tuss");
+  });
+
+  it("vazia vira null, não string vazia", () => {
+    expect(camposDoItem({ conta_id: 1, tabela: "   " }).tabela).toBeNull();
+    expect(camposDoItem({ conta_id: 1 }).tabela).toBeNull();
+  });
+});
+
+describe("🔴 a corrente inteira: a coluna precisa de QUATRO lugares", () => {
+  it("a lista de LEITURA traz a tabela", () => {
+    // O quarto elo, e o de sintoma mais traiçoeiro: sem ele o dado ESTÁ no
+    // banco e a tela age como se não estivesse. O item tinha
+    // `tabela='tuss'` gravada e a guia seguia acusando "sem a tabela".
+    const dados = readFileSync(join(__dirname, "dados.js"), "utf8");
+    const bloco = dados.match(/const CAMPOS_ITEM = \[([\s\S]*?)\]\.join/)[1];
+    expect(bloco).toMatch(/"tabela"/);
+  });
+
+  it("a lista de ESCRITA traz a tabela", () => {
+    expect(camposDoItem({ conta_id: 1, tabela: "tuss" })).toHaveProperty("tabela", "tuss");
   });
 });

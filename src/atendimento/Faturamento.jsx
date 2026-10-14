@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 import {
-  TIPOS_ITEM, TIPO_ITEM_POR_CHAVE, VIAS, STATUS_CONTA,
+  TIPOS_ITEM, TIPO_ITEM_POR_CHAVE, VIAS, STATUS_CONTA, tabelaPadraoDaVia,
   conferirItem, validarFechamento, resumoDaConta, competenciaDe, competenciaLabel,
   reais, centavos,
 } from "./faturamento.js";
@@ -27,6 +27,7 @@ import {
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
   cancelarItem, fecharConta, reabrirConta, carregarLeitosDoEpisodio,
 } from "./dados.js";
+import { TABELAS_DE_PROCEDIMENTO } from "./catalogo.js";
 import { comoExibir, idadeDetalhada } from "../pacientes/identidade.js";
 import { glosaDaContaSalva, escolherInternacao, janelaInternacao } from "./montar-conta.js";
 import { GRAVIDADES, permanenciaEmDias } from "./sigtap.js";
@@ -45,7 +46,12 @@ const btn = (cor, ativo = true) => ({
   fontWeight: 700, cursor: ativo ? "pointer" : "not-allowed", fontSize: 12.5, whiteSpace: "nowrap",
 });
 
-const ITEM_VAZIO = { tipo: "procedimento", codigo: "", descricao: "", quantidade: "1", valor_unitario: "", executante: "", data_execucao: "", cobrar_do_paciente: false };
+// 🔴 `tabela` ENTROU AQUI em 14/10/2026, e entrou tarde: a coluna foi criada
+// com a guia TISS e por um momento não teve campo — a guia acusava "item sem
+// a tabela do código" e não havia onde consertar. Foi o SEGUNDO caso de
+// coluna impreenchível na mesma entrega (o primeiro foi `codigo_prestador`).
+// Nasce vazia e a via preenche; ver `tabelaPadraoDaVia`.
+const ITEM_VAZIO = { tipo: "procedimento", codigo: "", descricao: "", quantidade: "1", valor_unitario: "", executante: "", data_execucao: "", cobrar_do_paciente: false, tabela: "" };
 
 export default function Faturamento({ sb, currentUser, canEdit }) {
   const [numero, setNumero] = useState("");
@@ -222,6 +228,8 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
     setBusy(true);
     const r = await acrescentarItem(sb, {
       ...novo, conta_id: ctx.conta.id,
+      // A via decide o padrão; o que a pessoa escolheu manda.
+      tabela: novo.tabela || tabelaPadraoDaVia(resumo?.via) || null,
       executante_cbo: ctx.atendimento.medico_cbo || null,
     }, currentUser);
     setBusy(false);
@@ -512,6 +520,17 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
                       <input type="date" value={novo.data_execucao}
                         onChange={e => setNovo(p => ({ ...p, data_execucao: e.target.value }))} style={inp} />
                     </div>
+                    <div>
+                      <label style={lbl}>Tabela do código</label>
+                      <select value={novo.tabela || tabelaPadraoDaVia(resumo?.via) || ""}
+                        onChange={e => setNovo(p => ({ ...p, tabela: e.target.value }))} style={inp}>
+                        <option value="">— escolha —</option>
+                        {TABELAS_DE_PROCEDIMENTO.map(t => <option key={t.chave} value={t.chave}>{t.label}</option>)}
+                      </select>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginTop: 3 }}>
+                        O mesmo número existe em tabelas diferentes querendo dizer coisas diferentes.
+                      </span>
+                    </div>
                     {/* A caixa de cobrança só aparece quando a via permite.
                         Oferecê-la numa conta do SUS ensinaria que existe
                         alguma circunstância em que dá — e não existe. */}
@@ -538,7 +557,7 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
               aparece na via `tiss` — guia TISS sobre conta do SUS é
               cobrança indevida, e o gatilho recusa. */}
           <GuiaTiss sb={sb} conta={ctx.conta} convenio={convenio} paciente={ctx.paciente}
-            itens={ctx.itens} profissional={profissionalDaGuia}
+            itens={ctx.itens} profissional={profissionalDaGuia} profissionais={profissionais}
             currentUser={currentUser} canEdit={canEdit} />
         </>
       )}

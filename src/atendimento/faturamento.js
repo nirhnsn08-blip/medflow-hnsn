@@ -195,6 +195,29 @@ export function viaDeFaturamento({ convenio, atendimento, procedimento } = {}) {
   return "bpa";
 }
 
+/**
+ * De qual TABELA o código de um item desta via vem.
+ *
+ * 🔴 CÓDIGO SEM TABELA É AMBÍGUO: "10101012" existe no SIGTAP e no TUSS
+ * querendo dizer coisas diferentes. A guia TISS leva a tabela junto do
+ * código, e sem ela a operadora não sabe o que foi cobrado.
+ *
+ * ⚠️ A VIA DECIDE O PADRÃO em vez de a pessoa escolher toda vez: conta do
+ * SUS é SIGTAP, conta de operadora é TUSS. Quem precisar de outra (tabela
+ * própria, pacote negociado) troca — mas o caso comum não custa um clique.
+ *
+ * Devolve `null` para via desconhecida: chutar "sigtap" faria o item sair
+ * com a tabela errada numa conta que o sistema nem sabe classificar, e
+ * tabela errada é pior que tabela ausente.
+ */
+export function tabelaPadraoDaVia(via) {
+  const v = String(via ?? "").trim().toLowerCase();
+  if (v === "bpa" || v === "apac" || v === "aih") return "sigtap";
+  if (v === "tiss") return "tuss";
+  if (v === "direta") return "proprio";
+  return null;
+}
+
 // ── ITENS ───────────────────────────────────────────────────
 
 /** O que entra numa conta. */
@@ -446,6 +469,15 @@ export function camposDoItem(dados = {}) {
     data_execucao: texto(dados.data_execucao),
     observacao: texto(dados.observacao),
     cancelado: dados.cancelado === true,
+    // 🔴 `tabela` ENTROU NA LISTA em 14/10/2026, e esta função é a razão de
+    // o conserto anterior não ter bastado: ela é uma lista FECHADA, então o
+    // campo novo chegava da tela e morria aqui, antes do banco. Visto
+    // andando no demo — o seletor mostrava TUSS e a guia seguia dizendo
+    // "2 de 2 itens sem a tabela do código".
+    //
+    // ⚠️ É o terceiro elo da mesma corrente: coluna (migração) → campo
+    // (tela) → CAMPO ACEITO (aqui). Faltando qualquer um, o dado não chega.
+    tabela: texto(dados.tabela),
   };
 }
 

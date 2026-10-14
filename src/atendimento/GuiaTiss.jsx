@@ -40,7 +40,7 @@ const lbl = { fontSize: 10.5, color: "var(--text-muted)", display: "block", marg
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
 const rotulo = { fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 10 };
 
-export function GuiaTiss({ sb, conta, convenio, paciente, itens, profissional, currentUser, canEdit }) {
+export function GuiaTiss({ sb, conta, convenio, paciente, itens, profissional, profissionais = [], currentUser, canEdit }) {
   const [guias, setGuias] = useState([]);
   const [carregou, setCarregou] = useState(false);
   const [form, setForm] = useState(() => guiaVazia());
@@ -48,6 +48,15 @@ export function GuiaTiss({ sb, conta, convenio, paciente, itens, profissional, c
   const [gravando, setGravando] = useState(false);
   const [cancelando, setCancelando] = useState(null);   // { id, motivo }
   const [retorno, setRetorno] = useState(null);         // { id, numero }
+  // 🔴 QUEM EXECUTOU. Começa no profissional do atendimento, mas é
+  // escolhível — e isso NÃO é conveniência: visto andando no demo, o
+  // atendimento #280 não tinha médico nenhum, e sem o seletor a guia era
+  // impossível de emitir por esta tela, sem saída nenhuma oferecida.
+  //
+  // ⚠️ E é correto mesmo quando o atendimento TEM médico: no TISS o
+  // executante da guia pode ser outro — quem fez o exame não é
+  // necessariamente quem atendeu.
+  const [escolhido, setEscolhido] = useState("");
 
   // A guarda do PR #277, com a linha que a religa na montagem — sem ela o
   // StrictMode deixa o painel preso em "Carregando" para sempre.
@@ -78,16 +87,21 @@ export function GuiaTiss({ sb, conta, convenio, paciente, itens, profissional, c
 
   const set = (k, v) => { setForm(p => ({ ...p, [k]: v })); setErro(""); };
 
+  const executante = useMemo(() => {
+    if (escolhido) return profissionais.find(p => p.username === escolhido) || null;
+    return profissional;
+  }, [escolhido, profissionais, profissional]);
+
   const pendencias = useMemo(
-    () => pendenciasParaEmitir({ guia: form, conta, convenio, itens, profissional }),
-    [form, conta, convenio, itens, profissional]);
+    () => pendenciasParaEmitir({ guia: form, conta, convenio, itens, profissional: executante }),
+    [form, conta, convenio, itens, executante]);
 
   const vivas = guias.filter(g => g.status !== "cancelada");
 
   async function gravar(status) {
     if (status === "emitida" && pendencias.length) { setErro(pendencias[0].texto); return; }
     setErro(""); setGravando(true);
-    const r = await salvarGuia(sb, linhaDaGuia(form, { conta, convenio, profissional }), status, currentUser);
+    const r = await salvarGuia(sb, linhaDaGuia(form, { conta, convenio, profissional: executante }), status, currentUser);
     setGravando(false);
     // 🔴 EM CASO DE FALHA O FORMULÁRIO FICA. Uma recusa silenciosa da RLS
     // levaria junto a carteira que alguém acabou de buscar por telefone.
@@ -267,6 +281,31 @@ export function GuiaTiss({ sb, conta, convenio, paciente, itens, profissional, c
               <input type="date" value={form.senha_validade} onChange={e => set("senha_validade", e.target.value)} style={inp} />
             </label>
           </div>
+
+          {/* 🔴 O EXECUTANTE. Sem ele a guia não sai, e quando o
+              atendimento não registrou médico esta é a ÚNICA saída. */}
+          <label style={{ display: "block", marginBottom: 10 }}><span style={lbl}>Profissional executante</span>
+            <select value={escolhido} onChange={e => { setEscolhido(e.target.value); setErro(""); }} style={inp}>
+              <option value="">
+                {profissional?.nome
+                  ? `${profissional.nome} — quem atendeu`
+                  : "— escolha quem executou —"}
+              </option>
+              {profissionais.map(p => (
+                <option key={p.username} value={p.username}>
+                  {p.nome}{p.conselho ? ` · ${p.conselho} ${p.registro_conselho || "?"}/${p.uf_conselho || "?"}` : " · sem conselho cadastrado"}
+                </option>
+              ))}
+            </select>
+            {executante && (
+              <span style={{ fontSize: 10, color: "var(--text-muted)", display: "block", marginTop: 3 }}>
+                {[executante.conselho ?? executante.profissional_conselho,
+                  executante.registro_conselho ?? executante.profissional_registro,
+                  executante.uf_conselho ?? executante.profissional_uf,
+                  executante.cbo ?? executante.profissional_cbo].filter(Boolean).join(" · ") || "sem conselho, número, UF ou CBO cadastrados"}
+              </span>
+            )}
+          </label>
 
           <label style={{ display: "block", marginBottom: 10 }}><span style={lbl}>Indicação clínica</span>
             <textarea value={form.indicacao_clinica} onChange={e => set("indicacao_clinica", e.target.value)} rows={2}
