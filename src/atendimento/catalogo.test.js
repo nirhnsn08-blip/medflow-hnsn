@@ -391,3 +391,66 @@ describe("🔴 as metas da especialidade", () => {
     expect(c.extras.painel_id).toBe("cardiologia");
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 O CÓDIGO DO PRESTADOR — campo obrigatório PRECISA de input
+//
+// Entrou com a guia TISS (14/10/2026). O defeito que estes testes guardam
+// não é a regra: é o CAMPO. Criei a coluna, a guia passou a exigi-la, e por
+// um momento não havia onde digitá-la — ou seja, nenhuma guia sairia nunca,
+// sem nada na tela explicando por quê.
+//
+// ⚠️ `colunas-sem-input` NÃO pega este caso, e é importante saber: ela caça
+// coluna que NINGUÉM cita, e `tiss.js` citava (lendo). Coluna lida mas
+// impreenchível passa por ela limpa. É a mesma classe do "coluna sem campo"
+// que este projeto já cometeu duas vezes seguidas em 10/2026.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 o código do prestador chega ao banco e tem onde ser digitado", () => {
+  it("é gravado no corpo do convênio", () => {
+    const c = corpoDoCatalogo("convenios", {
+      nome: "Unimed", tipo: "convenio", registro_ans: "301337", codigo_prestador: " HNSN001 ",
+    });
+    expect(c.codigo_prestador).toBe("HNSN001");
+  });
+
+  it("vazio vira null, não string vazia", () => {
+    const c = corpoDoCatalogo("convenios", { nome: "X", tipo: "convenio", codigo_prestador: "   " });
+    expect(c.codigo_prestador).toBeNull();
+  });
+
+  it("🔴 no SUS é null POR CONSTRUÇÃO — não existe prestador em operadora", () => {
+    // Igual ao que já se faz com carteira e autorização: o SUS não tem, e
+    // gravar o que alguém digitou por engano criaria expectativa.
+    const c = corpoDoCatalogo("convenios", { nome: "SUS", tipo: "sus", codigo_prestador: "ABC" });
+    expect(c.codigo_prestador).toBeNull();
+  });
+
+  it("🔴 convênio sem ele é AVISADO, e o aviso diz que é bloqueio", () => {
+    // "Campo recomendado" faria alguém deixar para depois. Não é
+    // preferência: enquanto estiver vazio, nenhuma guia sai.
+    const v = validarCatalogo("convenios", { nome: "Unimed", tipo: "convenio", registro_ans: "301337" });
+    const a = v.avisos.find(x => /código do prestador/i.test(x));
+    expect(a).toBeTruthy();
+    expect(a).toMatch(/nenhuma guia TISS é emitida/);
+  });
+
+  it("com o código, o aviso some", () => {
+    const v = validarCatalogo("convenios", {
+      nome: "Unimed", tipo: "convenio", registro_ans: "301337", codigo_prestador: "HNSN001",
+    });
+    expect(v.avisos.some(x => /código do prestador/i.test(x))).toBe(false);
+  });
+
+  it("no SUS não avisa: não existe prestador em operadora", () => {
+    const v = validarCatalogo("convenios", { nome: "SUS", tipo: "sus" });
+    expect(v.avisos.some(x => /código do prestador/i.test(x))).toBe(false);
+  });
+
+  it("🔴 EXISTE O CAMPO NA TELA — é a metade que faltava", () => {
+    // Sem esta asserção, tudo acima passa verde com a coluna impreenchível:
+    // a regra grava o que ninguém consegue digitar.
+    const tela = readFileSync(join(__dirname, "Tabelas.jsx"), "utf8");
+    expect(tela).toMatch(/set\("codigo_prestador"/);
+    expect(tela).toMatch(/Código do prestador/);
+  });
+});

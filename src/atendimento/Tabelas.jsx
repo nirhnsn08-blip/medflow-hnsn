@@ -151,6 +151,17 @@ export default function Tabelas({ sb, currentUser, canEdit }) {
                       <input value={edit.registro_ans || ""} onChange={e => set("registro_ans", e.target.value)}
                         style={inp} disabled={edit.tipo === "sus"} placeholder={edit.tipo === "sus" ? "não se aplica" : ""} />
                     </div>
+                    {/* 🔴 O CÓDIGO DO PRESTADOR. Entrou junto com a guia TISS
+                        (14/10/2026) — e sem este campo a coluna seria
+                        impreenchível, ou seja: nenhuma guia sairia nunca,
+                        sem nada na tela explicando por quê. Foi o defeito
+                        que o projeto já cometeu duas vezes seguidas. */}
+                    <div>
+                      <label style={lbl}>Código do prestador nesta operadora</label>
+                      <input value={edit.codigo_prestador || ""} onChange={e => set("codigo_prestador", e.target.value)}
+                        style={inp} disabled={edit.tipo === "sus"}
+                        placeholder={edit.tipo === "sus" ? "não se aplica" : "o código que a operadora deu ao hospital"} />
+                    </div>
                     {/* No SUS estas duas somem: não existe carteirinha de
                         operadora nem senha de autorização. Deixar marcável
                         só criaria expectativa que o sistema não cumpre. */}
