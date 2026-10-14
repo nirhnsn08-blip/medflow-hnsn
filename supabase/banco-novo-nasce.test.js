@@ -52,6 +52,19 @@ const ARQUIVO = path.join(DIR, "reconstruir-banco.sql");
  * O `unaccent` é o caso que ensina: pular a função fazia a coluna gerada
  * `nome_busca` não existir, e o erro aparecia 3 declarações depois, num
  * `comment on column` — longe da causa.
+ *
+ * 🔴 E O SUBSTITUTO TEM DE FICAR ONDE A COISA FICA DE VERDADE (14/10/2026).
+ *
+ * Este prelúdio criava `unaccent` em `public`. No Supabase ela é instalada
+ * em `extensions` (ver `migracao-pacientes-busca.sql`), e `public` nunca a
+ * tem. A diferença parecia cosmética e não era: uma migração nova chamou
+ * `public.unaccent(...)` direto, este teste passou VERDE, e o arquivo morreu
+ * no banco real com `function public.unaccent(text) does not exist`.
+ *
+ * ⚠️ Substituto que não imita o ambiente vira teste que aprova o que não
+ * funciona — pior que não ter teste, porque dá permissão. Agora a função
+ * mora em `extensions` e é alcançada pelo `search_path`, exatamente como
+ * lá: quem chamar `public.unaccent` quebra aqui, como quebra no hospital.
  */
 const PRELUDIO = `
   create schema if not exists auth;
@@ -63,13 +76,13 @@ const PRELUDIO = `
     select 'authenticated'::text $u$;
 
   create text search dictionary unaccent (template = pg_catalog.simple);
-  create or replace function public.unaccent(txt text) returns text
+  create or replace function extensions.unaccent(txt text) returns text
     language sql immutable strict parallel safe as $u$
     select translate(txt,
       'áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑ',
       'aaaaaeeeeiiiiooooouuuucnAAAAAEEEEIIIIOOOOOUUUUCN') $u$;
-  create or replace function public.unaccent(d regdictionary, txt text) returns text
-    language sql immutable strict parallel safe as $u$ select public.unaccent(txt) $u$;
+  create or replace function extensions.unaccent(d regdictionary, txt text) returns text
+    language sql immutable strict parallel safe as $u$ select extensions.unaccent(txt) $u$;
 
   do $r$ begin
     if not exists (select 1 from pg_roles where rolname = 'anon')          then create role anon; end if;

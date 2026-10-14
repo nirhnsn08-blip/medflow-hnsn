@@ -16571,6 +16571,20 @@ insert into _exames (nome, categoria, material, preparo, rotina, urgente, sigtap
 -- O código vem do SIGTAP, por NOME, sem acento e sem caixa. Nulo quando
 -- não encontrado — e nulo é honesto.
 --
+-- 🔴 `public.f_unaccent`, E NÃO `public.unaccent` (14/10/2026).
+--
+-- No Supabase a extensão `unaccent` é instalada no schema `extensions`, não
+-- em `public` — `migracao-pacientes-busca.sql` faz isso e cria o envelope
+-- `public.f_unaccent`, que fixa o dicionário e é IMUTÁVEL. Chamar
+-- `public.unaccent` direto morre com "function public.unaccent(text) does
+-- not exist", e foi o que aconteceu ao rodar este arquivo no demo.
+--
+-- ⚠️ `banco-novo-nasce.test.js` NÃO pegou, e a razão importa: o PRELÚDIO
+-- dele criava um `public.unaccent` de mentira para substituir a extensão
+-- que o PGlite não tem. O substituto tornava verdadeira uma chamada que o
+-- banco real recusa. Substituto de ambiente que não imita o ambiente vira
+-- teste que aprova o que não funciona — o stub foi corrigido junto.
+--
 -- ⚠️ `limit 1` com ordem por tamanho do nome: "hemograma completo" casa com
 -- um procedimento só, mas "ureia" casa com vários (dosagem de ureia,
 -- ureia em líquidos). O mais CURTO é o mais genérico, que é o que se quer
@@ -16580,7 +16594,7 @@ insert into public.sadt_catalogo
   (codigo, nome, categoria, material, preparo, prazo_rotina_min, prazo_urgente_min, usuario)
 select (select s.codigo
           from public.sigtap_procedimentos s
-         where public.unaccent(lower(s.nome)) like '%' || public.unaccent(lower(e.sigtap_como)) || '%'
+         where public.f_unaccent(lower(s.nome)) like '%' || public.f_unaccent(lower(e.sigtap_como)) || '%'
          order by length(s.nome), s.codigo
          limit 1),
        e.nome, e.categoria, e.material, e.preparo, e.rotina, e.urgente, 'adauam'
@@ -16593,7 +16607,7 @@ select (select s.codigo
 update public.sadt_catalogo c
    set codigo = (select s.codigo
                    from public.sigtap_procedimentos s
-                  where public.unaccent(lower(s.nome)) like '%' || public.unaccent(lower(e.sigtap_como)) || '%'
+                  where public.f_unaccent(lower(s.nome)) like '%' || public.f_unaccent(lower(e.sigtap_como)) || '%'
                   order by length(s.nome), s.codigo
                   limit 1),
        updated_at = now()
