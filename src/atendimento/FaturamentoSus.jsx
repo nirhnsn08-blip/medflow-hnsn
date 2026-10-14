@@ -37,6 +37,8 @@ import {
   carregarCirurgiasDoEpisodio,
 } from "./dados.js";
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
+import { conferirRemessa, resumoDaConferencia, REJEITA } from "./remessa-conferencia.js";
+import { dadosDaConferencia } from "./dados.js";
 import { listaLida } from "../util/leitura.js";
 import GlosasView from "./GlosasView.jsx";
 import AnalisesView from "./AnalisesView.jsx";
@@ -380,13 +382,21 @@ function ContasDaCompetencia({ sb, competencia, recarga }) {
  * ⚠️ E É SEM VOLTA — daí a confirmação nomear o que vai acontecer em vez
  * de perguntar "tem certeza?", que ninguém lê.
  */
-function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
+// ⚠️ Exportado para o teste de render: a lógica da conferência está coberta
+// por fronteira e mutação, mas o que NÃO se cobre assim é se a tela de fato
+// MOSTRA o que a regra apurou — foi exatamente aí que os cinco defeitos da
+// caminhada de ontem moravam. Exportar um componente interno só para isso é
+// mais barato que montar a página inteira.
+export function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
   const [competencia, setCompetencia] = useState(competenciaAtual || "");
   const [via, setVia] = useState("");
   const [protocolo, setProtocolo] = useState("");
   const [quando, setQuando] = useState(hojeLocal());
   const [contas, setContas] = useState(null);   // null = ainda não buscou
   const [buscando, setBuscando] = useState(false);
+  // O que a conferência precisa olhar: cadastro, ficha e itens.
+  const [conf, setConf] = useState(null);       // null = ainda não conferiu
+  const [conferindo, setConferindo] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [msg, setMsg] = useState(null);         // { tom, texto }
 
@@ -406,6 +416,30 @@ function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
     [contas, competencia, via, protocolo, quando]
   );
   const resumo = useMemo(() => resumoDaTransmissao(v.contas), [v.contas]);
+
+  /**
+   * 🔴 A CONFERÊNCIA RODA SOBRE AS CONTAS QUE DE FATO VÃO (`v.contas`), não
+   * sobre tudo que foi buscado. Conferir o que não entra na remessa encheria
+   * a tela de pendência de conta que nem vai, e a faturista aprenderia a
+   * rolar por cima da lista.
+   */
+  // ⚠️ A dependência é a LISTA DE IDS em texto, não o array: `v.contas` é
+  // recalculado a cada render por `useMemo`, e depender dele faria a
+  // conferência rebuscar o banco a cada tecla digitada no protocolo.
+  const idsDaRemessa = useMemo(() => v.contas.map(c => c.id).join(","), [v.contas]);
+
+  useEffect(() => {
+    let vivo = true;
+    if (!idsDaRemessa) { setConf(null); return; }
+    setConferindo(true);
+    (async () => {
+      const d = await dadosDaConferencia(sb, v.contas);
+      if (!vivo) return;
+      setConf(conferirRemessa({ contas: v.contas, ...d }));
+      setConferindo(false);
+    })();
+    return () => { vivo = false; };
+  }, [sb, idsDaRemessa]);
 
   async function registrar() {
     if (!v.ok || gravando) return;
@@ -488,6 +522,43 @@ function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
           {msg?.tom !== "ok" && v.avisos.map((a, i) => (
             <div key={`a${i}`} style={{ fontSize: 12.5, color: "#f59e0b", marginBottom: 6 }}>{a}</div>
           ))}
+
+          {/* 🔴 O QUE O SUS VAI RECUSAR — antes do botão, de propósito.
+              Depois de transmitir não há o que corrigir: a produção volta no
+              mês seguinte, quando o paciente já foi embora. */}
+          {conferindo && (
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 12 }}>Conferindo o que o SUS exige…</div>
+          )}
+          {!conferindo && conf === null && v.contas.length > 0 && (
+            <div style={{ fontSize: 12.5, color: "#f43f5e", fontWeight: 600, marginTop: 12, lineHeight: 1.5 }}>
+              {resumoDaConferencia(null)}
+            </div>
+          )}
+          {!conferindo && conf && (
+            <div style={{
+              marginTop: 12, padding: "10px 12px", borderRadius: 9,
+              border: `1px solid ${conf.bloqueadas.length ? "#f43f5e" : "var(--border)"}`,
+              background: conf.bloqueadas.length ? "#f43f5e14" : "var(--surface-2)",
+            }}>
+              <div style={{
+                fontSize: 12.5, fontWeight: 700, lineHeight: 1.5,
+                color: conf.bloqueadas.length ? "#f43f5e" : "var(--text-2)",
+              }}>
+                {resumoDaConferencia(conf)}
+              </div>
+              {conf.motivos.map(m => (
+                <div key={m.chave} style={{ fontSize: 12, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
+                  <b style={{ color: m.severidade === REJEITA ? "#f43f5e" : "#f59e0b" }}>
+                    {m.contas.length} {m.contas.length === 1 ? "conta" : "contas"} · {m.campo}
+                  </b>
+                  {m.severidade === REJEITA ? "" : " (não derruba, mas a auditoria pede)"}
+                  <br />
+                  {m.texto}
+                  <span style={{ color: "var(--text-muted)" }}> Conserta-se no {m.onde}.</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
             <button onClick={registrar} disabled={!v.ok || gravando}
