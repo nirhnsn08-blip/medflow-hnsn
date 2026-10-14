@@ -194,6 +194,11 @@ export function validarCatalogo(chave, dados = {}, existentes = []) {
     if (dados.tipo === "convenio" && !String(dados.registro_ans ?? "").trim()) {
       avisos.push("Sem registro ANS. Ele é exigido no cabeçalho da guia TISS — vale preencher antes do primeiro faturamento.");
     }
+    // 🔴 SEM ELE NENHUMA GUIA SAI para esta operadora, e o aviso diz isso em
+    // vez de "campo recomendado": é bloqueio, não preferência.
+    if (dados.tipo === "convenio" && !String(dados.codigo_prestador ?? "").trim()) {
+      avisos.push("Sem o código do prestador nesta operadora. É por ele que ela sabe quem está cobrando — enquanto estiver vazio, nenhuma guia TISS é emitida para este convênio.");
+    }
   }
 
   if (chave === "planos" && !dados.convenio_id) {
@@ -255,6 +260,9 @@ export function corpoDoCatalogo(chave, dados = {}) {
       exige_carteira: dados.tipo === "sus" ? false : dados.exige_carteira !== false,
       exige_autorizacao: dados.tipo === "sus" ? false : dados.exige_autorizacao === true,
       registro_ans: String(dados.registro_ans ?? "").trim() || null,
+      // 🔴 O CÓDIGO DO HOSPITAL DENTRO DESTA OPERADORA. Cada uma dá o seu, e
+      // é por ele que ela sabe quem está cobrando. No SUS não existe.
+      codigo_prestador: dados.tipo === "sus" ? null : (String(dados.codigo_prestador ?? "").trim() || null),
       observacao: String(dados.observacao ?? "").trim() || null,
     };
   }
