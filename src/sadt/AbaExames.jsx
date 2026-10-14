@@ -24,6 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { registrarAuditoria } from "../auditoria/dados.js";
+import { conferirDocumento, selo } from "../clinico/impressao-digital.js";
 import { btnContorno } from "../ui/base.jsx";
 import { fmtDur, horaFmt } from "../util/datas.js";
 import { algumaFalhou, avisoDeFalha, naoDeuParaLer } from "../util/leitura.js";
@@ -68,6 +69,15 @@ export function AbaExames({ sb, paciente, currentUser, busy, setBusy, onMudou, o
    * `BlocoPage.jsx` já fazia certo desde o PR #277 e eu não trouxe a linha
    * junto ao copiar o padrão — a parte que importava era justamente ela.
    */
+  /**
+   * 🔴 A IMPRESSÃO DIGITAL DE CADA LAUDO, conferida ao mostrar.
+   *
+   * ⚠️ Assíncrono porque o Web Crypto é assíncrono — e por isso o estado
+   * começa VAZIO e nenhum selo aparece até a conta fechar. Mostrar
+   * "íntegro" antes de conferir seria afirmar o que não se apurou.
+   */
+  const [digitais, setDigitais] = useState({});
+
   const naTela = useRef(true);
   useEffect(() => {
     naTela.current = true;
@@ -134,6 +144,23 @@ export function AbaExames({ sb, paciente, currentUser, busy, setBusy, onMudou, o
     .map(p => [String(p.id), p])), [pedidos]);
   const porCatalogo = useMemo(() => new Map((Array.isArray(catalogo) ? catalogo : [])
     .map(c => [String(c.id), c])), [catalogo]);
+
+  // ⚠️ Depende da LISTA de resultados, não de cada um: conferir dentro do
+  // render dispararia uma conta por pintura de tela.
+  useEffect(() => {
+    // ⚠️ Leitura que FALHOU não tem o que conferir — e dizer isso com
+    // `Array.isArray(x) ? x : []` seria o atalho que a catraca de cargas
+    // caça, com razão: ele apaga a diferença entre "não há resultado" e
+    // "não consegui ler". Aqui a pergunta é feita pelo nome certo.
+    if (naoDeuParaLer(resultados) || !resultados?.length) { setDigitais({}); return; }
+    let vivo = true;
+    (async () => {
+      const out = {};
+      for (const r of resultados) out[r.id] = await conferirDocumento("sadt_resultados", r);
+      if (vivo && naTela.current) setDigitais(out);
+    })();
+    return () => { vivo = false; };
+  }, [resultados]);
 
   const criticos = criticosPendentes(resultados, itens);
   const falhou = algumaFalhou(pedidos, itens, resultados);
@@ -320,6 +347,15 @@ export function AbaExames({ sb, paciente, currentUser, busy, setBusy, onMudou, o
                           {l.label && <span style={{ fontSize: 10, fontWeight: 800, color: l.cor }}>{l.label}</span>}
                           {r.referencia && <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>ref. {r.referencia}</span>}
                           {r.versao > 1 && <span style={{ fontSize: 10, color: "#d97706", fontWeight: 700 }}>versão {r.versao}</span>}
+                          {/* 🔴 SÓ APARECE QUANDO ACUSA. Um selo "íntegro"
+                              em cada linha vira ruído que ninguém lê — e aí
+                              o dia em que ele mudar, ninguém vê. */}
+                          {selo(digitais[r.id]).grave && (
+                            <span title={digitais[r.id]?.motivo}
+                              style={{ fontSize: 10, fontWeight: 800, color: "#f43f5e", border: "1px solid #f43f5e", borderRadius: 99, padding: "0 7px" }}>
+                              {selo(digitais[r.id]).rotulo}
+                            </span>
+                          )}
                         </div>
                         {r.laudo && (
                           <div style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.55, whiteSpace: "pre-wrap", marginTop: 2 }}>{r.laudo}</div>

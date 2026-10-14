@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 119 tabelas, 1958 colunas.
+-- Cobertura atual: 119 tabelas, 1962 colunas.
 -- ============================================================
 
 with
@@ -426,12 +426,14 @@ colunas(tabela, coluna, origem) as (values
   ('cc_descricao','assinatura','cirurgia-descricao'),
   ('cc_descricao','cid_pos','cirurgia-descricao'),
   ('cc_descricao','cirurgia_id','cirurgia-descricao'),
+  ('cc_descricao','conteudo_hash','documento-impressao-digital'),
   ('cc_descricao','conversao','cirurgia-descricao'),
   ('cc_descricao','conversao_motivo','cirurgia-descricao'),
   ('cc_descricao','corrige_id','cirurgia-descricao'),
   ('cc_descricao','criado_em','cirurgia-descricao'),
   ('cc_descricao','descricao','cirurgia-descricao'),
   ('cc_descricao','drenos','cirurgia-descricao'),
+  ('cc_descricao','hash_formato','documento-impressao-digital'),
   ('cc_descricao','hemotransfusao','cirurgia-descricao'),
   ('cc_descricao','id','cirurgia-descricao'),
   ('cc_descricao','intercorrencias','cirurgia-descricao'),
@@ -1851,9 +1853,11 @@ colunas(tabela, coluna, origem) as (values
   ('sadt_resultados','analito_id','sadt-exames'),
   ('sadt_resultados','anormal','sadt-exames'),
   ('sadt_resultados','assinatura','sadt-exames'),
+  ('sadt_resultados','conteudo_hash','documento-impressao-digital'),
   ('sadt_resultados','corrige_id','sadt-exames'),
   ('sadt_resultados','criado_em','sadt-exames'),
   ('sadt_resultados','critico','sadt-exames'),
+  ('sadt_resultados','hash_formato','documento-impressao-digital'),
   ('sadt_resultados','id','sadt-exames'),
   ('sadt_resultados','item_id','sadt-exames'),
   ('sadt_resultados','laudo','sadt-exames'),
