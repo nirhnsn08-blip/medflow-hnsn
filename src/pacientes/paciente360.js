@@ -214,9 +214,9 @@ export function montarTimeline(d) {
   const vigentesDeExame = resultadosVigentes(d.sadtResultados || []) || [];
   itensDeExame.forEach(i => {
     const p = pedidosDeExame.get(String(i.pedido_id));
-    const urg = p?.prioridade === "urgente" ? " · URGENTE" : "";
+    const urg = p?.prioridade === "urgente" ? "URGENTE" : null;
     push(p?.criado_em, "Exames", "#d97706", `Exame solicitado: ${i.descricao}`,
-      [p?.indicacao_clinica, urg.trim()].filter(Boolean).join(" · ") || null);
+      [p?.indicacao_clinica, urg].filter(Boolean).join(" · ") || null);
     if (i.status === "cancelado") {
       push(i.cancelado_em, "Exames", "#64748b", `Exame CANCELADO: ${i.descricao}`,
         i.cancelamento_motivo || null);

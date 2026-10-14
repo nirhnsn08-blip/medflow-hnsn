@@ -54,16 +54,49 @@ export function AbaExames({ sb, paciente, currentUser, busy, setBusy, onMudou, o
   const [erroCancel, setErroCancel] = useState("");
   const [carregou, setCarregou] = useState(false);
 
+  /**
+   * 🔴 A GUARDA É RELIGADA NA MONTAGEM, E ISSO NÃO É SIMETRIA DECORATIVA.
+   *
+   * Sem `naTela.current = true` aqui, o StrictMode do React 18 (que este
+   * projeto liga em `main.jsx`) monta → DESMONTA → monta de novo em
+   * desenvolvimento. A limpeza da falsa desmontagem põe o ref em `false`, e
+   * como nada o repõe, ele fica `false` para sempre: `recarregar` sai antes
+   * do `setCarregou(true)` e a aba trava em "Carregando exames…" — sem
+   * erro, sem console, sem rede. Para sempre.
+   *
+   * ⚠️ Foi achado ANDANDO no demo, não por teste: a suíte monta uma vez.
+   * `BlocoPage.jsx` já fazia certo desde o PR #277 e eu não trouxe a linha
+   * junto ao copiar o padrão — a parte que importava era justamente ela.
+   */
   const naTela = useRef(true);
-  useEffect(() => () => { naTela.current = false; }, []);
+  useEffect(() => {
+    naTela.current = true;
+    return () => { naTela.current = false; };
+  }, []);
 
   const recarregar = useCallback(async () => {
     if (!sb) { setCarregou(true); return; }
     const peds = await loadSadtPedidosDoAtendimento(sb, paciente?.id);
-    const ids = (Array.isArray(peds) ? peds : []).map(p => p.id);
-    const its = await loadSadtItens(sb, ids);
-    const itemIds = (Array.isArray(its) ? its : []).map(i => i.id);
-    const res = await loadSadtResultados(sb, itemIds);
+    // 🔴 A FALHA ATRAVESSA PARA BAIXO, e isto é o conserto de um defeito que
+    // o teste desta aba achou: quando a leitura dos PEDIDOS falha, a lista
+    // de ids sai vazia, `loadSadtItens` recebe `[]`, devolve `[]` legítimo —
+    // e a aba conclui "zero exames". O crachá escrevia "Exames (0)", que
+    // AFIRMA que o paciente não tem exame pedido, em cima de uma leitura
+    // que não desceu.
+    //
+    // Uma leitura que falhou não produz contagem; produz a marca de falha.
+    if (naoDeuParaLer(peds)) {
+      if (!naTela.current) return;
+      setPedidos(peds); setItens(peds); setResultados(peds); setCarregou(true);
+      return;
+    }
+    const its = await loadSadtItens(sb, peds.map(p => p.id));
+    if (naoDeuParaLer(its)) {
+      if (!naTela.current) return;
+      setPedidos(peds); setItens(its); setResultados(its); setCarregou(true);
+      return;
+    }
+    const res = await loadSadtResultados(sb, its.map(i => i.id));
     if (!naTela.current) return;
     setPedidos(peds); setItens(its); setResultados(res); setCarregou(true);
   }, [sb, paciente?.id]);
@@ -78,15 +111,23 @@ export function AbaExames({ sb, paciente, currentUser, busy, setBusy, onMudou, o
   useEffect(() => { recarregar(); }, [recarregar]);
 
   /**
-   * 🔴 O CRACHÁ DA ABA É `null` ENQUANTO NÃO SE SABE, nunca zero.
+   * O crachá da aba. `null` continua sendo "não se sabe" — mas quem decide
+   * isso é o MODAL, que contou antes de a aba existir.
    *
-   * "Exames (0)" afirma que não há exame pedido. Enquanto a leitura não
-   * voltou — ou se ela falhou — o número não existe, e a aba mostra só
-   * "Exames". É a mesma regra de `contagemLida`: zero é uma afirmação.
+   * 🔴 ESTA ABA SÓ RELATA NÚMERO QUE ELA TEM. Relatar `null` enquanto
+   * carrega apagava um número que o modal já tinha lido com sucesso: o
+   * botão mostrava "Exames (1)", a pessoa clicava, e o (1) sumia. E se a
+   * leitura da aba falhasse, o `null` apagava a contagem boa do modal de
+   * vez — duas leituras, e a que falhou mandando na que deu certo.
+   *
+   * ⚠️ O que fica no botão quando a aba não consegue ler é a última
+   * contagem BOA, que é o que estaria lá se ninguém tivesse aberto a aba.
+   * O aviso de leitura incompleta aparece dentro da aba, onde há espaço
+   * para dizer o que falhou.
    */
   useEffect(() => {
-    if (!onContou) return;
-    onContou(!carregou || naoDeuParaLer(itens) ? null : itens.length);
+    if (!onContou || !carregou || naoDeuParaLer(itens)) return;
+    onContou(itens.length);
   }, [onContou, carregou, itens]);
 
   const porId = useMemo(() => new Map((Array.isArray(pedidos) ? pedidos : [])

@@ -105,11 +105,30 @@ export function valorDoResultado(res) {
   if (!res) return "";
   if (res.valor_num != null) {
     const n = Number(res.valor_num);
-    const num = Number.isFinite(n) ? String(n) : String(res.valor_num);
+    const num = Number.isFinite(n) ? numeroPtBr(n) : String(res.valor_num);
     return res.unidade ? `${num} ${res.unidade}` : num;
   }
   const t = String(res.valor_texto ?? "").trim();
   return t;
+}
+
+/**
+ * O número como se escreve em português.
+ *
+ * 🔴 O SEPARADOR DE MILHAR É O QUE IMPORTA AQUI, e foi visto ANDANDO: o
+ * laudo mostrava `150000 /mm³` e `8000 /mm³` sem separador nenhum. Plaqueta
+ * é justamente onde um zero a mais ou a menos muda a conduta — 15.000 pede
+ * transfusão, 150.000 é normal —, e contar dígitos a olho num plantão é
+ * pedir para errar.
+ *
+ * ⚠️ NÃO usa `fmt` de `util/formato.js`: aquele faz `n ?? 0`, e transformar
+ * ausência em zero é exatamente a mentira que este módulo inteiro evita.
+ * Aqui, o que não é número finito volta vazio.
+ */
+export function numeroPtBr(v) {
+  const n = Number(v);
+  if (v == null || v === "" || !Number.isFinite(n)) return "";
+  return n.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
 }
 
 /**

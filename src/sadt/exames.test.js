@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  leituraDoResultado, valorDoResultado, faixaTexto, faixaCriticaTexto,
+  leituraDoResultado, valorDoResultado, numeroPtBr, faixaTexto, faixaCriticaTexto,
   resultadosVigentes, versaoCorrigida, minutosEsperando, atrasoDoExame,
   criticosPendentes, pendentes, serieDoAnalito, tendencia,
   conferirPedido, conferirResultado, conferirCancelamento, valorDigitado,
@@ -86,6 +86,30 @@ describe("🔴 o valor como se escreve — e o zero", () => {
     expect(valorDoResultado({ valor_num: 14, unidade: "g/dL" })).toBe("14 g/dL");
   });
 
+  it("🔴 o separador de milhar aparece — plaqueta é onde um zero muda a conduta", () => {
+    // Visto ANDANDO no demo: o laudo mostrava `150000 /mm³` e `8000 /mm³`
+    // sem separador. 15.000 pede transfusão e 150.000 é normal; contar
+    // dígitos a olho num plantão é pedir para errar.
+    expect(valorDoResultado({ valor_num: 150000, unidade: "/mm³" })).toBe("150.000 /mm³");
+    expect(valorDoResultado({ valor_num: 8000, unidade: "/mm³" })).toBe("8.000 /mm³");
+  });
+
+  it("decimal sai com vírgula, como se escreve", () => {
+    expect(valorDoResultado({ valor_num: 7.2, unidade: "mEq/L" })).toBe("7,2 mEq/L");
+    expect(valorDoResultado({ valor_num: 1.005 })).toBe("1,005");
+  });
+
+  it("🔴 `numeroPtBr` não transforma ausência em zero", () => {
+    // `fmt` de util/formato.js faz `n ?? 0`. Num valor de exame, isso
+    // imprimiria "0" para um resultado que não existe — a mentira que este
+    // módulo inteiro evita.
+    expect(numeroPtBr(null)).toBe("");
+    expect(numeroPtBr(undefined)).toBe("");
+    expect(numeroPtBr("")).toBe("");
+    expect(numeroPtBr("abc")).toBe("");
+    expect(numeroPtBr(0)).toBe("0");
+  });
+
   it("🔴 ZERO é valor, não ausência", () => {
     // `res.valor_num || res.valor_texto` daria o texto (ou nada) para uma
     // contagem zerada. E zero é justamente o resultado que importa em
@@ -99,7 +123,7 @@ describe("🔴 o valor como se escreve — e o zero", () => {
   });
 
   it("número sem unidade não inventa unidade", () => {
-    expect(valorDoResultado({ valor_num: 7.2 })).toBe("7.2");
+    expect(valorDoResultado({ valor_num: 7.2 })).toBe("7,2");
   });
 
   it("nada: string vazia, e não 'undefined'", () => {

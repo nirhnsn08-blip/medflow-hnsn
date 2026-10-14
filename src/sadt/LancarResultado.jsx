@@ -98,6 +98,9 @@ export function LancarResultado({ item, analitos, resultados, currentUser, onLan
               const ativo = String(form.analito_id ?? "") === String(a.id);
               return (
                 <button key={a.id} onClick={() => escolher(a)}
+                  aria-label={ja
+                    ? `${a.nome}: já lançado ${valorDoResultado(ja)} — corrigir`
+                    : `${a.nome}: lançar resultado`}
                   title={ja ? `Já lançado: ${valorDoResultado(ja)} — clicar abre uma CORREÇÃO` : "Lançar"}
                   style={{
                     background: ativo ? "#3b82f6" : "transparent",
