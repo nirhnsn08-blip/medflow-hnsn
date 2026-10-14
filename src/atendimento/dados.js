@@ -1667,6 +1667,39 @@ export async function itensDasContas(sb, ids) {
   return { porConta, falhou: false };
 }
 
+/**
+ * O que a conferência de remessa precisa olhar, numa ida só por tabela.
+ *
+ * 🔴 A MARCA DE FALHA ATRAVESSA. `conferirRemessa` devolve `null` quando
+ * qualquer uma das três não desceu — e tem de ser assim: "nenhuma pendência"
+ * é a frase que libera a transmissão, e ela não pode sair de uma lista de
+ * pacientes que o banco não entregou. Por isso aqui se devolve a lista
+ * MARCADA, e não um vazio limpo.
+ *
+ * ⚠️ Lê por PRONTUÁRIO, que é como `at_contas` guarda o elo com a pessoa.
+ */
+export async function dadosDaConferencia(sb, contas) {
+  const lista = (Array.isArray(contas) ? contas : []).filter(Boolean);
+  if (!sb) return { pacientes: listaLida(null), atendimentos: listaLida(null), itens: listaLida(null) };
+  if (!lista.length) return { pacientes: [], atendimentos: [], itens: [] };
+
+  const prontuarios = [...new Set(lista.map(c => String(c.prontuario ?? "").trim()).filter(Boolean))];
+  const atendimentos = [...new Set(lista.map(c => c.atendimento_id).filter(v => v != null))];
+
+  const [pac, at, it] = await Promise.all([
+    prontuarios.length
+      ? sb(`pacientes?prontuario=in.(${prontuarios.map(encodeURIComponent).join(",")})` +
+          "&select=prontuario,cns,raca_cor,end_municipio_ibge,data_nascimento,sexo,nome_mae")
+      : Promise.resolve([]),
+    atendimentos.length
+      ? sb(`ps_atendimentos?id=in.(${atendimentos.join(",")})&select=id,cid,medico,medico_cbo`)
+      : Promise.resolve([]),
+    sb(`at_conta_itens?conta_id=in.(${lista.map(c => c.id).join(",")})&select=${CAMPOS_ITEM}&cancelado=is.false`),
+  ]);
+
+  return { pacientes: listaLida(pac), atendimentos: listaLida(at), itens: listaLida(it) };
+}
+
 // ── REPASSE (o dinheiro que ENTROU) ─────────────────────────
 //
 // As regras (conciliação, estados, agrupamentos) moram em `receitas.js`;
