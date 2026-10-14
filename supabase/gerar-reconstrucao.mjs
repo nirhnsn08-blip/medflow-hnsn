@@ -326,6 +326,19 @@ const ORDEM = [
   // OPME com lote: responde "em quem implantamos este lote" (RDC 751/2022).
   // Depende de sup_itens e sup_movimentos — o gatilho dá baixa no kardex.
   "migracao-cirurgia-opme.sql",
+  "migracao-sadt-exames.sql",
+  // 🔴 LOGO DEPOIS, E DENTRO DA ORDEM — como `migracao-farmacia-seed.sql` e
+  // `migracao-scih-germes-seed.sql`. Catálogo de exame com faixa de
+  // referência é REFERÊNCIA, não dado fictício: um hospital novo nascendo
+  // sem ele tem o módulo estruturalmente novo e funcionalmente igual ao
+  // antigo — todo exame caindo no laudo em texto, sem faixa, sem crítico e
+  // sem curva. Era o estado de onde o módulo saiu.
+  //
+  // ⚠️ AS FAIXAS SÃO PONTO DE PARTIDA e o próprio arquivo diz isso em
+  // letras grandes: dependem do método e do equipamento, a lista de
+  // valores críticos é o que faz alguém ser chamado, e a tabela ainda não
+  // separa sexo nem idade. O laboratório do hospital revisa e assina.
+  "migracao-sadt-catalogo-seed.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

@@ -19,7 +19,8 @@ import { registrarAuditoria } from "../auditoria/dados.js";
 import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 import { AbaPrescricao } from "./AbaPrescricao.jsx";
 import { AbaChecagem } from "./AbaChecagem.jsx";
-import { AbaExames } from "./AbaExames.jsx";
+import { AbaExames } from "../sadt/AbaExames.jsx";
+import { contarSadtDoAtendimento } from "../sadt/dados.js";
 import { avaliarSinaisVitais } from "../clinico/adulto.js";
 import { normTxt } from "../clinico/alertas.js";
 import { COMORBIDADES } from "../clinico/comorbidades.js";
@@ -656,8 +657,13 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const carregarRegistros = () => loadPsRegistros(sb, paciente.id).then(setRegistros);
+  // 🔴 O NÚMERO DA ABA DE EXAMES VEM DAQUI, e não de dentro da aba: a aba só
+  // é montada quando alguém clica nela, e é justamente pelo número no botão
+  // que o médico descobre que há exame esperando. `null` enquanto não se
+  // sabe — "Exames (0)" afirma que não há exame pedido.
+  const carregarExames = () => contarSadtDoAtendimento(sb, paciente.id).then(setNExames);
   const carregarPrescricao = () => { loadPsPrescricaoItens(sb, paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(sb, paciente.id).then(setSaidas); loadPsAdministracoes(sb, paciente.id).then(setAdms); };
-  useEffect(() => { carregarRegistros(); }, []);
+  useEffect(() => { carregarRegistros(); carregarExames(); }, []);
   useEffect(() => { loadFarmMedicamentos(sb).then(setCatalogo); loadFarmLotes(sb).then(setPresLotes); loadFarmInteracoes(sb).then(setInteracoes); loadFarmIncompatY(sb).then(setIncompatY); carregarPrescricao(); }, []);
   // Pela PESSOA: segue a unificação de prontuário (ver clinico/pessoa.js).
   useEffect(() => { carregarAlergiasDoPaciente(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
@@ -712,7 +718,11 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
 
   const evolucoes = registros.filter(r => r.tipo === "evolucao");
   const prescricoes = registros.filter(r => r.tipo === "prescricao");
-  const exames = registros.filter(r => r.tipo === "exame");
+  // 🔴 O exame NÃO mora mais em `registros`: saiu de `ps_registros` para as
+  // tabelas do SADT. A aba carrega os próprios dados e devolve a contagem
+  // por aqui — contar `registros` daria zero para sempre, e zero nesta
+  // tela lê-se "não há exame pedido".
+  const [nExames, setNExames] = useState(null);
   const abaBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
 
   return (
@@ -733,7 +743,9 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
             Checagem ({adms.length})
             {itensPendentesChecagem.length > 0 && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: aba === "checagem" ? "#000" : "#d97706" }}>● {itensPendentesChecagem.length} a checar</span>}
           </button>
-          <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>Exames ({exames.length})</button>
+          <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>
+            Exames{nExames == null ? "" : ` (${nExames})`}
+          </button>
         </div>
 
         {aba === "evolucao" && (
@@ -783,8 +795,9 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
         )}
 
         {aba === "exames" && (
-          <AbaExames sb={sb} paciente={paciente} currentUser={currentUser} exames={exames}
-            busy={busy} setBusy={setBusy} onMudou={() => { carregarRegistros(); onChanged?.(); }} />
+          <AbaExames sb={sb} paciente={paciente} currentUser={currentUser}
+            busy={busy} setBusy={setBusy} onContou={setNExames}
+            onMudou={() => { carregarExames(); onChanged?.(); }} />
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>

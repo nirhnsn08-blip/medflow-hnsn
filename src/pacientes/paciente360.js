@@ -25,6 +25,7 @@ import { jaOperou, linhaDoAntecedente, resumoDaDescricao, versaoVigente } from "
 import { fichaVigente, resumoDaFicha, viaAereaDificilPregressa } from "../bloco/anestesia.js";
 import { totalAldrete, ultimaAvaliacao } from "../bloco/aldrete.js";
 import { diaLocal, horaFmt } from "../util/datas.js";
+import { leituraDoResultado, resultadosVigentes, valorDoResultado } from "../sadt/exames.js";
 
 /** A equipe de UMA cirurgia, da lista que veio junto com o paciente. */
 export function equipeDe(d, cirurgiaId) {
@@ -197,11 +198,46 @@ export function montarTimeline(d) {
   (d.registrosPS || []).forEach(r => {
     if (r.tipo === "evolucao") { const ec = PS_EVOL_CATEGORIAS[r.categoria] || PS_EVOL_CATEGORIAS.medica; push(r.criado_em, "PS", ec.cor, ec.label + " no PS", r.texto); }
     else if (r.tipo === "prescricao") push(r.criado_em, "PS", "#6366f1", "Prescrição no PS", r.texto);
-    else if (r.tipo === "exame") {
-      push(r.criado_em, "PS", "#d97706", `Exame solicitado: ${r.texto}`, null);
-      if (r.resultado_em) push(r.resultado_em, "PS", "#d97706", `Resultado de exame: ${r.texto}`, r.resultado || null);
-    }
+    // 🔴 EXAME NÃO ENTRA MAIS POR AQUI. Ele saiu de `ps_registros` para as
+    // tabelas do SADT (`migracao-sadt-exames.sql`), e o backfill levou o que
+    // existia. Ler `tipo === "exame"` aqui ainda acharia as linhas antigas —
+    // e elas apareceriam DUAS vezes na linha do tempo, uma por fonte.
+    // A entrada nova é o bloco de exames logo abaixo.
   });
+  // ── EXAMES (SADT) ─────────────────────────────────────────
+  // 🔴 O PEDIDO E O RESULTADO SÃO DOIS EVENTOS, e isso não é detalhe: a
+  // distância entre eles é o que alguém olha ao perguntar por que a conduta
+  // demorou. Com o exame em texto livre havia as mesmas duas datas, mas
+  // nenhum valor comparável entre elas.
+  const itensDeExame = (d.sadtItens || []);
+  const pedidosDeExame = new Map((d.sadtPedidos || []).map(p => [String(p.id), p]));
+  const vigentesDeExame = resultadosVigentes(d.sadtResultados || []) || [];
+  itensDeExame.forEach(i => {
+    const p = pedidosDeExame.get(String(i.pedido_id));
+    const urg = p?.prioridade === "urgente" ? "URGENTE" : null;
+    push(p?.criado_em, "Exames", "#d97706", `Exame solicitado: ${i.descricao}`,
+      [p?.indicacao_clinica, urg].filter(Boolean).join(" · ") || null);
+    if (i.status === "cancelado") {
+      push(i.cancelado_em, "Exames", "#64748b", `Exame CANCELADO: ${i.descricao}`,
+        i.cancelamento_motivo || null);
+      return;
+    }
+    if (!i.resultado_em) return;
+    const meus = vigentesDeExame.filter(r => String(r.item_id) === String(i.id));
+    // 🔴 O VALOR CRÍTICO APARECE NA LINHA DO TEMPO, em vermelho. É o único
+    // lugar onde quem pega o paciente seis meses depois vê que houve um.
+    const pior = meus.map(leituraDoResultado).filter(Boolean).sort((a, b) => b.peso - a.peso)[0];
+    const resumo = meus.length
+      ? meus.map(r => {
+          const l = leituraDoResultado(r);
+          return `${r.nome ? r.nome + " " : ""}${valorDoResultado(r)}${l?.label ? " (" + l.label + ")" : ""}`;
+        }).filter(t => t.trim()).join(" · ")
+      : null;
+    push(i.resultado_em, "Exames", pior?.nivel === "critico" ? "#f43f5e" : "#d97706",
+      `Resultado de exame: ${i.descricao}`,
+      resumo || meus.map(r => r.laudo).filter(Boolean).join(" ") || null);
+  });
+
   return ev.sort((a, b) => new Date(b.quando) - new Date(a.quando));
 }
 

@@ -37,8 +37,9 @@ import { avisoSonoro, ligarSom, somLigado } from "../ui/som.js";
 import { diffMin, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { fmt } from "../util/formato.js";
 import { MANCHESTER, PS_AREAS, PS_DESFECHOS, PS_DISCRIMINADORES, PS_PRIORIDADE, PS_PROTOCOLO, PS_SALA_STATUS, fmtSinaisVitais } from "./catalogo.js";
-import { addPsAtendimentoRemote, addPsSinalRemote, deletePsSalaRemote, loadPsAdministracoesByAtendimentos, loadPsAtendimentos, loadPsAtendimentosPeriodo, loadPsExamesPendentes, loadPsExamesPeriodo, loadPsFinalizadosHoje, loadPsPrescricaoItensByAtendimentos, loadPsSalas, updatePsAtendimentoRemote, upsertPsSalaRemote } from "./dados.js";
+import { addPsAtendimentoRemote, addPsSinalRemote, deletePsSalaRemote, loadPsAdministracoesByAtendimentos, loadPsAtendimentos, loadPsAtendimentosPeriodo, loadPsFinalizadosHoje, loadPsPrescricaoItensByAtendimentos, loadPsSalas, updatePsAtendimentoRemote, upsertPsSalaRemote } from "./dados.js";
 import { contarExames } from "./exames.js";
+import { loadSadtExamesPeriodo, loadSadtPendentesPorAtendimento } from "../sadt/dados.js";
 import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import PrimeiroUso from "../ui/PrimeiroUso.jsx";
@@ -187,7 +188,10 @@ function PsRelatorioView({ sb }) {
     let cancelado = false;
     setCarregando(true);
     loadPsAtendimentosPeriodo(sb, ano, mes).then(r => { if (!cancelado) { setRows(r); setCarregando(false); } });
-    loadPsExamesPeriodo(sb, ano, mes).then(r => { if (!cancelado) setExames(r); });
+    // 🔴 O BI PASSA A LER O SADT. O formato de volta é o mesmo
+    // (`{ categoria, status, criado_em, resultado_em }`) de propósito:
+    // `resumoExamesPorCategoria` é a régua do relatório e não muda.
+    loadSadtExamesPeriodo(sb, ano, mes).then(r => { if (!cancelado) setExames(r); });
     return () => { cancelado = true; };
   }, [mes, ano]);
 
@@ -538,7 +542,11 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     loadPsAtendimentos(sb).then(r => {
       setFila(r);
       const ids = r.filter(p => p.status === "em_atendimento").map(p => p.id);
-      loadPsExamesPendentes(sb, ids).then(list => {
+      // 🔴 OS EXAMES VÊM DO SADT, não mais de `ps_registros`. O formato de
+      // volta é o mesmo (`{ atendimento_id, status }`) de propósito: é a
+      // mesma régua (`contarExames`) que pinta o crachá da fila e alimenta
+      // a trava do desfecho, e régua é uma só.
+      loadSadtPendentesPorAtendimento(sb, ids).then(list => {
         // A separação entre "ainda não voltou" e "voltou e ninguém leu" vem de
         // `contarExames`, a mesma régua da aba de exames. Era a terceira cópia.
         const porAtend = {};

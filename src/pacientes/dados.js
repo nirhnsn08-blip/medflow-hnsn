@@ -18,6 +18,7 @@
 
 import { listaLida } from "../util/leitura.js";
 import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
+import { loadSadtDoPaciente } from "../sadt/dados.js";
 
 export async function loadPaciente360(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
@@ -77,6 +78,11 @@ export async function loadPaciente360(sb, prontuario) {
     aldreteRpa = listaLida(rp);
   }
 
+  // Os exames da pessoa: lidos por prontuário E pelos atendimentos de PS
+  // dela — o pedido feito antes de a recepção vincular o prontuário só tem
+  // o atendimento, e deixá-lo de fora o faria desaparecer da linha do tempo.
+  const ex = await loadSadtDoPaciente(sb, p, psRows.map(a => a.id).filter(Boolean));
+
   return {
     cadastro: Array.isArray(cad) && cad[0] ? cad[0] : null,
     ps: psRows, leitoAtual: listaLida(leitoAtual),
@@ -88,6 +94,7 @@ export async function loadPaciente360(sb, prontuario) {
     // lista vazia de cirurgia lida como "nunca operou" é omissão de
     // informação assistencial, e é indistinguível de rede ruim sem isto.
     cirurgias, equipeCirurgias, descricoesCirurgias, fichasAnestesicas, aldreteRpa,
+    sadtPedidos: ex.pedidos, sadtItens: ex.itens, sadtResultados: ex.resultados,
   };
 }
 

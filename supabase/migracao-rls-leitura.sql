@@ -217,7 +217,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 113 tabelas ficam abertas a
+-- a mesma coisa em português. 27 das 118 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -342,6 +342,11 @@ begin
       ('ps_registros', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),                  -- ps, paciente, farmacia
       ('ps_salas', 'public.pode_ver_algum(''ps'')'),                                                  -- ps
       ('ps_sinais', 'public.pode_ver_algum(''ps'', ''paciente'')'),                                   -- ps, paciente
+      ('sadt_analitos', 'true'),                                                                      -- todos os autenticados
+      ('sadt_catalogo', 'true'),                                                                      -- todos os autenticados
+      ('sadt_itens', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),                 -- ps, paciente, ambulatorio
+      ('sadt_pedidos', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),               -- ps, paciente, ambulatorio
+      ('sadt_resultados', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),            -- ps, paciente, ambulatorio
       ('scih_casos', 'public.pode_ver_algum(''scih'', ''paciente'')'),                                -- scih, paciente
       ('scih_germes', 'true'),                                                                        -- todos os autenticados
       ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
@@ -521,6 +526,9 @@ begin
       ('ps_registros', 'public.pode_editar_algum(''ps'', ''paciente'', ''farmacia'')'),               -- ps, paciente, farmacia
       ('ps_salas', 'public.pode_editar_algum(''ps'')'),                                               -- ps
       ('ps_sinais', 'public.pode_editar_algum(''ps'', ''paciente'')'),                                -- ps, paciente
+      ('sadt_itens', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),              -- ps, paciente, ambulatorio
+      ('sadt_pedidos', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),            -- ps, paciente, ambulatorio
+      ('sadt_resultados', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),         -- ps, paciente, ambulatorio
       ('scih_casos', 'public.pode_editar_algum(''scih'', ''paciente'')'),                             -- scih, paciente
       ('scih_indicadores', 'public.pode_editar_algum(''scih'', ''overview'', ''print'')'),            -- scih, overview, print
       ('solicitacoes', 'public.pode_editar_algum(''ps'', ''leitos'')'),                               -- ps, leitos
@@ -592,6 +600,8 @@ with esperadas_abertas(tabela) as (values
   ('ps_faixas_obstetricas'),
   ('ps_faixas_pediatricas'),
   ('ps_protocolos'),
+  ('sadt_analitos'),
+  ('sadt_catalogo'),
   ('scih_germes'),
   ('setores'),
   ('sigtap_procedimentos')
