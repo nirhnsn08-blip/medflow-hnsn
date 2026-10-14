@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 118 tabelas, 1923 colunas.
+-- Cobertura atual: 119 tabelas, 1959 colunas.
 -- ============================================================
 
 with
@@ -135,6 +135,7 @@ tabelas(nome, origem) as (values
   ('sup_parametros','suprimentos-alcada'),
   ('sup_pedidos','suprimentos-faseC'),
   ('sup_requisicoes','suprimentos-faseB'),
+  ('tiss_guias','tiss-guias'),
   ('usuarios_permissoes','perfis-acesso')
 ),
 colunas(tabela, coluna, origem) as (values
@@ -198,6 +199,7 @@ colunas(tabela, coluna, origem) as (values
   ('at_conta_itens','id','atendimento-faturamento'),
   ('at_conta_itens','observacao','atendimento-faturamento'),
   ('at_conta_itens','quantidade','atendimento-faturamento'),
+  ('at_conta_itens','tabela','tiss-guias'),
   ('at_conta_itens','tipo','atendimento-faturamento'),
   ('at_conta_itens','updated_at','atendimento-faturamento'),
   ('at_conta_itens','usuario','atendimento-faturamento'),
@@ -222,6 +224,7 @@ colunas(tabela, coluna, origem) as (values
   ('at_contas','via','atendimento-faturamento'),
   ('at_convenios','ativo','atendimento-fase2'),
   ('at_convenios','codigo','atendimento-fase2'),
+  ('at_convenios','codigo_prestador','tiss-guias'),
   ('at_convenios','criado_em','atendimento-fase2'),
   ('at_convenios','exige_autorizacao','atendimento-fase2'),
   ('at_convenios','exige_carteira','atendimento-fase2'),
@@ -232,6 +235,7 @@ colunas(tabela, coluna, origem) as (values
   ('at_convenios','tipo','atendimento-fase2'),
   ('at_convenios','updated_at','atendimento-fase2'),
   ('at_convenios','usuario','atendimento-fase2'),
+  ('at_convenios','versao_tiss','tiss-guias'),
   ('at_desfecho_correcoes','atendimento_id','correcao-desfecho'),
   ('at_desfecho_correcoes','criado_em','correcao-desfecho'),
   ('at_desfecho_correcoes','de','correcao-desfecho'),
@@ -2054,6 +2058,39 @@ colunas(tabela, coluna, origem) as (values
   ('sup_requisicoes','status','suprimentos-faseB'),
   ('sup_requisicoes','updated_at','suprimentos-faseB'),
   ('sup_requisicoes','usuario','suprimentos-faseB'),
+  ('tiss_guias','atendimento_em','tiss-guias'),
+  ('tiss_guias','atendimento_id','tiss-guias'),
+  ('tiss_guias','beneficiario_carteira','tiss-guias'),
+  ('tiss_guias','beneficiario_cns','tiss-guias'),
+  ('tiss_guias','beneficiario_nome','tiss-guias'),
+  ('tiss_guias','beneficiario_validade','tiss-guias'),
+  ('tiss_guias','cancelada_em','tiss-guias'),
+  ('tiss_guias','cancelamento_motivo','tiss-guias'),
+  ('tiss_guias','carater','tiss-guias'),
+  ('tiss_guias','codigo_prestador','tiss-guias'),
+  ('tiss_guias','conta_id','tiss-guias'),
+  ('tiss_guias','convenio_id','tiss-guias'),
+  ('tiss_guias','criado_em','tiss-guias'),
+  ('tiss_guias','emitida_em','tiss-guias'),
+  ('tiss_guias','emitida_por','tiss-guias'),
+  ('tiss_guias','enviada_em','tiss-guias'),
+  ('tiss_guias','id','tiss-guias'),
+  ('tiss_guias','indicacao_clinica','tiss-guias'),
+  ('tiss_guias','numero_operadora','tiss-guias'),
+  ('tiss_guias','numero_prestador','tiss-guias'),
+  ('tiss_guias','profissional_cbo','tiss-guias'),
+  ('tiss_guias','profissional_conselho','tiss-guias'),
+  ('tiss_guias','profissional_nome','tiss-guias'),
+  ('tiss_guias','profissional_registro','tiss-guias'),
+  ('tiss_guias','profissional_uf','tiss-guias'),
+  ('tiss_guias','prontuario','tiss-guias'),
+  ('tiss_guias','registro_ans','tiss-guias'),
+  ('tiss_guias','senha','tiss-guias'),
+  ('tiss_guias','senha_validade','tiss-guias'),
+  ('tiss_guias','status','tiss-guias'),
+  ('tiss_guias','tipo','tiss-guias'),
+  ('tiss_guias','updated_at','tiss-guias'),
+  ('tiss_guias','usuario','tiss-guias'),
   ('usuarios_permissoes','concedido_por','perfis-acesso'),
   ('usuarios_permissoes','criado_em','perfis-acesso'),
   ('usuarios_permissoes','id','perfis-acesso'),

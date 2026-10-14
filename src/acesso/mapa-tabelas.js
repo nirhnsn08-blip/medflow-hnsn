@@ -82,6 +82,9 @@ export const MAPA_TABELAS = {
   at_glosas:                ["faturamento"],
   // O repasse aponta para a conta de um paciente e diz quanto foi pago por ela.
   at_repasses:              ["faturamento"],
+  // 🔴 A guia TISS carrega a carteira do beneficiário e o que foi cobrado
+  // dele na operadora. É do Faturamento, e só.
+  tiss_guias:               ["faturamento"],
   // Preco por convenio. NAO tem paciente, mas e informacao comercial —
   // quem nao fatura nao precisa da tabela de precos da operadora.
   at_precos:                ["faturamento"],
@@ -336,6 +339,7 @@ export const ESCRITA_ABERTA = new Set([
 export const SENSIVEIS = new Set([
   "ag_agendamentos", "at_conta_itens", "at_contas", "at_desfecho_correcoes",
   "at_glosas", "at_repasses",
+  "tiss_guias",
   "at_responsaveis",
   "auditoria", "cc_anestesia", "cc_checklist", "cc_cirurgias", "cc_descricao",
   "cc_equipe", "cc_opme", "cc_rpa_aldrete",

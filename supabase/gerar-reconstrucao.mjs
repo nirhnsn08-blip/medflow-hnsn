@@ -339,6 +339,9 @@ const ORDEM = [
   // valores críticos é o que faz alguém ser chamado, e a tabela ainda não
   // separa sexo nem idade. O laboratório do hospital revisa e assina.
   "migracao-sadt-catalogo-seed.sql",
+  // Depois do SADT porque não depende dele — só precisa de `at_contas`,
+  // `at_convenios` e `at_conta_itens`, que vêm muito antes.
+  "migracao-tiss-guias.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

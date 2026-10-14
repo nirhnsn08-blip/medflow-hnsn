@@ -6,7 +6,7 @@
 -- ⚠️ ARQUIVO GERADO — não edite à mão (node supabase/gerar-conferencia.mjs).
 --
 -- ⚠️ O QUE ELE ASSUME, E COMO CONFERIR ANTES DE ACREDITAR
--- Ele marca as 110 migrações do repositório como aplicadas. A
+-- Ele marca as 111 migrações do repositório como aplicadas. A
 -- suposição é que o esquema deste banco está completo — razoável num
 -- sistema em uso, mas NÃO é fato até alguém olhar.
 --
@@ -127,11 +127,12 @@ values
   ('migracao-suprimentos-inventario.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-suprimentos-ponto-de-pedido.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-suprimentos-seed.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
-  ('migracao-suprimentos-unidade-compra.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql')
+  ('migracao-suprimentos-unidade-compra.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-tiss-guias.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql')
 on conflict (arquivo) do nothing;
 
 select
   case when (select count(*) from public.pacientes) >= 40
        then 'DEMO (banco de teste)' else 'PRINCIPAL (hospital)' end as banco,
   (select count(*) from public.migracoes_aplicadas) as registradas,
-  110 as esperadas;
+  111 as esperadas;
