@@ -82,6 +82,19 @@ describe("🔴 guia TISS sobre conta do SUS é cobrança indevida", () => {
     expect(p[0].texto).toMatch(/sem via/);
   });
 
+  it("🔴 e para MESMO quando há outras pendências — não lista as duas", () => {
+    // ⚠️ Com o fixture completo esta prova não vale nada: sem outra
+    // pendência para listar, tirar o `return` não muda o resultado. Era uma
+    // mutação INERTE, e o verde dela era enganoso. Aqui a conta está na via
+    // errada E sem carteira E sem profissional: se o `return` sumisse, a
+    // lista viria com três itens.
+    const p = pendenciasParaEmitir({
+      guia: { tipo: "sp_sadt" }, conta: { ...CONTA, via: "aih" },
+      convenio: null, itens: [], profissional: null,
+    });
+    expect(chaves(p)).toEqual(["via_errada"]);
+  });
+
   it("sem conta nenhuma", () => {
     expect(chaves(pendenciasParaEmitir(ctx({ conta: null })))).toEqual(["sem_conta"]);
   });
@@ -107,12 +120,22 @@ describe("🔴 os quatro campos do profissional", () => {
   it("nomeia TODOS os que faltam, não só o primeiro", () => {
     // Dizer um por vez faria a pessoa salvar quatro vezes para descobrir
     // os quatro.
+    //
+    // ⚠️ A ASSERÇÃO OLHA SÓ O TRECHO "está sem …", e isso é o conserto de um
+    // teste que não provava nada: a mesma frase EXPLICA depois que "a guia
+    // leva conselho, número, UF e CBO". Procurar as quatro palavras no texto
+    // inteiro casava com a explicação, então o teste passava verde mesmo
+    // nomeando um campo só. Pego por mutação.
     const p = pendenciasParaEmitir(ctx({ profissional: { nome: "X" } }));
     const x = p.find(y => y.chave === "profissional_incompleto");
-    expect(x.texto).toMatch(/conselho/);
-    expect(x.texto).toMatch(/número/);
-    expect(x.texto).toMatch(/UF/);
-    expect(x.texto).toMatch(/CBO/);
+    const lista = x.texto.match(/está sem ([^.]+)\./)[1];
+    expect(lista).toBe("conselho, número, UF, CBO");
+  });
+
+  it("falta UM campo: a lista tem só ele", () => {
+    const p = pendenciasParaEmitir(ctx({ profissional: { ...PROF, cbo: "" } }));
+    const x = p.find(y => y.chave === "profissional_incompleto");
+    expect(x.texto.match(/está sem ([^.]+)\./)[1]).toBe("CBO");
   });
 
   it("aceita o profissional vindo da própria guia, com os nomes de lá", () => {

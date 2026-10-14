@@ -53,7 +53,6 @@
 --   drop function if exists public.tiss_aplica_guia();
 --   drop table if exists public.tiss_guias;
 --   alter table public.at_convenios drop column if exists codigo_prestador;
---   alter table public.at_convenios drop column if exists versao_tiss;
 --   alter table public.at_conta_itens drop column if exists tabela;
 -- ═══════════════════════════════════════════════════════════
 
@@ -64,12 +63,20 @@ set valentrax.quem = 'adauam';
 -- 1. O QUE FALTAVA NO CADASTRO DA OPERADORA
 -- ───────────────────────────────────────────────────────────
 alter table public.at_convenios add column if not exists codigo_prestador text;
-alter table public.at_convenios add column if not exists versao_tiss text;
+
+-- 🔴 `versao_tiss` NÃO ENTRA, e isso é decisão, não esquecimento.
+--
+-- Eu a tinha criado para o gerador de XML — que esta entrega explicitamente
+-- NÃO constrói. A catraca `colunas-sem-input` apontou que nada a lia, e a
+-- regra dela é a certa: ou alguém lê a coluna, ou a migração não deveria
+-- tê-la criado. Coluna vazia não dá erro, não quebra tela, não quebra
+-- teste — só fica lá parecendo que alguém cuidou do assunto. Foi assim que
+-- o oxigênio do NEWS passou dois anos sem pontuar.
+--
+-- Quando o XML existir, ela entra na migração que o acompanha: uma linha.
 
 comment on column public.at_convenios.codigo_prestador is
   'O código do HOSPITAL dentro desta operadora. É por ele que a operadora sabe quem cobra — sem ele nenhuma guia TISS é emitida. Cada operadora dá o seu.';
-comment on column public.at_convenios.versao_tiss is
-  'A versão do padrão TISS que ESTA operadora aceita hoje (ex.: 4.01.00). Versionado por norma da ANS e homologado por operadora — por isso é cadastro, não constante no código.';
 
 -- 🔴 O CÓDIGO DO ITEM SEM A TABELA É AMBÍGUO.
 --
@@ -352,10 +359,9 @@ select item, case when ok then '✅' else '❌' end as situacao from (
   select '🔴 gatilho que carimba e recusa',
          exists (select 1 from pg_trigger where tgname = 'trg_tiss_guia')
   union all
-  select 'coluna ' || c, exists (
+  select '🔴 at_convenios.codigo_prestador (não existia em coluna nenhuma)', exists (
            select 1 from information_schema.columns
-            where table_schema = 'public' and table_name = 'at_convenios' and column_name = c)
-    from unnest(array['codigo_prestador', 'versao_tiss']) c
+            where table_schema = 'public' and table_name = 'at_convenios' and column_name = 'codigo_prestador')
   union all
   select '🔴 at_conta_itens.tabela (código sem tabela é ambíguo)', exists (
            select 1 from information_schema.columns
@@ -375,7 +381,7 @@ select item, case when ok then '✅' else '❌' end as situacao from (
 select nome,
        case when coalesce(btrim(registro_ans), '') = '' then '❌ sem registro ANS' else '✅' end as ans,
        case when coalesce(btrim(codigo_prestador), '') = '' then '❌ sem código do prestador' else '✅' end as prestador,
-       coalesce(versao_tiss, '— versão TISS não informada') as versao
+       registro_ans, codigo_prestador
   from public.at_convenios
  where tipo = 'convenio' and coalesce(ativo, true)
  order by nome;

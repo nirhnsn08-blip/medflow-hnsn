@@ -33,7 +33,7 @@ import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
 import { listaLida, naoDeuParaLer } from "../util/leitura.js";
 import { numeroDigitado } from "../util/numero-brasileiro.js";
-import { diaLocal, todayStr } from "../util/datas.js";
+import { diaLocal, nowISO, todayStr } from "../util/datas.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -377,7 +377,12 @@ export async function carregarCatalogos(sb) {
  * cadastrado, antes de a produção ser rejeitada.
  */
 export async function carregarProfissionais(sb) {
-  const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,cbo&order=nome");
+  // 🔴 `uf_conselho` ENTROU AQUI em 14/10/2026. Este select era o único do
+  // projeto sem ela — `src/bloco/dados.js` já trazia. E a UF não é detalhe:
+  // a guia TISS leva conselho, número, UF e CBO, e o mesmo CRM 1234 existe
+  // em 27 estados. Sem a UF, o profissional vinha incompleto para a guia
+  // sem nada na tela explicando por quê.
+  const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,uf_conselho,cbo&order=nome");
   const lista = listaLida(r);
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
@@ -1698,6 +1703,91 @@ export async function dadosDaConferencia(sb, contas) {
   ]);
 
   return { pacientes: listaLida(pac), atendimentos: listaLida(at), itens: listaLida(it) };
+}
+
+// ── GUIA TISS ───────────────────────────────────────────────
+//
+// 🔴 TODA ESCRITA CONFERE A LINHA DE VOLTA. O PostgREST responde 2xx com
+// ZERO linhas quando a RLS filtra. Guia gravada em silêncio é cobrança que
+// o faturista acha que saiu e não saiu — e só se descobre quando o dinheiro
+// não entra.
+
+export async function carregarGuiasDaConta(sb, contaId) {
+  if (!sb || contaId == null) return listaLida(null);
+  const r = await sb(`tiss_guias?conta_id=eq.${encodeURIComponent(contaId)}&select=*&order=criado_em.desc`);
+  return listaLida(r);
+}
+
+export async function carregarGuiasDaCompetencia(sb, competencia) {
+  if (!sb || !competencia) return listaLida(null);
+  const contas = await sb(`at_contas?competencia=eq.${encodeURIComponent(competencia)}&via=eq.tiss&select=id`);
+  if (!Array.isArray(contas)) return listaLida(null);
+  if (!contas.length) return [];
+  const r = await sb(`tiss_guias?conta_id=in.(${contas.map(c => c.id).join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(r);
+}
+
+/**
+ * Grava a guia.
+ *
+ * ⚠️ `status` vem de FORA e é o que decide se o gatilho exige tudo:
+ * 'rascunho' passa sem exigência, 'emitida' é a emissão de verdade. A tela
+ * manda um ou outro de propósito — salvar rascunho não pode falhar porque
+ * falta a carteira, senão ninguém consegue guardar trabalho pela metade.
+ */
+export async function salvarGuia(sb, linha, status, user) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const corpo = { ...linha, status, usuario: user?.name || null };
+  if (status === "emitida") corpo.emitida_por = user?.name || null;
+  const r = await sb("tiss_guias", { method: "POST", body: JSON.stringify(corpo) });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, erro: status === "emitida"
+      ? "A guia NÃO foi emitida — ou o banco recusou, ou falta permissão de escrita no Faturamento. O que você preencheu continua na tela."
+      : "O rascunho NÃO foi salvo — a gravação não chegou ao banco ou falta permissão de escrita no Faturamento." };
+  }
+  return { ok: true, guia: r[0] };
+}
+
+async function patchGuia(sb, id, campos, oQue) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const r = await sb(`tiss_guias?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...campos, updated_at: nowISO() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, erro: `${oQue} NÃO foi gravado — a alteração não chegou ao banco ou falta permissão de escrita no Faturamento.` };
+  }
+  return { ok: true, guia: r[0] };
+}
+
+/** Emite um rascunho que já existe. O gatilho é quem carimba e recusa. */
+export function emitirGuia(sb, id, user) {
+  return patchGuia(sb, id, { status: "emitida", emitida_por: user?.name || null }, "A emissão");
+}
+
+export function cancelarGuia(sb, id, motivo) {
+  // ⚠️ `cancelada_em` NÃO vai daqui: quem acende é o gatilho. Mandá-la da
+  // tela deixaria a hora do cancelamento à mercê do relógio do navegador.
+  return patchGuia(sb, id, {
+    status: "cancelada",
+    cancelamento_motivo: String(motivo ?? "").trim(),
+  }, "O cancelamento");
+}
+
+/**
+ * O que a operadora devolve: o número dela e o que aconteceu com a guia.
+ *
+ * ⚠️ É o ÚNICO caminho que mexe em guia já emitida, e mexe só no que não é
+ * carimbo — o gatilho recusa qualquer alteração em número do prestador,
+ * carteira, registro ANS ou tipo.
+ */
+export function registrarRetorno(sb, id, { numeroOperadora, status, quando } = {}) {
+  const campos = {};
+  if (numeroOperadora != null) campos.numero_operadora = String(numeroOperadora).trim() || null;
+  if (status) campos.status = status;
+  if (status === "enviada") campos.enviada_em = quando || nowISO();
+  return patchGuia(sb, id, campos, "O retorno da operadora");
 }
 
 // ── REPASSE (o dinheiro que ENTROU) ─────────────────────────

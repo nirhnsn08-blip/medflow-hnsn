@@ -23,7 +23,7 @@ import {
   reais, centavos,
 } from "./faturamento.js";
 import {
-  carregarAtendimento, carregarPaciente, carregarCatalogos,
+  carregarAtendimento, carregarPaciente, carregarCatalogos, carregarProfissionais,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem,
   cancelarItem, fecharConta, reabrirConta, carregarLeitosDoEpisodio,
 } from "./dados.js";
@@ -32,6 +32,7 @@ import { glosaDaContaSalva, escolherInternacao, janelaInternacao } from "./monta
 import { GRAVIDADES, permanenciaEmDias } from "./sigtap.js";
 import { dataBR } from "./impressos.js";
 import { listaLida } from "../util/leitura.js";
+import { GuiaTiss } from "./GuiaTiss.jsx";
 import { diaLocal } from "../util/datas.js";
 
 const cartao = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: 14 };
@@ -50,6 +51,10 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
   const [numero, setNumero] = useState("");
   const [ctx, setCtx] = useState(null);      // { atendimento, paciente, conta, itens }
   const [catalogos, setCatalogos] = useState(null);
+  // 🔴 A GUIA TISS PRECISA DOS QUATRO CAMPOS DO PROFISSIONAL — conselho,
+  // número, UF e CBO. O `medico` congelado no atendimento guarda só nome e
+  // CBO; conselho e UF moram em `profiles`. Carrega uma vez: é cadastro.
+  const [profissionais, setProfissionais] = useState([]);
   const [novo, setNovo] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -82,6 +87,7 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
       carregarLeitosDoEpisodio(sb, { atendimentoId: atendimento.id, prontuario: atendimento.prontuario }),
     ]);
     setCatalogos(cat);
+    if (!profissionais.length) carregarProfissionais(sb).then(setProfissionais);
 
     // A competência manda na leitura do SIGTAP. A da CONTA vem primeiro
     // quando ela já existe (é a que foi gravada no momento da abertura); só
@@ -121,6 +127,19 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
   const convenio = ctx ? (cat.convenios || []).find(c => String(c.id) === String(ctx.atendimento.convenio_id)) || null : null;
   const plano = ctx ? (cat.planos || []).find(p => String(p.id) === String(ctx.atendimento.plano_id)) || null : null;
   const procedimento = ctx ? (cat.procedimentos || []).find(p => p.codigo === ctx.atendimento.procedimento_cod) || null : null;
+
+  /**
+   * O profissional da guia: o nome vem CONGELADO no atendimento, e o
+   * conselho/UF vêm do cadastro.
+   *
+   * ⚠️ Casado por NOME, que é o que existe para casar — `ps_atendimentos`
+   * guarda `medico` como texto. Quando não casa, a guia acusa "profissional
+   * incompleto" em vez de emitir com metade dos campos, e é a resposta
+   * certa: conselho sem UF não identifica ninguém.
+   */
+  const profissionalDaGuia = ctx?.atendimento?.medico
+    ? (profissionais.find(p => p.nome === ctx.atendimento.medico) || { nome: ctx.atendimento.medico, cbo: ctx.atendimento.medico_cbo || null })
+    : null;
 
   const resumo = ctx ? resumoDaConta({
     conta: ctx.conta, itens: ctx.itens, convenio, atendimento: ctx.atendimento, procedimento,
@@ -514,6 +533,13 @@ export default function Faturamento({ sb, currentUser, canEdit }) {
               )}
             </>
           )}
+
+          {/* 🔴 CONTA DE OPERADORA NÃO SE COBRA COM A CONTA. O painel só
+              aparece na via `tiss` — guia TISS sobre conta do SUS é
+              cobrança indevida, e o gatilho recusa. */}
+          <GuiaTiss sb={sb} conta={ctx.conta} convenio={convenio} paciente={ctx.paciente}
+            itens={ctx.itens} profissional={profissionalDaGuia}
+            currentUser={currentUser} canEdit={canEdit} />
         </>
       )}
     </div>

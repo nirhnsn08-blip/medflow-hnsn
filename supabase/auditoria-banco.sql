@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 119 tabelas, 1959 colunas.
+-- Cobertura atual: 119 tabelas, 1958 colunas.
 -- ============================================================
 
 with
@@ -235,7 +235,6 @@ colunas(tabela, coluna, origem) as (values
   ('at_convenios','tipo','atendimento-fase2'),
   ('at_convenios','updated_at','atendimento-fase2'),
   ('at_convenios','usuario','atendimento-fase2'),
-  ('at_convenios','versao_tiss','tiss-guias'),
   ('at_desfecho_correcoes','atendimento_id','correcao-desfecho'),
   ('at_desfecho_correcoes','criado_em','correcao-desfecho'),
   ('at_desfecho_correcoes','de','correcao-desfecho'),
