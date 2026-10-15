@@ -97,8 +97,24 @@ export function itensAtivos(itens, eventos) {
  * (o banco roda em UTC; após as 21h no Brasil `current_date` já é amanhã).
  *
  * "Se necessário" (SOS) não gera horário: por definição não tem hora marcada.
+ *
+ * 🔴 `inicio` É O INSTANTE EM QUE A PRESCRIÇÃO PASSOU A VALER, e ele não é
+ * opcional por preciosismo — é o conserto de um alarme falso medido
+ * (15/10/2026):
+ *
+ *   paciente internado às 22h, medicação 8/8h, nada administrado ainda.
+ *   A âncora fixa de 06h gerava 06h, 14h, 22h — e a tela acusava DUAS
+ *   DOSES ATRASADAS, de horários que passaram ANTES de a prescrição
+ *   existir. Todo paciente admitido depois das 07h começava o primeiro dia
+ *   com dose atrasada fantasma.
+ *
+ * Uma dose que nunca existiu não está atrasada. Alarme falso em sinal de
+ * segurança é pior que alarme nenhum: ensina a ignorar os verdadeiros.
+ *
+ * ⚠️ O dado já existia: `pep_prescricoes.inicio_em` é gravado em TODA
+ * prescrição assinada desde sempre — e nunca tinha sido lido.
  */
-export function horariosDoDia(item, dataBase, horaAncora = 6) {
+export function horariosDoDia(item, dataBase, horaAncora = 6, inicio = null) {
   if (!item || item.se_necessario) return [];
   const freq = Number(item.frequencia_dia) || 0;
   const intervalo = Number(item.intervalo_horas) || (freq ? 24 / freq : 0);
@@ -114,7 +130,15 @@ export function horariosDoDia(item, dataBase, horaAncora = 6) {
   for (let h = 0; h < 24; h += intervalo) {
     horarios.push(new Date(base.getTime() + h * 3600000));
   }
-  return horarios;
+
+  // ⚠️ `inicio` inválido é tratado como ausente, e NÃO como "zero".
+  // `new Date(undefined)` é Invalid Date, e comparar com ele devolve
+  // sempre `false` — o que silenciosamente deixaria todos os horários
+  // passarem. A ausência de filtro tem de ser uma decisão, não um acidente.
+  if (inicio == null) return horarios;
+  const t0 = new Date(inicio).getTime();
+  if (Number.isNaN(t0)) return horarios;
+  return horarios.filter(h => h.getTime() >= t0);
 }
 
 /**

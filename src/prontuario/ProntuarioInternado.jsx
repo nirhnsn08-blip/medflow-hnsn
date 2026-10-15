@@ -416,7 +416,15 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
       </div>
 
       {itens.map(item => {
-        const horarios = horariosDoDia(item, hoje);
+        // 🔴 `inicio_em` ENTRA AQUI, e era o que faltava para a grade parar
+        // de inventar dose atrasada. Medido em 15/10/2026: paciente
+        // internado às 22h com medicação 8/8h abria o primeiro dia com
+        // DUAS doses atrasadas — de horários que passaram antes de a
+        // prescrição existir.
+        //
+        // ⚠️ A coluna era gravada em toda prescrição assinada desde sempre
+        // e nunca tinha sido lida.
+        const horarios = horariosDoDia(item, hoje, 6, presc.inicio_em);
         const doItem = adms.filter(a => a.item_id === item.id);
         const grade = checarAprazamento(horarios, doItem, hoje);
         return (
