@@ -76,6 +76,7 @@
   "migracao-pep-sinais-spo2.sql": "5b2036f710d49b84",
   "migracao-perfis-acesso.sql": "1d57813fb792be18",
   "migracao-perfis-auditoria-diretor.sql": "0322e2024f25fda2",
+  "migracao-perfis-executivo.sql": "8d331932118ece85",
   "migracao-perfis-faturamento.sql": "639b72fddef0a93f",
   "migracao-perfis-maternidade.sql": "51648c380c181797",
   "migracao-perfis-nsp.sql": "83f61dd05869c9c0",
