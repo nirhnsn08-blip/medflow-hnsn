@@ -1273,13 +1273,13 @@ export default function App() {
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
         {/* SIDEBAR */}
-        <nav style={{ width: 215, minWidth: 215, background: "var(--bg-2)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
+        <nav className="vx-nav" style={{ width: 215, minWidth: 215, background: "var(--bg-2)", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", padding: ".75rem 0", overflowY: "auto", flexShrink: 0 }}>
           {isReadOnly && <div style={{ margin: "0 10px 8px", background: "var(--surface-3)", border: "1px solid var(--border-2)", borderRadius: 6, padding: "6px 10px", fontSize: 11, color: "var(--text-muted)", textAlign: "center" }}>Somente visualização</div>}
           {sidebarItems.map((item) => {
             // Cabeçalho de grupo. Substituiu os separadores anônimos: a linha
             // dizia "aqui muda alguma coisa" e não dizia o quê.
             if (item.grupoTitulo) return (
-              <div key={item.grupoTitulo} style={{ padding: "16px 1rem 5px", fontSize: 10, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--text-muted)" }}>
+              <div key={item.grupoTitulo} className="vx-nav-grupo" style={{ padding: "16px 1rem 5px", fontSize: 10, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--text-muted)" }}>
                 {item.grupoTitulo}
               </div>
             );
@@ -1289,14 +1289,14 @@ export default function App() {
               const childActive = item.children.some(c => c.id === active);
               return (
                 <div key={item.id}>
-                  <button onClick={() => setAmbOpen(o => !o)} style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "var(--text-2)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "var(--surface)" : "transparent" }}>
+                  <button onClick={() => setAmbOpen(o => !o)} className="vx-nav-item" style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${childActive ? "#22d3ee" : "transparent"}`, color: childActive ? "#22d3ee" : "var(--text-2)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif", background: childActive ? "var(--surface)" : "transparent" }}>
                     <Icon name={item.icon} />{item.label}
                     <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-muted)" }}>{ambOpen ? "▾" : "▸"}</span>
                   </button>
                   {ambOpen && item.children.map(c => {
                     const isActive = active === c.id;
                     return (
-                      <button key={c.id} onClick={() => navegar(c.id)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "var(--surface)" : "transparent" }}>
+                      <button key={c.id} onClick={() => navegar(c.id)} className="vx-nav-item" style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: ".4rem 1rem .4rem 2.4rem", border: "none", borderLeft: `3px solid ${isActive ? (c.color || "#22d3ee") : "transparent"}`, color: isActive ? (c.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 500, fontFamily: "Inter, sans-serif", background: isActive ? "var(--surface)" : "transparent" }}>
                         <span style={{ width: 7, height: 7, borderRadius: 99, background: c.color || "var(--text-muted)", flexShrink: 0 }} />{c.label}
                       </button>
                     );
@@ -1307,7 +1307,7 @@ export default function App() {
 
             const isActive = active === item.id;
             return (
-              <button key={item.id} onClick={() => navegar(item.id)} style={{ display: "flex", alignItems: "center", gap: 9, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
+              <button key={item.id} onClick={() => navegar(item.id)} className="vx-nav-item" style={{ display: "flex", alignItems: "center", gap: 9, padding: ".5rem 1rem", border: "none", borderLeft: `3px solid ${isActive ? (item.color || "#22d3ee") : "transparent"}`, color: isActive ? (item.color || "#22d3ee") : "var(--text-3)", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif", transition: "all .12s", background: isActive ? "var(--surface)" : "transparent" }}>
                 <Icon name={item.icon} />{item.label}
                 {item.aviso && <span title={`${item.aviso.n} aguardando leito${item.aviso.maiorMin ? ` · mais antigo há ${fmtDur(item.aviso.maiorMin)}` : ""}`} style={{ marginLeft: "auto", fontSize: 10.5, fontWeight: 800, fontFamily: "JetBrains Mono, monospace", color: "#fff", background: item.aviso.cor || "var(--text-muted)", borderRadius: 99, minWidth: 18, textAlign: "center", padding: "0 6px", lineHeight: "17px" }}>{item.aviso.n}</span>}
               </button>
@@ -1343,7 +1343,7 @@ export default function App() {
               trabalho de beira de leito, e ninguém para de atender porque o
               livro demorou a aparecer. Aqui o custo de abrir por engano é
               maior que o de fechar por engano — então falha FECHADO. */}
-          {active === "farmacia"  && <FarmaciaPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} />}
+          {active === "farmacia"  && <FarmaciaPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} leProntuario={verModulo("paciente", false)} lePs={verModulo("ps", false)} />}
           {active === "suprimentos" && <SuprimentosPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}

@@ -24,7 +24,7 @@
 // 🔴 De `nsp-incidente.js`: esta camada é chamada pelo botão que vive no
 // casco, e importar de `nsp.js` traria o módulo inteiro junto.
 import { matrizRisco, exigeRCA, notificacaoCompulsoria } from "./nsp-incidente.js";
-import { listaLida } from "../util/leitura.js";
+import { listaLida, contagemLida } from "../util/leitura.js";
 
 // ── NSP — Núcleo de Segurança do Paciente (Fase 2a) ──
 export async function loadIncidentes(sb) {
@@ -34,9 +34,16 @@ export async function loadIncidentes(sb) {
 }
 // Indicador automático (diferencial): LPP adquirida na unidade (marcador POA da Fase 1a).
 export async function loadLppAdquiridas(sb) {
-  if (!sb) return 0;
-  const rows = await sb("enf_lesao_pressao?presente_admissao=eq.false&select=id").catch(() => []);
-  return Array.isArray(rows) ? rows.length : 0;
+  if (!sb) return null;
+  // 🔴 `null` = não deu para ler, e NÃO zero. Este número é indicador de
+  // segurança do paciente: vai para o cartão do painel, para as metas e
+  // para o relatório do NSP. Com a leitura falhando, o zero saía pintado
+  // de VERDE, que é a melhor notícia possível — dita sem ter perguntado.
+  //
+  // O `.catch(() => [])` saiu junto: ele transformava erro em lista vazia
+  // antes mesmo de a contagem acontecer.
+  const rows = await sb("enf_lesao_pressao?presente_admissao=eq.false&select=id").catch(() => null);
+  return contagemLida(rows);
 }
 export async function registrarIncidente(sb, inc, user) {
   if (!sb) return null;

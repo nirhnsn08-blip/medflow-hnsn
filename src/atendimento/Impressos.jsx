@@ -243,13 +243,22 @@ export default function Impressos({
               </span>
             </div>
 
-            {ficha.responsaveis.length > 0 && (
-              <div style={{ marginBottom: "4mm" }}>
+            {/* 🔴 A SEÇÃO APARECE TAMBÉM QUANDO NÃO HÁ LISTA, se houver o que
+                avisar. Até 09/10/2026 ela só existia com gente dentro — e
+                falha de leitura saía como seção AUSENTE, que no papel é
+                indistinguível de "ninguém está registrado". Papel não se
+                recarrega: quem o ler depois não tem como descobrir que a
+                leitura falhou, então o aviso vai impresso. */}
+            {(ficha.responsaveis.lista.length > 0 || ficha.responsaveis.aviso) && (
+              <div style={{ marginBottom: "4mm",
+                            ...(ficha.responsaveis.gravidade === "alta"
+                              ? { border: "1.5px solid #000", padding: "2mm 3mm" }
+                              : {}) }}>
                 <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".06em", color: "#334155",
                               borderBottom: "1px solid #e5e7eb", paddingBottom: 2, marginBottom: 3 }}>
                   RESPONSÁVEL PELO EPISÓDIO
                 </div>
-                {ficha.responsaveis.map((r, i) => (
+                {ficha.responsaveis.lista.map((r, i) => (
                   <div key={i} style={{ fontSize: 10.5, marginBottom: 1 }}>
                     <strong>{r.nome}</strong>
                     <span style={{ color: "#64748b" }}>
@@ -259,6 +268,15 @@ export default function Impressos({
                     {r.recebeAlta && <strong style={{ marginLeft: 5 }}>— RECEBE A ALTA</strong>}
                   </div>
                 ))}
+                {ficha.responsaveis.aviso && (
+                  // Preto e negrito, não cinza: a folha é fotocopiada e sai
+                  // em impressora laser de recepção — aviso em tom claro
+                  // desaparece na segunda via.
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "#000",
+                                marginTop: ficha.responsaveis.lista.length ? 4 : 0 }}>
+                    {ficha.responsaveis.aviso}
+                  </div>
+                )}
               </div>
             )}
 

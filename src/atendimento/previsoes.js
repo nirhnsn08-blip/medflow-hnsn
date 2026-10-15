@@ -26,6 +26,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { listaLida, naoDeuParaLer } from "../util/leitura.js";
+import { diaLocal } from "../util/datas.js";
 
 /**
  * Quantos repasses já observados são suficientes para falar em prazo.
@@ -36,11 +37,9 @@ import { listaLida, naoDeuParaLer } from "../util/leitura.js";
  */
 export const MIN_OBSERVACOES = 5;
 
-const dia = d => {
-  if (!d) return null;
-  const s = String(d).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
-};
+// Dia civil pelo relógio local. `faturada_em` é carimbo: a fatia crua
+// jogava para amanhã tudo que foi faturado depois das 21h.
+const dia = d => diaLocal(d);
 
 const diasEntre = (a, b) => {
   const x = dia(a), y = dia(b);
@@ -167,7 +166,7 @@ const compDe = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "
  */
 export function projecao({ conciliacoes = [], prazos = [], hoje = new Date(), meses = 6 } = {}) {
   const est = estatisticaDePrazo(prazos);
-  const hojeDia = dia(hoje.toISOString());
+  const hojeDia = dia(hoje);
   const out = { prazo: est, confiavel: est.confiavel, atrasado: 0, meses: [], semData: 0 };
 
   const pendentes = listaLida(conciliacoes).filter(c =>
@@ -188,7 +187,7 @@ export function projecao({ conciliacoes = [], prazos = [], hoje = new Date(), me
     if (!c.faturadaEm) { out.semData += c.diferenca; continue; }
     const alvo = new Date(`${dia(c.faturadaEm)}T00:00:00`);
     alvo.setDate(alvo.getDate() + est.mediana);
-    const alvoDia = dia(alvo.toISOString());
+    const alvoDia = dia(alvo);
 
     // Já passou do prazo típico: é atraso, não previsão.
     if (alvoDia < hojeDia) { out.atrasado += c.diferenca; continue; }

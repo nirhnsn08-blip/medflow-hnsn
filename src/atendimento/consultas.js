@@ -23,6 +23,7 @@
 
 import { diaCivil } from "./agenda.js";
 import { STATUS_ATENDIMENTO, atendimentoAberto } from "./ciclo.js";
+import { diaLocal } from "../util/datas.js";
 
 /**
  * As colunas que a pesquisa traz do banco.
@@ -122,7 +123,7 @@ export function bordasDoPeriodo({ de, ate } = {}) {
  * Cancelado nunca conta como visita anterior — ele não aconteceu.
  */
 export function ultimoAtendimento(atendimentos, { especialidade, ate = new Date() } = {}) {
-  const ref = diaCivil(typeof ate === "string" ? ate : ate.toISOString().slice(0, 10));
+  const ref = diaCivil(diaLocal(ate));
   const candidatos = (atendimentos || [])
     .filter(a => a.status !== "cancelado")
     .filter(a => !especialidade || a.especialidade_cod === especialidade)
@@ -131,9 +132,9 @@ export function ultimoAtendimento(atendimentos, { especialidade, ate = new Date(
 
   if (!candidatos.length) return null;
   const a = candidatos[0];
-  const dia = diaCivil(String(a.chegada_em).slice(0, 10));
+  const dia = diaCivil(diaLocal(a.chegada_em));
   const dias = ref && dia ? Math.round((ref - dia) / 86400000) : null;
-  return { atendimento: a, diasAtras: dias, data: String(a.chegada_em).slice(0, 10) };
+  return { atendimento: a, diasAtras: dias, data: diaLocal(a.chegada_em) };
 }
 
 // ── RESUMO DO HISTÓRICO ─────────────────────────────────────
@@ -161,8 +162,8 @@ export function resumoDoHistorico(atendimentos = []) {
     cancelados: lista.length - validos.length,
     abertos: validos.filter(atendimentoAberto).length,
     porTipo,
-    primeira: datas.length ? datas[0].toISOString().slice(0, 10) : null,
-    ultima: datas.length ? datas[datas.length - 1].toISOString().slice(0, 10) : null,
+    primeira: datas.length ? diaLocal(datas[0]) : null,
+    ultima: datas.length ? diaLocal(datas[datas.length - 1]) : null,
   };
 }
 

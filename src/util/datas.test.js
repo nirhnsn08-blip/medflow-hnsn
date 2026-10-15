@@ -9,8 +9,25 @@
 import { describe, it, expect } from "vitest";
 import {
   todayStr, nowISO, diffMin, fmtDur, horaFmt, isoToLocal, localToIso,
-  fmtDataBR, compDe, compLabel, horaMin,
+  fmtDataBR, compDe, compLabel, horaMin, diaLocal,
 } from "./datas.js";
+
+describe("diaLocal — o dia civil de uma data ou de um carimbo", () => {
+  it("só-dia passa intacto", () => {
+    expect(diaLocal("2026-10-05")).toBe("2026-10-05");
+  });
+  it("🔴 carimbo vai pelo relógio LOCAL — a chegada das 22h é de hoje", () => {
+    const vinteDuas = new Date(2026, 9, 5, 22, 0);           // 05/10 22:00 local
+    expect(diaLocal(vinteDuas)).toBe("2026-10-05");
+    expect(diaLocal(vinteDuas.toISOString())).toBe("2026-10-05");
+  });
+  it("ilegível vira null, não uma data inventada", () => {
+    expect(diaLocal(null)).toBe(null);
+    expect(diaLocal("")).toBe(null);
+    expect(diaLocal("ontem")).toBe(null);
+    expect(diaLocal(new Date("x"))).toBe(null);
+  });
+});
 
 describe("todayStr — data civil local, nunca UTC", () => {
   it("formata YYYY-MM-DD com zero à esquerda", () => {
@@ -108,6 +125,31 @@ describe("fmtDataBR — dia sem escorregar de fuso", () => {
   });
   it("'—' para vazio", () => {
     expect(fmtDataBR(null)).toBe("—");
+  });
+
+  // 🔴 DEFEITO REAL (05/10/2026, achado na caminhada pelo demo): a tela de
+  // "Checagem × saída" imprimia "1ª checagem Invalid Date 04/09, 09:30" e a
+  // devolução oferecia "Invalid Date · lote TESTE-FARM-01". Quem chamava
+  // passava um carimbo de tempo (`created_at`, `criado_em`), e a função só
+  // sabia ler "YYYY-MM-DD" — o `iso + "T00:00:00"` virava data inválida.
+  // Erro de legenda não estoura: ele só aparece para quem usa.
+  it("carimbo de tempo completo também vira dd/mm/aaaa", () => {
+    expect(fmtDataBR("2026-09-04T09:30:00")).toBe("04/09/2026");
+    expect(fmtDataBR("2026-09-04T09:30:00.123456+00:00")).toBe("04/09/2026");
+  });
+
+  it("usa o RELÓGIO LOCAL no carimbo (não a fatia antes do T)", () => {
+    // 23:00 em Brasília (UTC−3) é 02:00 UTC do dia seguinte. Cortar o texto
+    // no "T" mostraria o dia errado; converter pela data local acerta.
+    const d = new Date("2026-09-04T23:00:00");
+    expect(fmtDataBR(d.toISOString())).toBe(fmtDataBR("2026-09-04"));
+  });
+
+  it("🔴 nunca devolve 'Invalid Date' — o que não dá para ler vira '—'", () => {
+    for (const lixo of ["", "ontem", "0000-13-45", "2026-07-24T", {}, NaN]) {
+      expect(fmtDataBR(lixo)).not.toMatch(/Invalid/i);
+    }
+    expect(fmtDataBR("ontem")).toBe("—");
   });
 });
 

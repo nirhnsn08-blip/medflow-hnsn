@@ -14,11 +14,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
    diasInternacao, prescricaoVigente, itensAtivos,
-  horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce,
+  horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce, ESCALA_ALERTA,
   timelineEpisodio,
 } from "../clinico/prontuario.js";
-import { situacaoAlergica, textoAlergiasParaAlerta } from "../clinico/alergias.js";
+import { situacaoAlergica } from "../clinico/alergias.js";
+import { contextoDoInternado } from "./contexto-internado.js";
 import { analisarPrescricaoClinica, FARM_GRAV } from "../clinico/alertas.js";
+import { rotuloDaValidacao, situacaoDaValidacao } from "../farmacia/internacao.js";
 import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js";
 import {
   carregarProntuario, registrarSinais, registrarAnotacao,
@@ -87,12 +89,9 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
 
   // O motor de alertas passa a enxergar a alergia do INTERNADO — antes ele
   // só recebia o texto solto do atendimento do PS.
-  const ctx = {
-    idade: null, alergias: textoAlergiasParaAlerta(d.alergias),
-    em_sonda: d.condicoes?.some(c => /sonda/i.test(c.descricao || "")) || false,
-    clearance_renal: ultimo?.clearance_renal ?? null,
-    funcao_hepatica: null,
-  };
+  // Um contexto só, para as duas telas: a prescrição vigente abaixo e a
+  // NovaPrescricao (onde os alertas servem ANTES de assinar).
+  const ctx = contextoDoInternado({ paciente: d.paciente, alergias: d.alergias, condicoes: d.condicoes, clearanceRenal: ultimo?.clearance_renal });
   // O motor de alertas nasceu no PS, onde a coluna se chama
   // `medicamento_nome`. No PEP ela é `descricao`. Sem esta ponte os alertas
   // disparam certo mas exibem "undefined" no lugar do medicamento — e
@@ -172,10 +171,10 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
         prescrevendo
           ? <NovaPrescricao sb={sb} episodio={ep} currentUser={currentUser}
               medById={medById} meds={Object.values(medById)} interacoes={interacoes} incompatY={incompatY}
-              alergias={d.alergias} condicoes={d.condicoes} prescricaoAnterior={presc}
+              ctx={ctx} prescricaoAnterior={presc}
               onPronto={() => { setPrescrevendo(false); recarregar(); }}
               onCancelar={() => setPrescrevendo(false)} />
-          : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep}
+          : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep} validacoesFarmacia={d.validacoesFarmacia}
               canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar}
               onNova={() => setPrescrevendo(true)} />
       )}
@@ -350,7 +349,28 @@ function Visao({ ep, itens, alertas, ultimo, canEdit, sb, user, onOk }) {
 }
 
 // ── PRESCRIÇÃO ──────────────────────────────────────────────
-function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, onOk, onNova }) {
+/**
+ * O selo da farmácia na prescrição.
+ *
+ * 🔴 QUEM PRESCREVE PRECISA VER A RESSALVA SEM IR À FARMÁCIA. Antes de
+ * 17/09/2026 a avaliação farmacêutica não existia; agora ela existe e ficar
+ * só na tela da farmácia seria a mesma incomunicação de sempre, com um
+ * registro novo.
+ */
+function SeloFarmacia({ validacoes, prescricao }) {
+  const s = situacaoDaValidacao(validacoes, prescricao);
+  if (s.estado === "nao_validada" || s.estado === "sem_prescricao") {
+    return <span style={{ fontSize: 10.5, color: cor.txt3, border: `1px solid ${cor.borda}`, borderRadius: 99, padding: "1px 8px" }}>farmácia ainda não validou</span>;
+  }
+  const r = rotuloDaValidacao(s.estado);
+  return (
+    <span title={s.linha?.observacao || ""} style={{ fontSize: 10.5, fontWeight: 700, color: r.cor, border: `1px solid ${r.cor}66`, background: `${r.cor}14`, borderRadius: 99, padding: "1px 8px" }}>
+      farmácia: {r.label.toLowerCase()}{s.linha?.observacao ? " — " + s.linha.observacao : ""}
+    </span>
+  );
+}
+
+function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarmacia, onOk, onNova }) {
   const podePrescrever = podeClinico(user, "prescricao_medica") || podeClinico(user, "prescricao_enfermagem");
   const botaoNova = canEdit && (
     podePrescrever
@@ -391,11 +411,20 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, onOk, onNova })
       {botaoNova}
       <div style={{ ...cartao, display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13.5 }}>Prescrição {presc.tipo} de {presc.data_referencia}</strong>
+        <SeloFarmacia validacoes={validacoesFarmacia} prescricao={presc} />
         <span style={{ fontSize: 12, color: cor.txt3 }}>assinada por {presc.prescritor_nome || presc.usuario} em {dataHora(presc.assinada_em)}</span>
       </div>
 
       {itens.map(item => {
-        const horarios = horariosDoDia(item, hoje);
+        // 🔴 `inicio_em` ENTRA AQUI, e era o que faltava para a grade parar
+        // de inventar dose atrasada. Medido em 15/10/2026: paciente
+        // internado às 22h com medicação 8/8h abria o primeiro dia com
+        // DUAS doses atrasadas — de horários que passaram antes de a
+        // prescrição existir.
+        //
+        // ⚠️ A coluna era gravada em toda prescrição assinada desde sempre
+        // e nunca tinha sido lida.
+        const horarios = horariosDoDia(item, hoje, 6, presc.inicio_em);
         const doItem = adms.filter(a => a.item_id === item.id);
         const grade = checarAprazamento(horarios, doItem, hoje);
         return (
@@ -441,6 +470,22 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, onOk, onNova })
 }
 
 // ── SINAIS VITAIS ───────────────────────────────────────────
+/**
+ * 🔴 `o2_dispositivo` e `o2_fluxo` existiam no banco desde
+ * `migracao-pep-sinais-spo2.sql` e NÃO tinham campo — colunas sem input,
+ * e coluna vazia não dá erro.
+ *
+ * Não entram no escore (o NEWS pontua O₂ sim/não, não o fluxo), mas
+ * entram no registro: "em O₂" sem dizer sob o quê não permite comparar
+ * a aferição de agora com a de duas horas atrás, que é como se decide
+ * desmame.
+ */
+export const DISPOSITIVOS_O2 = [
+  ["cateter", "Cateter nasal"], ["mascara", "Máscara"],
+  ["venturi", "Máscara de Venturi"], ["reservatorio", "Máscara com reservatório"],
+  ["vni", "VNI"], ["tot", "Tubo orotraqueal"], ["traqueo", "Traqueostomia"],
+];
+
 const CAMPOS_SV = [
   ["pa_sist", "PA sist"], ["pa_diast", "PA diast"], ["fc", "FC"], ["fr", "FR"],
   ["temp", "Temp °C"], ["spo2", "SpO₂ %"], ["glicemia", "Glicemia"], ["dor", "Dor 0-10"],
@@ -456,11 +501,30 @@ function Sinais({ serie, ep, canEdit, sb, user, onOk }) {
     for (const [k] of CAMPOS_SV) if (f[k] !== "" && f[k] != null) sv[k] = Number(f[k]);
     if (!Object.keys(sv).length) return;
     setSalvando(true);
-    await registrarSinais(sb, ep, { ...sv, consciencia: f.consciencia || "A", o2_suplementar: !!f.o2_suplementar }, user);
+    const corpo = {
+      ...sv,
+      consciencia: f.consciencia || "A",
+      o2_suplementar: !!f.o2_suplementar,
+      // Dispositivo e fluxo só fazem sentido com O₂ ligado: gravá-los
+      // soltos deixaria "cateter nasal" num paciente em ar ambiente.
+      o2_dispositivo: f.o2_suplementar ? (f.o2_dispositivo || null) : null,
+      o2_fluxo: f.o2_suplementar && f.o2_fluxo !== "" && f.o2_fluxo != null
+        ? Number(f.o2_fluxo) : null,
+    };
+    // 🔴 O ESCORE VAI CARIMBADO, e as colunas existiam desde a pep-fase1
+    // sem ninguém escrever nelas. É o que o sistema DISSE no momento da
+    // aferição — e é por ele que alguém decidiu (ou não) chamar o médico.
+    // A tela segue mostrando o escore recalculado, para uma correção na
+    // fórmula valer para trás; o carimbo é o registro, não a verdade.
+    const n = scoreAlertaPrecoce(corpo);
+    if (n) { corpo.score_alerta = n.score; corpo.escala_alerta = ESCALA_ALERTA; }
+    await registrarSinais(sb, ep, corpo, user);
     setF({}); setSalvando(false); onOk();
   }
 
-  const previa = scoreAlertaPrecoce({ ...f, consciencia: f.consciencia || "A" });
+  // ⚠️ `o2_suplementar` entra na PRÉVIA também: sem isso a tela mostraria
+  // um NEWS e gravaria outro, dois pontos acima.
+  const previa = scoreAlertaPrecoce({ ...f, consciencia: f.consciencia || "A", o2_suplementar: !!f.o2_suplementar });
 
   return (
     <div>
@@ -478,8 +542,22 @@ function Sinais({ serie, ep, canEdit, sb, user, onOk }) {
           <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={!!f.o2_suplementar} onChange={e => set("o2_suplementar", e.target.checked)} />
-              Em O₂ suplementar
+              Em O₂ suplementar <strong style={{ color: "#d97706" }}>(+2 no NEWS)</strong>
             </label>
+            {/* Só aparecem com o O₂ ligado — e num container fixo, para o
+                campo ao lado não remontar quando eles somem. */}
+            <div key="o2-detalhe" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {f.o2_suplementar && (<>
+                <select value={f.o2_dispositivo || ""} onChange={e => set("o2_dispositivo", e.target.value)}
+                  style={{ ...inp, width: 170 }}>
+                  <option value="">— dispositivo —</option>
+                  {DISPOSITIVOS_O2.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+                <input type="number" step="any" min="0" placeholder="L/min"
+                  value={f.o2_fluxo ?? ""} onChange={e => set("o2_fluxo", e.target.value)}
+                  style={{ ...inp, width: 90 }} />
+              </>)}
+            </div>
             {previa && (
               <span style={{ fontSize: 12, fontWeight: 700, color: previa.nivel === "alto" ? "#f43f5e" : previa.nivel === "medio" ? "#d97706" : "#34d399" }}>
                 NEWS previsto: {previa.score} ({previa.nivel})

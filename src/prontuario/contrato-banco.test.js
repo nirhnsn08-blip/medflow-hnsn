@@ -83,13 +83,36 @@ function conferirEscrita({ recurso, opcoes }) {
   }
 }
 
-/** Confere um GET: tabela existe e as colunas usadas em filtro/ordem também. */
+/**
+ * Confere um GET: tabela existe e as colunas usadas em filtro/ordem também.
+ *
+ * `or=(...)`, `and=(...)` e `not.*` são OPERADORES do PostgREST, não colunas.
+ * O detector lia "or" como nome de coluna e reprovava uma consulta correta —
+ * um falso positivo que empurraria para escrever a consulta de um jeito pior
+ * só para calar o teste. As colunas de DENTRO do grupo continuam conferidas,
+ * que é o que ele existe para pegar.
+ */
+const OPERADORES = new Set(["or", "and", "not"]);
+
+function colunasDoGrupo(valor) {
+  // `(prontuario.in.("A"),unificado_para.in.("A"))` → prontuario, unificado_para
+  return [...String(valor ?? "").matchAll(/(?:^|[(,])\s*([a-z_][a-z0-9_]*)\./gi)].map(m => m[1]);
+}
+
 function conferirLeitura(recurso) {
   const [tabela, query = ""] = recurso.split("?");
   expect(COLUNAS[tabela], `tabela desconhecida: ${tabela}`).toBeDefined();
   for (const par of query.split("&")) {
-    const [chave, valor] = par.split("=");
+    const i = par.indexOf("=");
+    const chave = i < 0 ? par : par.slice(0, i);
+    const valor = i < 0 ? "" : par.slice(i + 1);
     if (chave === "select" || chave === "limit" || chave === "offset" || !chave) continue;
+    if (OPERADORES.has(chave)) {
+      for (const coluna of colunasDoGrupo(decodeURIComponent(valor))) {
+        expect(COLUNAS[tabela].has(coluna), `${tabela}.${coluna} (dentro de ${chave}=) não existe no banco`).toBe(true);
+      }
+      continue;
+    }
     const coluna = chave === "order" ? (valor || "").split(".")[0] : chave;
     expect(COLUNAS[tabela].has(coluna), `${tabela}.${coluna} não existe no banco`).toBe(true);
   }

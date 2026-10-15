@@ -73,6 +73,21 @@ const ORDEM = [
   "migracao-pep-perfis-update.sql",
   "migracao-pep-fase3.sql",
   "migracao-perfis-acesso.sql",
+  // 🔴 AQUI, E NÃO NA ORDEM CRONOLÓGICA — é o conserto de 08/10/2026.
+  //
+  // As cinco funções de permissão (`pode_ver_algum` e companhia) moravam
+  // dentro do `migracao-rls-leitura.sql`, que fecha esta lista de propósito.
+  // Mas 24 políticas criadas no MEIO dela já citam `pode_ver_algum`, e
+  // `create policy` resolve a função na hora: num banco NOVO a reconstrução
+  // MORRIA em `at_glosas_leitura` (#53), a 55% do script. Medido em PGlite.
+  //
+  // Vem logo depois do `perfis-acesso` porque é dele que saem as três
+  // tabelas que o corpo das funções lê — e corpo de função `language sql`
+  // é conferido na criação, não no primeiro uso.
+  //
+  // `banco-novo-nasce.test.js` roda este arquivo inteiro e é o que impede
+  // a próxima função de nascer tarde de novo.
+  "migracao-acesso-funcoes.sql",
   "migracao-leitos-nir-regulacao.sql",
   "migracao-suprimentos-aprovacao.sql",
   "migracao-ps-comorbidades.sql",
@@ -260,9 +275,79 @@ const ORDEM = [
   // (mat_alojamento). Depois de mat_episodios e mat_recem_nascidos (FK);
   // antes do rls-leitura.
   "migracao-maternidade-alojamento.sql",
-  // Torre de Comando: o módulo `executivo` entra nos perfis. Só grants —
-  // não cria tabela nem toca em RLS (a Torre LÊ tabelas que já existem).
-  // Depende de perfis_acesso/perfis_permissoes existirem.
+  // Risco na gestação e dose máxima por kg no catálogo de medicamentos
+  // (farm_medicamentos). Só colunas novas; depois da farmácia clínica fase 1.
+  "migracao-alertas-peso-gestacao.sql",
+  // Farmácia do hospital (17/09): lê a prescrição da internação, validação
+  // farmacêutica, devolução do setor e controlados por lista da Portaria 344.
+  // Precisa de pep_* (fase 1), de farm_intervencoes e do estorno — todos acima.
+  "migracao-farmacia-hospital.sql",
+  // ⚠️ AS TRÊS ABAIXO FICARAM FORA DA ORDEM NA ÉPOCA E SÓ A TRAVA PEGOU, em
+  // 07/10/2026. Enquanto estiveram fora, `reconstruir-banco.sql` não as
+  // continha: um HOSPITAL NOVO nasceria sem a descrição certa do perfil
+  // Auxiliar de Farmácia e sem a trilha de correção de desfecho inteira —
+  // tabela, gatilho e políticas. Nenhum teste pegava, porque a trava só
+  // dispara quando o gerador roda.
+  //
+  // Acrescentar migração em ORDEM é parte de criar a migração, não um passo
+  // posterior. Ver o comentário da própria trava, logo abaixo da lista.
+
+  // Descrição do perfil Auxiliar de Farmácia (PR #255): o texto gravado
+  // ainda dizia "Não acessa prontuário" depois de ele passar a ler
+  // prescrição e alergias. Só UPDATE de texto; depende de perfis_acesso.
+  "migracao-descricao-aux-farmacia.sql",
+  // Trilha de correção de desfecho (PR #261): tabela append-only
+  // `at_desfecho_correcoes` + gatilho que aplica a correção no mesmo INSERT.
+  // TEM de vir antes do rls-leitura, que já cita esta tabela nas duas listas
+  // de políticas — fora de ordem, o banco novo morreria ali.
+  "migracao-correcao-desfecho.sql",
+  // O `for update` que faltava no gatilho acima (PR da corrida, 07/10):
+  // sem ele, duas correções simultâneas gravavam as duas trilhas e só uma
+  // valia. Substitui só a função, então vem logo depois dela.
+  "migracao-correcao-desfecho-corrida.sql",
+  // Cirurgia segura vira REGISTRO (PR do Bloco, 08/10): tabela append-only
+  // cc_checklist + gatilho que acende o selo no mesmo INSERT, mais sítio e
+  // lateralidade em cc_cirurgias. Antes do rls-leitura, que já cita a tabela.
+  "migracao-cirurgia-segura-registro.sql",
+  // Paciente (FK), equipe com CBO carimbado, código de procedimento,
+  // caráter e autoria do cancelamento. Depende de pacientes e at_dominios.
+  "migracao-cirurgia-paciente-equipe-codigo.sql",
+  // O elo cirurgia → atendimento, sem o qual a conta da cirurgia teria de
+  // adivinhar o episódio por prontuário+data. Depois do FK do paciente.
+  "migracao-cirurgia-elo-atendimento.sql",
+  // A descrição cirúrgica (CFM 1.638/2002): tabela append-only + gatilho que
+  // calcula a versão e acende o selo. Depende de `cc_cirurgias` existir e,
+  // como cita `pode_ver_algum` na política, de `migracao-acesso-funcoes.sql`.
+  "migracao-cirurgia-descricao.sql",
+  // A ficha anestésica e a ficha de recuperação pós-anestésica, que fecham
+  // os três documentos da CFM 1.638/2002, mais o gatilho que recusa a alta
+  // da RPA sem escore de Aldrete. Depois da descrição e antes do rls-leitura.
+  "migracao-cirurgia-anestesia-rpa.sql",
+  // OPME com lote: responde "em quem implantamos este lote" (RDC 751/2022).
+  // Depende de sup_itens e sup_movimentos — o gatilho dá baixa no kardex.
+  "migracao-cirurgia-opme.sql",
+  "migracao-sadt-exames.sql",
+  // 🔴 LOGO DEPOIS, E DENTRO DA ORDEM — como `migracao-farmacia-seed.sql` e
+  // `migracao-scih-germes-seed.sql`. Catálogo de exame com faixa de
+  // referência é REFERÊNCIA, não dado fictício: um hospital novo nascendo
+  // sem ele tem o módulo estruturalmente novo e funcionalmente igual ao
+  // antigo — todo exame caindo no laudo em texto, sem faixa, sem crítico e
+  // sem curva. Era o estado de onde o módulo saiu.
+  //
+  // ⚠️ AS FAIXAS SÃO PONTO DE PARTIDA e o próprio arquivo diz isso em
+  // letras grandes: dependem do método e do equipamento, a lista de
+  // valores críticos é o que faz alguém ser chamado, e a tabela ainda não
+  // separa sexo nem idade. O laboratório do hospital revisa e assina.
+  "migracao-sadt-catalogo-seed.sql",
+  // Depois do SADT porque não depende dele — só precisa de `at_contas`,
+  // `at_convenios` e `at_conta_itens`, que vêm muito antes.
+  "migracao-tiss-guias.sql",
+  // Depois de tudo que cria tabela assinável: ela acrescenta coluna e
+  // gatilho em `cc_descricao` e `sadt_resultados`, que precisam existir.
+  "migracao-documento-impressao-digital.sql",
+  // Torre de Comando (painel executivo): o módulo `executivo` entra nos
+  // perfis. Só grants — não cria tabela nem toca em RLS, porque a Torre LÊ
+  // tabelas que já existem. Depende de perfis_acesso/perfis_permissoes.
   "migracao-perfis-executivo.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num

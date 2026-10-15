@@ -23,6 +23,8 @@
 //      (sexo/idade que o procedimento não admite).
 // ═══════════════════════════════════════════════════════════
 
+import { diaLocal } from "../util/datas.js";
+
 // ── CÓDIGO ──────────────────────────────────────────────────
 
 /** Qualquer forma → 10 dígitos limpos. `null` se não for um código válido. */
@@ -104,8 +106,8 @@ export function montarProcedimento(dados = {}) {
 
 /** Dias entre admissão e alta (inteiro ≥ 0). `null` se datas inválidas ou alta antes da admissão. */
 export function permanenciaEmDias(admissao, alta) {
-  const a = diaUTC(admissao);
-  const b = diaUTC(alta);
+  const a = diaCivil(admissao);
+  const b = diaCivil(alta);
   if (a == null || b == null) return null;
   const dias = Math.round((b - a) / 86400000);
   return dias < 0 ? null : dias;
@@ -240,9 +242,25 @@ export function temImpedimento(achados = []) {
 
 // ── internos ────────────────────────────────────────────────
 
-function diaUTC(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s ?? ""));
-  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : null;
+/**
+ * O dia CIVIL de uma data ou carimbo, como número, para contar diárias.
+ *
+ * 🔴 Esta função cortava os 10 primeiros caracteres do texto — que, num
+ * carimbo vindo do banco, é o dia em UTC. Alta às 22h de 07/10 chega como
+ * "2026-10-08T01:00:00+00:00" e virava 08/10: a conta ganhava uma DIÁRIA
+ * que não existiu. Admissão às 22h erra para o outro lado e PERDE uma. Nos
+ * dois sentidos é dinheiro, e some numa conferência por amostragem porque
+ * só atinge quem entrou ou saiu depois das 21h.
+ *
+ * O `Date.UTC` fica: aritmética de dias tem de ser imune a horário de
+ * verão. O que mudou é a ÂNCORA — o dia é o do relógio do hospital, e só
+ * depois vira número.
+ */
+function diaCivil(s) {
+  const civil = diaLocal(s);
+  if (!civil) return null;
+  const [a, m, d] = civil.split("-").map(Number);
+  return Date.UTC(a, m - 1, d);
 }
 
 function numOuNull(v) {

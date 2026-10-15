@@ -276,7 +276,14 @@ export function validarCancelamento({ atendimento, motivo, registrosClinicos = 0
     erros.push("O motivo está curto demais para explicar algo a quem for auditar depois.");
   }
 
-  if (Number(registrosClinicos) > 0) {
+  // 🔴 "NÃO SEI" RECUSA. `null` chega de `contarRegistrosClinicos` quando
+  // alguma das três leituras falhou — e aqui a diferença entre `null` e `0`
+  // é a diferença entre barrar e liberar. `Number(null)` é 0, então sem esta
+  // porta a falha de rede virava permissão para cancelar um atendimento que
+  // pode ter prescrição e administração penduradas.
+  if (registrosClinicos === null) {
+    erros.push("Não consegui conferir se este atendimento tem registro clínico — e cancelar sem saber disso deixaria evolução e prescrição órfãs. Recarregue e tente de novo.");
+  } else if (Number(registrosClinicos) > 0) {
     erros.push(`Este atendimento já tem ${registrosClinicos} registro(s) clínico(s). Cancelar deixaria evolução e prescrição apontando para um episódio que o sistema diz que não existiu. Se o atendimento aconteceu, o caminho é encerrar com desfecho.`);
   }
 

@@ -19,6 +19,8 @@
 // ═══════════════════════════════════════════════════════════
 
 import { carregarCatalogos, carregarPaciente } from "../atendimento/dados.js";
+import { recusaPorUnificacao } from "../pacientes/unificacao.js";
+import { conferirIniciaisDaChegada } from "./chegada.js";
 import { dadosDeConta } from "../atendimento/faturavel.js";
 import { PS_ORIGEM_UNIDADES, PS_ORIGENS, PS_VIAS_TRANSF, psPedeDetalhe } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
@@ -35,12 +37,14 @@ import { avisoSonoro, ligarSom, somLigado } from "../ui/som.js";
 import { diffMin, fmtDur, horaFmt, nowISO, todayStr } from "../util/datas.js";
 import { fmt } from "../util/formato.js";
 import { MANCHESTER, PS_AREAS, PS_DESFECHOS, PS_DISCRIMINADORES, PS_PRIORIDADE, PS_PROTOCOLO, PS_SALA_STATUS, fmtSinaisVitais } from "./catalogo.js";
-import { addPsAtendimentoRemote, addPsSinalRemote, deletePsSalaRemote, loadPsAdministracoesByAtendimentos, loadPsAtendimentos, loadPsAtendimentosPeriodo, loadPsExamesPendentes, loadPsExamesPeriodo, loadPsFinalizadosHoje, loadPsPrescricaoItensByAtendimentos, loadPsSalas, updatePsAtendimentoRemote, upsertPsSalaRemote } from "./dados.js";
+import { addPsAtendimentoRemote, addPsSinalRemote, deletePsSalaRemote, loadPsAdministracoesByAtendimentos, loadPsAtendimentos, loadPsAtendimentosPeriodo, loadPsFinalizadosHoje, loadPsPrescricaoItensByAtendimentos, loadPsSalas, updatePsAtendimentoRemote, upsertPsSalaRemote } from "./dados.js";
 import { contarExames } from "./exames.js";
+import { loadSadtExamesPeriodo, loadSadtPendentesPorAtendimento } from "../sadt/dados.js";
 import { useEffect, useRef, useState } from "react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import PrimeiroUso from "../ui/PrimeiroUso.jsx";
 import { useChecagens } from "../ui/usar-checagens.js";
+import { contagemLida } from "../util/leitura.js";
 
 // O cadastro que sustenta este painel. Enquanto ele estiver vazio, os
 // números abaixo são zero por falta de configuração — não por falta de
@@ -72,7 +76,7 @@ const PS_NAV_EMERG = [
   { key: "e_leitos",         label: "Leitos detalhados",    icon: "bed" },
   { key: "e_transferencias", label: "Transferências",       icon: "truck" },
   { key: "e_aguardando",     label: "Aguardando leito",     icon: "clock" },
-  { key: "e_ia",             label: "Assistente IA",        icon: "chat" },
+  { key: "e_ia",             label: "Consulta rápida",      icon: "chat" },
 ];
 
 
@@ -184,7 +188,10 @@ function PsRelatorioView({ sb }) {
     let cancelado = false;
     setCarregando(true);
     loadPsAtendimentosPeriodo(sb, ano, mes).then(r => { if (!cancelado) { setRows(r); setCarregando(false); } });
-    loadPsExamesPeriodo(sb, ano, mes).then(r => { if (!cancelado) setExames(r); });
+    // 🔴 O BI PASSA A LER O SADT. O formato de volta é o mesmo
+    // (`{ categoria, status, criado_em, resultado_em }`) de propósito:
+    // `resumoExamesPorCategoria` é a régua do relatório e não muda.
+    loadSadtExamesPeriodo(sb, ano, mes).then(r => { if (!cancelado) setExames(r); });
     return () => { cancelado = true; };
   }, [mes, ano]);
 
@@ -535,7 +542,11 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     loadPsAtendimentos(sb).then(r => {
       setFila(r);
       const ids = r.filter(p => p.status === "em_atendimento").map(p => p.id);
-      loadPsExamesPendentes(sb, ids).then(list => {
+      // 🔴 OS EXAMES VÊM DO SADT, não mais de `ps_registros`. O formato de
+      // volta é o mesmo (`{ atendimento_id, status }`) de propósito: é a
+      // mesma régua (`contarExames`) que pinta o crachá da fila e alimenta
+      // a trava do desfecho, e régua é uma só.
+      loadSadtPendentesPorAtendimento(sb, ids).then(list => {
         // A separação entre "ainda não voltou" e "voltou e ninguém leu" vem de
         // `contarExames`, a mesma régua da aba de exames. Era a terceira cópia.
         const porAtend = {};
@@ -575,7 +586,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     loadLeitosFromSupabase(sb).then(r => r && setLeitos(r));
     // óbitos ocorridos APÓS internação, hoje (fonte: leitos_saidas)
     const hoje = todayStr();
-    sb(`leitos_saidas?desfecho=eq.obito&data_alta=eq.${hoje}&select=id`).then(r => setObitosInternacao(Array.isArray(r) ? r.length : 0));
+    // 🔴 `null` quando não deu para ler, e não zero: o cartão de óbitos
+    // fica VERDE com "nenhum hoje" quando o total é zero, e pintar isso
+    // de verde sem ter conseguido perguntar é a pior forma do defeito.
+    sb(`leitos_saidas?desfecho=eq.obito&data_alta=eq.${hoje}&select=id`).then(r => setObitosInternacao(contagemLida(r)));
   }
   useEffect(() => {
     refresh();
@@ -621,13 +635,35 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
       return;
     }
 
-    await addPsAtendimentoRemote(sb, {
-      iniciais: novo.iniciais.trim(), prontuario: novo.prontuario.trim(),
+    // Ficha aposentada pela unificação: a triagem, a prescrição e a alta
+    // iriam para o número que ninguém mais abre.
+    const unificada = recusaPorUnificacao(cadastrado);
+    if (unificada) { setBusy(false); alert(unificada); return; }
+
+    // 🔴 DOIS IDENTIFICADORES, NÃO UM. O número digitado só era conferido
+    // quanto a EXISTIR: um dígito trocado pendurava a triagem e a prescrição
+    // em outro paciente real, e as iniciais digitadas eram gravadas sem
+    // comparar com as do cadastro. Agora as iniciais do cadastro decidem —
+    // se não batem com as digitadas, a tela mostra QUEM é antes de gravar.
+    const conf = conferirIniciaisDaChegada(novo.iniciais, cadastrado);
+    if (!conf.ok && !confirm(conf.pergunta)) { setBusy(false); return; }
+
+    const gravou = await addPsAtendimentoRemote(sb, {
+      // As iniciais vêm do CADASTRO: era o campo em que a fila do PS e o
+      // Paciente 360 divergiam sem ninguém notar.
+      iniciais: conf.iniciais, prontuario: novo.prontuario.trim(),
       queixa: novo.queixa.trim() || null, origem: novo.origem,
       origem_detalhe: novo.origem_detalhe.trim() || null,
       chegada_em: nowISO(), status: "aguardando_triagem",
     }, currentUser);
-    registrarAuditoria(sb, currentUser, "PS: chegada", `${novo.iniciais.trim()} · ${novo.origem}${novo.origem_detalhe ? " — " + novo.origem_detalhe : ""}`, {});
+    // O formulário só limpa se a linha VOLTOU. Antes ele limpava sempre — e
+    // uma recusa do banco tirava o paciente da tela sem pô-lo na fila.
+    if (!Array.isArray(gravou) || !gravou.length) {
+      setBusy(false);
+      alert("A chegada NÃO foi registrada — o paciente não está na fila da triagem. Confira a conexão e tente de novo; se repetir, registre pela Recepção (menu Atendimento).");
+      return;
+    }
+    registrarAuditoria(sb, currentUser, "PS: chegada", `${conf.iniciais} · ${novo.origem}${novo.origem_detalhe ? " — " + novo.origem_detalhe : ""}`, {});
     setNovo({ iniciais: "", prontuario: "", queixa: "", origem: "Meios próprios", origem_detalhe: "" });
     setBusy(false); setTimeout(refresh, 400);
   }
@@ -646,13 +682,20 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     return out;
   }
   async function triar(p, classificacao, vitais, sugerida, comorbidades, extras) {
-    await updatePsAtendimentoRemote(sb, p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    const r = await updatePsAtendimentoRemote(sb, p.id, { classificacao, triagem_em: nowISO(), status: "aguardando_atendimento", ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    // 🔴 PARA ANTES DE GRAVAR OS SINAIS. Um registro de sinais vitais para um
+    // paciente que continuou sem classificação é pior que nenhum: ele some da
+    // fila de quem espera triagem e não entra na de quem espera atendimento.
+    if (!r.ok) { alert("A triagem NÃO foi gravada — " + r.erro + "\n\nO paciente continua aguardando triagem. O que você preencheu está na tela; tente de novo."); return; }
     await addPsSinalRemote(sb, { atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     registrarAuditoria(sb, currentUser, "PS: triagem", `${p.iniciais} → ${classificacao}`, {});
     setTriando(null); setTimeout(refresh, 300);
   }
   async function reavaliar(p, classificacao, vitais, sugerida, comorbidades, extras) {
-    await updatePsAtendimentoRemote(sb, p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    const r = await updatePsAtendimentoRemote(sb, p.id, { classificacao, ...(vitais || {}), ...(comorbidades ? { comorbidades } : {}), ...triagemExtrasPayload(extras) });
+    // A reavaliação existe para MUDAR a cor de quem piorou na espera. Falhar
+    // em silêncio deixa o paciente na prioridade antiga, que é a errada.
+    if (!r.ok) { alert("A reavaliação NÃO foi gravada — " + r.erro + "\n\nO paciente continua com a classificação anterior. O que você preencheu está na tela; tente de novo."); return; }
     await addPsSinalRemote(sb, { atendimento_id: p.id, ...(vitais || {}), classificacao_sugerida: sugerida || null, classificacao_escolhida: classificacao, aferido_em: nowISO() }, currentUser);
     registrarAuditoria(sb, currentUser, "PS: reavaliação", `${p.iniciais} → ${classificacao}`, {});
     setReavaliando(null); setTimeout(refresh, 300);
@@ -681,7 +724,8 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     setTimeout(refresh, 300);
   }
   async function iniciarAtendimento(p) {
-    await updatePsAtendimentoRemote(sb, p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
+    const r = await updatePsAtendimentoRemote(sb, p.id, { atendimento_em: nowISO(), status: "em_atendimento" });
+    if (!r.ok) { alert("Não foi possível iniciar o atendimento — " + r.erro + "\n\nO paciente continua na fila de espera."); return; }
     registrarAuditoria(sb, currentUser, "PS: inicio atendimento", p.iniciais, {});
     setTimeout(refresh, 300);
   }
@@ -691,11 +735,19 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
     // episódio vira faturável — e o procedimento só se sabe no fim. Sem eles,
     // `carregarProducaoFaturavel` (que filtra procedimento_cod=not.is.null)
     // nunca enxerga este atendimento.
-    await updatePsAtendimentoRemote(sb, p.id, {
+    const r = await updatePsAtendimentoRemote(sb, p.id, {
       desfecho, desfecho_em: nowISO(), setor_destino: setorDestino || null,
       observacao: observacao || null, medico: medico || null, status: "finalizado",
       ...dadosDeConta({ convenioId, procedimentoCod, cid }),
     });
+    // 🔴 PARA ANTES DE RESERVAR LEITO E DE ABRIR PEDIDO NO NIR. Seguir com o
+    // episódio ainda aberto deixaria um leito reservado — ou uma solicitação
+    // na fila do NIR — para um paciente que o PS continua mostrando em
+    // atendimento. E tentar de novo criaria a SEGUNDA reserva.
+    if (!r.ok) {
+      alert("O desfecho NÃO foi gravado — " + r.erro + "\n\nNenhum leito foi reservado e nenhum pedido foi aberto. O paciente continua em atendimento; tente de novo.");
+      return;
+    }
     if (desfecho === "internacao") {
       if (leito) {
         // Reserva automática: o leito fica RESERVADO para o paciente até ele subir.
@@ -993,7 +1045,11 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
         const tot = salasAtivas.length;
         const pct = tot ? Math.round((ocup / tot) * 100) : 0;
         const obitoPS = finalizados.filter(p => p.desfecho === "obito").length;
-        const obitosTot = obitoPS + obitosInternacao;
+        // 🔴 `obitosInternacao === null` é "não consegui ler", não "nenhum".
+        // Somar null daria o número do PS sozinho, e o cartão diria "nenhum
+        // hoje" em VERDE por cima de uma pergunta que não foi respondida.
+        const obitosIncerto = obitosInternacao == null;
+        const obitosTot = obitosIncerto ? null : obitoPS + obitosInternacao;
         // Card compacto: rótulo pequeno, número grande, subtexto de apoio
         const Mini = ({ label, valor, cor, sub }) => (
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderLeft: `3px solid ${cor}`, borderRadius: 9, padding: "9px 11px", minWidth: 0 }}>
@@ -1007,7 +1063,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
             <Mini label="Em atendimento" valor={emAtendimento.length} cor="#22d3ee" sub="pacientes agora" />
             <Mini label="Aguardando atendimento" valor={aguardandoAtend.length} cor="#3b82f6" sub="na fila" />
             <Mini label="Leitos ocupados" valor={tot ? `${ocup}/${tot}` : "—"} cor={ocup ? "#f43f5e" : "#34d399"} sub={tot ? `${pct}% de ocupação` : "sem leitos"} />
-            <Mini label="Óbitos" valor={obitosTot} cor={obitosTot ? "#f43f5e" : "#34d399"} sub={obitosTot ? `${obitoPS} no PS · ${obitosInternacao} pós-intern.` : "nenhum hoje"} />
+            <Mini label="Óbitos" valor={obitosIncerto ? `${obitoPS}+?` : obitosTot}
+              cor={obitosIncerto ? "#fbbf24" : obitosTot ? "#f43f5e" : "#34d399"}
+              sub={obitosIncerto ? `${obitoPS} no PS · pós-intern. não lido`
+                 : obitosTot ? `${obitoPS} no PS · ${obitosInternacao} pós-intern.` : "nenhum hoje"} />
             <Mini label="Tempo médio de permanência" valor={permMedia != null ? fmtDur(Math.round(permMedia)) : "—"} cor="#6366f1" sub="chegada → desfecho" />
             <Mini label="Atendidos hoje" valor={finalizados.length} cor="#0d9488" sub="finalizados" />
           </div>
@@ -1534,7 +1593,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
                     cor: PS_DESFECHOS[k].cor,
                     n: finalizados.filter(p => p.desfecho === k).length,
                   }));
-                  const totalObitos = obitoPS + obitosInternacao;
+                  // `obitoPS + null` seria `obitoPS` — o total mentiria pela
+                  // metade sem nenhum sinal. Incerto é incerto.
+                  const incerto = obitosInternacao == null;
+                  const totalObitos = incerto ? null : obitoPS + obitosInternacao;
                   return (<>
                     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                       {linhas.map(x => (
@@ -1548,7 +1610,10 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
                       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px dashed var(--border)", borderRadius: 7, padding: "7px 11px" }}>
                         <span style={{ width: 8, height: 8, borderRadius: 99, background: "#f43f5e", flexShrink: 0, opacity: .6 }} />
                         <span style={{ flex: 1, fontSize: 12.5, color: "var(--text-3)" }}>Óbito após internação <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(fora do PS)</span></span>
-                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: obitosInternacao ? "#f43f5e" : "var(--text-muted)" }}>{obitosInternacao}</strong>
+                        <strong style={{ fontFamily: "JetBrains Mono, monospace", color: incerto ? "#fbbf24" : obitosInternacao ? "#f43f5e" : "var(--text-muted)" }}
+                          title={incerto ? "Não consegui ler as saídas de leito — este número não foi apurado." : undefined}>
+                          {incerto ? "não lido" : obitosInternacao}
+                        </strong>
                       </div>
                     </div>
                     {totalObitos > 0 && (
@@ -1788,7 +1853,7 @@ export default function PSPage({ sb, sbCru, currentUser, canEdit }) {
           );
         }
 
-        // ── Assistente IA do PS ──
+        // ── Consulta rápida do PS (respostas locais, sem IA) ──
         if (sub === "e_ia") return <PsAssistenteView fila={fila} finalizados={finalizados} salas={ativas} leitos={leitos} />;
         return null;
       })()}

@@ -4,7 +4,7 @@
 // Estrutura aprovada pela Laura (padrão NSP: barra lateral própria):
 //   Gestão:        Visão executiva · Pendentes · Glosas · Receitas
 //   Inteligência:  Análises · Previsões · Convênios & contratos
-//   Referência:    Tabela SIGTAP · Assistente AI
+//   Referência:    Tabela SIGTAP · Consulta rápida
 //
 // O QUE JÁ TEM MOTOR: a Tabela SIGTAP (os 219 + glosa de permanência,
 // lê `sigtap_procedimentos`), a conta do prontuário (aba Pendentes) e a
@@ -34,8 +34,11 @@ import {
   carregarAtendimento, carregarCatalogos, carregarAdministracoes, carregarLeitosDoEpisodio,
   carregarConta, carregarItensDaConta, abrirConta, acrescentarItem, carregarWorklistFaturamento,
   carregarProducaoFaturavel, contasDaCompetencia, registrarTransmissao, carregarPrecos,
+  carregarCirurgiasDoEpisodio,
 } from "./dados.js";
 import { validarTransmissao, resumoDaTransmissao, hojeLocal, PROTOCOLO_MAX } from "./remessa.js";
+import { conferirRemessa, resumoDaConferencia, REJEITA } from "./remessa-conferencia.js";
+import { dadosDaConferencia } from "./dados.js";
 import { listaLida } from "../util/leitura.js";
 import GlosasView from "./GlosasView.jsx";
 import AnalisesView from "./AnalisesView.jsx";
@@ -101,7 +104,7 @@ const FAT_NAV = [
   ] },
   { grupo: "Referência", itens: [
     { key: "sigtap", label: "Tabela SIGTAP" },
-    { key: "assistente", label: "Assistente AI" },
+    { key: "assistente", label: "Consulta rápida" },
   ] },
 ];
 
@@ -379,13 +382,21 @@ function ContasDaCompetencia({ sb, competencia, recarga }) {
  * ⚠️ E É SEM VOLTA — daí a confirmação nomear o que vai acontecer em vez
  * de perguntar "tem certeza?", que ninguém lê.
  */
-function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
+// ⚠️ Exportado para o teste de render: a lógica da conferência está coberta
+// por fronteira e mutação, mas o que NÃO se cobre assim é se a tela de fato
+// MOSTRA o que a regra apurou — foi exatamente aí que os cinco defeitos da
+// caminhada de ontem moravam. Exportar um componente interno só para isso é
+// mais barato que montar a página inteira.
+export function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
   const [competencia, setCompetencia] = useState(competenciaAtual || "");
   const [via, setVia] = useState("");
   const [protocolo, setProtocolo] = useState("");
   const [quando, setQuando] = useState(hojeLocal());
   const [contas, setContas] = useState(null);   // null = ainda não buscou
   const [buscando, setBuscando] = useState(false);
+  // O que a conferência precisa olhar: cadastro, ficha e itens.
+  const [conf, setConf] = useState(null);       // null = ainda não conferiu
+  const [conferindo, setConferindo] = useState(false);
   const [gravando, setGravando] = useState(false);
   const [msg, setMsg] = useState(null);         // { tom, texto }
 
@@ -405,6 +416,30 @@ function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
     [contas, competencia, via, protocolo, quando]
   );
   const resumo = useMemo(() => resumoDaTransmissao(v.contas), [v.contas]);
+
+  /**
+   * 🔴 A CONFERÊNCIA RODA SOBRE AS CONTAS QUE DE FATO VÃO (`v.contas`), não
+   * sobre tudo que foi buscado. Conferir o que não entra na remessa encheria
+   * a tela de pendência de conta que nem vai, e a faturista aprenderia a
+   * rolar por cima da lista.
+   */
+  // ⚠️ A dependência é a LISTA DE IDS em texto, não o array: `v.contas` é
+  // recalculado a cada render por `useMemo`, e depender dele faria a
+  // conferência rebuscar o banco a cada tecla digitada no protocolo.
+  const idsDaRemessa = useMemo(() => v.contas.map(c => c.id).join(","), [v.contas]);
+
+  useEffect(() => {
+    let vivo = true;
+    if (!idsDaRemessa) { setConf(null); return; }
+    setConferindo(true);
+    (async () => {
+      const d = await dadosDaConferencia(sb, v.contas);
+      if (!vivo) return;
+      setConf(conferirRemessa({ contas: v.contas, ...d }));
+      setConferindo(false);
+    })();
+    return () => { vivo = false; };
+  }, [sb, idsDaRemessa]);
 
   async function registrar() {
     if (!v.ok || gravando) return;
@@ -487,6 +522,43 @@ function RegistrarRemessa({ sb, currentUser, competenciaAtual, aoRegistrar }) {
           {msg?.tom !== "ok" && v.avisos.map((a, i) => (
             <div key={`a${i}`} style={{ fontSize: 12.5, color: "#f59e0b", marginBottom: 6 }}>{a}</div>
           ))}
+
+          {/* 🔴 O QUE O SUS VAI RECUSAR — antes do botão, de propósito.
+              Depois de transmitir não há o que corrigir: a produção volta no
+              mês seguinte, quando o paciente já foi embora. */}
+          {conferindo && (
+            <div style={{ fontSize: 12.5, color: "var(--text-3)", marginTop: 12 }}>Conferindo o que o SUS exige…</div>
+          )}
+          {!conferindo && conf === null && v.contas.length > 0 && (
+            <div style={{ fontSize: 12.5, color: "#f43f5e", fontWeight: 600, marginTop: 12, lineHeight: 1.5 }}>
+              {resumoDaConferencia(null)}
+            </div>
+          )}
+          {!conferindo && conf && (
+            <div style={{
+              marginTop: 12, padding: "10px 12px", borderRadius: 9,
+              border: `1px solid ${conf.bloqueadas.length ? "#f43f5e" : "var(--border)"}`,
+              background: conf.bloqueadas.length ? "#f43f5e14" : "var(--surface-2)",
+            }}>
+              <div style={{
+                fontSize: 12.5, fontWeight: 700, lineHeight: 1.5,
+                color: conf.bloqueadas.length ? "#f43f5e" : "var(--text-2)",
+              }}>
+                {resumoDaConferencia(conf)}
+              </div>
+              {conf.motivos.map(m => (
+                <div key={m.chave} style={{ fontSize: 12, color: "var(--text-2)", marginTop: 6, lineHeight: 1.5 }}>
+                  <b style={{ color: m.severidade === REJEITA ? "#f43f5e" : "#f59e0b" }}>
+                    {m.contas.length} {m.contas.length === 1 ? "conta" : "contas"} · {m.campo}
+                  </b>
+                  {m.severidade === REJEITA ? "" : " (não derruba, mas a auditoria pede)"}
+                  <br />
+                  {m.texto}
+                  <span style={{ color: "var(--text-muted)" }}> Conserta-se no {m.onde}.</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12 }}>
             <button onClick={registrar} disabled={!v.ok || gravando}
@@ -874,11 +946,12 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
       // Os preços do convênio (só quando há convênio) alimentam o preço por
       // via: uma conta TISS passa a ser precificada pela tabela da operadora,
       // não pela do SUS.
-      const [cat, administracoes, leitos, precos] = await Promise.all([
+      const [cat, administracoes, leitos, precos, cirurgico] = await Promise.all([
         carregarCatalogos(sb),
         carregarAdministracoes(sb, atendimento.id),
         carregarLeitosDoEpisodio(sb, { atendimentoId: atendimento.id, prontuario: atendimento.prontuario }),
         atendimento.convenio_id ? carregarPrecos(sb, { convenioId: atendimento.convenio_id }) : Promise.resolve([]),
+        carregarCirurgiasDoEpisodio(sb, atendimento.id),
       ]);
       const convenio = (cat.convenios || []).find((c) => String(c.id) === String(atendimento.convenio_id)) || null;
       // A permanência vem do LEITO (estadia real); só na falta dele o motor
@@ -892,7 +965,19 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
         precos,
         administracoes,
         internacao,
+        cirurgias: cirurgico.cirurgias,
+        equipePorCirurgia: cirurgico.equipePorCirurgia,
+        descricaoPorCirurgia: cirurgico.descricaoPorCirurgia,
       });
+      // 🔴 "Não consegui ler" não pode virar "não teve cirurgia". Sem este
+      // aviso, uma oscilação de rede faria o faturista fechar a conta sem
+      // o item mais caro dela — e a falta só apareceria no processamento.
+      if (cirurgico.naoLi) {
+        conta.avisos = [...(conta.avisos || []),
+          "Não consegui ler as cirurgias deste episódio (ou a equipe, ou a descrição cirúrgica). " +
+          "Se houve cirurgia, ela pode NÃO estar nesta conta — e, se estiver, o código pode ser o do " +
+          "AGENDAMENTO e não o do que foi feito. Recarregue antes de fechar."];
+      }
       setResultado({ conta, atendimento, fonteInternacao: internacao?.fonte || null });
     } catch {
       setErro("Não consegui montar a conta agora. Tente de novo.");
@@ -1004,7 +1089,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
       {/* worklist: internações a faturar */}
       <section style={{ ...cx.card, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
-          <div style={cx.rotulo}>Internações a faturar ({worklist.length})</div>
+          <div style={cx.rotulo}>Episódios a faturar ({worklist.length})</div>
           <button onClick={carregarWL} disabled={carregandoWL} style={{ background: "transparent", color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 7, padding: "5px 12px", fontSize: 12, cursor: carregandoWL ? "default" : "pointer" }}>
             {carregandoWL ? "Atualizando…" : "Atualizar"}
           </button>
@@ -1022,7 +1107,8 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                 <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                   <th style={{ padding: "6px 8px" }}>Paciente</th>
                   <th style={{ padding: "6px 8px" }}>Atend.</th>
-                  <th style={{ padding: "6px 8px" }}>Internação</th>
+                  <th style={{ padding: "6px 8px" }}>Origem</th>
+                  <th style={{ padding: "6px 8px" }}>Entrada</th>
                   <th style={{ padding: "6px 8px" }}>CID</th>
                   <th style={{ padding: "6px 8px" }}>Conta</th>
                   <th style={{ padding: "6px 8px" }} />
@@ -1036,6 +1122,14 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                     <tr key={row.id} onClick={() => montar(row.id)} style={{ cursor: "pointer", borderTop: "1px solid var(--border)", background: ativo ? "var(--surface-3)" : "transparent" }}>
                       <td style={{ padding: "8px", fontWeight: 600 }}>{row.iniciais || "—"}</td>
                       <td style={{ padding: "8px", fontVariantNumeric: "tabular-nums", color: "var(--text-2)", whiteSpace: "nowrap" }}>#{row.id} · reg. {row.prontuario}</td>
+                      {/* De onde veio: a conta de internação (AIH) e a do
+                          ambulatório (BPA/APAC) seguem caminhos diferentes, e
+                          quem fatura precisa saber qual é antes de montar. */}
+                      <td style={{ padding: "8px", color: "var(--text-2)", whiteSpace: "nowrap" }}>
+                        {row.desfecho === "internacao" ? "Internação"
+                          : row.tipo_atendimento === "ambulatorial" ? "Ambulatório"
+                          : "Pronto-socorro"}
+                      </td>
                       <td style={{ padding: "8px", color: "var(--text-2)", whiteSpace: "nowrap" }}>{row.chegada_em ? new Date(row.chegada_em).toLocaleDateString("pt-BR") : "—"}</td>
                       <td style={{ padding: "8px", color: "var(--text-2)" }}>{row.cid || "—"}</td>
                       <td style={{ padding: "8px" }}>
@@ -1157,6 +1251,7 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                     <tr style={{ textAlign: "left", color: "var(--text-muted)" }}>
                       <th style={{ padding: "6px 8px" }}>Tipo</th>
                       <th style={{ padding: "6px 8px" }}>Item</th>
+                      <th style={{ padding: "6px 8px" }}>Executante</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Qtd</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Valor unit.</th>
                       <th style={{ padding: "6px 8px", textAlign: "right" }}>Subtotal</th>
@@ -1174,6 +1269,20 @@ function ContaDoProntuario({ sb, sigtapRows, canEdit, currentUser }) {
                             <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>
                               {cod && it.descricao ? <span style={{ fontVariantNumeric: "tabular-nums" }}>{cod} · </span> : null}{it.origem}
                             </div>
+                          </td>
+                          {/* 🔴 QUEM EXECUTA, E O CBO. A proposta mostrava Tipo/Item/Qtd/Valor
+                              e nada mais — e o CBO é justamente o campo que, errado ou
+                              ausente, DERRUBA o registro inteiro no SISAIH01/BPA. O aviso
+                              já dizia quem estava sem; faltava poder conferir item a item
+                              antes de lançar. */}
+                          <td style={{ padding: "8px", fontSize: 12 }}>
+                            {it.executante ? (<>
+                              <div style={{ color: "var(--text-2)" }}>{it.executante}</div>
+                              <div style={{ fontSize: 11, fontFamily: "JetBrains Mono, monospace",
+                                            color: it.executante_cbo ? "var(--text-muted)" : "#f59e0b" }}>
+                                {it.executante_cbo ? "CBO " + it.executante_cbo : "sem CBO"}
+                              </div>
+                            </>) : <span style={{ color: "var(--text-muted)" }}>—</span>}
                           </td>
                           <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{Number(it.quantidade)}</td>
                           <td style={{ padding: "8px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: it.valor_unitario == null ? "#f59e0b" : "var(--text)" }}>
@@ -1286,7 +1395,7 @@ export default function FaturamentoPage({ sb, currentUser, canEdit, onIrPara }) 
     return () => { vivo = false; };
   }, [sb]);
 
-  const titulo = { pendentes: "Pendentes", glosas: "Glosas", receitas: "Receitas", analises: "Análises", previsoes: "Previsões", convenios: "Convênios & contratos", assistente: "Assistente AI" };
+  const titulo = { pendentes: "Pendentes", glosas: "Glosas", receitas: "Receitas", analises: "Análises", previsoes: "Previsões", convenios: "Convênios & contratos", assistente: "Consulta rápida" };
 
   return (
     <div style={{ display: "flex", flex: 1, minHeight: 0, color: "var(--text)" }}>

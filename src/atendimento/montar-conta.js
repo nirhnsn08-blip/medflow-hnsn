@@ -48,6 +48,9 @@ import {
   permanenciaEmDias, avaliarPermanencia, avaliarGlosa, temImpedimento,
 } from "./sigtap.js";
 import { precoDe, SITUACAO } from "./precos.js";
+import { geraConta } from "./faturavel.js";
+import { diaLocal } from "../util/datas.js";
+import { itensDasCirurgias } from "./conta-cirurgia.js";
 
 // ── item proposto (o formato do camposDoItem + a origem para a tela) ──
 
@@ -371,13 +374,41 @@ function itensMedicacao(administracoes) {
  * recente no topo. Uma conta cancelada não conta — o episódio volta a
  * aparecer como "sem conta", que é a verdade.
  */
+/**
+ * Este episódio pode virar conta?
+ *
+ * 🔴 ANTES A LISTA ERA SÓ `desfecho = internacao`, e o ambulatório inteiro
+ * ficava invisível para o faturamento: a consulta acontecia, era registrada,
+ * e ninguém nunca via que faltava a conta dela. BPA e APAC nascem daí.
+ *
+ * Quem foi embora antes de ser atendido NÃO entra — ver clinico/desfechos.js,
+ * onde "evadiu" e "evasao" passaram a ser a mesma coisa.
+ *
+ * ⚠️ RESPONDE "NÃO" SÓ QUANDO SABE. Esconder um episódio que precisa de
+ * conta é dinheiro perdido sem ninguém perceber; mostrar um a mais é uma
+ * linha extra na lista, que alguém resolve em dois segundos. Entre os dois
+ * erros, a lista erra para o lado de mostrar.
+ */
+export function podeVirarConta(a) {
+  if (!a) return false;
+  // Foi embora antes de ser atendido: não há o que cobrar.
+  if (!geraConta(a.desfecho)) return false;
+  // Ambulatorial ainda em curso: a consulta não terminou, e cobrar conta do
+  // que está acontecendo agora é ruído. Internação não entra nesta regra —
+  // a conta da internação se monta com o paciente ainda no leito.
+  if (a.tipo_atendimento === "ambulatorial" && a.desfecho !== "internacao") {
+    return a.status === "finalizado";
+  }
+  return true;
+}
+
 export function montarWorklist(internacoes = [], contas = []) {
   const porAtend = new Map();
   for (const c of Array.isArray(contas) ? contas : []) {
     if (!c || c.status === "cancelada") continue;
     porAtend.set(String(c.atendimento_id), c);
   }
-  const rows = (Array.isArray(internacoes) ? internacoes : []).map((a) => {
+  const rows = (Array.isArray(internacoes) ? internacoes : []).filter(podeVirarConta).map((a) => {
     const conta = porAtend.get(String(a.id)) || null;
     return { ...a, conta, situacao: conta ? conta.status : "sem-conta" };
   });
@@ -418,6 +449,14 @@ export function montarContaDoProntuario({
   administracoes = [],
   paciente = null,
   internacao = null,
+  // As cirurgias DESTE episódio, e a equipe de cada uma. Chegam por
+  // parâmetro, como todo o resto: este motor não lê banco.
+  cirurgias = [],
+  equipePorCirurgia = {},
+  // A descrição cirúrgica VIGENTE de cada cirurgia. É dela que sai o código
+  // do que foi REALIZADO — que vence o do agendamento, porque é o ato que
+  // aconteceu.
+  descricaoPorCirurgia = {},
 } = {}) {
   if (!atendimento?.id) {
     return {
@@ -459,6 +498,22 @@ export function montarContaDoProntuario({
 
   // 3) Medicação administrada.
   itens.push(...itensMedicacao(administracoes));
+
+  // 4) As cirurgias do episódio.
+  //
+  // Antes a cirurgia acontecia no Bloco e a conta não sabia: o
+  // faturista redigitava do papel o procedimento de MAIOR VALOR da
+  // tabela. Agora o ato entra com o cirurgião como executante e o CBO
+  // dele, o anestesista em linha própria (é assim que a TISS paga) e
+  // os auxiliares para conferência, sem valor — o percentual depende
+  // do contrato da operadora, e preço aqui nunca é inventado.
+  const cir = itensDasCirurgias({
+    cirurgias, equipePorCirurgia, descricaoPorCirurgia, via,
+    catalogoPorCodigo: Object.fromEntries([...idxProc.entries()]),
+    sigtapPorCodigo: Object.fromEntries([...idxSig.entries()]),
+  });
+  itens.push(...cir.itens);
+  avisos.push(...cir.avisos);
 
   // CID principal — carrega a conta e alimenta a compatibilidade da glosa.
   const cid = normalizarCid(atendimento.cid);
@@ -574,10 +629,18 @@ function montarSig(row) {
   });
 }
 
-/** ISO/timestamp → "AAAA-MM-DD" (só a data), ou `null`. */
+/**
+ * ISO/timestamp → "AAAA-MM-DD" (só a data), ou `null`.
+ *
+ * 🔴 Pelo RELÓGIO DO HOSPITAL, não por fatia de texto. Esta função
+ * alimenta o `data_execucao` de três itens — procedimento principal
+ * (`chegada_em`), diária (`alta_em`) e medicamento (`administrado_em`) —, e
+ * `data_execucao` é coluna `date`: o dia errado grava permanente. A
+ * dipirona das 22h ficava com execução no dia seguinte, que pode ser
+ * DEPOIS DA ALTA — e procedimento fora do período da internação é glosa.
+ */
 function soData(v) {
-  const s = String(v ?? "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  return diaLocal(v);
 }
 
 /** ISO → "DD/MM/AAAA" para a legenda de origem. */

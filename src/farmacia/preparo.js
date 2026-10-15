@@ -80,10 +80,21 @@ export function itensDaPrescricao(registro, itens = []) {
  *
  * Movimento sem `tipo` conta como saída: é como o kardex antigo gravava,
  * e o recuo preserva o comportamento anterior para dado já existente.
+ *
+ * 🔴 É A ÚNICA CONTA DE "QUANTO SAIU PARA O ITEM" DO MÓDULO.
+ * Até 17/09/2026 a tela de Dispensação e o modal de dispensar tinham cada
+ * um a sua cópia — somando entrada e saída como se fossem a mesma coisa.
+ * Um estorno de 10 comprimidos fazia o item aparecer com 20 dispensados, e
+ * o custo do paciente dobrava. A regra certa já morava aqui.
+ *
+ * `chave` escolhe a coluna do vínculo: `prescricao_item_id` é o item do PS
+ * (`ps_prescricao_itens`), `pep_item_id` é o da internação
+ * (`pep_prescricao_itens`). São tabelas diferentes, com ids que se repetem
+ * entre elas — por isso duas colunas, e nunca a mesma.
  */
-export const dispensadoDoItem = (itemId, saidas = []) =>
+export const dispensadoDoItem = (itemId, saidas = [], chave = "prescricao_item_id") =>
   (Array.isArray(saidas) ? saidas : [])
-    .filter(s => id(s?.prescricao_item_id) === id(itemId))
+    .filter(s => id(s?.[chave]) === id(itemId))
     .reduce((soma, s) => soma + (s?.tipo === "entrada" ? -num(s?.quantidade) : num(s?.quantidade)), 0);
 
 /**

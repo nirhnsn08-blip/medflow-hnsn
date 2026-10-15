@@ -19,16 +19,19 @@
 --    Sem ela a migração roda e não se anota — e o conferidor vai pedir
 --    para rodar de novo, para sempre.
 --
--- Cobertura: 84 migrações.
+-- Cobertura: 112 migrações.
 -- ============================================================
 
 -- quem está rodando? (opcional, mas ajuda quando são duas pessoas)
 -- set valentrax.quem = 'seu-nome';
 
 with esperadas(arquivo, o_que_faz) as (values
+  ('migracao-acesso-funcoes.sql', 'Regenere com:  node supabase/gerar-rls.mjs'),
   ('migracao-agenda-confirmacao.sql', 'A tela da Agenda exibe um KPI de ABSENTEÍSMO e o hospital não tem como'),
   ('migracao-agenda-remarcacao.sql', 'Remarcar não existe no sistema. Existe CANCELAR (com um motivo em texto'),
   ('migracao-agenda-vaga-por-profissional.sql', 'A trava que impede dois pacientes no mesmo horário estava na chave'),
+  ('migracao-alertas-peso-gestacao.sql', 'FARMÁCIA CLÍNICA — RISCO NA GESTAÇÃO E DOSE MÁXIMA POR KG'),
+  ('migracao-ambulatorio-especialidades.sql', 'AS ESPECIALIDADES DO AMBULATÓRIO SAEM DO CÓDIGO E VÃO PARA O CADASTRO'),
   ('migracao-atendimento-agenda.sql', 'AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia'),
   ('migracao-atendimento-ciclo.sql', 'CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro'),
   ('migracao-atendimento-fase2.sql', 'ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde'),
@@ -37,6 +40,16 @@ with esperadas(arquivo, o_que_faz) as (values
   ('migracao-atendimento-recepcao.sql', 'ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital'),
   ('migracao-atendimento-responsavel.sql', 'RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta'),
   ('migracao-auditoria-atribuivel.sql', 'AUDITORIA — trilha atribuível e consultável'),
+  ('migracao-cirurgia-anestesia-rpa.sql', 'A FICHA ANESTÉSICA E A ALTA DA RPA COM ESCORE'),
+  ('migracao-cirurgia-descricao.sql', 'A DESCRIÇÃO CIRÚRGICA — o documento que a lei nomeia e que não existia'),
+  ('migracao-cirurgia-elo-atendimento.sql', 'A CIRURGIA PASSA A SABER DE QUE ATENDIMENTO ELA É'),
+  ('migracao-cirurgia-opme.sql', 'OPME COM LOTE: EM QUEM FOI IMPLANTADO'),
+  ('migracao-cirurgia-paciente-equipe-codigo.sql', 'A CIRURGIA PASSA A TER PACIENTE, EQUIPE E CÓDIGO'),
+  ('migracao-cirurgia-segura-registro.sql', 'CIRURGIA SEGURA VIRA REGISTRO, E NÃO UM BOOLEANO'),
+  ('migracao-correcao-desfecho-corrida.sql', 'A RECUSA POR CORRIDA NÃO FUNCIONAVA — e só o banco real mostrou'),
+  ('migracao-correcao-desfecho.sql', 'CORRIGIR O DESFECHO — por registro novo, nunca por edição'),
+  ('migracao-descricao-aux-farmacia.sql', 'AUXILIAR DE FARMÁCIA: a descrição do perfil passou a mentir'),
+  ('migracao-documento-impressao-digital.sql', 'A IMPRESSÃO DIGITAL DO DOCUMENTO'),
   ('migracao-enf-escalas-lpp.sql', 'ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)'),
   ('migracao-enf-sae.sql', 'ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)'),
   ('migracao-episodio-id-tipo.sql', '`episodio_id` DAS TABELAS DE ENFERMAGEM: uuid → bigint'),
@@ -47,16 +60,27 @@ with esperadas(arquivo, o_que_faz) as (values
   ('migracao-farmacia-estorno-inventario.sql', 'FARMÁCIA — estorno com vínculo e inventário cíclico'),
   ('migracao-farmacia-faseA.sql', 'Idempotente: pode rodar de novo sem quebrar nada.'),
   ('migracao-farmacia-faseB.sql', 'Idempotente: pode rodar de novo sem quebrar nada.'),
+  ('migracao-farmacia-hospital.sql', 'FARMÁCIA DO HOSPITAL — internação, validação, controlados e devolução'),
   ('migracao-farmacia-intervencoes.sql', 'Registro das intervenções do farmacêutico sobre a prescrição, com'),
   ('migracao-farmacia-lote-vencido.sql', 'LOTE VENCIDO NÃO VAI PARA O PACIENTE'),
   ('migracao-farmacia-nao-padronizados.sql', 'Registro dos medicamentos que NÃO estão no catálogo do hospital e que'),
   ('migracao-farmacia-preparo-exige-baixa.sql', 'A PRESCRIÇÃO SÓ FICA "PRONTA" SE SAIU DO ESTOQUE'),
   ('migracao-farmacia-preparo.sql', 'Uma linha por prescrição assinada (registro_id). "aguardando" é implícito:'),
   ('migracao-farmacia-seed.sql', 'Idempotente: só insere o que ainda não existe (por nome).'),
+  ('migracao-faturamento-glosas.sql', 'FATURAMENTO — A GLOSA RECEBIDA E O RECURSO'),
+  ('migracao-faturamento-modulo.sql', 'FATURAMENTO VIRA MÓDULO PRÓPRIO'),
+  ('migracao-faturamento-precos.sql', 'FATURAMENTO — PREÇO POR CONVÊNIO, COM VIGÊNCIA'),
   ('migracao-faturamento-remessa.sql', 'REMESSA TRANSMITIDA — quem, quando, e sob qual protocolo'),
+  ('migracao-faturamento-repasses.sql', 'FATURAMENTO — O REPASSE (o dinheiro que ENTROU)'),
+  ('migracao-glosas-rls.sql', 'RLS DA at_glosas — o passo 2 de 2'),
   ('migracao-leitos-kanban-metas.sql', '(idempotente e reversível de fato — não apaga nem altera nada existente).'),
   ('migracao-leitos-nir-regulacao.sql', 'GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"'),
   ('migracao-leitos-saida-setor.sql', '(idempotente; não apaga nem altera nada existente).'),
+  ('migracao-maternidade-alojamento.sql', 'MATERNIDADE — ALOJAMENTO CONJUNTO: a evolução do binômio'),
+  ('migracao-maternidade-fase0.sql', 'MATERNIDADE — FASE 0: a fundação de dados'),
+  ('migracao-maternidade-parto.sql', 'MATERNIDADE — PARTO & CESÁREA: o registro do nascimento'),
+  ('migracao-maternidade-partograma.sql', 'MATERNIDADE — PARTOGRAMA: os toques ao longo do trabalho de parto'),
+  ('migracao-maternidade-recem-nascido.sql', 'MATERNIDADE — RECÉM-NASCIDO: a avaliação clínica do bebê'),
   ('migracao-nsp-capacitacoes.sql', 'NSP — Capacitações em segurança do paciente (Fase 2d)'),
   ('migracao-nsp-comunicados.sql', 'NSP — Comunicação / mural de segurança (Fase 2d)'),
   ('migracao-nsp-incidentes.sql', 'NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes'),
@@ -80,6 +104,7 @@ with esperadas(arquivo, o_que_faz) as (values
   ('migracao-perfis-acesso.sql', 'PERFIS DE ACESSO — o cargo vira um pacote de permissões'),
   ('migracao-perfis-auditoria-diretor.sql', 'AUDITORIA: DIRETOR TÉCNICO PASSA A SÓ CONSULTAR A TRILHA'),
   ('migracao-perfis-faturamento.sql', 'GRANTS DO MÓDULO FATURAMENTO — migração avulsa (Tier 1 — Fase 4)'),
+  ('migracao-perfis-maternidade.sql', 'MATERNIDADE ENTRA NOS PERFIS — a porta do módulo no menu'),
   ('migracao-perfis-nsp.sql', 'SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS'),
   ('migracao-protocolos-avc.sql', 'PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)'),
   ('migracao-protocolos-iam.sql', 'PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)'),
@@ -95,6 +120,8 @@ with esperadas(arquivo, o_que_faz) as (values
   ('migracao-ps-triagem-tipo.sql', 'PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)'),
   ('migracao-registro-de-migracoes.sql', 'REGISTRO DE MIGRAÇÕES — cada uma passa a se anotar ao rodar'),
   ('migracao-rls-leitura.sql', 'Regenere com:  node supabase/gerar-rls.mjs'),
+  ('migracao-sadt-catalogo-seed.sql', 'CATÁLOGO DE EXAMES E ANALITOS — A CARGA INICIAL'),
+  ('migracao-sadt-exames.sql', 'EXAMES (SADT): O PEDIDO E O RESULTADO DEIXAM DE SER TEXTO LIVRE'),
   ('migracao-scih-germes-seed.sql', 'SCIH — base de germes inicial'),
   ('migracao-sigtap-valores.sql', 'Regenere com:  node supabase/importar-aih.mjs <arquivo.dbc> [·cnes N]'),
   ('migracao-sigtap.sql', 'SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)'),
@@ -109,7 +136,8 @@ with esperadas(arquivo, o_que_faz) as (values
   ('migracao-suprimentos-inventario.sql', 'SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras'),
   ('migracao-suprimentos-ponto-de-pedido.sql', 'SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor'),
   ('migracao-suprimentos-seed.sql', 'SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)'),
-  ('migracao-suprimentos-unidade-compra.sql', 'SUPRIMENTOS — unidade de compra × unidade de consumo')
+  ('migracao-suprimentos-unidade-compra.sql', 'SUPRIMENTOS — unidade de compra × unidade de consumo'),
+  ('migracao-tiss-guias.sql', 'TISS: A GUIA EXISTE')
 )
 select
   case when a.arquivo is null then '>>> FALTA — rode este' else 'ok' end as situacao,
@@ -126,7 +154,7 @@ order by situacao, e.arquivo;
 select a.arquivo as registrada_mas_sem_arquivo,
        to_char(a.aplicada_em, 'DD/MM/YYYY') as quando, a.aplicada_por as quem
 from public.migracoes_aplicadas a
-where a.arquivo not in ('migracao-agenda-confirmacao.sql', 'migracao-agenda-remarcacao.sql', 'migracao-agenda-vaga-por-profissional.sql', 'migracao-atendimento-agenda.sql', 'migracao-atendimento-ciclo.sql', 'migracao-atendimento-fase2.sql', 'migracao-atendimento-faturamento.sql', 'migracao-atendimento-fk.sql', 'migracao-atendimento-recepcao.sql', 'migracao-atendimento-responsavel.sql', 'migracao-auditoria-atribuivel.sql', 'migracao-enf-escalas-lpp.sql', 'migracao-enf-sae.sql', 'migracao-episodio-id-tipo.sql', 'migracao-farmacia-clinica-fase1.sql', 'migracao-farmacia-clinica-fase2.sql', 'migracao-farmacia-clinica-fase3.sql', 'migracao-farmacia-custos.sql', 'migracao-farmacia-estorno-inventario.sql', 'migracao-farmacia-faseA.sql', 'migracao-farmacia-faseB.sql', 'migracao-farmacia-intervencoes.sql', 'migracao-farmacia-lote-vencido.sql', 'migracao-farmacia-nao-padronizados.sql', 'migracao-farmacia-preparo-exige-baixa.sql', 'migracao-farmacia-preparo.sql', 'migracao-farmacia-seed.sql', 'migracao-faturamento-remessa.sql', 'migracao-leitos-kanban-metas.sql', 'migracao-leitos-nir-regulacao.sql', 'migracao-leitos-saida-setor.sql', 'migracao-nsp-capacitacoes.sql', 'migracao-nsp-comunicados.sql', 'migracao-nsp-incidentes.sql', 'migracao-nsp-metas.sql', 'migracao-nsp-protocolos.sql', 'migracao-nsp-rca-plano.sql', 'migracao-pacientes-busca.sql', 'migracao-pacientes-identificacao.sql', 'migracao-pacientes-municipio-ibge.sql', 'migracao-pacientes-nacionalidade-etnia.sql', 'migracao-pacientes-obito.sql', 'migracao-pacientes-recem-nascido.sql', 'migracao-pacientes-unificacao.sql', 'migracao-pep-acessos.sql', 'migracao-pep-categoria-profissional.sql', 'migracao-pep-episodio-retroativo.sql', 'migracao-pep-fase1.sql', 'migracao-pep-fase3.sql', 'migracao-pep-perfis-update.sql', 'migracao-pep-sinais-spo2.sql', 'migracao-perfis-acesso.sql', 'migracao-perfis-auditoria-diretor.sql', 'migracao-perfis-faturamento.sql', 'migracao-perfis-nsp.sql', 'migracao-protocolos-avc.sql', 'migracao-protocolos-iam.sql', 'migracao-protocolos-tev.sql', 'migracao-protocolos.sql', 'migracao-ps-checagem-medicacao.sql', 'migracao-ps-comorbidades.sql', 'migracao-ps-faixas-obstetricas.sql', 'migracao-ps-faixas-pediatricas.sql', 'migracao-ps-origem-elo.sql', 'migracao-ps-salas-censo.sql', 'migracao-ps-salas.sql', 'migracao-ps-triagem-tipo.sql', 'migracao-registro-de-migracoes.sql', 'migracao-rls-leitura.sql', 'migracao-scih-germes-seed.sql', 'migracao-sigtap-valores.sql', 'migracao-sigtap.sql', 'migracao-suprimentos-ajuste-estorno.sql', 'migracao-suprimentos-alcada.sql', 'migracao-suprimentos-aprovacao.sql', 'migracao-suprimentos-cotacao.sql', 'migracao-suprimentos-faseA.sql', 'migracao-suprimentos-faseB.sql', 'migracao-suprimentos-faseC.sql', 'migracao-suprimentos-integridade.sql', 'migracao-suprimentos-inventario.sql', 'migracao-suprimentos-ponto-de-pedido.sql', 'migracao-suprimentos-seed.sql', 'migracao-suprimentos-unidade-compra.sql')
+where a.arquivo not in ('migracao-acesso-funcoes.sql', 'migracao-agenda-confirmacao.sql', 'migracao-agenda-remarcacao.sql', 'migracao-agenda-vaga-por-profissional.sql', 'migracao-alertas-peso-gestacao.sql', 'migracao-ambulatorio-especialidades.sql', 'migracao-atendimento-agenda.sql', 'migracao-atendimento-ciclo.sql', 'migracao-atendimento-fase2.sql', 'migracao-atendimento-faturamento.sql', 'migracao-atendimento-fk.sql', 'migracao-atendimento-recepcao.sql', 'migracao-atendimento-responsavel.sql', 'migracao-auditoria-atribuivel.sql', 'migracao-cirurgia-anestesia-rpa.sql', 'migracao-cirurgia-descricao.sql', 'migracao-cirurgia-elo-atendimento.sql', 'migracao-cirurgia-opme.sql', 'migracao-cirurgia-paciente-equipe-codigo.sql', 'migracao-cirurgia-segura-registro.sql', 'migracao-correcao-desfecho-corrida.sql', 'migracao-correcao-desfecho.sql', 'migracao-descricao-aux-farmacia.sql', 'migracao-documento-impressao-digital.sql', 'migracao-enf-escalas-lpp.sql', 'migracao-enf-sae.sql', 'migracao-episodio-id-tipo.sql', 'migracao-farmacia-clinica-fase1.sql', 'migracao-farmacia-clinica-fase2.sql', 'migracao-farmacia-clinica-fase3.sql', 'migracao-farmacia-custos.sql', 'migracao-farmacia-estorno-inventario.sql', 'migracao-farmacia-faseA.sql', 'migracao-farmacia-faseB.sql', 'migracao-farmacia-hospital.sql', 'migracao-farmacia-intervencoes.sql', 'migracao-farmacia-lote-vencido.sql', 'migracao-farmacia-nao-padronizados.sql', 'migracao-farmacia-preparo-exige-baixa.sql', 'migracao-farmacia-preparo.sql', 'migracao-farmacia-seed.sql', 'migracao-faturamento-glosas.sql', 'migracao-faturamento-modulo.sql', 'migracao-faturamento-precos.sql', 'migracao-faturamento-remessa.sql', 'migracao-faturamento-repasses.sql', 'migracao-glosas-rls.sql', 'migracao-leitos-kanban-metas.sql', 'migracao-leitos-nir-regulacao.sql', 'migracao-leitos-saida-setor.sql', 'migracao-maternidade-alojamento.sql', 'migracao-maternidade-fase0.sql', 'migracao-maternidade-parto.sql', 'migracao-maternidade-partograma.sql', 'migracao-maternidade-recem-nascido.sql', 'migracao-nsp-capacitacoes.sql', 'migracao-nsp-comunicados.sql', 'migracao-nsp-incidentes.sql', 'migracao-nsp-metas.sql', 'migracao-nsp-protocolos.sql', 'migracao-nsp-rca-plano.sql', 'migracao-pacientes-busca.sql', 'migracao-pacientes-identificacao.sql', 'migracao-pacientes-municipio-ibge.sql', 'migracao-pacientes-nacionalidade-etnia.sql', 'migracao-pacientes-obito.sql', 'migracao-pacientes-recem-nascido.sql', 'migracao-pacientes-unificacao.sql', 'migracao-pep-acessos.sql', 'migracao-pep-categoria-profissional.sql', 'migracao-pep-episodio-retroativo.sql', 'migracao-pep-fase1.sql', 'migracao-pep-fase3.sql', 'migracao-pep-perfis-update.sql', 'migracao-pep-sinais-spo2.sql', 'migracao-perfis-acesso.sql', 'migracao-perfis-auditoria-diretor.sql', 'migracao-perfis-faturamento.sql', 'migracao-perfis-maternidade.sql', 'migracao-perfis-nsp.sql', 'migracao-protocolos-avc.sql', 'migracao-protocolos-iam.sql', 'migracao-protocolos-tev.sql', 'migracao-protocolos.sql', 'migracao-ps-checagem-medicacao.sql', 'migracao-ps-comorbidades.sql', 'migracao-ps-faixas-obstetricas.sql', 'migracao-ps-faixas-pediatricas.sql', 'migracao-ps-origem-elo.sql', 'migracao-ps-salas-censo.sql', 'migracao-ps-salas.sql', 'migracao-ps-triagem-tipo.sql', 'migracao-registro-de-migracoes.sql', 'migracao-rls-leitura.sql', 'migracao-sadt-catalogo-seed.sql', 'migracao-sadt-exames.sql', 'migracao-scih-germes-seed.sql', 'migracao-sigtap-valores.sql', 'migracao-sigtap.sql', 'migracao-suprimentos-ajuste-estorno.sql', 'migracao-suprimentos-alcada.sql', 'migracao-suprimentos-aprovacao.sql', 'migracao-suprimentos-cotacao.sql', 'migracao-suprimentos-faseA.sql', 'migracao-suprimentos-faseB.sql', 'migracao-suprimentos-faseC.sql', 'migracao-suprimentos-integridade.sql', 'migracao-suprimentos-inventario.sql', 'migracao-suprimentos-ponto-de-pedido.sql', 'migracao-suprimentos-seed.sql', 'migracao-suprimentos-unidade-compra.sql', 'migracao-tiss-guias.sql')
 order by a.arquivo;
 
 -- ── qual banco é este? ──────────────────────────────────────

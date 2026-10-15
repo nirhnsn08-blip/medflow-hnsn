@@ -14,8 +14,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { useEffect, useState } from "react";
-import { carregarAlergiasDeVarios } from "./alergias-dados.js";
-import { alergiasPorProntuario } from "./contexto.js";
+import { carregarAlergiasDaPessoa } from "./alergias-dados.js";
 
 const VAZIO = { falhou: false, carregando: false, por: {} };
 
@@ -32,8 +31,10 @@ export function useAlergiasDosAtendimentos(sb, atendimentos) {
     if (!chaves.length) { setIndice(VAZIO); return; }
     let vivo = true;
     setIndice(i => ({ ...i, carregando: true }));
-    carregarAlergiasDeVarios(sb, chaves).then(r => {
-      if (vivo) setIndice({ ...alergiasPorProntuario(r), carregando: false });
+    // Segue a unificação: a alergia registrada na ficha antiga tem que
+    // aparecer no alerta da ficha que vale — era aí que ela sumia.
+    carregarAlergiasDaPessoa(sb, chaves).then(idx => {
+      if (vivo) setIndice({ ...idx, carregando: false });
     });
     return () => { vivo = false; };
   }, [sb, chave]);

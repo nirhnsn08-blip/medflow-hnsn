@@ -30,6 +30,7 @@
 // ═══════════════════════════════════════════════════════════
 
 import { conferirFicha, TIPOS_CONVENIO, tipoDoConvenio, conferirCbo } from "./ficha.js";
+import { diaLocal } from "../util/datas.js";
 import { GRAVIDADES } from "./sigtap.js";
 
 // ── DINHEIRO ────────────────────────────────────────────────
@@ -82,14 +83,21 @@ export function reais(cent) {
 /**
  * O mês de referência da conta: "2026-07".
  *
- * Sai da string ISO por fatia, sem passar por `new Date`. `new Date("2026-07-01")`
- * é meia-noite UTC e no Brasil volta para junho — a conta do dia 1º cairia
+ * Só-dia continua sem passar por `new Date`: `new Date("2026-07-01")` é
+ * meia-noite UTC e no Brasil volta para junho — a conta do dia 1º cairia
  * na competência do mês anterior, que é justamente a que já foi fechada e
- * transmitida.
+ * transmitida. `diaLocal` preserva isso (só-dia passa intacto).
+ *
+ * 🔴 Mas a fatia crua errava o CARIMBO, e é dele que a competência nasce
+ * na prática: `competenciaDe(atendimento.chegada_em)`. Quem chega às 22h
+ * do dia 30 tem `chegada_em` em UTC já no dia 1º do mês SEGUINTE — e a
+ * conta ia para uma competência que ainda não existe, enquanto o mês que
+ * de fato atendeu fechava sem ela. É o mesmo erro do dia 1º, na outra
+ * ponta do mês.
  */
 export function competenciaDe(data) {
-  const s = String(data ?? "").slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s.slice(0, 7) : null;
+  const s = diaLocal(data);
+  return s ? s.slice(0, 7) : null;
 }
 
 /** "2026-07" → "Jul/2026". */
@@ -185,6 +193,29 @@ export function viaDeFaturamento({ convenio, atendimento, procedimento } = {}) {
   const via = String(procedimento?.via_sus ?? "").trim().toLowerCase();
   if (via === "apac" || via === "aih" || via === "bpa") return via;
   return "bpa";
+}
+
+/**
+ * De qual TABELA o código de um item desta via vem.
+ *
+ * 🔴 CÓDIGO SEM TABELA É AMBÍGUO: "10101012" existe no SIGTAP e no TUSS
+ * querendo dizer coisas diferentes. A guia TISS leva a tabela junto do
+ * código, e sem ela a operadora não sabe o que foi cobrado.
+ *
+ * ⚠️ A VIA DECIDE O PADRÃO em vez de a pessoa escolher toda vez: conta do
+ * SUS é SIGTAP, conta de operadora é TUSS. Quem precisar de outra (tabela
+ * própria, pacote negociado) troca — mas o caso comum não custa um clique.
+ *
+ * Devolve `null` para via desconhecida: chutar "sigtap" faria o item sair
+ * com a tabela errada numa conta que o sistema nem sabe classificar, e
+ * tabela errada é pior que tabela ausente.
+ */
+export function tabelaPadraoDaVia(via) {
+  const v = String(via ?? "").trim().toLowerCase();
+  if (v === "bpa" || v === "apac" || v === "aih") return "sigtap";
+  if (v === "tiss") return "tuss";
+  if (v === "direta") return "proprio";
+  return null;
 }
 
 // ── ITENS ───────────────────────────────────────────────────
@@ -438,6 +469,15 @@ export function camposDoItem(dados = {}) {
     data_execucao: texto(dados.data_execucao),
     observacao: texto(dados.observacao),
     cancelado: dados.cancelado === true,
+    // 🔴 `tabela` ENTROU NA LISTA em 14/10/2026, e esta função é a razão de
+    // o conserto anterior não ter bastado: ela é uma lista FECHADA, então o
+    // campo novo chegava da tela e morria aqui, antes do banco. Visto
+    // andando no demo — o seletor mostrava TUSS e a guia seguia dizendo
+    // "2 de 2 itens sem a tabela do código".
+    //
+    // ⚠️ É o terceiro elo da mesma corrente: coluna (migração) → campo
+    // (tela) → CAMPO ACEITO (aqui). Faltando qualquer um, o dado não chega.
+    tabela: texto(dados.tabela),
   };
 }
 

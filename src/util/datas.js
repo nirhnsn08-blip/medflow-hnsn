@@ -29,6 +29,38 @@ const MESES_ABREV = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Se
 export const todayStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+/**
+ * O DIA CIVIL (YYYY-MM-DD, relógio local) de uma data ou de um carimbo.
+ *
+ * 🔴 `new Date().toISOString().slice(0, 10)` e `String(chegada_em).slice(0, 10)`
+ * dão o dia em UTC. No Brasil (UTC−3), das 21h à meia-noite isso já é
+ * AMANHÃ: a Recepção deixava de ver a consulta marcada para hoje, e a
+ * chegada das 22h entrava na produção do dia seguinte. Hospital funciona à
+ * noite — o ambulatório noturno e o PS vivem exatamente nessa janela.
+ *
+ * Só-dia ("2026-07-24") passa intacto: já é civil. Carimbo é convertido
+ * pelo relógio local. Ilegível vira `null` — quem chama decide o que fazer,
+ * em vez de receber uma data inventada.
+ *
+ * ⚠️ SÓ FORMA ISO, e isto é regra, não zelo. `new Date()` aceita formato
+ * solto e o interpreta na ordem AMERICANA: "04/03/1957" — 4 de março, para
+ * quem digitou — vira 3 de abril e sai impresso como "03/04/1957", sem erro
+ * nenhum pelo caminho. Um impresso do hospital já estava defendido disso por
+ * teste próprio; a porta fica fechada AQUI, para não precisar ser fechada de
+ * novo em cada chamador.
+ */
+export function diaLocal(valor) {
+  if (valor == null || valor === "") return null;
+  if (valor instanceof Date) return isNaN(valor.getTime()) ? null : todayStr(valor);
+  const s = String(valor).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Carimbo ISO ("2026-07-24T22:10:00Z" ou com espaço, como alguns registros
+  // antigos). Qualquer outra forma é recusada em vez de adivinhada.
+  if (!/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(s)) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : todayStr(d);
+}
+
 /** Instante atual em ISO (UTC). Bom para timestamp de gravação, não para data civil. */
 export const nowISO = () => new Date().toISOString();
 
@@ -66,13 +98,30 @@ export const isoToLocal = iso => {
 export const localToIso = v => (v ? new Date(v).toISOString() : null);
 
 /**
- * Data ISO só-dia (YYYY-MM-DD) → dd/mm/aaaa, SEM escorregar de fuso.
- * O `T00:00:00` força interpretação local em vez de UTC — sem ele, a data
- * apareceria um dia antes à noite.
+ * Data ISO → dd/mm/aaaa, SEM escorregar de fuso.
+ *
+ * Só-dia ("2026-07-24"): o `T00:00:00` força interpretação local em vez de
+ * UTC — sem ele, a data apareceria um dia antes à noite.
+ *
+ * 🔴 CARIMBO DE TEMPO TAMBÉM ENTRA AQUI. Esta função nasceu só para o
+ * "YYYY-MM-DD", e quem passava um `created_at` completo colhia a string
+ * literal "Invalid Date" NA TELA — foi assim na checagem × saída ("1ª
+ * checagem Invalid Date 04/09, 09:30") e na escolha da dispensação que a
+ * devolução desfaz. Concatenar texto em data é fácil de errar e o erro não
+ * estoura: ele vira legenda. Então o reconhecimento mora aqui, numa função
+ * só, e não em cada chamador. Carimbo é convertido pelo RELÓGIO LOCAL (não
+ * pela fatia antes do "T"), senão 02:00 UTC viraria o dia seguinte.
+ *
+ * O que não dá para ler vira "—", nunca "Invalid Date": o traço é honesto,
+ * a outra é lixo com cara de dado.
  */
 export function fmtDataBR(iso) {
   if (!iso) return "—";
-  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
+  const texto = String(iso);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(texto)
+    ? new Date(texto + "T00:00:00")   // só-dia: meia-noite local
+    : new Date(texto);                // carimbo: o dia do relógio local
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("pt-BR");
 }
 
 /** Competência (mês de referência) "YYYY-MM" a partir de ano e mês 0-11. */

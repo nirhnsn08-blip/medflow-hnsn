@@ -18,7 +18,7 @@
 --      antes do drop e restaurados no fim. Sem isso, todo mundo voltaria
 --      como "visualizador" e o admin perderia o acesso.
 --
--- CONTEÚDO: 98 scripts, na ordem em que rodaram no banco principal.
+-- CONTEÚDO: 114 scripts, na ordem em que rodaram no banco principal.
 -- ============================================================
 
 
@@ -87,11 +87,11 @@ alter default privileges in schema public
 
 
 -- ════════════════════════════════════════════════════════════
--- PARTE 3/4 — Estrutura (98 scripts na ordem cronológica)
+-- PARTE 3/4 — Estrutura (114 scripts na ordem cronológica)
 -- ════════════════════════════════════════════════════════════
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 01/98 — schema.sql
+-- │ 01/114 — schema.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MedFlow HNSN — Schema do banco (Supabase / PostgreSQL)
@@ -1130,7 +1130,7 @@ alter table public.leitos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 02/98 — migracao-registro-de-migracoes.sql
+-- │ 02/114 — migracao-registro-de-migracoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- REGISTRO DE MIGRAÇÕES — cada uma passa a se anotar ao rodar
@@ -1216,7 +1216,7 @@ FROM public.migracoes_aplicadas ORDER BY arquivo;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 03/98 — migracao-farmacia-faseA.sql
+-- │ 03/114 — migracao-farmacia-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase A (catálogo + estoque)
@@ -1326,7 +1326,7 @@ create trigger farm_movimento_trg before insert on public.farm_movimentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 04/98 — migracao-farmacia-seed.sql
+-- │ 04/114 — migracao-farmacia-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · classe terapêutica + catálogo inicial
@@ -1536,7 +1536,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 05/98 — migracao-farmacia-faseB.sql
+-- │ 05/114 — migracao-farmacia-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fase B (prescrição estruturada + dispensação)
@@ -1577,7 +1577,7 @@ create index if not exists farm_mov_atend_idx on public.farm_movimentos (atendim
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 06/98 — migracao-farmacia-clinica-fase1.sql
+-- │ 06/114 — migracao-farmacia-clinica-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 1 (motor de alertas + base clínica)
@@ -1702,7 +1702,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 07/98 — migracao-farmacia-clinica-fase2.sql
+-- │ 07/114 — migracao-farmacia-clinica-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 2 (interações + incompatibilidade em Y)
@@ -1824,7 +1824,7 @@ where not exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 08/98 — migracao-farmacia-clinica-fase3.sql
+-- │ 08/114 — migracao-farmacia-clinica-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia Clínica · Fase 3 (ajuste renal/hepático)
@@ -1892,7 +1892,7 @@ where lower(m.nome) = lower(v.nome);
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 09/98 — migracao-farmacia-preparo.sql
+-- │ 09/114 — migracao-farmacia-preparo.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Fluxo de preparo (assinar→receber→preparo→pronto→retirada)
@@ -1926,7 +1926,7 @@ create policy farm_prep_delete on public.farm_preparo for delete to authenticate
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 10/98 — migracao-farmacia-custos.sql
+-- │ 10/114 — migracao-farmacia-custos.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Custos (custo unitário por medicamento)
@@ -1939,7 +1939,7 @@ alter table public.farm_medicamentos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 11/98 — migracao-farmacia-nao-padronizados.sql
+-- │ 11/114 — migracao-farmacia-nao-padronizados.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Medicamentos NÃO padronizados (trazidos pela família)
@@ -1978,7 +1978,7 @@ create policy farm_naopad_delete on public.farm_nao_padronizados for delete to a
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 12/98 — migracao-farmacia-intervencoes.sql
+-- │ 12/114 — migracao-farmacia-intervencoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Farmácia · Intervenção farmacêutica (estilo NoHarm)
@@ -2017,7 +2017,7 @@ create policy farm_interv2_delete on public.farm_intervencoes for delete to auth
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 13/98 — migracao-leitos-kanban-metas.sql
+-- │ 13/114 — migracao-leitos-kanban-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Kanban de alta + Metas por setor + Motivo da espera
@@ -2046,7 +2046,7 @@ alter table public.solicitacoes
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 14/98 — migracao-leitos-saida-setor.sql
+-- │ 14/114 — migracao-leitos-saida-setor.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — Giro de Leitos · Setor na saída (permanência/giro POR SETOR)
@@ -2072,7 +2072,7 @@ update public.leitos_saidas s
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 15/98 — migracao-suprimentos-faseA.sql
+-- │ 15/114 — migracao-suprimentos-faseA.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS (Estoque & Compras) — Fase A
@@ -2210,7 +2210,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 16/98 — migracao-suprimentos-faseB.sql
+-- │ 16/114 — migracao-suprimentos-faseB.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase B: requisições de materiais pelos setores
@@ -2262,7 +2262,7 @@ select table_name from information_schema.tables
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 17/98 — migracao-suprimentos-seed.sql
+-- │ 17/114 — migracao-suprimentos-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Seed do catálogo (~120 materiais comuns de hospital)
@@ -2418,7 +2418,7 @@ select categoria, count(*) as itens
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 18/98 — migracao-suprimentos-faseC.sql
+-- │ 18/114 — migracao-suprimentos-faseC.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Fase C: pedidos de compra
@@ -2475,7 +2475,7 @@ select 'sup_pedidos ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 19/98 — migracao-suprimentos-inventario.sql
+-- │ 19/114 — migracao-suprimentos-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Inventário cíclico + custo por entrada + código de barras
@@ -2537,7 +2537,7 @@ select 'inventario ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 20/98 — migracao-suprimentos-ponto-de-pedido.sql
+-- │ 20/114 — migracao-suprimentos-ponto-de-pedido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Ponto de pedido: prazo de entrega por fornecedor
@@ -2554,7 +2554,7 @@ select 'lead_time ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 21/98 — migracao-suprimentos-cotacao.sql
+-- │ 21/114 — migracao-suprimentos-cotacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Cotação de compra (comparar preços entre fornecedores)
@@ -2602,7 +2602,7 @@ select 'sup_cotacoes ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 22/98 — migracao-ps-salas.sql
+-- │ 22/114 — migracao-ps-salas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Mapa de salas (Emergência / Observação / Sala Vermelha)
@@ -2651,7 +2651,7 @@ select 'ps_salas ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 23/98 — migracao-ps-salas-censo.sql
+-- │ 23/114 — migracao-ps-salas-censo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — estrutura real das vagas + regra de censo
@@ -2731,7 +2731,7 @@ select area,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 24/98 — migracao-ps-origem-elo.sql
+-- │ 24/114 — migracao-ps-origem-elo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — origem da chegada + elo forte PS → leito
@@ -2771,7 +2771,7 @@ select 'origem+elo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 25/98 — migracao-ps-checagem-medicacao.sql
+-- │ 25/114 — migracao-ps-checagem-medicacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — checagem de medicação administrada
@@ -2824,7 +2824,7 @@ select 'checagem de medicação ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 26/98 — migracao-pep-fase1.sql
+-- │ 26/114 — migracao-pep-fase1.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTUÁRIO ELETRÔNICO DO PACIENTE (PEP) — Fase 1
@@ -3622,7 +3622,7 @@ order by t.table_name;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 27/98 — migracao-pep-acessos.sql
+-- │ 27/114 — migracao-pep-acessos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — REGISTRO DE ACESSO AO PRONTUÁRIO (quem abriu o de quem)
@@ -3688,7 +3688,7 @@ create policy pep_acessos_insert on public.pep_acessos
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 28/98 — migracao-pep-sinais-spo2.sql
+-- │ 28/114 — migracao-pep-sinais-spo2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — saturação e suporte de O₂ nos sinais vitais
@@ -3720,7 +3720,7 @@ alter table public.pep_sinais_vitais
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 29/98 — migracao-pep-categoria-profissional.sql
+-- │ 29/114 — migracao-pep-categoria-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — CATEGORIA PROFISSIONAL E REGISTRO DE CONSELHO
@@ -3774,7 +3774,7 @@ create index if not exists profiles_categoria_idx on public.profiles (categoria)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 30/98 — migracao-pep-perfis-update.sql
+-- │ 30/114 — migracao-pep-perfis-update.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS — permitir que o administrador classifique a equipe
@@ -3813,7 +3813,7 @@ create policy profiles_update_admin on public.profiles
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 31/98 — migracao-pep-fase3.sql
+-- │ 31/114 — migracao-pep-fase3.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PEP — FASE 3: RECONCILIAÇÃO MEDICAMENTOSA E SUMÁRIO DE ALTA
@@ -4123,7 +4123,7 @@ order by c.relname;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 32/98 — migracao-perfis-acesso.sql
+-- │ 32/114 — migracao-perfis-acesso.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PERFIS DE ACESSO — o cargo vira um pacote de permissões
@@ -4426,7 +4426,161 @@ select p.chave, p.nome, count(pp.modulo) as modulos,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 33/98 — migracao-leitos-nir-regulacao.sql
+-- │ 33/114 — migracao-acesso-funcoes.sql
+-- └────────────────────────────────────────────────────────────
+-- ============================================================
+-- Valentrax — AS FUNÇÕES DE PERMISSÃO (leitura e escrita por módulo)
+--
+-- ⚠️ ARQUIVO GERADO — não edite à mão.
+--    Regenere com:  node supabase/gerar-rls.mjs
+--
+-- 🔴 POR QUE ESTE ARQUIVO EXISTE, SEPARADO (08/10/2026)
+--
+-- As cinco funções nasceram dentro de `migracao-rls-leitura.sql`, que é a
+-- ÚLTIMA migração do `reconstruir-banco.sql` — e por bom motivo: ela
+-- reescreve as políticas de SELECT de todas as tabelas criadas antes.
+--
+-- Só que 24 políticas criadas no MEIO do caminho já citam
+-- `public.pode_ver_algum(...)`. Num banco NOVO essas políticas são criadas
+-- antes de a função existir, e `create policy` resolve a função na hora:
+-- a reconstrução morria em `at_glosas_leitura`, a 55% do script. O hospital
+-- novo não nascia — e ninguém sabia, porque nenhum teste EXECUTAVA o
+-- arquivo; o que havia conferia presença de migração, não execução.
+--
+-- Medido em PGlite: com as funções antes, as 1.846 declarações rodam e as
+-- 109 tabelas nascem. `banco-novo-nasce.test.js` é a catraca.
+--
+-- ⚠️ O MESMO TEXTO segue na PARTE 1 do `migracao-rls-leitura.sql`, para quem
+--    reexecutar só ela não ficar sem função. Os dois saem da MESMA const
+--    do gerador — duas cópias à mão divergiriam.
+--
+-- ADITIVA. IDEMPOTENTE (`create or replace`). Em banco que já rodou o
+-- rls-leitura, substitui as funções pelo mesmo corpo: nada muda.
+-- ============================================================
+
+set valentrax.quem = 'adauam';
+
+-- Espelham `src/acesso/permissoes.js`, nesta ordem: perfil → exceção
+-- individual → travas. `security definer` porque a função precisa ler
+-- `profiles` e `perfis_permissoes` por baixo do RLS delas.
+
+-- O nível efetivo desta pessoa neste módulo: nenhum | leitura | escrita.
+create or replace function public.meu_nivel(p_modulo text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $meu_nivel$
+  with me as (
+    select id, role, perfil from public.profiles where id = auth.uid()
+  ),
+  bruto as (
+    select coalesce(
+      -- 1) a exceção individual manda (serve para AMPLIAR e para REDUZIR)
+      (select up.nivel from public.usuarios_permissoes up, me
+        where up.user_id = me.id and up.modulo = p_modulo),
+      -- 2) o pacote do cargo
+      (select pp.nivel from public.perfis_permissoes pp, me
+        where pp.perfil_chave = me.perfil and pp.modulo = p_modulo),
+      -- 3) sem perfil é sem acesso — falha FECHADA
+      'nenhum'
+    ) as nivel
+  )
+  select case
+    -- Trava anti-trancamento: Usuários e Perfis é sempre, e só, do
+    -- adm_master. Sem isto, um perfil configurado errado tranca o
+    -- administrador do lado de fora e só se resolve pelo painel.
+    when p_modulo = 'users' then
+      case when (select role from me) = 'adm_master' then 'escrita' else 'nenhum' end
+    -- Teto do visualizador: nunca escreve, tenha o perfil que tiver.
+    when (select role from me) = 'visualizador' and (select nivel from bruto) = 'escrita' then
+      'leitura'
+    else (select nivel from bruto)
+  end
+$meu_nivel$;
+
+-- Pode ABRIR o módulo? (leitura ou escrita)
+create or replace function public.pode_ver(p_modulo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_ver$
+  select public.meu_nivel(p_modulo) in ('leitura', 'escrita')
+$pode_ver$;
+
+-- Pode abrir ALGUM destes? Uma tela lê tabela de vizinho por bom motivo:
+-- o Giro de Leitos monta o mapa de risco com as escalas de enfermagem, o
+-- Paciente 360 junta PS, leito, SCIH e PEP na mesma consulta.
+create or replace function public.pode_ver_algum(variadic p_modulos text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_ver_algum$
+  select exists (select 1 from unnest(p_modulos) m where public.pode_ver(m))
+$pode_ver_algum$;
+
+-- Pode LANÇAR no módulo? Ainda não é usada por política nenhuma — a
+-- escrita continua decidida por `role`. Fica pronta para a fase seguinte.
+create or replace function public.pode_editar(p_modulo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_editar$
+  select public.meu_nivel(p_modulo) = 'escrita'
+$pode_editar$;
+
+-- Escreve em ALGUM destes módulos? Espelha `pode_ver_algum`, para a tabela
+-- que serve a mais de um módulo (`sup_itens` é do almoxarifado e da
+-- farmácia; quem tem escrita em qualquer um dos dois grava nela).
+create or replace function public.pode_editar_algum(variadic p_modulos text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $pode_editar_algum$
+  select exists (select 1 from unnest(p_modulos) m where public.pode_editar(m))
+$pode_editar_algum$;
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-acesso-funcoes.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'função public.' || f as item,
+         exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = f) as ok
+    from unnest(array['meu_nivel','pode_ver','pode_ver_algum','pode_editar','pode_editar_algum']) f
+  union all
+  -- 🔴 A conferência que importa: a função RESPONDE. Se o corpo cita uma
+  -- tabela que não existe, ela é criada e estoura no primeiro uso — que
+  -- seria dentro de uma política de RLS, com o hospital aberto.
+  select '🔴 pode_ver_algum responde sem estourar',
+         (select public.pode_ver_algum('overview')) is not null
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-acesso-funcoes.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 34/114 — migracao-leitos-nir-regulacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GIRO DE LEITOS — Regulação (NIR): rastro do "quem pegou o caso"
@@ -4467,7 +4621,7 @@ select 'regulação NIR ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 34/98 — migracao-suprimentos-aprovacao.sql
+-- │ 35/114 — migracao-suprimentos-aprovacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — Aprovação de pedidos de compra pela matriz
@@ -4502,7 +4656,7 @@ select 'aprovação de compras ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 35/98 — migracao-ps-comorbidades.sql
+-- │ 36/114 — migracao-ps-comorbidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Comorbidades na triagem
@@ -4528,7 +4682,7 @@ select 'comorbidades ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 36/98 — migracao-ps-triagem-tipo.sql
+-- │ 37/114 — migracao-ps-triagem-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Tipo de triagem (Adulto / Obstétrica / Pediátrica)
@@ -4564,7 +4718,7 @@ select 'triagem_tipo ok' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 37/98 — migracao-ps-faixas-pediatricas.sql
+-- │ 38/114 — migracao-ps-faixas-pediatricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Faixas pediátricas de referência (Triagem Fase 3, peds)
@@ -4633,7 +4787,7 @@ select 'ps_faixas_pediatricas ok — ' || count(*) || ' faixas' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 38/98 — migracao-ps-faixas-obstetricas.sql
+-- │ 39/114 — migracao-ps-faixas-obstetricas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PRONTO-SOCORRO — Critérios obstétricos de risco (Triagem Fase 3, obstétrica)
@@ -4699,7 +4853,7 @@ select 'ps_faixas_obstetricas ok — ' || count(*) || ' regras' as resultado
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 39/98 — migracao-enf-escalas-lpp.sql
+-- │ 40/114 — migracao-enf-escalas-lpp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — Escalas de risco + Lesão por Pressão (Tier 1, Fase 1a)
@@ -4826,7 +4980,7 @@ select 'enf: escalas/lpp/faixas ok — ' || count(*) || ' cortes semeados' as re
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 40/98 — migracao-enf-sae.sql
+-- │ 41/114 — migracao-enf-sae.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ENFERMAGEM — SAE / Processo de Enfermagem (Tier 1, Fase 1b)
@@ -5042,7 +5196,7 @@ select 'enf SAE: catálogo semeado — ' || count(*) || ' itens (' ||
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 41/98 — migracao-pacientes-identificacao.sql
+-- │ 42/114 — migracao-pacientes-identificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- IDENTIFICAÇÃO DO PACIENTE — conteúdo mínimo do prontuário
@@ -5236,7 +5390,7 @@ from public.pacientes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 42/98 — migracao-atendimento-recepcao.sql
+-- │ 43/114 — migracao-atendimento-recepcao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO / RECEPÇÃO — a porta de entrada do hospital
@@ -5574,7 +5728,7 @@ select last_value as ultimo_prontuario_emitido from public.prontuario_seq;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 43/98 — migracao-atendimento-fk.sql
+-- │ 44/114 — migracao-atendimento-fk.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO — A TRAVA (chave estrangeira ps_atendimentos → pacientes)
@@ -5683,7 +5837,7 @@ select exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 44/98 — migracao-nsp-incidentes.sql
+-- │ 45/114 — migracao-nsp-incidentes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Núcleo de Segurança do Paciente (Fase 2a): notificação de incidentes
@@ -5773,7 +5927,7 @@ select 'NSP: nsp_incidentes + nsp_incidente_eventos ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 45/98 — migracao-atendimento-fase2.sql
+-- │ 46/114 — migracao-atendimento-fase2.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ATENDIMENTO FASE 2 — A FICHA: quem paga, que tipo, para onde
@@ -6080,7 +6234,7 @@ select 'dominios cadastrados pelo hospital', count(*)::text from public.at_domin
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 46/98 — migracao-atendimento-agenda.sql
+-- │ 47/114 — migracao-atendimento-agenda.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AGENDA DO AMBULATÓRIO — grade, marcação e o painel do dia
@@ -6302,7 +6456,7 @@ select 'trava de vaga unica instalada', (exists (
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 47/98 — migracao-nsp-rca-plano.sql
+-- │ 48/114 — migracao-nsp-rca-plano.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Análise de causa raiz (RCA) + Plano de ação (Fase 2b)
@@ -6379,7 +6533,7 @@ select 'NSP: nsp_rca + nsp_acoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 48/98 — migracao-atendimento-ciclo.sql
+-- │ 49/114 — migracao-atendimento-ciclo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CICLO DE VIDA DO ATENDIMENTO — cancelamento com rastro
@@ -6466,7 +6620,7 @@ select 'atendimentos cancelados ate agora', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 49/98 — migracao-nsp-metas.sql
+-- │ 50/114 — migracao-nsp-metas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Indicadores automáticos + 6 Metas Internacionais (Fase 2c)
@@ -6541,7 +6695,7 @@ select 'NSP: nsp_meta_faixas (' || (select count(*) from public.nsp_meta_faixas)
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 50/98 — migracao-nsp-protocolos.sql
+-- │ 51/114 — migracao-nsp-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Protocolos gerenciados de segurança (Fase 2d)
@@ -6599,7 +6753,7 @@ values ('migracao-nsp-protocolos.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 51/98 — migracao-atendimento-responsavel.sql
+-- │ 52/114 — migracao-atendimento-responsavel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RESPONSÁVEL DO EPISÓDIO — quem consente e quem recebe a alta
@@ -6767,7 +6921,7 @@ select 'politicas RLS (esperado 2)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 52/98 — migracao-atendimento-faturamento.sql
+-- │ 53/114 — migracao-atendimento-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — a conta do atendimento (fundação)
@@ -7011,7 +7165,7 @@ select 'politicas RLS (esperado 4)', count(*)::text
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 53/98 — migracao-faturamento-glosas.sql
+-- │ 54/114 — migracao-faturamento-glosas.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — A GLOSA RECEBIDA E O RECURSO
@@ -7207,7 +7361,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 54/98 — migracao-glosas-rls.sql
+-- │ 55/114 — migracao-glosas-rls.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- RLS DA at_glosas — o passo 2 de 2
@@ -7320,7 +7474,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 55/98 — migracao-faturamento-repasses.sql
+-- │ 56/114 — migracao-faturamento-repasses.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — O REPASSE (o dinheiro que ENTROU)
@@ -7509,7 +7663,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 56/98 — migracao-faturamento-precos.sql
+-- │ 57/114 — migracao-faturamento-precos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO — PREÇO POR CONVÊNIO, COM VIGÊNCIA
@@ -7722,7 +7876,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 57/98 — migracao-faturamento-modulo.sql
+-- │ 58/114 — migracao-faturamento-modulo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FATURAMENTO VIRA MÓDULO PRÓPRIO
@@ -7867,7 +8021,7 @@ order by 1, 2;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 58/98 — migracao-ambulatorio-especialidades.sql
+-- │ 59/114 — migracao-ambulatorio-especialidades.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AS ESPECIALIDADES DO AMBULATÓRIO SAEM DO CÓDIGO E VÃO PARA O CADASTRO
@@ -7977,7 +8131,7 @@ order by 1, 2;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 59/98 — migracao-nsp-capacitacoes.sql
+-- │ 60/114 — migracao-nsp-capacitacoes.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Capacitações em segurança do paciente (Fase 2d)
@@ -8020,7 +8174,7 @@ select 'NSP: nsp_capacitacoes ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 60/98 — migracao-nsp-comunicados.sql
+-- │ 61/114 — migracao-nsp-comunicados.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- NSP — Comunicação / mural de segurança (Fase 2d)
@@ -8061,7 +8215,7 @@ select 'NSP: nsp_comunicados ok' as resultado;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 61/98 — migracao-protocolos.sql
+-- │ 62/114 — migracao-protocolos.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS GERENCIADOS (Tier 1 — Fase 3a: Sepse)
@@ -8188,7 +8342,7 @@ select 'PROTOCOLOS: prot_catalogo + prot_setor + prot_ativacoes + prot_bundle_it
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 62/98 — migracao-protocolos-iam.sql
+-- │ 63/114 — migracao-protocolos-iam.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3b: Dor torácica / IAM (seed do template)
@@ -8225,7 +8379,7 @@ select 'PROTOCOLOS 3b: template IAM ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 63/98 — migracao-protocolos-avc.sql
+-- │ 64/114 — migracao-protocolos-avc.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- PROTOCOLOS CLÍNICOS — Fase 3c: AVC (seed do template)
@@ -8265,7 +8419,7 @@ select 'PROTOCOLOS 3c: template AVC ok — ' || (select count(*) from public.pro
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 64/98 — migracao-protocolos-tev.sql
+-- │ 65/114 — migracao-protocolos-tev.sql
 -- └────────────────────────────────────────────────────────────
 -- ===========================================================
 -- PROTOCOLOS CLINICOS -- Fase 3d: TEV / profilaxia (seed do template)
@@ -8307,7 +8461,7 @@ select count(*) as tev_templates from public.prot_catalogo where chave = 'tev';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 65/98 — migracao-perfis-nsp.sql
+-- │ 66/114 — migracao-perfis-nsp.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SEGURANÇA DO PACIENTE ENTRA NOS PERFIS ASSISTENCIAIS
@@ -8399,7 +8553,7 @@ select pa.chave as perfil,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 66/98 — migracao-sigtap.sql
+-- │ 67/114 — migracao-sigtap.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SIGTAP — tabela de procedimentos do SUS (Tier 1 — Fase 4: Faturamento)
@@ -8682,7 +8836,7 @@ select 'SIGTAP: sigtap_procedimentos ok — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 67/98 — migracao-sigtap-valores.sql
+-- │ 68/114 — migracao-sigtap-valores.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — SIGTAP: valores, permanência e CID REAIS (SIH-SUS)
@@ -8941,7 +9095,7 @@ from public.sigtap_procedimentos where competencia = '2026-08';
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 68/98 — migracao-perfis-faturamento.sql
+-- │ 69/114 — migracao-perfis-faturamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- GRANTS DO MÓDULO FATURAMENTO — migração avulsa (Tier 1 — Fase 4)
@@ -8972,7 +9126,7 @@ select 'FATURAMENTO: grants do módulo aplicados — '
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 69/98 — migracao-perfis-auditoria-diretor.sql
+-- │ 70/114 — migracao-perfis-auditoria-diretor.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUDITORIA: DIRETOR TÉCNICO PASSA A SÓ CONSULTAR A TRILHA
@@ -9010,7 +9164,7 @@ select perfil_chave, modulo, nivel,
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 70/98 — migracao-suprimentos-integridade.sql
+-- │ 71/114 — migracao-suprimentos-integridade.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — integridade do saldo (travas duras no banco)
@@ -9165,7 +9319,7 @@ select 'trigger anti-exclusao do kardex',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 71/98 — migracao-suprimentos-ajuste-estorno.sql
+-- │ 72/114 — migracao-suprimentos-ajuste-estorno.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — ajuste de inventário rastreável e estorno com vínculo
@@ -9348,7 +9502,7 @@ select 'politica de desfecho da contagem',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 72/98 — migracao-suprimentos-unidade-compra.sql
+-- │ 73/114 — migracao-suprimentos-unidade-compra.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — unidade de compra × unidade de consumo
@@ -9433,7 +9587,7 @@ select 'materiais no total (todos com fator 1 = comportamento de antes)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 73/98 — migracao-auditoria-atribuivel.sql
+-- │ 74/114 — migracao-auditoria-atribuivel.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- AUDITORIA — trilha atribuível e consultável
@@ -9532,7 +9686,7 @@ select 'registros ja atribuidos a uma conta (zero agora, e esperado)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 74/98 — migracao-suprimentos-alcada.sql
+-- │ 75/114 — migracao-suprimentos-alcada.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SUPRIMENTOS — alçada de aprovação de compra
@@ -9638,7 +9792,7 @@ select 'alcada configurada (0 = desligada, e o esperado agora)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 75/98 — migracao-pacientes-busca.sql
+-- │ 76/114 — migracao-pacientes-busca.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — BUSCA DE PACIENTE POR NOME (aditiva, sem destruir nada)
@@ -9815,7 +9969,7 @@ select 'linhas com nome_busca preenchido',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 76/98 — migracao-agenda-vaga-por-profissional.sql
+-- │ 77/114 — migracao-agenda-vaga-por-profissional.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — A VAGA É DO PROFISSIONAL, NÃO DA ESPECIALIDADE
@@ -9967,7 +10121,7 @@ select 'agendamentos vivos SEM profissional (caem na especialidade)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 77/98 — migracao-agenda-confirmacao.sql
+-- │ 78/114 — migracao-agenda-confirmacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — CONFIRMAÇÃO DA VÉSPERA E MOTIVO DA FALTA
@@ -10109,7 +10263,7 @@ select 'indice antigo por especialidade',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 78/98 — migracao-pacientes-nacionalidade-etnia.sql
+-- │ 79/114 — migracao-pacientes-nacionalidade-etnia.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — PACIENTE ESTRANGEIRO E ETNIA INDÍGENA
@@ -10237,7 +10391,7 @@ select 'nenhum CHECK novo em pacientes',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 79/98 — migracao-agenda-remarcacao.sql
+-- │ 80/114 — migracao-agenda-remarcacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — REMARCAÇÃO COM VÍNCULO
@@ -10383,7 +10537,7 @@ select 'agendamentos ja remarcados',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 80/98 — migracao-pacientes-obito.sql
+-- │ 81/114 — migracao-pacientes-obito.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — O ÓBITO CHEGA AO CADASTRO
@@ -10596,7 +10750,7 @@ select 'destes, quantos tinham consulta MARCADA a partir de hoje',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 81/98 — migracao-pacientes-recem-nascido.sql
+-- │ 82/114 — migracao-pacientes-recem-nascido.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — O RECÉM-NASCIDO ENTRA NO SISTEMA
@@ -10754,7 +10908,7 @@ select 'DNVs repetidas (tem que ser 0)',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 82/98 — migracao-pacientes-municipio-ibge.sql
+-- │ 83/114 — migracao-pacientes-municipio-ibge.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- CÓDIGO IBGE DO MUNICÍPIO DE RESIDÊNCIA
@@ -10810,7 +10964,7 @@ values ('migracao-pacientes-municipio-ibge.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 83/98 — migracao-faturamento-remessa.sql
+-- │ 84/114 — migracao-faturamento-remessa.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- REMESSA TRANSMITIDA — quem, quando, e sob qual protocolo
@@ -10893,7 +11047,7 @@ values ('migracao-faturamento-remessa.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 84/98 — migracao-pacientes-unificacao.sql
+-- │ 85/114 — migracao-pacientes-unificacao.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- UNIFICAÇÃO DE PRONTUÁRIO — ligar duas fichas da mesma pessoa
@@ -11020,7 +11174,7 @@ values ('migracao-pacientes-unificacao.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 85/98 — migracao-farmacia-preparo-exige-baixa.sql
+-- │ 86/114 — migracao-farmacia-preparo-exige-baixa.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- A PRESCRIÇÃO SÓ FICA "PRONTA" SE SAIU DO ESTOQUE
@@ -11127,7 +11281,7 @@ values ('migracao-farmacia-preparo-exige-baixa.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 86/98 — migracao-farmacia-lote-vencido.sql
+-- │ 87/114 — migracao-farmacia-lote-vencido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- LOTE VENCIDO NÃO VAI PARA O PACIENTE
@@ -11213,7 +11367,7 @@ values ('migracao-farmacia-lote-vencido.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 87/98 — migracao-pep-episodio-retroativo.sql
+-- │ 88/114 — migracao-pep-episodio-retroativo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- ABRE O EPISÓDIO DE QUEM JÁ ESTÁ INTERNADO
@@ -11290,7 +11444,7 @@ values ('migracao-pep-episodio-retroativo.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 88/98 — migracao-episodio-id-tipo.sql
+-- │ 89/114 — migracao-episodio-id-tipo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- `episodio_id` DAS TABELAS DE ENFERMAGEM: uuid → bigint
@@ -11387,7 +11541,7 @@ values ('migracao-episodio-id-tipo.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 89/98 — migracao-farmacia-estorno-inventario.sql
+-- │ 90/114 — migracao-farmacia-estorno-inventario.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- FARMÁCIA — estorno com vínculo e inventário cíclico
@@ -11603,7 +11757,7 @@ select 'migracao anotada no registro',
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 90/98 — migracao-scih-germes-seed.sql
+-- │ 91/114 — migracao-scih-germes-seed.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- SCIH — base de germes inicial
@@ -11693,7 +11847,7 @@ from public.scih_germes;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 91/98 — migracao-maternidade-fase0.sql
+-- │ 92/114 — migracao-maternidade-fase0.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — FASE 0: a fundação de dados
@@ -12012,7 +12166,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 92/98 — migracao-perfis-maternidade.sql
+-- │ 93/114 — migracao-perfis-maternidade.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE ENTRA NOS PERFIS — a porta do módulo no menu
@@ -12084,7 +12238,7 @@ values ('migracao-perfis-maternidade.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 93/98 — migracao-maternidade-partograma.sql
+-- │ 94/114 — migracao-maternidade-partograma.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — PARTOGRAMA: os toques ao longo do trabalho de parto
@@ -12235,7 +12389,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 94/98 — migracao-maternidade-parto.sql
+-- │ 95/114 — migracao-maternidade-parto.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — PARTO & CESÁREA: o registro do nascimento
@@ -12396,7 +12550,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 95/98 — migracao-maternidade-recem-nascido.sql
+-- │ 96/114 — migracao-maternidade-recem-nascido.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — RECÉM-NASCIDO: a avaliação clínica do bebê
@@ -12545,7 +12699,7 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 96/98 — migracao-maternidade-alojamento.sql
+-- │ 97/114 — migracao-maternidade-alojamento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- MATERNIDADE — ALOJAMENTO CONJUNTO: a evolução do binômio
@@ -12743,7 +12897,4691 @@ reset valentrax.quem;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 97/98 — migracao-perfis-executivo.sql
+-- │ 98/114 — migracao-alertas-peso-gestacao.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- FARMÁCIA CLÍNICA — RISCO NA GESTAÇÃO E DOSE MÁXIMA POR KG
+--
+-- Desde a Fase 1 da farmácia clínica o atendimento do PS guarda `peso` e
+-- `gestante` (ps_atendimentos), e o painel de contexto clínico diz "informe
+-- para habilitar os alertas". O motor de alertas nunca leu nenhum dos dois:
+-- faltava, no CATÁLOGO, o que comparar com eles.
+--
+-- Esta migração cria esse lado:
+--
+--   risco_gestacao        A | B | C | D | X — a categoria da BULA (ANVISA).
+--                         Só D e X geram alerta. A, B e C marcam o item
+--                         como conferido para gestante.
+--   motivo_gestacao       texto livre que aparece no alerta (D e X)
+--   dose_maxima_kg_dia    dose máxima por kg de peso por dia
+--   dose_maxima_kg_unid   unidade dessa dose (mg, mcg, UI…) — o motor só
+--                         compara quando a unidade prescrita é a mesma
+--
+-- ── O MOTOR NÃO TRAZ LISTA PRÓPRIA ──────────────────────────
+-- Nenhum valor é semeado aqui. As colunas nascem vazias e são preenchidas
+-- pela farmácia do hospital, na tela do catálogo (Farmácia → Estoque →
+-- medicamento → "Atributos clínicos"). Enquanto estiverem vazias:
+--   · gestante recebe o aviso "Risco na gestação NÃO conferido", listando
+--     os medicamentos sem categoria — e não um silêncio que pareça conferido;
+--   · medicamento sem dose por kg simplesmente não tem essa conferência.
+--
+-- ── ORDEM DE IMPLANTAÇÃO ────────────────────────────────────
+-- Pode rodar antes ou depois do merge. O salvar do catálogo só manda estas
+-- colunas quando elas já existem no banco (ou quando alguém preenche), então
+-- o editor de medicamento não quebra num banco que ainda não rodou isto.
+-- Aditiva e idempotente. DEMO primeiro.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+alter table public.farm_medicamentos
+  add column if not exists risco_gestacao text
+    check (risco_gestacao in ('A', 'B', 'C', 'D', 'X')),
+  add column if not exists motivo_gestacao text,
+  add column if not exists dose_maxima_kg_dia numeric
+    check (dose_maxima_kg_dia > 0),
+  add column if not exists dose_maxima_kg_unid text;
+
+comment on column public.farm_medicamentos.risco_gestacao is
+  'Categoria de risco na gestação da bula (ANVISA): A, B, C, D ou X. Só D e X alertam.';
+comment on column public.farm_medicamentos.motivo_gestacao is
+  'Texto que aparece no alerta de gestação (categorias D e X).';
+comment on column public.farm_medicamentos.dose_maxima_kg_dia is
+  'Dose máxima por kg de peso por dia. Exige o peso do paciente no atendimento.';
+comment on column public.farm_medicamentos.dose_maxima_kg_unid is
+  'Unidade da dose máxima por kg/dia (mg, mcg, UI…). Só compara com prescrição na mesma unidade.';
+
+-- O PostgREST guarda o esquema em cache: sem isto as colunas novas só
+-- aparecem para o app depois que o cache expirar.
+notify pgrst, 'reload schema';
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-alertas-peso-gestacao.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 99/114 — migracao-farmacia-hospital.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- FARMÁCIA DO HOSPITAL — internação, validação, controlados e devolução
+--
+-- 🔴 O QUE ESTAVA FALTANDO (17/09/2026)
+-- A farmácia só enxergava o PRONTO-SOCORRO. A prescrição feita no
+-- prontuário de internação (`pep_prescricoes`) não chegava à fila: ninguém
+-- validava, a dispensação do internado era "avulsa" com iniciais digitadas
+-- à mão, e o custo por paciente furava justamente onde o hospital mais
+-- gasta. Esta migração dá ao banco o que as telas novas precisam:
+--
+--   PASSO 1  a farmácia LÊ a prescrição da internação (sem ganhar escrita)
+--   PASSO 2  a validação farmacêutica da prescrição (tabela nova, append-only)
+--   PASSO 3  o kardex liga a saída ao item da internação
+--   PASSO 4  devolução do setor ligada à dispensação que ela desfaz
+--   PASSO 5  controlados: a lista da Portaria 344/98 e quem prescreveu
+--   PASSO 6  intervenção farmacêutica também para o item da internação
+--   PASSO 7  o preparo do PS passa a contar a baixa LÍQUIDA
+--
+-- ADITIVA: nenhuma coluna muda de tipo, nada é apagado, toda coluna nova
+-- nasce nula. IDEMPOTENTE: pode rodar duas vezes.
+--
+-- ⚠️ ORDEM: DEMO primeiro, depois PRINCIPAL, e só então o merge. As telas
+-- novas leem tabelas e colunas que só existem depois disto.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 2 (vem antes do 1 porque o 1 dá leitura a esta tabela)
+-- A VALIDAÇÃO FARMACÊUTICA DA PRESCRIÇÃO DA INTERNAÇÃO
+--
+-- Uma linha por avaliação. Não tem UPDATE nem DELETE: reavaliar é gravar
+-- outra linha, e a última vale. Três resultados:
+--   aprovada                sem ressalva
+--   aprovada_com_ressalva   dispensa, mas a observação é obrigatória
+--   pendente_prescritor     a farmácia NÃO libera até o prescritor responder
+--                           (observação obrigatória)
+--
+-- Só farmacêutico grava — conferido no BANCO pela categoria do perfil, não
+-- só na tela. Tela não é defesa: PATCH direto pela API passaria por cima.
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.farm_validacoes (
+  id bigserial primary key,
+  prescricao_id bigint not null references public.pep_prescricoes(id) on delete cascade,
+  episodio_id bigint references public.pep_episodios(id) on delete set null,
+  prontuario text not null,
+  resultado text not null
+    check (resultado in ('aprovada', 'aprovada_com_ressalva', 'pendente_prescritor')),
+  observacao text,
+  -- O retrato do que o farmacêutico viu ao validar. Se a base de interações
+  -- mudar amanhã, dá para saber com quantos alertas ele aprovou.
+  alertas_altos int not null default 0,
+  alertas_total int not null default 0,
+  intervencao_id bigint references public.farm_intervencoes(id) on delete set null,
+  farmaceutico_nome text not null,
+  conselho text,
+  registro_conselho text,
+  usuario text,
+  criado_em timestamptz not null default now(),
+  constraint farm_valid_obs_ck
+    check (resultado = 'aprovada' or nullif(btrim(coalesce(observacao, '')), '') is not null)
+);
+create index if not exists farm_valid_presc_idx on public.farm_validacoes (prescricao_id, criado_em desc);
+create index if not exists farm_valid_ep_idx on public.farm_validacoes (episodio_id);
+
+comment on table public.farm_validacoes is
+  'Avaliação farmacêutica da prescrição da internação. Append-only: reavaliar é nova linha; vale a mais recente.';
+
+alter table public.farm_validacoes enable row level security;
+
+drop policy if exists farm_validacoes_leitura on public.farm_validacoes;
+create policy farm_validacoes_leitura on public.farm_validacoes
+  for select to authenticated
+  using (public.pode_ver_algum('farmacia', 'paciente'));
+
+drop policy if exists farm_validacoes_ins on public.farm_validacoes;
+create policy farm_validacoes_ins on public.farm_validacoes
+  for insert to authenticated
+  with check (
+    public.my_role() in ('adm_master', 'adm_silver')
+    and exists (select 1 from public.profiles pr
+                 where pr.id = auth.uid() and pr.categoria = 'farmaceutico')
+  );
+
+-- A mesma trava restritiva que o gerar-rls.mjs põe em toda tabela de módulo.
+drop policy if exists farm_validacoes_mod_ins on public.farm_validacoes;
+create policy farm_validacoes_mod_ins on public.farm_validacoes
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('farmacia'));
+-- (sem política de update/delete: a avaliação é imutável)
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 1 — a farmácia LÊ a prescrição da internação
+--
+-- Espelha `LEITURA_EXTRA` de src/acesso/mapa-tabelas.js. O farmacêutico já
+-- lia estas tabelas (tem `paciente: leitura`); quem não lia era o AUXILIAR,
+-- que é quem separa — e, sem ler `pep_alergias`, recebia lista vazia, que o
+-- RLS não distingue de "sem alergia".
+--
+-- 🔴 SÓ LEITURA. As políticas de escrita destas tabelas não são tocadas:
+-- a farmácia não passa a gravar prescrição, evento nem alergia.
+--
+-- Apaga TODA política de SELECT antes de criar a nova: políticas
+-- permissivas se somam, e uma sobra antiga manteria a regra anterior.
+-- ───────────────────────────────────────────────────────────
+do $leitura_farmacia$
+declare
+  t record;
+  pol record;
+begin
+  for t in
+    select * from (values
+      ('pep_episodios',          'public.pode_ver_algum(''paciente'', ''farmacia'')'),
+      ('pep_prescricoes',        'public.pode_ver_algum(''paciente'', ''farmacia'')'),
+      ('pep_prescricao_itens',   'public.pode_ver_algum(''paciente'', ''farmacia'')'),
+      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),
+      ('pep_alergias',           'public.pode_ver_algum(''paciente'', ''farmacia'')')
+    ) as v(tabela, cond)
+  loop
+    if to_regclass('public.' || t.tabela) is null then
+      raise notice 'PULADA (não existe aqui): %', t.tabela;
+      continue;
+    end if;
+    for pol in
+      select polname from pg_policy
+       where polrelid = ('public.' || t.tabela)::regclass and polcmd = 'r'
+    loop
+      execute format('drop policy %I on public.%I', pol.polname, t.tabela);
+    end loop;
+    execute format('create policy %I on public.%I for select to authenticated using (%s)',
+                   t.tabela || '_leitura', t.tabela, t.cond);
+  end loop;
+end
+$leitura_farmacia$;
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 3 — o kardex liga a saída ao item da INTERNAÇÃO
+--
+-- `prescricao_item_id` já existe e aponta para o item do PS
+-- (`ps_prescricao_itens`). O item da internação é OUTRA tabela, com ids que
+-- se repetem entre as duas: guardar os dois na mesma coluna faria o item 5
+-- do PS e o item 5 da internação somarem a mesma dispensação. Por isso uma
+-- coluna nova, e a trava de que um movimento não aponta para os dois.
+-- ───────────────────────────────────────────────────────────
+alter table public.farm_movimentos
+  add column if not exists pep_item_id bigint
+    references public.pep_prescricao_itens(id) on delete set null,
+  add column if not exists episodio_id bigint
+    references public.pep_episodios(id) on delete set null;
+
+create index if not exists farm_mov_pep_item_idx on public.farm_movimentos (pep_item_id)
+  where pep_item_id is not null;
+create index if not exists farm_mov_episodio_idx on public.farm_movimentos (episodio_id)
+  where episodio_id is not null;
+
+do $um_vinculo$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'farm_mov_um_item_ck') then
+    alter table public.farm_movimentos
+      add constraint farm_mov_um_item_ck
+      check (prescricao_item_id is null or pep_item_id is null);
+  end if;
+end
+$um_vinculo$;
+
+comment on column public.farm_movimentos.pep_item_id is
+  'Item da prescrição da INTERNAÇÃO (pep_prescricao_itens). O do PS é prescricao_item_id — nunca os dois.';
+comment on column public.farm_movimentos.episodio_id is
+  'Episódio de internação da dispensação (custo por paciente internado).';
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 4 — DEVOLUÇÃO DO SETOR
+--
+-- Medicamento suspenso, alta com sobra, dose que não foi dada: volta para a
+-- farmácia. Antes a única saída era o ESTORNO, que diz "este lançamento
+-- estava errado" — e a dispensação não estava. Devolução diz "saiu certo e
+-- voltou", e pode ser PARCIAL.
+--
+-- O banco garante, porque a tela não é barreira:
+--   • é ENTRADA apontando para uma SAÍDA de dispensação;
+--   • mesmo medicamento e mesmo lote (o comprimido volta para a caixa de
+--     onde saiu — é o que mantém a validade e o rastro do lote);
+--   • a soma das devoluções nunca passa do que saiu (senão se inventa
+--     estoque, igual ao estorno duplo que o índice único já impede);
+--   • dispensação estornada não recebe devolução, e dispensação com
+--     devolução não pode ser estornada (as duas juntas devolveriam o mesmo
+--     comprimido duas vezes).
+-- ───────────────────────────────────────────────────────────
+alter table public.farm_movimentos
+  add column if not exists devolucao_de bigint
+    references public.farm_movimentos(id) on delete restrict,
+  -- Por que voltou ("item suspenso", "alta", "dose não administrada"). O
+  -- kardex não tinha campo livre: o motivo ia parar em `documento`, que é o
+  -- número da nota ou da requisição.
+  add column if not exists observacao text;
+
+create index if not exists farm_mov_devolucao_idx on public.farm_movimentos (devolucao_de)
+  where devolucao_de is not null;
+
+do $devolucao_ck$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'farm_mov_estorno_ou_devolucao_ck') then
+    alter table public.farm_movimentos
+      add constraint farm_mov_estorno_ou_devolucao_ck
+      check (estorno_de is null or devolucao_de is null);
+  end if;
+end
+$devolucao_ck$;
+
+comment on column public.farm_movimentos.devolucao_de is
+  'Dispensação (saída) que esta entrada devolve. Parcial permitido; a soma não passa do que saiu.';
+
+-- Quanto de uma dispensação já voltou, LÍQUIDO: devolução estornada (lançada
+-- por engano e desfeita) não conta.
+create or replace function public.farm_devolvido_de(p_saida bigint)
+returns numeric language sql stable security definer set search_path = public as $$
+  select coalesce(sum(d.quantidade), 0)
+    from public.farm_movimentos d
+   where d.devolucao_de = p_saida
+     and not exists (select 1 from public.farm_movimentos e where e.estorno_de = d.id)
+$$;
+
+create or replace function public.farm_valida_devolucao()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  o record;
+  ja_devolvido numeric;
+begin
+  -- (a) estorno de uma dispensação que tem devolução em vigor: recusa
+  if new.estorno_de is not null then
+    if public.farm_devolvido_de(new.estorno_de) > 0 then
+      raise exception 'Esta dispensação tem devolução registrada. Estornar agora devolveria ao estoque o que já voltou. Estorne primeiro a devolução.'
+        using errcode = 'check_violation';
+    end if;
+    return new;
+  end if;
+
+  if new.devolucao_de is null then
+    return new;
+  end if;
+
+  -- trava a linha original: duas devoluções simultâneas não podem ler o
+  -- mesmo "já devolvido" e passar as duas
+  select id, medicamento_id, lote, tipo, motivo, quantidade, estorno_de into o
+    from public.farm_movimentos where id = new.devolucao_de for update;
+
+  if o.id is null then
+    raise exception 'Devolução aponta para um movimento inexistente (id %).', new.devolucao_de;
+  end if;
+  if new.tipo <> 'entrada' then
+    raise exception 'Devolução é entrada no estoque.' using errcode = 'check_violation';
+  end if;
+  if o.tipo <> 'saida' or coalesce(o.motivo, '') <> 'Dispensação' or o.estorno_de is not null then
+    raise exception 'Só se devolve uma dispensação (saída com motivo Dispensação).' using errcode = 'check_violation';
+  end if;
+  if exists (select 1 from public.farm_movimentos where estorno_de = o.id) then
+    raise exception 'Esta dispensação foi estornada — não há o que devolver.' using errcode = 'check_violation';
+  end if;
+  if o.medicamento_id <> new.medicamento_id then
+    raise exception 'Devolução tem que ser do mesmo medicamento que saiu.' using errcode = 'check_violation';
+  end if;
+  if coalesce(o.lote, '') <> coalesce(new.lote, '') then
+    raise exception 'Devolução volta para o mesmo lote de onde saiu ("%").', coalesce(o.lote, '')
+      using errcode = 'check_violation';
+  end if;
+
+  ja_devolvido := public.farm_devolvido_de(o.id);
+  if ja_devolvido + new.quantidade > o.quantidade then
+    raise exception 'Devolução maior que o dispensado: saíram %, já voltaram %, cabem no máximo %.',
+      o.quantidade, ja_devolvido, o.quantidade - ja_devolvido
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end $$;
+
+drop trigger if exists farm_valida_devolucao_trg on public.farm_movimentos;
+create trigger farm_valida_devolucao_trg before insert on public.farm_movimentos
+  for each row execute function public.farm_valida_devolucao();
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 5 — CONTROLADOS: a lista da Portaria 344/98 e quem prescreveu
+--
+-- Até aqui o medicamento era só "controlado: sim/não". A lista (A1, B1,
+-- C1…) é o que diz o tipo de receita e separa a escrituração, e a saída de
+-- controlado para paciente não guardava QUEM PRESCREVEU — o dado que a
+-- fiscalização pede primeiro.
+--
+-- A lista nasce vazia: cada hospital classifica o próprio catálogo
+-- (Farmácia → Estoque → editar medicamento). Nenhum valor é semeado.
+--
+-- A trava de prescritor vale para a saída de DISPENSAÇÃO de medicamento
+-- marcado como controlado, a partir de agora. Lançamento antigo não é
+-- tocado; estorno e devolução não precisam (apontam para a saída original).
+-- ───────────────────────────────────────────────────────────
+alter table public.farm_medicamentos
+  add column if not exists lista_controle text;
+
+do $lista_ck$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'farm_med_lista_controle_ck') then
+    alter table public.farm_medicamentos
+      add constraint farm_med_lista_controle_ck
+      check (lista_controle is null
+             or (lista_controle in ('A1','A2','A3','B1','B2','C1','C2','C3','C4','C5')
+                 and controlado is true));
+  end if;
+end
+$lista_ck$;
+
+comment on column public.farm_medicamentos.lista_controle is
+  'Lista da Portaria SVS/MS 344/98 (A1..C5). Só em medicamento controlado.';
+
+alter table public.farm_movimentos
+  add column if not exists prescritor_nome text,
+  add column if not exists prescritor_registro text,   -- CRM/UF, CRO/UF…
+  add column if not exists receita_numero text;        -- notificação/receita, quando houver
+
+comment on column public.farm_movimentos.prescritor_nome is
+  'Quem prescreveu. Obrigatório na dispensação de medicamento controlado.';
+comment on column public.farm_movimentos.receita_numero is
+  'Número da notificação ou receita, quando a dispensação veio de receita (ex.: avulsa).';
+
+create or replace function public.farm_controlado_exige_prescritor()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.tipo <> 'saida' or coalesce(new.motivo, '') <> 'Dispensação' or new.estorno_de is not null then
+    return new;
+  end if;
+  if not exists (select 1 from public.farm_medicamentos m
+                  where m.id = new.medicamento_id and m.controlado is true) then
+    return new;
+  end if;
+  if nullif(btrim(coalesce(new.prescritor_nome, '')), '') is null then
+    raise exception 'Dispensação de medicamento controlado sem o nome de quem prescreveu. A escrituração da Portaria 344/98 exige o prescritor.'
+      using errcode = 'check_violation';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists farm_controlado_exige_prescritor_trg on public.farm_movimentos;
+create trigger farm_controlado_exige_prescritor_trg before insert on public.farm_movimentos
+  for each row execute function public.farm_controlado_exige_prescritor();
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 6 — intervenção farmacêutica no item da internação
+-- ───────────────────────────────────────────────────────────
+alter table public.farm_intervencoes
+  add column if not exists pep_item_id bigint
+    references public.pep_prescricao_itens(id) on delete set null,
+  add column if not exists episodio_id bigint
+    references public.pep_episodios(id) on delete set null;
+
+
+-- ───────────────────────────────────────────────────────────
+-- PASSO 7 — o preparo do PS conta a baixa LÍQUIDA
+--
+-- O trigger `preparo_exige_baixa` contava só as SAÍDAS. Uma separação
+-- estornada inteira (saiu 2, voltou 2) ainda deixava marcar "pronto" — a
+-- mesma mentira que ele existe para impedir, pela outra ponta. A regra da
+-- tela (`dispensadoDoItem`, em src/farmacia/preparo.js) já era líquida.
+-- ───────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION preparo_exige_baixa() RETURNS trigger AS $$
+DECLARE
+  n_itens    int;
+  n_liquido  numeric;
+  v_atend    bigint;
+BEGIN
+  IF NEW.status IS DISTINCT FROM 'pronto' THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND OLD.status = 'pronto' THEN RETURN NEW; END IF;
+
+  SELECT atendimento_id INTO v_atend
+    FROM public.ps_registros WHERE id = NEW.registro_id;
+
+  SELECT count(*) INTO n_itens
+    FROM public.ps_prescricao_itens i
+   WHERE i.registro_id = NEW.registro_id
+      OR (i.registro_id IS NULL AND v_atend IS NOT NULL AND i.atendimento_id = v_atend);
+
+  IF n_itens = 0 THEN RETURN NEW; END IF;
+
+  -- líquido POR ITEM: basta um item com saldo de saída positivo
+  SELECT count(*) INTO n_liquido FROM (
+    SELECT m.prescricao_item_id
+      FROM public.farm_movimentos m
+      JOIN public.ps_prescricao_itens i ON i.id = m.prescricao_item_id
+     WHERE (i.registro_id = NEW.registro_id
+            OR (i.registro_id IS NULL AND v_atend IS NOT NULL AND i.atendimento_id = v_atend))
+     GROUP BY m.prescricao_item_id
+    HAVING sum(CASE WHEN m.tipo = 'entrada' THEN -m.quantidade ELSE m.quantidade END) > 0
+  ) x;
+
+  IF n_liquido = 0 THEN
+    RAISE EXCEPTION
+      'A prescrição % não tem nenhum item separado (% item(ns) prescrito(s), 0 baixa líquida de estoque). '
+      'Marcar como pronta faria o sistema afirmar que o paciente recebeu um medicamento que ninguém '
+      'tirou da prateleira — ou que voltou para ela.', NEW.registro_id, n_itens
+      USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- O PostgREST guarda o esquema em cache: sem isto as colunas e a tabela
+-- novas só aparecem para o app depois que o cache expirar.
+notify pgrst, 'reload schema';
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-farmacia-hospital.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA — é a ÚLTIMA consulta de propósito: o SQL Editor só mostra
+-- o resultado dela. Toda linha deve vir com ✅.
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela farm_validacoes' as item,
+         to_regclass('public.farm_validacoes') is not null as ok
+  union all
+  select 'só farmacêutico grava validação (política)',
+         exists (select 1 from pg_policies where tablename = 'farm_validacoes' and policyname = 'farm_validacoes_ins')
+  union all
+  select 'farmácia lê ' || t,
+         exists (select 1 from pg_policies where tablename = t and cmd = 'SELECT' and qual like '%farmacia%')
+    from unnest(array['pep_episodios','pep_prescricoes','pep_prescricao_itens','pep_prescricao_eventos','pep_alergias']) t
+  union all
+  select 'kardex: coluna ' || c,
+         exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'farm_movimentos' and column_name = c)
+    from unnest(array['pep_item_id','episodio_id','devolucao_de','observacao','prescritor_nome','prescritor_registro','receita_numero']) c
+  union all
+  select 'catálogo: coluna lista_controle',
+         exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'farm_medicamentos' and column_name = 'lista_controle')
+  union all
+  select 'intervenção: coluna pep_item_id',
+         exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'farm_intervencoes' and column_name = 'pep_item_id')
+  union all
+  select 'trigger ' || g, exists (select 1 from pg_trigger where tgname = g)
+    from unnest(array['farm_valida_devolucao_trg','farm_controlado_exige_prescritor_trg','farm_preparo_exige_baixa']) g
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas where arquivo = 'migracao-farmacia-hospital.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 100/114 — migracao-descricao-aux-farmacia.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- AUXILIAR DE FARMÁCIA: a descrição do perfil passou a mentir
+--
+-- O texto gravado em `perfis_acesso.descricao` ainda diz
+-- "Não acessa prontuário". Desde a migração da farmácia do hospital
+-- (migracao-farmacia-hospital.sql) esse perfil LÊ a prescrição e as
+-- alergias — é isso que permite conferir o que vai ser dispensado.
+--
+-- A descrição não controla nada: quem manda é `perfis_permissoes`.
+-- Mas ela é o que o administrador lê na tela de Perfis de acesso na hora
+-- de decidir quem recebe o perfil, e uma descrição errada aí vira decisão
+-- errada de acesso. Por isso ela vale uma migração.
+--
+-- ADITIVA e IDEMPOTENTE: um UPDATE de texto, pode rodar duas vezes.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+update public.perfis_acesso
+   set descricao = 'Dispensação e estoque da farmácia. Lê a prescrição e as alergias para dispensar; não acessa o resto do prontuário.'
+ where chave = 'aux_farmacia';
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-descricao-aux-farmacia.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select case when ok then '✅ ' else '❌ ' end || item as resultado
+from (
+  select 'descrição do auxiliar de farmácia atualizada' as item,
+         exists (select 1 from public.perfis_acesso
+                  where chave = 'aux_farmacia'
+                    and descricao like '%Lê a prescrição e as alergias%') as ok
+  union all
+  select 'nenhum perfil ainda diz "Não acessa prontuário" para a farmácia',
+         not exists (select 1 from public.perfis_acesso
+                      where chave = 'aux_farmacia' and descricao like '%Não acessa prontuário%')
+  union all
+  -- Rótulo com o nome do arquivo: quando esta conferência é colada junto com
+  -- a da farmácia, duas linhas "migração anotada no registro" não diriam qual.
+  select 'descrição do auxiliar: migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-descricao-aux-farmacia.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 101/114 — migracao-correcao-desfecho.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- CORRIGIR O DESFECHO — por registro novo, nunca por edição
+--
+-- 🔴 O QUE ESTÁ ERRADO HOJE
+-- O desfecho da consulta é escolhido uma vez e PRONTO: ele não está em
+-- `CAMPOS_CORRIGIVEIS` (src/atendimento/ciclo.js), de propósito, porque é
+-- registro assistencial e registro assistencial não se edita. Só que a
+-- consequência prática é que um engano — e até 06/10/2026 ele era um
+-- número digitado num `prompt` — vira permanente. E é o desfecho que decide
+-- se a consulta vira conta: "evadiu" no lugar de "atendido" apaga a
+-- produção; o contrário cobra atendimento que não houve.
+--
+-- 💡 A SAÍDA é a mesma do resto do sistema: corrigir é GRAVAR OUTRA LINHA.
+-- A tabela abaixo é append-only e guarda de → para, motivo e autor. O
+-- `ps_atendimentos.desfecho` continua sendo a verdade corrente (é o que o
+-- faturamento e os indicadores leem), e o histórico de como se chegou nela
+-- fica aqui. Quem corrigiu, quando e por quê deixam de depender da memória
+-- de alguém.
+--
+-- 🔒 QUATRO RECUSAS, todas no BANCO e não na tela (tela não é defesa: um
+-- PATCH pela API passa por cima dela):
+--   1. motivo com menos de 15 caracteres — "erro" não explica nada a quem
+--      ler isso daqui a um ano, que é exatamente quando se lê;
+--   2. `de` que não bate com o desfecho ATUAL — é a corrida entre duas
+--      pessoas corrigindo a mesma consulta; a segunda tem que reler;
+--   3. conta já FECHADA ou FATURADA — corrigir o desfecho embaixo de uma
+--      conta transmitida cria divergência com o que foi enviado ao SUS;
+--      primeiro se cancela a conta, depois se corrige;
+--   4. desfecho atual `obito` — o óbito CARIMBA o cadastro do paciente
+--      (`trg_obito_ps` → `pacientes.obito`), e esse carimbo não se desfaz
+--      aqui. Desfazer óbito é outro ato, com outra responsabilidade.
+--      Corrigir PARA óbito é permitido: aí o carimbo deve mesmo acontecer.
+--
+-- ADITIVA: nenhuma coluna existente muda, nada é apagado.
+-- IDEMPOTENTE: pode rodar duas vezes.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_at_corrige_desfecho on public.at_desfecho_correcoes;
+--   drop function if exists public.at_aplica_correcao_desfecho();
+--   drop table if exists public.at_desfecho_correcoes;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. A TRILHA
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.at_desfecho_correcoes (
+  id bigserial primary key,
+  atendimento_id bigint not null references public.ps_atendimentos (id) on delete cascade,
+  -- O que estava gravado ANTES. Guardado aqui porque `ps_atendimentos`
+  -- passa a ter o valor novo — sem esta coluna, a correção diria para onde
+  -- foi e não de onde veio, que é metade da informação.
+  de text,
+  para text not null,
+  motivo text not null,
+  usuario text,
+  criado_em timestamptz not null default now(),
+  constraint at_desf_corr_mudou_ck check (coalesce(de, '') <> coalesce(para, '')),
+  constraint at_desf_corr_motivo_ck check (length(btrim(motivo)) >= 15)
+);
+
+create index if not exists at_desf_corr_atend_idx
+  on public.at_desfecho_correcoes (atendimento_id, criado_em desc);
+
+comment on table public.at_desfecho_correcoes is
+  'Correções de desfecho do atendimento. Append-only: a linha registra de → para, motivo e autor; o valor corrente fica em ps_atendimentos.desfecho.';
+comment on column public.at_desfecho_correcoes.de is
+  'O desfecho que estava gravado antes desta correção. Conferido contra o valor atual pelo gatilho.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. O GATILHO QUE APLICA — e recusa o que não pode
+--
+-- Aplicar DENTRO do mesmo INSERT é o que impede a trilha e o valor corrente
+-- divergirem: ou as duas coisas acontecem, ou nenhuma. Duas escritas
+-- separadas pela tela deixariam a porta aberta para gravar a trilha e
+-- falhar o update — e aí o histórico contaria uma correção que não houve.
+-- ───────────────────────────────────────────────────────────
+create or replace function public.at_aplica_correcao_desfecho()
+returns trigger
+language plpgsql
+set search_path = public
+as $at_corr$
+declare
+  atual        public.ps_atendimentos%rowtype;
+  conta_presa  text;
+begin
+  select * into atual from public.ps_atendimentos where id = new.atendimento_id;
+  if not found then
+    raise exception 'Atendimento % não existe.', new.atendimento_id;
+  end if;
+
+  -- (2) o que a tela leu ainda vale?
+  if coalesce(atual.desfecho, '') is distinct from coalesce(new.de, '') then
+    raise exception
+      'O desfecho deste atendimento é "%" e a correção partiu de "%". Alguém mudou enquanto esta tela estava aberta — releia antes de corrigir.',
+      coalesce(atual.desfecho, '(sem desfecho)'), coalesce(new.de, '(sem desfecho)');
+  end if;
+
+  -- (4) óbito não se desfaz por aqui
+  if lower(btrim(coalesce(atual.desfecho, ''))) = 'obito' then
+    raise exception
+      'Este atendimento está registrado como ÓBITO, e o óbito carimba o cadastro do paciente. Desfazer isso não é correção de desfecho — procure a direção técnica.';
+  end if;
+
+  -- (3) conta fechada ou faturada trava a correção
+  select c.status into conta_presa
+    from public.at_contas c
+   where c.atendimento_id = new.atendimento_id
+     and c.status in ('fechada', 'faturada')
+   limit 1;
+  if conta_presa is not null then
+    raise exception
+      'A conta deste atendimento já está %. Corrigir o desfecho agora deixaria a conta divergente do que foi enviado — cancele a conta primeiro.',
+      conta_presa;
+  end if;
+
+  -- Aplica. `desfecho_em` NÃO é tocado de propósito: o atendimento terminou
+  -- quando terminou; o que estava errado era a classificação, não a hora.
+  update public.ps_atendimentos
+     set desfecho = new.para,
+         usuario = coalesce(new.usuario, usuario),
+         updated_at = now()
+   where id = new.atendimento_id;
+
+  -- 🔴 O "204 MENTIROSO" TAMBÉM EXISTE AQUI. Se a RLS de `ps_atendimentos`
+  -- recusar o UPDATE, ele altera ZERO linha sem erro nenhum — e a trilha
+  -- registraria uma correção que não aconteceu. Confere e derruba tudo.
+  if not found then
+    raise exception
+      'Não consegui aplicar a correção no atendimento % — seu perfil não edita este atendimento. Nada foi registrado.',
+      new.atendimento_id;
+  end if;
+
+  return new;
+end $at_corr$;
+
+drop trigger if exists trg_at_corrige_desfecho on public.at_desfecho_correcoes;
+create trigger trg_at_corrige_desfecho
+  before insert on public.at_desfecho_correcoes
+  for each row execute function public.at_aplica_correcao_desfecho();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. QUEM PODE
+--
+-- Lê quem lê o atendimento; grava quem EDITA o atendimento. A correção é um
+-- ato administrativo sobre registro assistencial — não exige categoria
+-- clínica, mas exige o módulo e o papel de escrita.
+--
+-- Sem UPDATE e sem DELETE: a trilha é imutável. Correção de correção é
+-- outra linha.
+-- ───────────────────────────────────────────────────────────
+alter table public.at_desfecho_correcoes enable row level security;
+
+-- ⚠️ LIMPEZA DE UMA VERSÃO ANTERIOR DESTE PRÓPRIO ARQUIVO.
+--
+-- A primeira versão rodada no demo (06/10/2026) criou estas políticas com
+-- nomes abreviados. Depois elas foram renomeadas para a convenção do
+-- `gerar-rls.mjs` (ver o comentário da restritiva, abaixo). Sem estes drops,
+-- o banco que recebeu a versão antiga fica com SEIS políticas em vez de três:
+-- as novas somam-se às velhas, e a tabela passa a ter duas restritivas iguais
+-- e duas permissivas iguais. Não muda o resultado do acesso — mas quem for
+-- auditar amanhã perde tempo descobrindo isso, e é o tipo de sujeira que
+-- separa os dois bancos em silêncio.
+--
+-- No banco que nunca viu a versão antiga (o principal), os três drops são
+-- no-ops. É por isso que o MESMO arquivo serve nos dois.
+drop policy if exists at_desf_corr_leitura on public.at_desfecho_correcoes;
+drop policy if exists at_desf_corr_ins     on public.at_desfecho_correcoes;
+drop policy if exists at_desf_corr_mod_ins on public.at_desfecho_correcoes;
+
+drop policy if exists at_desfecho_correcoes_leitura on public.at_desfecho_correcoes;
+create policy at_desfecho_correcoes_leitura on public.at_desfecho_correcoes
+  for select to authenticated
+  using (public.pode_ver_algum('ps', 'atendimento', 'ambulatorio', 'paciente'));
+
+drop policy if exists at_desfecho_correcoes_ins on public.at_desfecho_correcoes;
+create policy at_desfecho_correcoes_ins on public.at_desfecho_correcoes
+  for insert to authenticated
+  with check (public.my_role() in ('adm_master', 'adm_silver'));
+
+-- A mesma trava restritiva que o gerar-rls.mjs põe em toda tabela de módulo —
+-- e com o NOME que ele usa, para o gerador substituir esta política em vez de
+-- criar uma segunda ao lado. Duas restritivas iguais não mudam o resultado,
+-- mas quem for auditar amanhã perde tempo descobrindo isso.
+drop policy if exists at_desfecho_correcoes_mod_ins on public.at_desfecho_correcoes;
+create policy at_desfecho_correcoes_mod_ins on public.at_desfecho_correcoes
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('ps', 'atendimento', 'ambulatorio'));
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-correcao-desfecho.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela at_desfecho_correcoes existe' as item,
+         to_regclass('public.at_desfecho_correcoes') is not null as ok
+  union all
+  select 'coluna ' || c,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'at_desfecho_correcoes' and column_name = c)
+    from unnest(array['atendimento_id','de','para','motivo','usuario','criado_em']) c
+  union all
+  select 'trava ' || k,
+         exists (select 1 from pg_constraint where conname = k)
+    from unnest(array['at_desf_corr_mudou_ck','at_desf_corr_motivo_ck']) k
+  union all
+  select 'gatilho que aplica a correção',
+         exists (select 1 from pg_trigger where tgname = 'trg_at_corrige_desfecho')
+  union all
+  select 'política ' || p,
+         exists (select 1 from pg_policies where tablename = 'at_desfecho_correcoes' and policyname = p)
+    from unnest(array['at_desfecho_correcoes_leitura','at_desfecho_correcoes_ins','at_desfecho_correcoes_mod_ins']) p
+  union all
+  select 'política antiga ' || p || ' removida',
+         not exists (select 1 from pg_policies where tablename = 'at_desfecho_correcoes' and policyname = p)
+    from unnest(array['at_desf_corr_leitura','at_desf_corr_ins','at_desf_corr_mod_ins']) p
+  union all
+  select 'exatamente 3 políticas na tabela',
+         (select count(*) from pg_policies where tablename = 'at_desfecho_correcoes') = 3
+  union all
+  select 'trilha é imutável (sem update/delete)',
+         not exists (select 1 from pg_policies
+                      where tablename = 'at_desfecho_correcoes' and cmd in ('UPDATE', 'DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-correcao-desfecho.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 102/114 — migracao-correcao-desfecho-corrida.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A RECUSA POR CORRIDA NÃO FUNCIONAVA — e só o banco real mostrou
+--
+-- 🔴 MEDIDO NO DEMO EM 07/10/2026, não deduzido.
+--
+-- `migracao-correcao-desfecho.sql` criou o gatilho com quatro recusas. A
+-- segunda delas — "alguém mudou o desfecho enquanto esta tela estava
+-- aberta" — foi provada em PGlite e DECLARADA funcionando no PR #261.
+-- Estava errado, e o erro era do método: **PGlite tem uma conexão só, logo
+-- não existe corrida lá.** Toda a prova foi serial.
+--
+-- Contra o banco de teste, dois INSERT em paralelo, os dois partindo de
+-- `de = 'atendido'`:
+--
+--   trilha #5  atendido -> evadiu       (pessoa_A)  13:42:26
+--   trilha #6  atendido -> encaminhado  (pessoa_B)  13:42:26
+--   ps_atendimentos.desfecho = 'evadiu'
+--
+-- **Os dois voltaram 201.** A linha #6 registra uma correção que NÃO
+-- ACONTECEU, com motivo e autor, assinada. É exatamente o que o comentário
+-- do gatilho original diz que ele existe para impedir — "o histórico
+-- contaria uma correção que não houve" — e é pior do que não ter trilha,
+-- porque quem auditar amanhã vai acreditar nela.
+--
+-- A CAUSA: o gatilho lia o desfecho atual com um `select` simples. Em READ
+-- COMMITTED as duas transações leem o valor de antes, as duas passam na
+-- conferência, e então os dois `update` rodam — o segundo espera o lock,
+-- reavalia `where id = X`, ainda casa, e sobrescreve. A conferência virou
+-- enfeite: ela compara contra uma leitura que já envelheceu.
+--
+-- O CONSERTO: `for update` na leitura. O lock é tomado ANTES da
+-- conferência, então a segunda transação para na leitura, espera a primeira
+-- commitar, relê o valor NOVO e aí a comparação de `de` reprova — que é o
+-- comportamento que sempre foi desenhado. Uma linha.
+--
+-- ⚠️ ESTA MIGRAÇÃO NÃO PODE SER PROVADA EM PGlite, pela mesma razão que
+-- esconderia o defeito. A prova é no banco, com dois pedidos paralelos.
+--
+-- ADITIVA: só substitui a função (`create or replace`). Nenhuma tabela,
+-- coluna, trava ou política muda. O gatilho continua apontando para ela.
+-- IDEMPOTENTE: pode rodar duas vezes.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- O GATILHO, com o lock
+--
+-- O corpo é o mesmo de `migracao-correcao-desfecho.sql`; a única mudança
+-- está marcada com 🔴 abaixo. Vai inteiro de propósito: função pela metade
+-- não existe, e `create or replace` exige o corpo completo.
+-- ───────────────────────────────────────────────────────────
+create or replace function public.at_aplica_correcao_desfecho()
+returns trigger
+language plpgsql
+set search_path = public
+as $at_corr$
+declare
+  atual        public.ps_atendimentos%rowtype;
+  conta_presa  text;
+begin
+  -- 🔴 `for update` — a única mudança desta migração.
+  --
+  -- Sem ele, duas correções simultâneas leem o mesmo desfecho, as duas
+  -- passam na conferência (2) abaixo e as duas gravam trilha; só a última
+  -- vale, e a outra linha fica mentindo para sempre. Medido no demo.
+  --
+  -- Com ele, a segunda transação PARA aqui até a primeira commitar, e então
+  -- relê o desfecho novo — o que faz a conferência (2) reprovar, como foi
+  -- desenhado. O lock é de uma linha e dura o INSERT.
+  select * into atual
+    from public.ps_atendimentos
+   where id = new.atendimento_id
+     for update;
+
+  if not found then
+    raise exception 'Atendimento % não existe.', new.atendimento_id;
+  end if;
+
+  -- (2) o que a tela leu ainda vale?
+  if coalesce(atual.desfecho, '') is distinct from coalesce(new.de, '') then
+    raise exception
+      'O desfecho deste atendimento é "%" e a correção partiu de "%". Alguém mudou enquanto esta tela estava aberta — releia antes de corrigir.',
+      coalesce(atual.desfecho, '(sem desfecho)'), coalesce(new.de, '(sem desfecho)');
+  end if;
+
+  -- (4) óbito não se desfaz por aqui
+  if lower(btrim(coalesce(atual.desfecho, ''))) = 'obito' then
+    raise exception
+      'Este atendimento está registrado como ÓBITO, e o óbito carimba o cadastro do paciente. Desfazer isso não é correção de desfecho — procure a direção técnica.';
+  end if;
+
+  -- (3) conta fechada ou faturada trava a correção
+  --
+  -- ⚠️ Esta leitura segue SEM lock, e de propósito. Travar `at_contas` aqui
+  -- inverteria a ordem de locks em relação ao fechamento de conta (que pega
+  -- a conta primeiro) e abriria deadlock. A janela que sobra é alguém fechar
+  -- a conta no mesmo instante da correção; o estrago é uma correção aplicada
+  -- sob conta recém-fechada, não uma trilha falsa. NÃO FOI MEDIDO.
+  select c.status into conta_presa
+    from public.at_contas c
+   where c.atendimento_id = new.atendimento_id
+     and c.status in ('fechada', 'faturada')
+   limit 1;
+  if conta_presa is not null then
+    raise exception
+      'A conta deste atendimento já está %. Corrigir o desfecho agora deixaria a conta divergente do que foi enviado — cancele a conta primeiro.',
+      conta_presa;
+  end if;
+
+  -- Aplica. `desfecho_em` NÃO é tocado de propósito: o atendimento terminou
+  -- quando terminou; o que estava errado era a classificação, não a hora.
+  update public.ps_atendimentos
+     set desfecho = new.para,
+         usuario = coalesce(new.usuario, usuario),
+         updated_at = now()
+   where id = new.atendimento_id;
+
+  -- 🔴 O "204 MENTIROSO" TAMBÉM EXISTE AQUI. Se a RLS de `ps_atendimentos`
+  -- recusar o UPDATE, ele altera ZERO linha sem erro nenhum — e a trilha
+  -- registraria uma correção que não aconteceu. Confere e derruba tudo.
+  if not found then
+    raise exception
+      'Não consegui aplicar a correção no atendimento % — seu perfil não edita este atendimento. Nada foi registrado.',
+      new.atendimento_id;
+  end if;
+
+  return new;
+end $at_corr$;
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-correcao-desfecho-corrida.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'a função existe' as item,
+         exists (select 1 from pg_proc where proname = 'at_aplica_correcao_desfecho') as ok
+  union all
+  -- O que esta migração vem fazer: o lock tem de estar no corpo gravado.
+  select 'a leitura do desfecho trava a linha (for update)',
+         exists (select 1 from pg_proc
+                  where proname = 'at_aplica_correcao_desfecho'
+                    and prosrc ~* 'where[[:space:]]+id[[:space:]]*=[[:space:]]*new\.atendimento_id[[:space:]]*for[[:space:]]+update')
+  union all
+  select 'as quatro recusas continuam no corpo',
+         (select count(*) from pg_proc
+           where proname = 'at_aplica_correcao_desfecho'
+             and prosrc like '%releia antes de corrigir%'
+             and prosrc like '%ÓBITO%'
+             and prosrc like '%cancele a conta primeiro%'
+             and prosrc like '%Nada foi registrado%') = 1
+  union all
+  select 'o gatilho continua ligado na trilha',
+         exists (select 1 from pg_trigger where tgname = 'trg_at_corrige_desfecho')
+  union all
+  select 'a trilha segue imutável (sem update/delete)',
+         not exists (select 1 from pg_policies
+                      where tablename = 'at_desfecho_correcoes' and cmd in ('UPDATE', 'DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-correcao-desfecho-corrida.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 103/114 — migracao-cirurgia-segura-registro.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- CIRURGIA SEGURA VIRA REGISTRO, E NÃO UM BOOLEANO
+--
+-- 🔴 O QUE ESTÁ ERRADO HOJE
+--
+-- `cc_cirurgias` tem `chk_sign_in`, `chk_time_out` e `chk_sign_out` —
+-- três BOOLEANOS. A tela marca os 7 itens do Sign In, a circulante clica
+-- "Concluir", e o que vai para o banco é `true`. Os itens marcados vivem em
+-- estado local do React e são DESCARTADOS ao fechar o modal.
+--
+-- A RDC 36/2013 e o Protocolo de Cirurgia Segura (OMS / Portaria 1.377/2013)
+-- exigem o REGISTRO da verificação, não a verificação. Numa visita do
+-- ONA ou da vigilância, o hospital tem um `true` e nenhuma prova de que a
+-- conferência aconteceu em voz alta, de quem a conduziu, nem de que item
+-- nenhum ficou pendente. E no caso que mais importa — houve divergência no
+-- Time Out, a equipe resolveu — não há onde isso conste, então o evento não
+-- existe para a análise do Núcleo de Segurança do Paciente.
+--
+-- 🔴 O SEGUNDO BURACO: PULAR NÃO DEIXA RASTRO.
+-- A tela pergunta "o Sign In ainda não foi concluído. Entrar em sala mesmo
+-- assim?" e quem clica OK segue adiante. Não há motivo, não há justificativa,
+-- não há coluna. No mês seguinte o único vestígio é a adesão caindo de 100%
+-- para 94% — sem saber em qual cirurgia, por decisão de quem, nem por quê.
+-- É exatamente o que a análise de causa raiz de um evento sentinela procura.
+--
+-- 💡 A SAÍDA: uma trilha append-only que registra as DUAS coisas. Conferência
+-- feita e pulo justificado são linhas da mesma tabela, com `tipo`. Assim a
+-- adesão deixa de ser um percentual sem denominador explicável: cada ponto
+-- que falta tem nome, hora e motivo.
+--
+-- 🔒 RECUSAS, TODAS NO BANCO (tela não é defesa — um PATCH pela API passa
+-- por cima dela):
+--   1. cirurgia que não existe;
+--   2. cirurgia CANCELADA — não se confere segurança de ato que não houve;
+--   3. item não confirmado SEM divergência descrita — é o coração da coisa:
+--      checklist incompleto e calado é pior que checklist não feito, porque
+--      parece feito;
+--   4. CONTAGEM DIVERGENTE sem divergência descrita (compressa, instrumental
+--      ou agulha que entrou e não saiu) — corpo estranho retido é *never
+--      event*, e a contagem existe para a diferença aparecer como NÚMERO;
+--   5. Sign Out sem a contagem de compressas — a que sempre se conta;
+--   6. pulo sem motivo, ou com motivo curto demais para explicar algo.
+--
+-- O gatilho aplica o `chk_*` correspondente DENTRO do mesmo INSERT: ou a
+-- trilha e o selo mudam juntos, ou nada muda. Duas escritas pela tela
+-- deixariam a porta aberta para gravar a trilha e falhar o selo.
+--
+-- ADITIVA: nenhuma coluna existente muda, nada é apagado.
+-- IDEMPOTENTE: pode rodar duas vezes.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_cc_aplica_checklist on public.cc_checklist;
+--   drop function if exists public.cc_aplica_checklist();
+--   drop table if exists public.cc_checklist;
+--   alter table public.cc_cirurgias
+--     drop column if exists sitio_cirurgico,
+--     drop column if exists lateralidade,
+--     drop column if exists consentimento_em;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. SÍTIO E LATERALIDADE — o dado que o checklist mandava conferir
+--    e que o sistema não guardava
+--
+-- O item 1 do Sign In é "Paciente confirmou identidade, SÍTIO CIRÚRGICO,
+-- procedimento e consentimento", e o item 2 é "Sítio cirúrgico demarcado".
+-- A equipe confirmava contra o quê? Numa artroplastia de joelho, "Joelho D"
+-- ou "Joelho E" só existia se alguém escrevesse no campo `observacao`, que é
+-- texto livre e opcional. Cirurgia em lado errado é o evento que a Meta 4
+-- existe para impedir.
+--
+-- `lateralidade` tem domínio fechado de propósito: "D", "dto", "direito" e
+-- "DIREITA" na mesma coluna tornariam o campo inútil para conferência.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_cirurgias
+  add column if not exists sitio_cirurgico   text,
+  add column if not exists lateralidade      text,
+  add column if not exists consentimento_em  timestamptz;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_cir_lateralidade_ck') then
+    alter table public.cc_cirurgias
+      add constraint cc_cir_lateralidade_ck
+      check (lateralidade is null or lateralidade in ('direito', 'esquerdo', 'bilateral', 'nao_se_aplica'));
+  end if;
+end $$;
+
+comment on column public.cc_cirurgias.lateralidade is
+  'direito | esquerdo | bilateral | nao_se_aplica. Domínio fechado: é campo de conferência do Sign In.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. A TRILHA
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.cc_checklist (
+  id bigserial primary key,
+  cirurgia_id bigint not null,
+
+  -- 'conferencia' = a equipe passou o checklist.
+  -- 'pulo'        = seguiu sem passar, e disse por quê.
+  tipo text not null default 'conferencia',
+  fase text not null,
+
+  -- Os itens COMO FORAM LIDOS, não só quantos. O catálogo muda com o tempo
+  -- (item novo, redação diferente), e um "6 de 7" guardado sozinho não diz
+  -- QUAL faltou. Aqui fica o texto do item e se foi confirmado.
+  itens jsonb not null default '[]'::jsonb,
+  itens_total int not null default 0,
+  itens_confirmados int not null default 0,
+
+  -- O que não bateu e como se resolveu. Obrigatório quando falta item ou
+  -- quando a contagem diverge — ver as travas abaixo.
+  divergencia text,
+
+  -- CONTAGEM (Sign Out). Números, não caixinha.
+  -- "A contagem estava correta" marcado por alguém sem identificação tem
+  -- valor probatório zero. A prática é contagem inicial e final, com os dois
+  -- números registrados, para que a diferença apareça sozinha.
+  compressas_inicial    int, compressas_final    int,
+  instrumentais_inicial int, instrumentais_final int,
+  agulhas_inicial       int, agulhas_final       int,
+
+  -- Quem conduziu. `assinatura` é carimbada no ato (nome + conselho +
+  -- registro), como o resto do PEP faz: o cadastro muda, o registro não.
+  usuario text,
+  assinatura text,
+  criado_em timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_chk_fase_ck') then
+    alter table public.cc_checklist add constraint cc_chk_fase_ck
+      check (fase in ('sign_in', 'time_out', 'sign_out'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_chk_tipo_ck') then
+    alter table public.cc_checklist add constraint cc_chk_tipo_ck
+      check (tipo in ('conferencia', 'pulo'));
+  end if;
+  -- Pulo exige motivo que explique algo. "erro" não explica nada a quem ler
+  -- isto numa análise de causa raiz — que é exatamente quando se lê.
+  if not exists (select 1 from pg_constraint where conname = 'cc_chk_pulo_motivo_ck') then
+    alter table public.cc_checklist add constraint cc_chk_pulo_motivo_ck
+      check (tipo <> 'pulo' or length(btrim(coalesce(divergencia, ''))) >= 15);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_chk_contados_ck') then
+    alter table public.cc_checklist add constraint cc_chk_contados_ck
+      check (itens_confirmados >= 0 and itens_confirmados <= itens_total);
+  end if;
+end $$;
+
+create index if not exists cc_checklist_cirurgia_idx on public.cc_checklist (cirurgia_id, criado_em desc);
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. O GATILHO — aplica o selo e recusa o que não pode
+-- ───────────────────────────────────────────────────────────
+create or replace function public.cc_aplica_checklist()
+returns trigger
+language plpgsql
+set search_path = public
+as $cc_chk$
+declare
+  cir   public.cc_cirurgias%rowtype;
+  campo text;
+  divergiu boolean;
+begin
+  -- `for update`: a conferência abaixo compara contra o estado da cirurgia,
+  -- e sem o lock duas gravações simultâneas leriam o valor velho. Foi
+  -- exatamente esse o defeito corrigido em `at_desfecho_correcoes` — lá o
+  -- PGlite não mostrou, porque PGlite tem uma conexão só.
+  select * into cir from public.cc_cirurgias where id = new.cirurgia_id for update;
+  if not found then
+    raise exception 'Cirurgia % não existe.', new.cirurgia_id;
+  end if;
+
+  if cir.status = 'cancelada' then
+    raise exception
+      'Esta cirurgia está CANCELADA. Não se registra conferência de segurança de um ato que não aconteceu.';
+  end if;
+
+  divergiu := (new.compressas_inicial    is distinct from new.compressas_final)
+           or (new.instrumentais_inicial is distinct from new.instrumentais_final)
+           or (new.agulhas_inicial       is distinct from new.agulhas_final);
+
+  if new.tipo = 'conferencia' then
+    -- (3) item não confirmado exige dizer o que houve
+    if new.itens_confirmados < new.itens_total
+       and length(btrim(coalesce(new.divergencia, ''))) < 15 then
+      raise exception
+        'Faltou confirmar % de % itens do %. Descreva o que não foi confirmado e como a equipe resolveu — checklist incompleto e calado parece completo para quem ler depois.',
+        new.itens_total - new.itens_confirmados, new.itens_total, new.fase;
+    end if;
+
+    if new.fase = 'sign_out' then
+      -- (5) a contagem de compressas é a que sempre se faz
+      if new.compressas_inicial is null or new.compressas_final is null then
+        raise exception
+          'O Sign Out exige a contagem de compressas (inicial e final). Corpo estranho retido é never event, e a contagem existe para a diferença aparecer como número.';
+      end if;
+      -- (4) contagem divergente sem explicação
+      if divergiu and length(btrim(coalesce(new.divergencia, ''))) < 15 then
+        raise exception
+          'A contagem NÃO fecha (compressas %/%, instrumentais %/%, agulhas %/%). Isto não se registra como conferência normal: descreva o que foi feito — radiografia, nova busca, o que for.',
+          new.compressas_inicial, new.compressas_final,
+          new.instrumentais_inicial, new.instrumentais_final,
+          new.agulhas_inicial, new.agulhas_final;
+      end if;
+    end if;
+  end if;
+
+  -- O selo só é aceso por CONFERÊNCIA. Pulo registra o pulo e deixa o selo
+  -- apagado — senão o indicador de adesão contaria o pulo como adesão.
+  if new.tipo = 'conferencia' then
+    campo := case new.fase
+               when 'sign_in'  then 'chk_sign_in'
+               when 'time_out' then 'chk_time_out'
+               when 'sign_out' then 'chk_sign_out'
+             end;
+    execute format('update public.cc_cirurgias set %I = true, updated_at = now() where id = $1', campo)
+      using new.cirurgia_id;
+
+    -- 🔴 O "204 MENTIROSO" TAMBÉM EXISTE AQUI. Se a RLS recusar o UPDATE, ele
+    -- altera ZERO linha sem erro nenhum — e a trilha registraria uma
+    -- conferência cujo selo nunca acendeu. Confere e derruba tudo.
+    if not found then
+      raise exception
+        'Não consegui marcar o checklist na cirurgia % — seu perfil não edita o Bloco. Nada foi registrado.',
+        new.cirurgia_id;
+    end if;
+  end if;
+
+  return new;
+end $cc_chk$;
+
+drop trigger if exists trg_cc_aplica_checklist on public.cc_checklist;
+create trigger trg_cc_aplica_checklist
+  before insert on public.cc_checklist
+  for each row execute function public.cc_aplica_checklist();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. QUEM PODE
+--
+-- Lê quem lê o Bloco; grava quem EDITA o Bloco. Sem UPDATE e sem DELETE: a
+-- trilha é imutável, e conferência refeita é linha nova.
+--
+-- Os nomes seguem a convenção do `gerar-rls.mjs`, para o gerador SUBSTITUIR
+-- estas políticas em vez de criar um segundo conjunto ao lado — a lição que
+-- custou uma migração de correção em `at_desfecho_correcoes`.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_checklist enable row level security;
+
+drop policy if exists cc_checklist_leitura on public.cc_checklist;
+create policy cc_checklist_leitura on public.cc_checklist
+  for select to authenticated
+  using (public.pode_ver_algum('bloco'));
+
+drop policy if exists cc_checklist_ins on public.cc_checklist;
+create policy cc_checklist_ins on public.cc_checklist
+  for insert to authenticated
+  with check (public.my_role() in ('adm_master', 'adm_silver'));
+
+drop policy if exists cc_checklist_mod_ins on public.cc_checklist;
+create policy cc_checklist_mod_ins on public.cc_checklist
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('bloco'));
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-segura-registro.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela cc_checklist existe' as item,
+         to_regclass('public.cc_checklist') is not null as ok
+  union all
+  select 'coluna cc_checklist.' || c,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_checklist' and column_name = c)
+    from unnest(array['cirurgia_id','tipo','fase','itens','itens_total','itens_confirmados',
+                      'divergencia','compressas_inicial','compressas_final','usuario','assinatura','criado_em']) c
+  union all
+  select 'coluna cc_cirurgias.' || c,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_cirurgias' and column_name = c)
+    from unnest(array['sitio_cirurgico','lateralidade','consentimento_em']) c
+  union all
+  select 'trava ' || k,
+         exists (select 1 from pg_constraint where conname = k)
+    from unnest(array['cc_chk_fase_ck','cc_chk_tipo_ck','cc_chk_pulo_motivo_ck',
+                      'cc_chk_contados_ck','cc_cir_lateralidade_ck']) k
+  union all
+  select 'gatilho que aplica o selo', exists (select 1 from pg_trigger where tgname = 'trg_cc_aplica_checklist')
+  union all
+  select 'a leitura da cirurgia trava a linha (for update)',
+         exists (select 1 from pg_proc where proname = 'cc_aplica_checklist'
+                   and prosrc ~* 'where id = new\.cirurgia_id for update')
+  union all
+  select 'política ' || p,
+         exists (select 1 from pg_policies where tablename = 'cc_checklist' and policyname = p)
+    from unnest(array['cc_checklist_leitura','cc_checklist_ins','cc_checklist_mod_ins']) p
+  union all
+  select 'trilha é imutável (sem update/delete)',
+         not exists (select 1 from pg_policies where tablename = 'cc_checklist' and cmd in ('UPDATE', 'DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-cirurgia-segura-registro.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 104/114 — migracao-cirurgia-paciente-equipe-codigo.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A CIRURGIA PASSA A TER PACIENTE, EQUIPE E CÓDIGO
+--
+-- As três coisas entram juntas porque são a MESMA CHAVE: faturar uma
+-- cirurgia exige paciente identificado E código de procedimento E equipe
+-- com CBO. Faltando qualquer uma, a conta não sai — e fazer em três
+-- migrações separadas só multiplicaria a aplicação manual no painel.
+--
+-- 🔴 1. A CIRURGIA PODE NÃO TER PACIENTE NENHUM.
+-- `prontuario` é texto solto, sem FK. `migracao-atendimento-fk.sql` diz com
+-- todas as letras que "`leitos`, `cc_cirurgias`, `scih_casos`, `pep_*` e
+-- `enf_*` guardam o mesmo número como texto solto". A tela já passou a
+-- exigir o campo (PR anterior), mas nada liga o número a um cadastro: dois
+-- pacientes com as mesmas iniciais no mesmo dia são indistinguíveis, e um
+-- número digitado errado aponta para o vazio. Identificação correta é a
+-- Meta 1 da OMS, e é o pressuposto de todas as outras — um Sign In que
+-- "confirma identidade" contra uma linha órfã não confirma nada.
+--
+-- 🔴 2. O PROCEDIMENTO É TEXTO LIVRE.
+-- `procedimento text not null`, preenchido num input com placeholder
+-- "Ex.: Colecistectomia videolaparoscópica". Cirurgia é o procedimento de
+-- maior valor da tabela: sem código SIGTAP não há AIH, sem TUSS não há guia
+-- TISS. Hoje a cirurgia acontece no Bloco e o faturista redigita tudo do
+-- zero a partir do papel — que é exatamente onde `montar-conta.js` diz que
+-- "nasce o código trocado, a diária esquecida e a conta que sai menor do
+-- que o atendimento foi".
+--
+-- 🔴 3. A EQUIPE É UM SOBRENOME.
+-- `cirurgiao text, anestesista text` — e `anestesista` nunca teve um único
+-- input no sistema (coluna morta desde o schema). Isso impede três coisas:
+--   • FATURAMENTO: `at_conta_itens` já tem `executante` E `executante_cbo`,
+--     e `src/acesso/cbo.js` avisa que "CBO errado causa rejeição no
+--     SISAIH01/BPA — e rejeição não é glosa, derruba o registro inteiro".
+--     Na guia TISS cada membro entra com conselho e GRAU DE PARTICIPAÇÃO,
+--     que é o que define o percentual pago.
+--   • RASTREABILIDADE: "Silva" não identifica profissional nenhum.
+--   • ESCALA: "produtividade por cirurgião" agrupa por digitação — "Silva",
+--     "silva" e "Dr. Silva" viram três cirurgiões no painel da direção.
+--
+-- E mais duas, pequenas, que vêm junto porque são da mesma linha:
+--   4. CARÁTER (eletiva/urgência/emergência) — exigido na AIH, e é o
+--      separador de quase todo indicador do bloco: taxa de cancelamento de
+--      ELETIVA é indicador de gestão; de urgência, não é comparável.
+--   5. `cancelado_em` / `cancelado_por` — hoje só existe o motivo. Cirurgia
+--      CANCELADA na véspera e cirurgia SUSPENSA com o paciente já em jejum
+--      são indicadores diferentes, com donos diferentes, e eram a mesma
+--      linha. Sem autor, a reunião de bloco vira "quem cancelou isso?".
+--
+-- ADITIVA. IDEMPOTENTE.
+--
+-- COMO DESFAZER:
+--   alter table public.cc_cirurgias
+--     drop constraint if exists cc_cirurgias_paciente_fk,
+--     drop column if exists procedimento_cod, drop column if exists carater_cod,
+--     drop column if exists cancelado_em,     drop column if exists cancelado_por;
+--   drop table if exists public.cc_equipe;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. COLUNAS NOVAS EM cc_cirurgias
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_cirurgias
+  add column if not exists procedimento_cod text,
+  add column if not exists carater_cod      text,
+  add column if not exists cancelado_em     timestamptz,
+  add column if not exists cancelado_por    text;
+
+comment on column public.cc_cirurgias.procedimento_cod is
+  'Código do catálogo (at_procedimentos / SIGTAP). `procedimento` segue sendo o nome legível.';
+comment on column public.cc_cirurgias.carater_cod is
+  'Domínio `carater` de at_dominios. Exigido na AIH e separador dos indicadores do bloco.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. O PACIENTE — backfill e trava
+--
+-- Mesmo padrão de `migracao-atendimento-fk.sql`: primeiro adota os
+-- prontuários órfãos em `pacientes` (para a FK não ser recusada por dado
+-- antigo), depois trava.
+--
+-- ⚠️ Fica NULLABLE de propósito. Linha antiga sem prontuário existe, e
+-- `not null` aqui recusaria a migração inteira por causa dela — a tela já
+-- passou a exigir o campo no que nasce de hoje em diante. Transformar as
+-- antigas é decisão de quem conhece os casos, não de uma migração.
+--
+-- Sem `on update cascade`, pela mesma razão que a FK do atendimento não
+-- tem: trocar o número do prontuário arrastaria um histórico partido por
+-- seis tabelas que guardam o mesmo número como texto.
+-- ───────────────────────────────────────────────────────────
+insert into public.pacientes (prontuario, iniciais, origem_cadastro, usuario, updated_at)
+select distinct on (c.prontuario)
+       c.prontuario,
+       coalesce(nullif(btrim(c.iniciais), ''), '?'),
+       'backfill',
+       'migracao-cirurgia-fk',
+       now()
+  from public.cc_cirurgias c
+ where c.prontuario is not null
+   and btrim(c.prontuario) <> ''
+   and not exists (select 1 from public.pacientes p where p.prontuario = c.prontuario)
+ order by c.prontuario, c.data desc
+on conflict (prontuario) do nothing;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'cc_cirurgias_paciente_fk'
+       and conrelid = 'public.cc_cirurgias'::regclass
+  ) then
+    alter table public.cc_cirurgias
+      add constraint cc_cirurgias_paciente_fk
+      foreign key (prontuario) references public.pacientes (prontuario);
+  end if;
+exception when others then
+  raise notice 'ATENCAO: nao foi possivel criar a FK de cc_cirurgias (%). Veja a conferencia no fim.', sqlerrm;
+end $$;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. A EQUIPE CIRÚRGICA
+--
+-- Uma linha por profissional, com o PAPEL. O nome, o conselho e o CBO são
+-- CARIMBADOS no ato, e não lidos de `profiles` na hora de faturar: o
+-- cadastro muda (muda de CBO, renova conselho, sai do hospital) e o
+-- registro de quem operou aquele paciente naquele dia não pode mudar junto.
+-- É o mesmo princípio do `executante_cbo` em `at_conta_itens`.
+--
+-- `profissional_username` fica como referência FRACA (sem FK): serve para
+-- ligar ao cadastro quando ele existe, e não impede registrar o cirurgião
+-- externo que opera no hospital sem ter login.
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.cc_equipe (
+  id bigserial primary key,
+  cirurgia_id bigint not null,
+  papel text not null,
+  profissional_username text,
+  nome text not null,
+  conselho text, registro_conselho text, uf_conselho text,
+  cbo text,
+  -- Grau de participação da TISS: é ele que define o percentual pago a cada
+  -- membro. Guardado separado do papel porque o papel é clínico ("quem fez
+  -- o quê") e o grau é contratual ("quanto recebe por isso").
+  grau_participacao text,
+  usuario text, criado_em timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_equipe_papel_ck') then
+    alter table public.cc_equipe add constraint cc_equipe_papel_ck
+      check (papel in ('cirurgiao', 'primeiro_auxiliar', 'segundo_auxiliar',
+                       'instrumentador', 'circulante', 'anestesista', 'perfusionista'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_equipe_nome_ck') then
+    alter table public.cc_equipe add constraint cc_equipe_nome_ck
+      check (length(btrim(nome)) >= 2);
+  end if;
+  -- Um cirurgião principal por cirurgia. Dois significaria que ninguém é o
+  -- responsável, e é o responsável que responde pelo ato.
+  if not exists (select 1 from pg_class where relname = 'cc_equipe_um_cirurgiao_idx') then
+    create unique index cc_equipe_um_cirurgiao_idx
+      on public.cc_equipe (cirurgia_id) where papel = 'cirurgiao';
+  end if;
+end $$;
+
+create index if not exists cc_equipe_cirurgia_idx on public.cc_equipe (cirurgia_id);
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. MIGRAR O QUE JÁ EXISTE
+--
+-- `cc_cirurgias.cirurgiao` é texto livre e vira a primeira linha da equipe.
+-- Não se inventa conselho nem CBO: o que não se sabe fica NULO, e a tela
+-- mostra a lacuna. Preencher com palpite aqui seria pior que a ausência —
+-- CBO errado derruba o registro inteiro no processamento.
+-- ───────────────────────────────────────────────────────────
+insert into public.cc_equipe (cirurgia_id, papel, nome, usuario)
+select c.id, 'cirurgiao', btrim(c.cirurgiao), 'migracao-equipe'
+  from public.cc_cirurgias c
+ where c.cirurgiao is not null
+   and length(btrim(c.cirurgiao)) >= 2
+   and not exists (select 1 from public.cc_equipe e
+                    where e.cirurgia_id = c.id and e.papel = 'cirurgiao');
+
+
+-- ───────────────────────────────────────────────────────────
+-- 5. QUEM PODE
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_equipe enable row level security;
+
+drop policy if exists cc_equipe_leitura on public.cc_equipe;
+create policy cc_equipe_leitura on public.cc_equipe
+  for select to authenticated
+  using (public.pode_ver_algum('bloco'));
+
+drop policy if exists cc_equipe_ins on public.cc_equipe;
+create policy cc_equipe_ins on public.cc_equipe
+  for insert to authenticated
+  with check (public.my_role() in ('adm_master', 'adm_silver'));
+
+drop policy if exists cc_equipe_upd on public.cc_equipe;
+create policy cc_equipe_upd on public.cc_equipe
+  for update to authenticated
+  using (public.my_role() in ('adm_master', 'adm_silver'))
+  with check (public.my_role() in ('adm_master', 'adm_silver'));
+
+drop policy if exists cc_equipe_del on public.cc_equipe;
+create policy cc_equipe_del on public.cc_equipe
+  for delete to authenticated
+  using (public.my_role() in ('adm_master', 'adm_silver'));
+
+drop policy if exists cc_equipe_mod_ins on public.cc_equipe;
+create policy cc_equipe_mod_ins on public.cc_equipe
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('bloco'));
+
+drop policy if exists cc_equipe_mod_upd on public.cc_equipe;
+create policy cc_equipe_mod_upd on public.cc_equipe
+  as restrictive for update to authenticated
+  using (public.pode_editar_algum('bloco'))
+  with check (public.pode_editar_algum('bloco'));
+
+drop policy if exists cc_equipe_mod_del on public.cc_equipe;
+create policy cc_equipe_mod_del on public.cc_equipe
+  as restrictive for delete to authenticated
+  using (public.pode_editar_algum('bloco'));
+
+-- ⚠️ A EQUIPE É CORRIGÍVEL (tem UPDATE e DELETE), ao contrário da trilha de
+-- cirurgia segura. E é diferente de propósito: a equipe é cadastro do ato,
+-- não registro de conferência. Trocar o auxiliar que entrou na sala é
+-- correção administrativa normal, e exigir linha nova para isso encheria a
+-- conta de membros fantasma. Quem conferiu segurança é append-only
+-- (`cc_checklist`); quem operou é editável até a conta fechar.
+
+
+-- ───────────────────────────────────────────────────────────
+-- 6. O CARÁTER, no domínio que o Atendimento já usa
+--
+-- Reaproveita `at_dominios` em vez de criar lista nova: o hospital já
+-- configura caráter ali para o atendimento, e duas listas divergiriam —
+-- que é exatamente o defeito da taxonomia duplicada que já fez seis grupos
+-- sumirem do menu.
+-- ───────────────────────────────────────────────────────────
+-- ⚠️ `where not exists` e NÃO `on conflict`: `at_dominios` não tem índice
+-- único em (dominio, codigo) — só um índice comum de listagem. Com
+-- `on conflict do nothing` nada conflitaria, e rodar a migração duas vezes
+-- criaria caráter duplicado na lista do hospital.
+insert into public.at_dominios (dominio, codigo, nome, ordem, ativo, usuario)
+select v.codigo_dominio, v.codigo, v.nome, v.ordem, true, 'migracao-cirurgia-carater'
+  from (values ('carater', 'eletivo',    'Eletivo',    1),
+               ('carater', 'urgencia',   'Urgência',   2),
+               ('carater', 'emergencia', 'Emergência', 3))
+       as v(codigo_dominio, codigo, nome, ordem)
+ where not exists (select 1 from public.at_dominios d
+                    where d.dominio = v.codigo_dominio and d.codigo = v.codigo);
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-paciente-equipe-codigo.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'coluna cc_cirurgias.' || c as item,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_cirurgias' and column_name = c) as ok
+    from unnest(array['procedimento_cod','carater_cod','cancelado_em','cancelado_por']) c
+  union all
+  select '🔴 FK cirurgia → paciente',
+         exists (select 1 from pg_constraint where conname = 'cc_cirurgias_paciente_fk')
+  union all
+  select 'nenhuma cirurgia com prontuário órfão',
+         not exists (select 1 from public.cc_cirurgias c
+                      where c.prontuario is not null and btrim(c.prontuario) <> ''
+                        and not exists (select 1 from public.pacientes p where p.prontuario = c.prontuario))
+  union all
+  select 'tabela cc_equipe existe', to_regclass('public.cc_equipe') is not null
+  union all
+  select 'coluna cc_equipe.' || c,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_equipe' and column_name = c)
+    from unnest(array['cirurgia_id','papel','profissional_username','nome','conselho',
+                      'registro_conselho','cbo','grau_participacao']) c
+  union all
+  select 'trava ' || k, exists (select 1 from pg_constraint where conname = k)
+    from unnest(array['cc_equipe_papel_ck','cc_equipe_nome_ck']) k
+  union all
+  select 'só um cirurgião principal por cirurgia',
+         exists (select 1 from pg_class where relname = 'cc_equipe_um_cirurgiao_idx')
+  union all
+  select 'política ' || p,
+         exists (select 1 from pg_policies where tablename = 'cc_equipe' and policyname = p)
+    from unnest(array['cc_equipe_leitura','cc_equipe_ins','cc_equipe_upd','cc_equipe_del',
+                      'cc_equipe_mod_ins','cc_equipe_mod_upd','cc_equipe_mod_del']) p
+  union all
+  select 'caráter no domínio ' || d,
+         exists (select 1 from public.at_dominios where dominio = 'carater' and codigo = d)
+    from unnest(array['eletivo','urgencia','emergencia']) d
+  union all
+  select 'cirurgiões antigos viraram linha de equipe',
+         not exists (select 1 from public.cc_cirurgias c
+                      where c.cirurgiao is not null and length(btrim(c.cirurgiao)) >= 2
+                        and not exists (select 1 from public.cc_equipe e
+                                         where e.cirurgia_id = c.id and e.papel = 'cirurgiao'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-cirurgia-paciente-equipe-codigo.sql')
+) x;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 105/114 — migracao-cirurgia-elo-atendimento.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A CIRURGIA PASSA A SABER DE QUE ATENDIMENTO ELA É
+--
+-- 🔴 `cc_cirurgias` É A ÚNICA TABELA CLÍNICA SEM ELO COM O EPISÓDIO.
+--
+--   leitos.ps_atendimento_id          (migracao-ps-origem-elo)
+--   mat_episodios.ps_atendimento_id   (maternidade-fase0)
+--   pep_episodios.ps_atendimento_id   (pep-fase1)
+--   cc_cirurgias                      — nada
+--
+-- Enquanto isso não existe, a conta da cirurgia só pode ser montada
+-- ADIVINHANDO por prontuário + data. É exatamente o casamento que
+-- `escolherInternacao` já faz para o leito e que o próprio código lamenta:
+-- "o vínculo é por prontuário+período (a saída não guarda o atendimento),
+-- por isso a tela mostra a fonte". Para uma cirurgia — o procedimento de
+-- maior valor da conta — adivinhar o episódio é pior: a mesma pessoa pode
+-- ter dois atendimentos no mesmo dia (consulta de manhã, urgência à noite),
+-- e o palpite poria o porte cirúrgico na conta errada.
+--
+-- 💡 O ELO EXPLÍCITO. `ps_atendimento_id` nullable, com FK. Nullable porque
+-- cirurgia agendada com semanas de antecedência nasce ANTES de o episódio
+-- existir — o elo se faz quando o paciente chega.
+--
+-- ⚠️ O BACKFILL SÓ LIGA O QUE NÃO TEM DÚVIDA.
+-- Liga a cirurgia ao atendimento quando existe EXATAMENTE UM atendimento
+-- daquele prontuário cuja janela cobre o dia da cirurgia. Havendo dois, não
+-- liga nenhum — e isso é deliberado: elo errado é pior que elo ausente,
+-- porque a conta sai para o episódio errado e ninguém percebe. A ausência a
+-- tela mostra; o erro, não.
+--
+-- É a lição de `migracao-atendimento-fk.sql` sobre backfill que DEDUZ dado:
+-- "migração que deduz dado não pode alimentar decisão que depende de dado
+-- confiável". Aqui o dado alimenta a conta, então o critério é a certeza.
+--
+-- ADITIVA. IDEMPOTENTE.
+--
+-- COMO DESFAZER:
+--   alter table public.cc_cirurgias
+--     drop constraint if exists cc_cirurgias_atendimento_fk,
+--     drop column if exists ps_atendimento_id;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+alter table public.cc_cirurgias
+  add column if not exists ps_atendimento_id bigint;
+
+comment on column public.cc_cirurgias.ps_atendimento_id is
+  'De que episódio esta cirurgia é. NULL = ainda não ligada (cirurgia agendada antes de o paciente chegar).';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'cc_cirurgias_atendimento_fk'
+       and conrelid = 'public.cc_cirurgias'::regclass
+  ) then
+    alter table public.cc_cirurgias
+      add constraint cc_cirurgias_atendimento_fk
+      foreign key (ps_atendimento_id) references public.ps_atendimentos (id);
+  end if;
+exception when others then
+  raise notice 'ATENCAO: nao foi possivel criar a FK do elo (%). Veja a conferencia no fim.', sqlerrm;
+end $$;
+
+create index if not exists cc_cirurgias_atendimento_idx
+  on public.cc_cirurgias (ps_atendimento_id) where ps_atendimento_id is not null;
+
+
+-- ───────────────────────────────────────────────────────────
+-- O BACKFILL DO QUE NÃO TEM DÚVIDA
+--
+-- A janela do atendimento vai da chegada ao desfecho; em aberto, vai até
+-- hoje. O dia da cirurgia precisa cair dentro dela.
+--
+-- ⚠️ O dia civil sai de `chegada_em`/`desfecho_em` pelo fuso de São Paulo e
+-- NÃO por corte de texto: em UTC, depois das 21h já é amanhã, e uma
+-- cirurgia da noite cairia fora da janela do próprio episódio. É a mesma
+-- correção do PR do dia civil, aqui no SQL.
+-- ───────────────────────────────────────────────────────────
+with candidatos as (
+  select c.id as cirurgia_id, a.id as atendimento_id
+    from public.cc_cirurgias c
+    join public.ps_atendimentos a
+      on a.prontuario = c.prontuario
+     and c.data >= (a.chegada_em at time zone 'America/Sao_Paulo')::date
+     and c.data <= coalesce((a.desfecho_em at time zone 'America/Sao_Paulo')::date,
+                            (now() at time zone 'America/Sao_Paulo')::date)
+     and coalesce(a.status, '') <> 'cancelado'
+   where c.ps_atendimento_id is null
+     and c.prontuario is not null
+),
+sem_duvida as (
+  select cirurgia_id, min(atendimento_id) as atendimento_id
+    from candidatos
+   group by cirurgia_id
+  having count(*) = 1          -- 🔴 dois candidatos → não liga nenhum
+)
+update public.cc_cirurgias c
+   set ps_atendimento_id = s.atendimento_id,
+       updated_at = now()
+  from sem_duvida s
+ where c.id = s.cirurgia_id;
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-elo-atendimento.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'coluna cc_cirurgias.ps_atendimento_id' as item,
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_cirurgias'
+                    and column_name = 'ps_atendimento_id') as ok
+  union all
+  select '🔴 FK cirurgia → atendimento',
+         exists (select 1 from pg_constraint where conname = 'cc_cirurgias_atendimento_fk')
+  union all
+  select 'índice do elo',
+         exists (select 1 from pg_class where relname = 'cc_cirurgias_atendimento_idx')
+  union all
+  -- Nenhum elo pode apontar para atendimento de OUTRO paciente. Se isto vier
+  -- ❌, o backfill casou errado e a conta sairia no episódio de outra pessoa.
+  select '🔴 nenhum elo aponta para outro paciente',
+         not exists (select 1 from public.cc_cirurgias c
+                      join public.ps_atendimentos a on a.id = c.ps_atendimento_id
+                     where a.prontuario is distinct from c.prontuario)
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-cirurgia-elo-atendimento.sql')
+) x;
+
+-- Quantas ficaram ligadas, e quantas seguem sem elo — não é erro, é o que
+-- a tela vai pedir para alguém resolver.
+select count(*) filter (where ps_atendimento_id is not null) as ligadas,
+       count(*) filter (where ps_atendimento_id is null)     as sem_elo,
+       count(*)                                              as total
+  from public.cc_cirurgias;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 106/114 — migracao-cirurgia-descricao.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A DESCRIÇÃO CIRÚRGICA — o documento que a lei nomeia e que não existia
+--
+-- 🔴 O QUE ESTÁ ERRADO HOJE
+--
+-- A CFM 1.638/2002 lista o conteúdo mínimo do prontuário e, para o paciente
+-- operado, nomeia três documentos: DESCRIÇÃO CIRÚRGICA, ficha anestésica e
+-- ficha de recuperação pós-anestésica. Nenhum dos três existe neste
+-- sistema. O que `cc_cirurgias` tem é `observacao text` — campo livre,
+-- opcional, único, sobrescrevível e sem autoria.
+--
+-- Então o ato de maior risco do hospital termina assim: o status vira
+-- `concluida`, o horário de fim é gravado, e o que foi FEITO não está em
+-- lugar nenhum. Quem atende o paciente depois não sabe a via de acesso, se
+-- houve intercorrência, quanto sangrou, se ficou dreno, se saiu peça para
+-- o anatomopatológico. O cirurgião que operou sabe; o prontuário, não.
+--
+-- 🔴 E O SEGUNDO BURACO, QUE É FINANCEIRO E CLÍNICO AO MESMO TEMPO:
+-- o procedimento REALIZADO pode não ser o agendado. Videolaparoscopia que
+-- converte para laparotomia é outro porte, outro código, outra conta — e o
+-- PR anterior (a cirurgia virando conta) fatura `cc_cirurgias.procedimento_cod`,
+-- que é o do AGENDAMENTO. Sem onde registrar a conversão, o sistema cobra o
+-- que foi marcado e não o que aconteceu, e ninguém percebe: a conta fecha,
+-- bate com o agendamento, e está errada.
+--
+-- 💡 A SAÍDA: um documento APPEND-ONLY por cirurgia, com o procedimento
+-- realizado em campo próprio.
+--
+-- ⚠️ CORREÇÃO É VERSÃO NOVA, NUNCA EDIÇÃO. É a mesma regra do resto do
+-- registro clínico deste sistema (evolução, trilha de cirurgia segura,
+-- correção de desfecho) e é a regra do CFM: prontuário não se rasura,
+-- corrige-se com anotação nova, datada e assinada. Por isso não há política
+-- de UPDATE nem de DELETE nesta tabela — a ausência é a trava.
+--
+-- 🔒 RECUSAS, TODAS NO BANCO (tela não é defesa — um POST pela API passa por
+-- cima dela):
+--   1. cirurgia que não existe;
+--   2. cirurgia CANCELADA — não se descreve ato que não houve;
+--   3. cirurgia que ainda não entrou em sala — descrever antes de operar é
+--      documento pré-datado, que é falsidade;
+--   4. narrativa curta demais para ser descrição de alguma coisa;
+--   5. SEGUNDA descrição sem ser correção — existe UMA descrição vigente, e
+--      as outras são retificações dela, com motivo;
+--   6. correção sem motivo, apontando para descrição de OUTRA cirurgia, ou
+--      para uma versão que já foi corrigida (isso ramificaria a cadeia e
+--      criariam-se duas "versões vigentes" ao mesmo tempo);
+--   7. conversão de via marcada sem dizer por quê — a taxa de conversão é
+--      indicador de bloco, e "convertida, motivo em branco" não ensina nada.
+--
+-- O gatilho CALCULA a versão (nunca confia na que vier da tela: dois
+-- navegadores mandariam a mesma) e carimba `descricao_em` em `cc_cirurgias`
+-- no MESMO insert — ou o documento e o selo entram juntos, ou nada entra.
+--
+-- ⚠️ `for update` na linha da cirurgia, pelo mesmo motivo do gatilho do
+-- checklist: sem o lock, duas gravações simultâneas leem a mesma "última
+-- versão" e gravam duas versão 2. O PGlite não mostra isso — tem uma
+-- conexão só.
+--
+-- ADITIVA: nenhuma coluna existente muda, nada é apagado.
+-- IDEMPOTENTE: pode rodar duas vezes.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_cc_aplica_descricao on public.cc_descricao;
+--   drop function if exists public.cc_aplica_descricao();
+--   drop table if exists public.cc_descricao;
+--   alter table public.cc_cirurgias drop column if exists descricao_em;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. O SELO NA CIRURGIA
+--
+-- Existe para o painel do dia poder perguntar "quais cirurgias de hoje
+-- terminaram e não têm descrição?" sem varrer a tabela de documentos de
+-- cada cartão. É derivado — o gatilho o mantém —, e isso é deliberado: o
+-- mesmo desenho do `chk_sign_in`, que a trilha acende.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_cirurgias
+  add column if not exists descricao_em timestamptz;
+
+comment on column public.cc_cirurgias.descricao_em is
+  'Quando a descrição cirúrgica foi registrada. Carimbado pelo gatilho de cc_descricao — não escrever à mão.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. O DOCUMENTO
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.cc_descricao (
+  id bigserial primary key,
+  cirurgia_id bigint not null,
+
+  -- A CADEIA DE VERSÕES. `versao` é calculada pelo gatilho; `corrige_id`
+  -- aponta para a versão que esta substitui. A vigente é a que ninguém
+  -- corrigiu depois.
+  versao int not null default 1,
+  corrige_id bigint,
+  motivo_correcao text,
+
+  -- O QUE FOI FEITO — e não o que foi marcado.
+  -- `procedimento_cod` aqui vence o do agendamento na hora de faturar: é
+  -- este que descreve o ato que aconteceu.
+  procedimento_realizado text not null,
+  procedimento_cod text,
+  via_acesso text,
+  conversao boolean not null default false,
+  conversao_motivo text,
+
+  -- A NARRATIVA. `descricao` é o corpo do documento; `achados` separa o que
+  -- se encontrou do que se fez, porque é o que o próximo médico procura.
+  achados text,
+  descricao text not null,
+  intercorrencias text,
+  cid_pos text,
+
+  -- O QUE SAIU E O QUE FICOU.
+  sangramento_ml int,
+  hemotransfusao boolean,
+  drenos text,
+
+  -- PEÇA CIRÚRGICA. Descrever a peça e não dizer se ela foi enviada é como
+  -- o sistema perde um anatomopatológico: todo mundo supõe que alguém levou.
+  -- A trava abaixo obriga a resposta — inclusive "não", que vira pendência
+  -- visível em vez de silêncio.
+  amostras text,
+  amostra_enviada boolean,
+
+  -- Quem assina. `assinatura` é carimbada no ato (nome + conselho +
+  -- registro), como o resto do PEP: o cadastro muda, o documento não.
+  usuario text,
+  assinatura text,
+  criado_em timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_cirurgia_fk') then
+    alter table public.cc_descricao
+      add constraint cc_desc_cirurgia_fk
+      foreign key (cirurgia_id) references public.cc_cirurgias (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_corrige_fk') then
+    alter table public.cc_descricao
+      add constraint cc_desc_corrige_fk
+      foreign key (corrige_id) references public.cc_descricao (id);
+  end if;
+
+  -- Narrativa de verdade. 40 caracteres é pouco para uma cirurgia e
+  -- suficiente para a frase mais curta que ainda informa algo
+  -- ("Colecistectomia videolaparoscópica sem intercorrências").
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_narrativa_ck') then
+    alter table public.cc_descricao add constraint cc_desc_narrativa_ck
+      check (length(btrim(descricao)) >= 40);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_correcao_motivo_ck') then
+    alter table public.cc_descricao add constraint cc_desc_correcao_motivo_ck
+      check (corrige_id is null or length(btrim(coalesce(motivo_correcao, ''))) >= 15);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_conversao_ck') then
+    alter table public.cc_descricao add constraint cc_desc_conversao_ck
+      check (not conversao or length(btrim(coalesce(conversao_motivo, ''))) >= 15);
+  end if;
+
+  -- Peça descrita exige resposta sobre o envio.
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_amostra_ck') then
+    alter table public.cc_descricao add constraint cc_desc_amostra_ck
+      check (btrim(coalesce(amostras, '')) = '' or amostra_enviada is not null);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_sangramento_ck') then
+    alter table public.cc_descricao add constraint cc_desc_sangramento_ck
+      check (sangramento_ml is null or sangramento_ml >= 0);
+  end if;
+
+  -- VIA DE ACESSO — domínio FECHADO, pela mesma razão da lateralidade: é a
+  -- via que define a taxa de conversão do bloco, e "VLP", "video", "lapa" e
+  -- "videolaparoscópica" na mesma coluna tornam o indicador impossível. O
+  -- detalhe anatômico vai na narrativa, que é prosa por natureza.
+  if not exists (select 1 from pg_constraint where conname = 'cc_desc_via_ck') then
+    alter table public.cc_descricao add constraint cc_desc_via_ck
+      check (via_acesso is null or via_acesso in
+        ('aberta', 'videolaparoscopica', 'robotica', 'endoscopica',
+         'percutanea', 'transvaginal', 'outra'));
+  end if;
+end $$;
+
+create index if not exists cc_descricao_cirurgia_idx
+  on public.cc_descricao (cirurgia_id, versao desc);
+
+-- Uma correção corrige UMA versão. O índice único é o que impede a cadeia
+-- de ramificar quando duas pessoas corrigem a mesma versão ao mesmo tempo —
+-- a conferência do gatilho roda sob lock, mas o índice é a trava que vale
+-- mesmo se alguém mexer no gatilho depois.
+create unique index if not exists cc_descricao_corrige_idx
+  on public.cc_descricao (corrige_id) where corrige_id is not null;
+
+comment on table public.cc_descricao is
+  'Descrição cirúrgica (CFM 1.638/2002). APPEND-ONLY: correção é versão nova com motivo, nunca edição.';
+comment on column public.cc_descricao.procedimento_cod is
+  'O código do que foi REALIZADO. Vence o do agendamento na montagem da conta.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. O GATILHO — calcula a versão, recusa o que não pode, acende o selo
+-- ───────────────────────────────────────────────────────────
+create or replace function public.cc_aplica_descricao()
+returns trigger
+language plpgsql
+set search_path = public
+as $cc_desc$
+declare
+  cir       public.cc_cirurgias%rowtype;
+  anterior  public.cc_descricao%rowtype;
+  vigente   bigint;
+  quantas   int;
+begin
+  select * into cir from public.cc_cirurgias where id = new.cirurgia_id for update;
+  if not found then
+    raise exception 'Cirurgia % não existe.', new.cirurgia_id;
+  end if;
+
+  if cir.status = 'cancelada' then
+    raise exception
+      'Esta cirurgia está CANCELADA. Não existe descrição cirúrgica de um ato que não aconteceu.';
+  end if;
+
+  -- O paciente entrou em sala? `entrada_sala_em` é a prova; o status é a
+  -- queda para o caso de alguém ter registrado o horário depois.
+  if cir.entrada_sala_em is null
+     and coalesce(cir.status, 'agendada') in ('agendada', 'checkin') then
+    raise exception
+      'Esta cirurgia ainda não entrou em sala. Descrição cirúrgica escrita antes do ato é documento pré-datado — registre a entrada em sala primeiro.';
+  end if;
+
+  select count(*) into quantas from public.cc_descricao where cirurgia_id = new.cirurgia_id;
+
+  if new.corrige_id is null then
+    -- (5) existe UMA descrição vigente
+    if quantas > 0 then
+      raise exception
+        'Esta cirurgia já tem descrição cirúrgica. O prontuário não se rasura: abra uma CORREÇÃO da versão vigente e diga o que estava errado.';
+    end if;
+    new.versao := 1;
+  else
+    select * into anterior from public.cc_descricao where id = new.corrige_id;
+    if not found then
+      raise exception 'A descrição % que esta correção deveria corrigir não existe.', new.corrige_id;
+    end if;
+    if anterior.cirurgia_id <> new.cirurgia_id then
+      raise exception
+        'Esta correção aponta para a descrição de OUTRA cirurgia (#%). Corrigir o documento do paciente errado é o pior desfecho possível desta tela.',
+        anterior.cirurgia_id;
+    end if;
+    -- (6) a cadeia não ramifica
+    select id into vigente from public.cc_descricao where corrige_id = new.corrige_id limit 1;
+    if vigente is not null then
+      raise exception
+        'A versão % já foi corrigida (pela descrição #%). Corrija a versão VIGENTE — duas correções da mesma versão deixariam o prontuário com dois documentos válidos.',
+        anterior.versao, vigente;
+    end if;
+    new.versao := anterior.versao + 1;
+  end if;
+
+  update public.cc_cirurgias
+     set descricao_em = coalesce(descricao_em, now()),
+         updated_at = now()
+   where id = new.cirurgia_id;
+
+  return new;
+end;
+$cc_desc$;
+
+drop trigger if exists trg_cc_aplica_descricao on public.cc_descricao;
+create trigger trg_cc_aplica_descricao
+  before insert on public.cc_descricao
+  for each row execute function public.cc_aplica_descricao();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. RLS — leitura pelo mapa, escrita do Bloco, SEM update nem delete
+--
+-- A ausência das políticas de UPDATE e DELETE é a trava do append-only, e é
+-- o mesmo desenho de `pep_evolucoes`, `cc_checklist` e `auditoria`. RLS
+-- ligada sem política para um comando NEGA aquele comando a todo mundo —
+-- inclusive a quem é adm_master pela API.
+--
+-- A política de SELECT definitiva é reescrita por `migracao-rls-leitura.sql`
+-- (que roda por último e cita esta tabela). A daqui é a de partida, para a
+-- tabela não nascer com leitura aberta entre uma migração e outra.
+--
+-- ⚠️ OS NOMES SEGUEM A CONVENÇÃO DO `gerar-rls.mjs` (`_leitura`, `_ins`,
+-- `_mod_ins`), para o gerador SUBSTITUIR estas políticas em vez de criar um
+-- segundo conjunto ao lado — política permissiva se SOMA (OR), então uma
+-- sobra destrancaria a leitura por cima da nova. É a lição que custou uma
+-- migração de correção em `at_desfecho_correcoes`, e o mesmo desenho do
+-- `cc_checklist`: permissiva por papel, restritiva por módulo.
+--
+-- ⚠️ `pode_ver_algum` é VARIADIC: os módulos vão como argumentos soltos,
+-- não como array. `pode_ver_algum(array['bloco','paciente'])` não resolve
+-- ("function does not exist") e derruba a migração — foi o primeiro erro
+-- que a prova em PGlite pegou neste arquivo.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_descricao enable row level security;
+
+drop policy if exists cc_descricao_leitura on public.cc_descricao;
+create policy cc_descricao_leitura on public.cc_descricao
+  for select to authenticated
+  using (public.pode_ver_algum('bloco', 'paciente'));
+
+drop policy if exists cc_descricao_ins on public.cc_descricao;
+create policy cc_descricao_ins on public.cc_descricao
+  for insert to authenticated
+  with check (public.my_role() in ('adm_master', 'adm_silver'));
+
+drop policy if exists cc_descricao_mod_ins on public.cc_descricao;
+create policy cc_descricao_mod_ins on public.cc_descricao
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('bloco'));
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-descricao.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela cc_descricao' as item,
+         exists (select 1 from information_schema.tables
+                  where table_schema = 'public' and table_name = 'cc_descricao') as ok
+  union all
+  select 'coluna cc_cirurgias.descricao_em',
+         exists (select 1 from information_schema.columns
+                  where table_schema = 'public' and table_name = 'cc_cirurgias'
+                    and column_name = 'descricao_em')
+  union all
+  select '🔴 gatilho que calcula a versão e acende o selo',
+         exists (select 1 from pg_trigger where tgname = 'trg_cc_aplica_descricao')
+  union all
+  select 'FK descrição → cirurgia',
+         exists (select 1 from pg_constraint where conname = 'cc_desc_cirurgia_fk')
+  union all
+  select '🔴 a cadeia de correção não ramifica (índice único)',
+         exists (select 1 from pg_class where relname = 'cc_descricao_corrige_idx')
+  union all
+  select 'trava: narrativa mínima',
+         exists (select 1 from pg_constraint where conname = 'cc_desc_narrativa_ck')
+  union all
+  select 'trava: correção com motivo',
+         exists (select 1 from pg_constraint where conname = 'cc_desc_correcao_motivo_ck')
+  union all
+  select 'trava: conversão com motivo',
+         exists (select 1 from pg_constraint where conname = 'cc_desc_conversao_ck')
+  union all
+  select 'trava: via de acesso em domínio fechado',
+         exists (select 1 from pg_constraint where conname = 'cc_desc_via_ck')
+  union all
+  select 'trava: peça descrita exige resposta sobre o envio',
+         exists (select 1 from pg_constraint where conname = 'cc_desc_amostra_ck')
+  union all
+  -- 🔴 APPEND-ONLY: se vier ✅ aqui com política de update ou delete, o
+  -- documento passou a ser editável e o prontuário deixou de ser registro.
+  select '🔴 append-only: NENHUMA política de update/delete',
+         not exists (select 1 from pg_policies
+                      where schemaname = 'public' and tablename = 'cc_descricao'
+                        and cmd in ('UPDATE', 'DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-cirurgia-descricao.sql')
+) x;
+
+-- Quantas cirurgias já terminaram sem descrição. Não é erro da migração: é
+-- o passivo que a tela passa a mostrar a partir de agora.
+select count(*) filter (where descricao_em is not null) as com_descricao,
+       count(*) filter (where descricao_em is null
+                          and status in ('em_cirurgia', 'recuperacao', 'concluida')) as operadas_sem_descricao,
+       count(*) as total
+  from public.cc_cirurgias;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 107/114 — migracao-cirurgia-anestesia-rpa.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A FICHA ANESTÉSICA E A ALTA DA RPA COM ESCORE
+--
+-- Fecha os dois documentos que faltavam. A CFM 1.638/2002 nomeia TRÊS para
+-- o paciente operado: descrição cirúrgica (já entregue, `cc_descricao`),
+-- FICHA ANESTÉSICA e FICHA DE RECUPERAÇÃO PÓS-ANESTÉSICA.
+--
+-- 🔴 BURACO 1: `cc_cirurgias.tipo_anestesia` existe desde o primeiro dia e
+-- tem ZERO usos na tela. Coluna sem input — ninguém nunca pôde preenchê-la,
+-- e ninguém percebeu, porque coluna vazia não dá erro. O ato anestésico, que
+-- é onde o paciente para de respirar sozinho, não tinha registro nenhum.
+--
+-- 🔴 BURACO 2, E É O PIOR: A ALTA DA RPA É UM BOTÃO.
+--
+--     marcar(c, { status: "concluida", rpa_saida_em: nowISO() })
+--
+-- Nenhum parâmetro, nenhum critério, nenhum registro. O paciente deixa a
+-- recuperação pós-anestésica — exatamente onde ele para de ser vigiado,
+-- onde acabam o monitor e a enfermagem 1:1 — porque alguém clicou. É nessa
+-- janela que acontecem depressão respiratória, obstrução de via aérea e
+-- hipotensão pós-raqui.
+--
+-- A CFM 2.174/2017 exige permanência em recuperação até consciência,
+-- ventilação e circulação estáveis, com alta por profissional habilitado —
+-- o que pressupõe critério REGISTRADO, não lembrado.
+--
+-- 💡 A SAÍDA: o escore de Aldrete (modificado, com oximetria no lugar da
+-- cor da pele), SERIADO, e um gatilho que RECUSA a saída da RPA sem escore
+-- que libere.
+--
+-- ⚠️ SERIADO, não uma foto: avalia-se na chegada e a cada 10–15 min. Por
+-- isso é tabela com muitas linhas por cirurgia, e não cinco colunas em
+-- `cc_cirurgias`. A CURVA é o que importa — um paciente que vai de 9 para 7
+-- é uma emergência que uma foto esconderia.
+--
+-- ⚠️ O ESCORE LIBERA, NÃO DÁ ALTA. O gatilho recusa a saída sem escore
+-- suficiente, mas nada neste arquivo dá alta sozinho ao atingir 9: isso
+-- tiraria do anestesista uma decisão que é dele por norma.
+--
+-- 🔒 RECUSAS:
+--   1. cirurgia que não existe / cancelada;
+--   2. ficha anestésica repetida sem ser correção (vale a mesma regra da
+--      descrição: existe UMA vigente, as outras são retificações);
+--   3. correção sem motivo, para outra cirurgia, ou de versão já corrigida;
+--   4. técnica anestésica fora do domínio;
+--   5. nota de Aldrete fora de 0–2;
+--   6. SAÍDA DA RPA sem escore que libere — soma mínima 9 E nenhum
+--      parâmetro zerado. 8 pontos com apneia somam igual a 8 pontos bem
+--      distribuídos, e os dois pacientes não têm nada em comum.
+--
+-- ⚠️ A ESCAPATÓRIA, E POR QUE ELA É NECESSÁRIA: a trava só vale quando o
+-- paciente ENTROU na RPA (`rpa_entrada_em` preenchido). Cirurgia sob
+-- anestesia local que vai direto para casa nunca passa pela recuperação —
+-- exigir Aldrete dela seria exigir um documento que não existe para ser
+-- escrito, e travaria a conclusão de uma cirurgia que terminou bem.
+--
+-- ADITIVA. IDEMPOTENTE.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_cc_exige_aldrete on public.cc_cirurgias;
+--   drop function if exists public.cc_exige_aldrete();
+--   drop trigger if exists trg_cc_aplica_anestesia on public.cc_anestesia;
+--   drop function if exists public.cc_aplica_anestesia();
+--   drop table if exists public.cc_rpa_aldrete;
+--   drop table if exists public.cc_anestesia;
+--   alter table public.cc_cirurgias drop column if exists anestesia_em;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. O SELO DA FICHA ANESTÉSICA
+--    Mesmo desenho de `descricao_em`: derivado, mantido pelo gatilho, para
+--    o painel do dia perguntar "quem operou hoje e não tem ficha?" sem
+--    varrer a tabela de documentos de cada cartão.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_cirurgias
+  add column if not exists anestesia_em timestamptz;
+
+comment on column public.cc_cirurgias.anestesia_em is
+  'Quando a ficha anestésica foi registrada. Carimbado pelo gatilho de cc_anestesia — não escrever à mão.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. A FICHA ANESTÉSICA
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.cc_anestesia (
+  id bigserial primary key,
+  cirurgia_id bigint not null,
+
+  versao int not null default 1,
+  corrige_id bigint,
+  motivo_correcao text,
+
+  -- LISTA, não campo: geral + peridural para analgesia pós-operatória é
+  -- combinação comum, e guardar só uma apagaria metade do ato.
+  tecnicas text[] not null default '{}',
+
+  -- O risco com que o paciente entrou. `asa_emergencia` é flag SEPARADA e
+  -- não um sexto valor: um ASA II operado de emergência continua ASA II, e
+  -- misturar impediria comparar eletiva com urgência.
+  asa text,
+  asa_emergencia boolean not null default false,
+
+  -- 🔴 VIA AÉREA DIFÍCIL É CAMPO PRÓPRIO, não uma frase nas intercorrências.
+  -- Intubação difícil não avisada é a emergência que mata na indução, e a
+  -- única forma de o próximo anestesista saber é estar escrito EM CAMPO QUE
+  -- VIRA ALERTA. Frase perdida em texto livre não vira alerta.
+  via_aerea text,
+  via_aerea_dificil boolean not null default false,
+  via_aerea_manejo text,
+
+  jejum_horas numeric(4,1),
+  intercorrencias text,
+
+  usuario text,
+  assinatura text,
+  criado_em timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_cirurgia_fk') then
+    alter table public.cc_anestesia add constraint cc_anest_cirurgia_fk
+      foreign key (cirurgia_id) references public.cc_cirurgias (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_corrige_fk') then
+    alter table public.cc_anestesia add constraint cc_anest_corrige_fk
+      foreign key (corrige_id) references public.cc_anestesia (id);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_tecnicas_ck') then
+    alter table public.cc_anestesia add constraint cc_anest_tecnicas_ck
+      -- ⚠️ `cardinality`, NÃO `array_length(x, 1)`: em array vazio o
+      -- segundo devolve NULL, e check constraint que avalia NULL PASSA.
+      -- A ficha sem técnica nenhuma entrava calada — pego pela prova em
+      -- PGlite, não por leitura do código.
+      check (cardinality(tecnicas) >= 1 and tecnicas <@ array[
+        'geral','raquidiana','peridural','bloqueio','sedacao','local']::text[]);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_asa_ck') then
+    alter table public.cc_anestesia add constraint cc_anest_asa_ck
+      check (asa is null or asa in ('I','II','III','IV','V','VI'));
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_via_ck') then
+    alter table public.cc_anestesia add constraint cc_anest_via_ck
+      check (via_aerea is null or via_aerea in (
+        'nenhuma','cateter_o2','mascara_laringea','intubacao','nasotraqueal','traqueostomia'));
+  end if;
+
+  -- Difícil sem dizer COMO foi resolvida é a pior combinação: o próximo
+  -- anestesista sabe que vai ser difícil e não sabe o que funcionou.
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_manejo_ck') then
+    alter table public.cc_anestesia add constraint cc_anest_manejo_ck
+      check (not via_aerea_dificil or length(btrim(coalesce(via_aerea_manejo, ''))) >= 15);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_correcao_motivo_ck') then
+    alter table public.cc_anestesia add constraint cc_anest_correcao_motivo_ck
+      check (corrige_id is null or length(btrim(coalesce(motivo_correcao, ''))) >= 15);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_anest_jejum_ck') then
+    alter table public.cc_anestesia add constraint cc_anest_jejum_ck
+      check (jejum_horas is null or (jejum_horas >= 0 and jejum_horas <= 240));
+  end if;
+end $$;
+
+create index if not exists cc_anestesia_cirurgia_idx on public.cc_anestesia (cirurgia_id, versao desc);
+create unique index if not exists cc_anestesia_corrige_idx
+  on public.cc_anestesia (corrige_id) where corrige_id is not null;
+
+comment on table public.cc_anestesia is
+  'Ficha anestésica (CFM 1.638/2002). APPEND-ONLY: correção é versão nova com motivo.';
+comment on column public.cc_anestesia.via_aerea_dificil is
+  'Campo próprio de propósito: vira alerta permanente do PACIENTE, não do episódio.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. A FICHA DE RECUPERAÇÃO — o Aldrete, seriado
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.cc_rpa_aldrete (
+  id bigserial primary key,
+  cirurgia_id bigint not null,
+
+  -- Cinco parâmetros, 0 a 2 cada (Aldrete & Kroulik modificado: oximetria
+  -- no lugar da cor da pele, porque oxímetro existe em toda RPA desde os
+  -- anos 90 e "paciente corado" é observação, não medida).
+  atividade   smallint not null,
+  respiracao  smallint not null,
+  circulacao  smallint not null,
+  consciencia smallint not null,
+  saturacao   smallint not null,
+
+  -- GERADO pelo banco. Soma calculada na tela divergiria da soma do
+  -- gatilho que libera a alta, e aí a tela diria 9 e o banco recusaria.
+  total smallint generated always as
+    (atividade + respiracao + circulacao + consciencia + saturacao) stored,
+
+  observacao text,
+  usuario text,
+  assinatura text,
+  criado_em timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_rpa_cirurgia_fk') then
+    alter table public.cc_rpa_aldrete add constraint cc_rpa_cirurgia_fk
+      foreign key (cirurgia_id) references public.cc_cirurgias (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_rpa_notas_ck') then
+    alter table public.cc_rpa_aldrete add constraint cc_rpa_notas_ck
+      check (atividade between 0 and 2 and respiracao between 0 and 2
+         and circulacao between 0 and 2 and consciencia between 0 and 2
+         and saturacao between 0 and 2);
+  end if;
+end $$;
+
+create index if not exists cc_rpa_aldrete_cirurgia_idx
+  on public.cc_rpa_aldrete (cirurgia_id, criado_em desc);
+
+comment on table public.cc_rpa_aldrete is
+  'Ficha de recuperação pós-anestésica (CFM 1.638/2002). Escore de Aldrete SERIADO — uma linha por avaliação.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. O GATILHO DA FICHA ANESTÉSICA — versão, selo e recusas
+-- ───────────────────────────────────────────────────────────
+create or replace function public.cc_aplica_anestesia()
+returns trigger
+language plpgsql
+set search_path = public
+as $cc_anest$
+declare
+  cir      public.cc_cirurgias%rowtype;
+  anterior public.cc_anestesia%rowtype;
+  vigente  bigint;
+  quantas  int;
+begin
+  select * into cir from public.cc_cirurgias where id = new.cirurgia_id for update;
+  if not found then
+    raise exception 'Cirurgia % não existe.', new.cirurgia_id;
+  end if;
+
+  if cir.status = 'cancelada' then
+    raise exception
+      'Esta cirurgia está CANCELADA. Não há ato anestésico a registrar.';
+  end if;
+
+  select count(*) into quantas from public.cc_anestesia where cirurgia_id = new.cirurgia_id;
+
+  if new.corrige_id is null then
+    if quantas > 0 then
+      raise exception
+        'Esta cirurgia já tem ficha anestésica. O prontuário não se rasura: abra uma CORREÇÃO da versão vigente e diga o que estava errado.';
+    end if;
+    new.versao := 1;
+  else
+    select * into anterior from public.cc_anestesia where id = new.corrige_id;
+    if not found then
+      raise exception 'A ficha % que esta correção deveria corrigir não existe.', new.corrige_id;
+    end if;
+    if anterior.cirurgia_id <> new.cirurgia_id then
+      raise exception
+        'Esta correção aponta para a ficha anestésica de OUTRA cirurgia (#%).', anterior.cirurgia_id;
+    end if;
+    select id into vigente from public.cc_anestesia where corrige_id = new.corrige_id limit 1;
+    if vigente is not null then
+      raise exception
+        'A versão % já foi corrigida (pela ficha #%). Corrija a versão VIGENTE.', anterior.versao, vigente;
+    end if;
+    new.versao := anterior.versao + 1;
+  end if;
+
+  update public.cc_cirurgias
+     set anestesia_em = coalesce(anestesia_em, now()),
+         -- `tipo_anestesia` era coluna sem input. Agora ela é mantida pelo
+         -- gatilho a partir da ficha, para quem já lê a coluna antiga
+         -- (relatórios, exportações) continuar vendo o dado certo.
+         tipo_anestesia = array_to_string(new.tecnicas, ' + '),
+         updated_at = now()
+   where id = new.cirurgia_id;
+
+  return new;
+end;
+$cc_anest$;
+
+drop trigger if exists trg_cc_aplica_anestesia on public.cc_anestesia;
+create trigger trg_cc_aplica_anestesia
+  before insert on public.cc_anestesia
+  for each row execute function public.cc_aplica_anestesia();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 5. 🔴 O GATILHO QUE TRANSFORMA O BOTÃO EM DECISÃO
+--
+-- Recusa a SAÍDA DA RPA sem escore de Aldrete que libere. Dispara só na
+-- transição de `rpa_saida_em` de NULL para preenchido — qualquer outro
+-- update da cirurgia passa intocado.
+-- ───────────────────────────────────────────────────────────
+create or replace function public.cc_exige_aldrete()
+returns trigger
+language plpgsql
+set search_path = public
+as $cc_rpa$
+declare
+  melhor public.cc_rpa_aldrete%rowtype;
+  zerados text;
+begin
+  -- Só a transição interessa.
+  if new.rpa_saida_em is null or old.rpa_saida_em is not null then
+    return new;
+  end if;
+
+  -- A escapatória: quem nunca entrou na RPA não tem ficha de recuperação
+  -- para escrever. Anestesia local que vai direto para casa é o caso.
+  if old.rpa_entrada_em is null and new.rpa_entrada_em is null then
+    return new;
+  end if;
+
+  -- A MELHOR avaliação registrada, e não a última: o paciente pode ter
+  -- atingido 10 e piorado por um registro de conferência posterior; o que
+  -- a norma pede é que ele TENHA atingido o critério. A curva fica na
+  -- trilha para quem precisar julgar.
+  select * into melhor
+    from public.cc_rpa_aldrete
+   where cirurgia_id = new.id
+   order by total desc, criado_em desc
+   limit 1;
+
+  if not found then
+    raise exception
+      'Alta da RPA SEM escore de Aldrete. O paciente está saindo da recuperação pós-anestésica — onde acabam o monitor e a enfermagem 1:1 — e não há registro de que ele atingiu critério. Registre a avaliação antes de dar alta (CFM 2.174/2017).';
+  end if;
+
+  select string_agg(p, ', ') into zerados from (
+    select 'atividade' as p where melhor.atividade = 0
+    union all select 'respiração'  where melhor.respiracao = 0
+    union all select 'circulação'  where melhor.circulacao = 0
+    union all select 'consciência' where melhor.consciencia = 0
+    union all select 'saturação'   where melhor.saturacao = 0
+  ) z;
+
+  if zerados is not null then
+    raise exception
+      'Alta da RPA recusada: % com nota ZERO (Aldrete %/10). Nenhum parâmetro zerado tem alta, por maior que seja a soma.',
+      zerados, melhor.total;
+  end if;
+
+  if melhor.total < 9 then
+    raise exception
+      'Alta da RPA recusada: melhor Aldrete registrado foi %/10, e o mínimo é 9. Reavalie em 10 a 15 minutos.',
+      melhor.total;
+  end if;
+
+  return new;
+end;
+$cc_rpa$;
+
+drop trigger if exists trg_cc_exige_aldrete on public.cc_cirurgias;
+create trigger trg_cc_exige_aldrete
+  before update on public.cc_cirurgias
+  for each row execute function public.cc_exige_aldrete();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 6. RLS — leitura pelo mapa, escrita do Bloco, append-only
+--
+-- Nomes na convenção do `gerar-rls.mjs` para o gerador SUBSTITUIR estas
+-- políticas em vez de criar um segundo conjunto ao lado.
+--
+-- ⚠️ `pode_ver_algum` é VARIADIC: módulos como argumentos soltos, nunca
+-- array — `array[...]` não resolve e derruba a migração.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_anestesia enable row level security;
+alter table public.cc_rpa_aldrete enable row level security;
+
+drop policy if exists cc_anestesia_leitura on public.cc_anestesia;
+create policy cc_anestesia_leitura on public.cc_anestesia
+  for select to authenticated using (public.pode_ver_algum('bloco', 'paciente'));
+drop policy if exists cc_anestesia_ins on public.cc_anestesia;
+create policy cc_anestesia_ins on public.cc_anestesia
+  for insert to authenticated with check (public.my_role() in ('adm_master', 'adm_silver'));
+drop policy if exists cc_anestesia_mod_ins on public.cc_anestesia;
+create policy cc_anestesia_mod_ins on public.cc_anestesia
+  as restrictive for insert to authenticated with check (public.pode_editar_algum('bloco'));
+
+drop policy if exists cc_rpa_aldrete_leitura on public.cc_rpa_aldrete;
+create policy cc_rpa_aldrete_leitura on public.cc_rpa_aldrete
+  for select to authenticated using (public.pode_ver_algum('bloco', 'paciente'));
+drop policy if exists cc_rpa_aldrete_ins on public.cc_rpa_aldrete;
+create policy cc_rpa_aldrete_ins on public.cc_rpa_aldrete
+  for insert to authenticated with check (public.my_role() in ('adm_master', 'adm_silver'));
+drop policy if exists cc_rpa_aldrete_mod_ins on public.cc_rpa_aldrete;
+create policy cc_rpa_aldrete_mod_ins on public.cc_rpa_aldrete
+  as restrictive for insert to authenticated with check (public.pode_editar_algum('bloco'));
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-anestesia-rpa.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela ' || t as item, to_regclass('public.' || t) is not null as ok
+    from unnest(array['cc_anestesia','cc_rpa_aldrete']) t
+  union all
+  select 'coluna cc_cirurgias.anestesia_em',
+         exists (select 1 from information_schema.columns
+                  where table_schema='public' and table_name='cc_cirurgias' and column_name='anestesia_em')
+  union all
+  select '🔴 gatilho que RECUSA alta da RPA sem Aldrete',
+         exists (select 1 from pg_trigger where tgname = 'trg_cc_exige_aldrete')
+  union all
+  select 'gatilho da ficha anestésica',
+         exists (select 1 from pg_trigger where tgname = 'trg_cc_aplica_anestesia')
+  union all
+  select 'total do Aldrete é coluna GERADA pelo banco',
+         exists (select 1 from information_schema.columns
+                  where table_schema='public' and table_name='cc_rpa_aldrete'
+                    and column_name='total' and is_generated = 'ALWAYS')
+  union all
+  select 'trava ' || k,
+         exists (select 1 from pg_constraint where conname = k)
+    from unnest(array['cc_anest_tecnicas_ck','cc_anest_asa_ck','cc_anest_via_ck',
+                      'cc_anest_manejo_ck','cc_rpa_notas_ck']) k
+  union all
+  -- 🔴 APPEND-ONLY nas duas: se vier ✅ com política de update ou delete,
+  -- o documento virou editável e o prontuário deixou de ser registro.
+  select '🔴 append-only: nenhuma política de update/delete',
+         not exists (select 1 from pg_policies
+                      where schemaname = 'public'
+                        and tablename in ('cc_anestesia','cc_rpa_aldrete')
+                        and cmd in ('UPDATE','DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-cirurgia-anestesia-rpa.sql')
+) x;
+
+-- O passivo que a tela passa a mostrar: operadas sem ficha anestésica, e
+-- as que JÁ saíram da RPA sem nenhum escore registrado (essas são
+-- históricas — o gatilho só vale daqui para a frente).
+select count(*) filter (where anestesia_em is null
+                          and status in ('em_cirurgia','recuperacao','concluida')) as sem_ficha_anestesica,
+       count(*) filter (where rpa_saida_em is not null
+                          and not exists (select 1 from public.cc_rpa_aldrete a where a.cirurgia_id = c.id)) as alta_da_rpa_sem_escore,
+       count(*) as total
+  from public.cc_cirurgias c;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 108/114 — migracao-cirurgia-opme.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- OPME COM LOTE: EM QUEM FOI IMPLANTADO
+--
+-- 🔴 HOJE O OPME É UM `textarea`.
+--
+--     opme text  -- "Ex.: kit vídeo, clipes de titânio; OPME: prótese X"
+--
+-- Texto livre, um campo, sem lote, sem número de série, sem registro
+-- ANVISA, sem vínculo com o estoque e sem vínculo com o paciente além da
+-- própria linha da cirurgia.
+--
+-- 🔴 O QUE ISSO CUSTA, E NÃO É DINHEIRO: quando o fabricante recolhe um
+-- lote de prótese — e recall de implante acontece —, a pergunta é "em QUEM
+-- nós implantamos este lote?". Com `opme text`, a resposta é ler cirurgia
+-- por cirurgia, torcendo para alguém ter digitado o número. Na prática o
+-- hospital não responde, e não responder significa não chamar de volta os
+-- pacientes que precisam de revisão.
+--
+-- A RDC 751/2022 trata os implantáveis como a classe de maior risco
+-- justamente por isso: o dispositivo fica dentro da pessoa por anos.
+--
+-- 💡 UMA LINHA POR ITEM, com lote, e ligada à cirurgia — que já está ligada
+-- ao paciente (FK desde `migracao-cirurgia-paciente-equipe-codigo`). A
+-- consulta do recall passa a ser uma consulta.
+--
+-- 🔒 RECUSAS:
+--   1. cirurgia que não existe, ou CANCELADA;
+--   2. 🔴 IMPLANTE SEM LOTE. É a trava central deste arquivo: sem lote o
+--      registro não serve para a única pergunta que ele existe para
+--      responder. Material descartável (campo, compressa, fio) NÃO exige
+--      lote — exigir de tudo faria a equipe preencher lixo para passar;
+--   3. quantidade não positiva;
+--   4. estorno de linha que não existe, de outra cirurgia, ou já estornada.
+--
+-- ⚠️ O REGISTRO ANVISA é AVISO, não recusa, e a assimetria é deliberada:
+-- o LOTE é o que um recall procura; o registro é o que um auditor procura.
+-- Recall é emergência de segurança do paciente; auditoria tem prazo. Travar
+-- a sala por um número que está na caixa — e que a instrumentadora muitas
+-- vezes só confere depois — trocaria um risco real por um risco de
+-- preenchimento apressado.
+--
+-- 🔴 ⚠️ E A DECISÃO QUE MAIS IMPORTA AQUI: a baixa do estoque NUNCA
+-- derruba o registro de rastreabilidade.
+--
+-- `sup_aplica_movimento` recusa saída com saldo insuficiente, e com razão —
+-- é o kardex. Mas OPME consignado chega na mala do representante e é usado
+-- sem nunca ter entrado no almoxarifado; e mesmo o item próprio pode estar
+-- com saldo errado às 3h da manhã. Se a baixa falhar, a linha de OPME é
+-- gravada do mesmo jeito, com `baixa_estoque = false` e o motivo guardado,
+-- e o painel cobra a conciliação depois.
+--
+-- Saber em quem foi implantado é urgência de segurança. Saldo de
+-- almoxarifado é contabilidade. Nunca se perde o primeiro para proteger o
+-- segundo.
+--
+-- ADITIVA. IDEMPOTENTE.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_cc_aplica_opme on public.cc_opme;
+--   drop function if exists public.cc_aplica_opme();
+--   drop table if exists public.cc_opme;
+--   alter table public.cc_cirurgias drop column if exists opme_em;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+alter table public.cc_cirurgias
+  add column if not exists opme_em timestamptz;
+
+comment on column public.cc_cirurgias.opme_em is
+  'Quando o primeiro item de OPME foi registrado. Carimbado pelo gatilho de cc_opme.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- A TABELA
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.cc_opme (
+  id bigserial primary key,
+  cirurgia_id bigint not null,
+
+  -- 🔴 `implante` É O QUE MUDA O REGIME. Prótese, placa, parafuso, tela,
+  -- stent e marca-passo ficam DENTRO da pessoa e exigem lote. Campo
+  -- cirúrgico e compressa são consumo: entram para a conta e para o
+  -- estoque, não para o rastreio vitalício.
+  implante boolean not null default false,
+
+  -- O item do catálogo, quando existe. NULLABLE de propósito: OPME
+  -- consignado chega na mala do representante e não está em `sup_itens`.
+  -- Recusar o registro por isso seria perder a rastreabilidade do item
+  -- mais caro e mais arriscado da sala.
+  item_id bigint,
+  descricao text not null,
+
+  lote text,
+  numero_serie text,
+  registro_anvisa text,
+  fabricante text,
+  fornecedor_id bigint,
+  validade date,
+  quantidade numeric not null default 1,
+  consignado boolean not null default false,
+
+  -- A baixa no kardex: tentada pelo gatilho, e o resultado fica registrado.
+  -- `false` com motivo é PENDÊNCIA visível, não falha silenciosa.
+  baixa_estoque boolean not null default false,
+  baixa_motivo text,
+  movimento_id bigint,
+
+  -- Correção é ESTORNO, não edição — a mesma forma do kardex de
+  -- suprimentos, e por isso não há política de update nem de delete.
+  estorno_de bigint,
+  estorno_motivo text,
+
+  usuario text,
+  assinatura text,
+  criado_em timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_cirurgia_fk') then
+    alter table public.cc_opme add constraint cc_opme_cirurgia_fk
+      foreign key (cirurgia_id) references public.cc_cirurgias (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_item_fk') then
+    alter table public.cc_opme add constraint cc_opme_item_fk
+      foreign key (item_id) references public.sup_itens (id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_estorno_fk') then
+    alter table public.cc_opme add constraint cc_opme_estorno_fk
+      foreign key (estorno_de) references public.cc_opme (id);
+  end if;
+
+  -- 🔴 A TRAVA CENTRAL. Implante sem lote não responde à pergunta do recall.
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_implante_lote_ck') then
+    alter table public.cc_opme add constraint cc_opme_implante_lote_ck
+      check (not implante or length(btrim(coalesce(lote, ''))) >= 1);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_descricao_ck') then
+    alter table public.cc_opme add constraint cc_opme_descricao_ck
+      check (length(btrim(descricao)) >= 3);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_qtd_ck') then
+    alter table public.cc_opme add constraint cc_opme_qtd_ck
+      check (quantidade > 0);
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'cc_opme_estorno_motivo_ck') then
+    alter table public.cc_opme add constraint cc_opme_estorno_motivo_ck
+      check (estorno_de is null or length(btrim(coalesce(estorno_motivo, ''))) >= 15);
+  end if;
+end $$;
+
+create index if not exists cc_opme_cirurgia_idx on public.cc_opme (cirurgia_id, criado_em desc);
+
+-- 🔴 O ÍNDICE DO RECALL. A consulta que justifica a tabela inteira é
+-- "quais pacientes receberam este lote", e ela entra por lote — não por
+-- cirurgia. Sem este índice a resposta seria varredura da tabela toda.
+create index if not exists cc_opme_lote_idx
+  on public.cc_opme (lower(btrim(lote))) where lote is not null;
+create index if not exists cc_opme_serie_idx
+  on public.cc_opme (lower(btrim(numero_serie))) where numero_serie is not null;
+
+-- Uma linha estorna UMA. Sem isto, dois estornos da mesma linha zerariam o
+-- estoque duas vezes.
+create unique index if not exists cc_opme_estorno_idx
+  on public.cc_opme (estorno_de) where estorno_de is not null;
+
+comment on table public.cc_opme is
+  'OPME e materiais da cirurgia, com lote. Responde "em quem implantamos este lote" (RDC 751/2022). APPEND-ONLY: correção é estorno.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- O GATILHO
+-- ───────────────────────────────────────────────────────────
+create or replace function public.cc_aplica_opme()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $cc_opme$
+declare
+  cir      public.cc_cirurgias%rowtype;
+  anterior public.cc_opme%rowtype;
+  v_mov    bigint;
+begin
+  select * into cir from public.cc_cirurgias where id = new.cirurgia_id for update;
+  if not found then
+    raise exception 'Cirurgia % não existe.', new.cirurgia_id;
+  end if;
+
+  if cir.status = 'cancelada' then
+    raise exception
+      'Esta cirurgia está CANCELADA. Não há material consumido a registrar.';
+  end if;
+
+  if new.estorno_de is not null then
+    select * into anterior from public.cc_opme where id = new.estorno_de;
+    if not found then
+      raise exception 'A linha % que este estorno deveria anular não existe.', new.estorno_de;
+    end if;
+    if anterior.cirurgia_id <> new.cirurgia_id then
+      raise exception
+        'Este estorno aponta para o material de OUTRA cirurgia (#%).', anterior.cirurgia_id;
+    end if;
+    if anterior.estorno_de is not null then
+      raise exception 'A linha % já é um estorno — não se estorna um estorno.', new.estorno_de;
+    end if;
+  end if;
+
+  -- ── A BAIXA NO KARDEX ───────────────────────────────────
+  --
+  -- Só para item do catálogo, não consignado, e em linha que não é
+  -- estorno. O estorno devolve ao estoque.
+  if new.item_id is not null and not new.consignado then
+    begin
+      insert into public.sup_movimentos
+        (item_id, lote, validade, tipo, quantidade, motivo, documento, setor, usuario)
+      values (new.item_id, coalesce(new.lote, ''), new.validade,
+              case when new.estorno_de is null then 'saida' else 'entrada' end,
+              new.quantidade,
+              case when new.estorno_de is null then 'OPME/consumo cirúrgico'
+                   else 'Estorno de OPME' end,
+              'Cirurgia #' || new.cirurgia_id, 'Centro Cirúrgico', new.usuario)
+      returning id into v_mov;
+      new.movimento_id := v_mov;
+      new.baixa_estoque := true;
+      new.baixa_motivo := null;
+    exception when others then
+      -- 🔴 A LINHA DE RASTREABILIDADE NÃO CAI COM A CONTABILIDADE.
+      -- Saldo insuficiente é o caso comum (item usado sem ter dado
+      -- entrada). A falha vira PENDÊNCIA visível, não registro perdido.
+      new.baixa_estoque := false;
+      new.baixa_motivo := 'Baixa no estoque não aplicada: ' || sqlerrm;
+      new.movimento_id := null;
+    end;
+  else
+    new.baixa_estoque := false;
+    new.baixa_motivo := case
+      when new.consignado then 'Consignado — não passa pelo estoque do hospital.'
+      when new.item_id is null then 'Item fora do catálogo — sem baixa de estoque.'
+      else null end;
+  end if;
+
+  update public.cc_cirurgias
+     set opme_em = coalesce(opme_em, now()), updated_at = now()
+   where id = new.cirurgia_id;
+
+  return new;
+end;
+$cc_opme$;
+
+drop trigger if exists trg_cc_aplica_opme on public.cc_opme;
+create trigger trg_cc_aplica_opme
+  before insert on public.cc_opme
+  for each row execute function public.cc_aplica_opme();
+
+
+-- ───────────────────────────────────────────────────────────
+-- RLS — leitura do Bloco, do Paciente e de SUPRIMENTOS
+--
+-- ⚠️ `suprimentos` lê de propósito: quem conduz um recall é a coordenação
+-- de OPME / almoxarifado, não o centro cirúrgico. Leitura, não escrita —
+-- quem registra o que entrou no paciente é quem estava na sala.
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_opme enable row level security;
+
+drop policy if exists cc_opme_leitura on public.cc_opme;
+create policy cc_opme_leitura on public.cc_opme
+  for select to authenticated
+  using (public.pode_ver_algum('bloco', 'paciente', 'suprimentos'));
+
+drop policy if exists cc_opme_ins on public.cc_opme;
+create policy cc_opme_ins on public.cc_opme
+  for insert to authenticated
+  with check (public.my_role() in ('adm_master', 'adm_silver'));
+
+drop policy if exists cc_opme_mod_ins on public.cc_opme;
+create policy cc_opme_mod_ins on public.cc_opme
+  as restrictive for insert to authenticated
+  with check (public.pode_editar_algum('bloco'));
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-cirurgia-opme.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela cc_opme' as item, to_regclass('public.cc_opme') is not null as ok
+  union all
+  select 'coluna cc_cirurgias.opme_em',
+         exists (select 1 from information_schema.columns
+                  where table_schema='public' and table_name='cc_cirurgias' and column_name='opme_em')
+  union all
+  select '🔴 trava: implante exige LOTE',
+         exists (select 1 from pg_constraint where conname = 'cc_opme_implante_lote_ck')
+  union all
+  select '🔴 índice do recall (busca por lote)',
+         exists (select 1 from pg_class where relname = 'cc_opme_lote_idx')
+  union all
+  select 'índice da busca por número de série',
+         exists (select 1 from pg_class where relname = 'cc_opme_serie_idx')
+  union all
+  select 'uma linha estorna UMA',
+         exists (select 1 from pg_class where relname = 'cc_opme_estorno_idx')
+  union all
+  select 'gatilho que baixa o estoque e carimba o selo',
+         exists (select 1 from pg_trigger where tgname = 'trg_cc_aplica_opme')
+  union all
+  select '🔴 append-only: nenhuma política de update/delete',
+         not exists (select 1 from pg_policies
+                      where schemaname='public' and tablename='cc_opme' and cmd in ('UPDATE','DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas where arquivo = 'migracao-cirurgia-opme.sql')
+) x;
+
+-- O passivo: cirurgias que descreveram OPME no campo de texto livre e não
+-- têm nenhuma linha rastreável. Não é erro da migração — é o que a tela
+-- passa a mostrar, e o que alguém vai ter de digitar de volta se um lote
+-- desses for recolhido.
+select count(*) filter (where btrim(coalesce(opme, '')) <> '' and opme_em is null) as texto_livre_sem_rastreio,
+       count(*) filter (where opme_em is not null)                                 as com_rastreio,
+       count(*)                                                                    as total
+  from public.cc_cirurgias;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 109/114 — migracao-sadt-exames.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- EXAMES (SADT): O PEDIDO E O RESULTADO DEIXAM DE SER TEXTO LIVRE
+--
+-- 🔴 HOJE UM EXAME É UMA LINHA DE TEXTO.
+--
+--     ps_registros: tipo='exame', texto='hemograma', resultado='…', status
+--
+-- É só isso. Não há catálogo, não há analito, não há unidade, não há faixa
+-- de referência, não há valor crítico. O resultado de um hemograma inteiro
+-- cabe num `text` — e cabe porque ninguém pode fazer nada com ele.
+--
+-- O que o hospital perde com isso:
+--   · não dá para saber se um valor está FORA da referência, porque o
+--     sistema não sabe qual é a referência;
+--   · não dá para destacar VALOR CRÍTICO — potássio 7,2, plaquetas 8 mil —,
+--     que é exatamente o resultado que precisa chegar a alguém AGORA;
+--   · não dá para ver a série (creatinina de ontem × de hoje), que é como
+--     se enxerga lesão renal aguda;
+--   · não dá para faturar o exame nem medir custo, porque ele não tem
+--     código.
+--
+-- 💡 A ESTRUTURA, em quatro peças, e cada uma existe por um motivo:
+--
+--   `sadt_catalogo`   o que o hospital oferece, COM CÓDIGO (SIGTAP/TUSS)
+--   `sadt_analitos`   os componentes de um exame — um hemograma tem ~20,
+--                     cada um com unidade, referência e faixa crítica
+--   `sadt_pedidos`    a solicitação: quem pediu, por quê, com que pressa
+--   `sadt_itens`      cada exame do pedido, com o ciclo de vida
+--   `sadt_resultados` o valor, APPEND-ONLY
+--
+-- 🔴 O `anormal` E O `critico` SÃO CALCULADOS PELO BANCO, no gatilho, a
+-- partir da faixa do analito. Deixar a tela decidir criaria duas verdades:
+-- a tela diria "normal" e o relatório diria "crítico", para a mesma linha.
+-- E é o banco que tem a faixa.
+--
+-- ⚠️ CORREÇÃO É VERSÃO NOVA. Resultado de exame é documento clínico: um
+-- laudo retificado não apaga o que foi laudado antes, porque alguém pode
+-- ter tratado o paciente com base no primeiro.
+--
+-- 🔒 RECUSAS:
+--   1. resultado de item que não existe ou foi CANCELADO;
+--   2. resultado sem valor nenhum (nem número, nem texto, nem laudo);
+--   3. analito que não é do exame pedido — misturar hemoglobina num
+--      exame de urina quebra a série e o gráfico;
+--   4. correção sem motivo, de outro item, ou de versão já corrigida;
+--   5. faixa de referência invertida no cadastro (min > max).
+--
+-- ⚠️ O BACKFILL TRAZ O QUE JÁ EXISTE, e traz tudo: cada `ps_registros`
+-- tipo='exame' vira um pedido com um item, mantendo status, datas e o
+-- resultado como LAUDO. Não é dedução — é 1 para 1. Depois dele há UMA
+-- fonte de exame no sistema, e não duas concordando por sorte.
+--
+-- ADITIVA: `ps_registros` não é alterada nem apagada. Fica como estava,
+-- para conferência, e o código passa a ler as tabelas novas.
+-- IDEMPOTENTE: o backfill marca a origem e não repete.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_sadt_aplica_resultado on public.sadt_resultados;
+--   drop function if exists public.sadt_aplica_resultado();
+--   drop table if exists public.sadt_resultados, public.sadt_itens,
+--                        public.sadt_pedidos, public.sadt_analitos,
+--                        public.sadt_catalogo;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. O CATÁLOGO
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.sadt_catalogo (
+  id bigserial primary key,
+  codigo text,                      -- SIGTAP (SUS) ou TUSS (convênio)
+  nome text not null,
+  categoria text not null default 'laboratorial',
+  material text,                    -- sangue, urina, escarro… (laboratório)
+  preparo text,                     -- jejum de 8h, suspender metformina…
+  -- O prazo PACTUADO, que é contra o que se mede atraso. Sem ele, "exame
+  -- demorado" é opinião.
+  prazo_rotina_min int,
+  prazo_urgente_min int,
+  ativo boolean not null default true,
+  usuario text,
+  updated_at timestamptz default now(),
+  created_at timestamptz default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sadt_cat_categoria_ck') then
+    alter table public.sadt_catalogo add constraint sadt_cat_categoria_ck
+      check (categoria in ('laboratorial', 'imagem', 'outro'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_cat_nome_ck') then
+    alter table public.sadt_catalogo add constraint sadt_cat_nome_ck
+      check (length(btrim(nome)) >= 2);
+  end if;
+end $$;
+
+create unique index if not exists sadt_catalogo_codigo_idx
+  on public.sadt_catalogo (codigo) where codigo is not null;
+create index if not exists sadt_catalogo_nome_idx on public.sadt_catalogo (lower(nome));
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. OS ANALITOS
+--
+-- 🔴 É AQUI QUE MORA A DIFERENÇA ENTRE TEXTO E DADO. "Hemograma" não tem
+-- valor de referência; hemoglobina tem. Um exame é o pedido; os analitos
+-- são o que volta com número.
+--
+-- `ref_texto` existe para o que não é faixa numérica ("negativo", "ausente",
+-- "flora normal") — forçar tudo em número faria a cultura de urina não
+-- caber, e aí ela voltaria para o texto livre de onde saímos.
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.sadt_analitos (
+  id bigserial primary key,
+  catalogo_id bigint not null,
+  codigo text,
+  nome text not null,
+  unidade text,
+  ordem int not null default 0,     -- a ordem em que o laudo imprime
+
+  ref_min numeric,
+  ref_max numeric,
+  ref_texto text,
+
+  -- 🔴 VALOR CRÍTICO (pânico): o resultado que precisa chegar a alguém
+  -- AGORA — potássio 7,2, plaquetas 8 mil, glicemia 25. É a lista que a
+  -- acreditação chama de "valores críticos" e que o laboratório é obrigado
+  -- a comunicar. Nulo = este analito não tem valor crítico definido.
+  critico_min numeric,
+  critico_max numeric,
+
+  ativo boolean not null default true,
+  usuario text,
+  updated_at timestamptz default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sadt_ana_catalogo_fk') then
+    alter table public.sadt_analitos add constraint sadt_ana_catalogo_fk
+      foreign key (catalogo_id) references public.sadt_catalogo (id) on delete cascade;
+  end if;
+  -- Faixa invertida no cadastro faz TODO resultado sair anormal, ou nenhum.
+  if not exists (select 1 from pg_constraint where conname = 'sadt_ana_ref_ck') then
+    alter table public.sadt_analitos add constraint sadt_ana_ref_ck
+      check (ref_min is null or ref_max is null or ref_min <= ref_max);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_ana_critico_ck') then
+    alter table public.sadt_analitos add constraint sadt_ana_critico_ck
+      check (critico_min is null or critico_max is null or critico_min <= critico_max);
+  end if;
+end $$;
+
+create index if not exists sadt_analitos_catalogo_idx
+  on public.sadt_analitos (catalogo_id, ordem);
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. O PEDIDO
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.sadt_pedidos (
+  id bigserial primary key,
+  prontuario text,
+  ps_atendimento_id bigint,
+  pep_episodio_id bigint,
+
+  prioridade text not null default 'rotina',
+  -- 🔴 A INDICAÇÃO CLÍNICA não é burocracia: é o que o radiologista lê para
+  -- saber o que procurar, e é o que o SUS exige na APAC. "TC de crânio" sem
+  -- indicação é um exame que volta laudado para a pergunta errada.
+  indicacao_clinica text,
+
+  solicitante text,
+  solicitante_cbo text,
+  assinatura text,
+  usuario text,
+  criado_em timestamptz not null default now(),
+
+  -- De onde veio, quando veio do mundo antigo. O backfill preenche.
+  origem_registro_id bigint
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sadt_ped_prioridade_ck') then
+    alter table public.sadt_pedidos add constraint sadt_ped_prioridade_ck
+      check (prioridade in ('rotina', 'urgente'));
+  end if;
+end $$;
+
+create index if not exists sadt_pedidos_prontuario_idx
+  on public.sadt_pedidos (prontuario, criado_em desc);
+create index if not exists sadt_pedidos_atendimento_idx
+  on public.sadt_pedidos (ps_atendimento_id) where ps_atendimento_id is not null;
+-- O backfill não pode repetir.
+create unique index if not exists sadt_pedidos_origem_idx
+  on public.sadt_pedidos (origem_registro_id) where origem_registro_id is not null;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. OS ITENS — o ciclo de vida de cada exame
+--
+-- ⚠️ Os estados são os MESMOS que `src/ps/exames.js` já usa
+-- (solicitado → resultado_disponivel → visto), mais `coletado` e
+-- `cancelado`. Inventar vocabulário novo faria a tela antiga e a nova
+-- contarem histórias diferentes para a mesma linha.
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.sadt_itens (
+  id bigserial primary key,
+  pedido_id bigint not null,
+  catalogo_id bigint,               -- nulo = fora do catálogo (texto livre)
+  descricao text not null,
+  categoria text not null default 'laboratorial',
+
+  status text not null default 'solicitado',
+  coletado_em timestamptz,
+  resultado_em timestamptz,
+  visto_em timestamptz,
+  visto_por text,
+  cancelado_em timestamptz,
+  cancelamento_motivo text,
+
+  updated_at timestamptz default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sadt_item_pedido_fk') then
+    alter table public.sadt_itens add constraint sadt_item_pedido_fk
+      foreign key (pedido_id) references public.sadt_pedidos (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_item_catalogo_fk') then
+    alter table public.sadt_itens add constraint sadt_item_catalogo_fk
+      foreign key (catalogo_id) references public.sadt_catalogo (id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_item_status_ck') then
+    alter table public.sadt_itens add constraint sadt_item_status_ck
+      check (status in ('solicitado', 'coletado', 'resultado_disponivel', 'visto', 'cancelado'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_item_categoria_ck') then
+    alter table public.sadt_itens add constraint sadt_item_categoria_ck
+      check (categoria in ('laboratorial', 'imagem', 'outro'));
+  end if;
+  -- Cancelar exige dizer por quê — exame cancelado sem motivo vira dúvida
+  -- na conta e na conferência do laboratório.
+  if not exists (select 1 from pg_constraint where conname = 'sadt_item_cancel_ck') then
+    alter table public.sadt_itens add constraint sadt_item_cancel_ck
+      check (status <> 'cancelado' or length(btrim(coalesce(cancelamento_motivo, ''))) >= 5);
+  end if;
+end $$;
+
+create index if not exists sadt_itens_pedido_idx on public.sadt_itens (pedido_id);
+create index if not exists sadt_itens_status_idx on public.sadt_itens (status, resultado_em desc);
+
+
+-- ───────────────────────────────────────────────────────────
+-- 5. OS RESULTADOS — append-only
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.sadt_resultados (
+  id bigserial primary key,
+  item_id bigint not null,
+  analito_id bigint,                -- nulo = laudo do exame inteiro (imagem)
+
+  -- O nome vai CARIMBADO junto do valor: o catálogo muda, o laudo não.
+  nome text,
+  valor_num numeric,
+  valor_texto text,
+  unidade text,
+  referencia text,                  -- a faixa, como foi impressa no laudo
+  laudo text,                       -- o texto do laudo (imagem, anatomopato)
+
+  -- 🔴 CALCULADOS PELO GATILHO, nunca pela tela.
+  anormal boolean not null default false,
+  critico boolean not null default false,
+
+  versao int not null default 1,
+  corrige_id bigint,
+  motivo_correcao text,
+
+  liberado_por text,
+  assinatura text,
+  usuario text,
+  criado_em timestamptz not null default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'sadt_res_item_fk') then
+    alter table public.sadt_resultados add constraint sadt_res_item_fk
+      foreign key (item_id) references public.sadt_itens (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_res_analito_fk') then
+    alter table public.sadt_resultados add constraint sadt_res_analito_fk
+      foreign key (analito_id) references public.sadt_analitos (id);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_res_corrige_fk') then
+    alter table public.sadt_resultados add constraint sadt_res_corrige_fk
+      foreign key (corrige_id) references public.sadt_resultados (id);
+  end if;
+  -- Resultado sem valor nenhum é linha que ocupa espaço e não informa.
+  if not exists (select 1 from pg_constraint where conname = 'sadt_res_valor_ck') then
+    alter table public.sadt_resultados add constraint sadt_res_valor_ck
+      check (valor_num is not null
+          or length(btrim(coalesce(valor_texto, ''))) > 0
+          or length(btrim(coalesce(laudo, ''))) > 0);
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sadt_res_correcao_ck') then
+    alter table public.sadt_resultados add constraint sadt_res_correcao_ck
+      check (corrige_id is null or length(btrim(coalesce(motivo_correcao, ''))) >= 15);
+  end if;
+end $$;
+
+create index if not exists sadt_resultados_item_idx on public.sadt_resultados (item_id, versao desc);
+-- 🔴 O índice do que importa: os críticos pendentes de alguém olhar.
+create index if not exists sadt_resultados_critico_idx
+  on public.sadt_resultados (criado_em desc) where critico;
+create unique index if not exists sadt_resultados_corrige_idx
+  on public.sadt_resultados (corrige_id) where corrige_id is not null;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 6. O GATILHO — calcula anormal/crítico e acende o item
+-- ───────────────────────────────────────────────────────────
+create or replace function public.sadt_aplica_resultado()
+returns trigger
+language plpgsql
+set search_path = public
+as $sadt$
+declare
+  it       public.sadt_itens%rowtype;
+  ana      public.sadt_analitos%rowtype;
+  anterior public.sadt_resultados%rowtype;
+  ja       bigint;
+begin
+  select * into it from public.sadt_itens where id = new.item_id for update;
+  if not found then
+    raise exception 'Item de exame % não existe.', new.item_id;
+  end if;
+  if it.status = 'cancelado' then
+    raise exception
+      'Este exame foi CANCELADO (%). Não se lança resultado de exame que não foi feito.',
+      coalesce(it.cancelamento_motivo, 'sem motivo registrado');
+  end if;
+
+  if new.analito_id is not null then
+    select * into ana from public.sadt_analitos where id = new.analito_id;
+    if not found then
+      raise exception 'Analito % não existe.', new.analito_id;
+    end if;
+    -- 🔴 Analito de OUTRO exame quebra a série: a creatinina do paciente
+    -- passaria a misturar duas origens, e o gráfico mentiria.
+    if it.catalogo_id is null or ana.catalogo_id <> it.catalogo_id then
+      raise exception
+        'O analito "%" não pertence ao exame pedido. Misturar analito de outro exame quebra a série do paciente.',
+        ana.nome;
+    end if;
+    new.nome := coalesce(new.nome, ana.nome);
+    new.unidade := coalesce(new.unidade, ana.unidade);
+    if new.referencia is null then
+      new.referencia := case
+        when ana.ref_texto is not null then ana.ref_texto
+        when ana.ref_min is not null and ana.ref_max is not null
+          then ana.ref_min::text || ' a ' || ana.ref_max::text
+        when ana.ref_min is not null then '≥ ' || ana.ref_min::text
+        when ana.ref_max is not null then '≤ ' || ana.ref_max::text
+        else null end;
+    end if;
+
+    -- ANORMAL e CRÍTICO, do banco, sempre.
+    if new.valor_num is not null then
+      new.anormal := (ana.ref_min is not null and new.valor_num < ana.ref_min)
+                  or (ana.ref_max is not null and new.valor_num > ana.ref_max);
+      new.critico := (ana.critico_min is not null and new.valor_num <= ana.critico_min)
+                  or (ana.critico_max is not null and new.valor_num >= ana.critico_max);
+      -- Crítico é sempre anormal: a faixa de pânico fica fora da de
+      -- referência por definição, e um crítico que saísse "normal" na tela
+      -- seria a pior linha deste banco.
+      if new.critico then new.anormal := true; end if;
+    end if;
+  end if;
+
+  if new.corrige_id is not null then
+    select * into anterior from public.sadt_resultados where id = new.corrige_id;
+    if not found then
+      raise exception 'O resultado % que esta correção deveria corrigir não existe.', new.corrige_id;
+    end if;
+    if anterior.item_id <> new.item_id then
+      raise exception 'Esta correção aponta para o resultado de OUTRO exame.';
+    end if;
+    select id into ja from public.sadt_resultados where corrige_id = new.corrige_id limit 1;
+    if ja is not null then
+      raise exception 'A versão % já foi corrigida (pelo resultado #%).', anterior.versao, ja;
+    end if;
+    new.versao := anterior.versao + 1;
+  else
+    new.versao := 1;
+  end if;
+
+  -- O item passa a ter resultado. `visto` não regride: médico que já viu
+  -- não desvê, e uma correção posterior aparece como versão nova.
+  update public.sadt_itens
+     set status = case when status in ('solicitado', 'coletado') then 'resultado_disponivel' else status end,
+         resultado_em = coalesce(resultado_em, now()),
+         updated_at = now()
+   where id = new.item_id;
+
+  return new;
+end;
+$sadt$;
+
+drop trigger if exists trg_sadt_aplica_resultado on public.sadt_resultados;
+create trigger trg_sadt_aplica_resultado
+  before insert on public.sadt_resultados
+  for each row execute function public.sadt_aplica_resultado();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 7. O BACKFILL — o que já existe vira pedido
+--
+-- 1 para 1, sem dedução: cada `ps_registros` tipo='exame' vira um pedido
+-- com um item, mantendo status, datas e o resultado como LAUDO. O
+-- `origem_registro_id` impede repetir numa segunda execução.
+-- ───────────────────────────────────────────────────────────
+insert into public.sadt_pedidos
+  (prontuario, ps_atendimento_id, prioridade, solicitante, usuario, criado_em, origem_registro_id)
+select a.prontuario, r.atendimento_id, 'rotina', r.usuario, r.usuario, r.criado_em, r.id
+  from public.ps_registros r
+  left join public.ps_atendimentos a on a.id = r.atendimento_id
+ where r.tipo = 'exame'
+   and not exists (select 1 from public.sadt_pedidos p where p.origem_registro_id = r.id);
+
+insert into public.sadt_itens
+  (pedido_id, descricao, categoria, status, resultado_em)
+select p.id,
+       coalesce(nullif(btrim(r.texto), ''), '(exame sem descrição)'),
+       case when r.categoria in ('laboratorial', 'imagem', 'outro') then r.categoria else 'outro' end,
+       case when r.status in ('solicitado', 'coletado', 'resultado_disponivel', 'visto', 'cancelado')
+            then r.status else 'solicitado' end,
+       r.resultado_em
+  from public.sadt_pedidos p
+  join public.ps_registros r on r.id = p.origem_registro_id
+ where not exists (select 1 from public.sadt_itens i where i.pedido_id = p.id);
+
+-- O resultado antigo era texto: entra como LAUDO, que é o campo honesto
+-- para ele. Sem analito, sem número — porque não havia nenhum dos dois.
+insert into public.sadt_resultados (item_id, laudo, criado_em, usuario)
+select i.id, btrim(r.resultado), coalesce(r.resultado_em, r.criado_em), r.usuario
+  from public.sadt_itens i
+  join public.sadt_pedidos p on p.id = i.pedido_id
+  join public.ps_registros r on r.id = p.origem_registro_id
+ where btrim(coalesce(r.resultado, '')) <> ''
+   and not exists (select 1 from public.sadt_resultados s where s.item_id = i.id);
+
+
+-- ───────────────────────────────────────────────────────────
+-- 8. RLS
+--
+-- Lê quem cuida do paciente; grava quem tem escrita no módulo. O catálogo
+-- é referência SEM dado de paciente — TODOS leem, como `at_procedimentos`.
+-- ───────────────────────────────────────────────────────────
+alter table public.sadt_catalogo   enable row level security;
+alter table public.sadt_analitos   enable row level security;
+alter table public.sadt_pedidos    enable row level security;
+alter table public.sadt_itens      enable row level security;
+alter table public.sadt_resultados enable row level security;
+
+do $$
+declare t text;
+begin
+  foreach t in array array['sadt_catalogo', 'sadt_analitos'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_leitura', t);
+    execute format('create policy %I on public.%I for select to authenticated using (true)', t || '_leitura', t);
+    execute format('drop policy if exists %I on public.%I', t || '_ins', t);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.my_role() in (''adm_master'',''adm_silver''))', t || '_ins', t);
+    execute format('drop policy if exists %I on public.%I', t || '_upd', t);
+    execute format('create policy %I on public.%I for update to authenticated using (public.my_role() in (''adm_master'',''adm_silver'')) with check (public.my_role() in (''adm_master'',''adm_silver''))', t || '_upd', t);
+  end loop;
+
+  foreach t in array array['sadt_pedidos', 'sadt_itens', 'sadt_resultados'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_leitura', t);
+    execute format('create policy %I on public.%I for select to authenticated using (public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio''))', t || '_leitura', t);
+    execute format('drop policy if exists %I on public.%I', t || '_ins', t);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.my_role() in (''adm_master'',''adm_silver''))', t || '_ins', t);
+    execute format('drop policy if exists %I on public.%I', t || '_mod_ins', t);
+    execute format('create policy %I on public.%I as restrictive for insert to authenticated with check (public.pode_editar_algum(''ps'', ''paciente''))', t || '_mod_ins', t);
+  end loop;
+
+  -- Os ITENS mudam de estado (coletado, visto, cancelado) — só eles.
+  -- Pedido e resultado são imutáveis: correção é linha nova.
+  execute 'drop policy if exists sadt_itens_upd on public.sadt_itens';
+  execute 'create policy sadt_itens_upd on public.sadt_itens for update to authenticated
+             using (public.pode_editar_algum(''ps'', ''paciente''))
+             with check (public.pode_editar_algum(''ps'', ''paciente''))';
+end $$;
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-sadt-exames.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela ' || t as item, to_regclass('public.' || t) is not null as ok
+    from unnest(array['sadt_catalogo','sadt_analitos','sadt_pedidos','sadt_itens','sadt_resultados']) t
+  union all
+  select '🔴 gatilho que calcula anormal/crítico',
+         exists (select 1 from pg_trigger where tgname = 'trg_sadt_aplica_resultado')
+  union all
+  select 'trava ' || k, exists (select 1 from pg_constraint where conname = k)
+    from unnest(array['sadt_ana_ref_ck','sadt_ana_critico_ck','sadt_res_valor_ck',
+                      'sadt_item_status_ck','sadt_item_cancel_ck']) k
+  union all
+  select '🔴 índice dos críticos',
+         exists (select 1 from pg_class where relname = 'sadt_resultados_critico_idx')
+  union all
+  select 'o backfill não repete (índice de origem)',
+         exists (select 1 from pg_class where relname = 'sadt_pedidos_origem_idx')
+  union all
+  -- 🔴 APPEND-ONLY no resultado: correção é versão nova.
+  select '🔴 resultado sem política de update/delete',
+         not exists (select 1 from pg_policies
+                      where schemaname='public' and tablename='sadt_resultados' and cmd in ('UPDATE','DELETE'))
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas where arquivo = 'migracao-sadt-exames.sql')
+) x;
+
+-- O que o backfill trouxe. `migrados` tem de bater com `exames_antigos`.
+select (select count(*) from public.ps_registros where tipo = 'exame')     as exames_antigos,
+       (select count(*) from public.sadt_pedidos where origem_registro_id is not null) as migrados,
+       (select count(*) from public.sadt_itens)                            as itens,
+       (select count(*) from public.sadt_resultados)                       as resultados,
+       (select count(*) from public.sadt_catalogo)                         as no_catalogo;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 110/114 — migracao-sadt-catalogo-seed.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- CATÁLOGO DE EXAMES E ANALITOS — A CARGA INICIAL
+--
+-- `migracao-sadt-exames.sql` criou a estrutura. Este arquivo põe conteúdo
+-- nela: sem catálogo e sem analito, TODO exame cai no laudo em texto, e a
+-- faixa de referência, o valor crítico e a curva não aparecem — ou seja, o
+-- módulo fica estruturalmente novo e funcionalmente igual ao antigo.
+--
+-- ⚠️⚠️⚠️ LEIA ISTO ANTES DE RODAR — É A PARTE QUE IMPORTA
+--
+-- 🔴 AS FAIXAS DE REFERÊNCIA E OS VALORES CRÍTICOS ABAIXO SÃO UM PONTO DE
+-- PARTIDA, NÃO UMA PRESCRIÇÃO. São os valores de adulto de uso corrente na
+-- prática laboratorial brasileira. Eles PRECISAM ser revistos e assinados
+-- pelo laboratório de análises clínicas do hospital antes de valerem, por
+-- três motivos concretos:
+--
+--   1. FAIXA DE REFERÊNCIA DEPENDE DO MÉTODO E DO EQUIPAMENTO. Dois
+--      analisadores dão faixas diferentes para o mesmo analito. A faixa que
+--      vale é a do equipamento que está na bancada — e o laudo impresso cita
+--      a faixa, então uma faixa errada aqui é um laudo errado.
+--
+--   2. A LISTA DE VALORES CRÍTICOS É O QUE FAZ ALGUÉM SER CHAMADO. É ela que
+--      a acreditação cobra e que o laboratório é obrigado a comunicar. Um
+--      limite frouxo deixa de acender; um limite apertado acende tanto que
+--      se aprende a descontar — e aí o que importa some junto. Essa escolha
+--      é do laboratório, não deste arquivo.
+--
+--   3. 🔴 ESTA TABELA NÃO SEPARA SEXO NEM IDADE, e isso é uma limitação
+--      REAL da estrutura, não um descuido deste seed. Hemoglobina, hematócrito,
+--      creatinina e ferritina têm faixas diferentes para homem e mulher;
+--      criança tem faixa própria em quase tudo. As faixas abaixo foram
+--      ALARGADAS para cobrir os dois sexos adultos — e alargar tem custo:
+--      uma hemoglobina 12,5 numa mulher é normal e num homem é anemia, e
+--      com faixa única ela sai "normal" para os dois. O conserto é uma
+--      migração futura com `sexo`, `idade_min` e `idade_max` no analito.
+--      Até lá, NÃO use este módulo como se ele soubesse disso.
+--      ⚠️ PEDIATRIA: as faixas abaixo são de ADULTO. Para um hospital com
+--      pediatria, elas acendem e deixam de acender nos lugares errados.
+--
+-- 💡 O QUE É SEGURO AQUI: o CÓDIGO não é inventado. Ele é BUSCADO em
+-- `sigtap_procedimentos` pelo nome, e fica NULO quando não é encontrado.
+-- Código ausente se resolve depois; código errado vira conta glosada. A
+-- conferência no fim diz quantos acharam código e quantos não.
+--
+-- ⚠️ SE O SIGTAP AINDA NÃO FOI IMPORTADO (o arquivo do DATASUS), todos os
+-- códigos ficam nulos e isso está CERTO. O exame funciona clinicamente sem
+-- código; só não fatura. Rodar a importação do SIGTAP depois e repetir este
+-- arquivo preenche os códigos sem duplicar nada.
+--
+-- IDEMPOTENTE: roda quantas vezes quiser. Exame já cadastrado tem o código
+-- atualizado e o resto preservado; analito já cadastrado NÃO é sobrescrito
+-- — se o laboratório já ajustou uma faixa, este arquivo não desfaz.
+--
+-- ADITIVA: não apaga nem altera nada que já exista.
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. OS EXAMES
+--
+-- `prazo_rotina_min` e `prazo_urgente_min` são o prazo PACTUADO: é contra
+-- eles que o sistema diz "atrasado". Sem prazo, o exame aparece como
+-- "prazo não cadastrado" — que é honesto e diferente de "no prazo".
+-- ───────────────────────────────────────────────────────────
+-- 🔴 SEM `on commit drop`, E ISSO NÃO É DETALHE.
+--
+-- Com `on commit drop`, a tabela é apagada quando o `create` COMITA — e
+-- tanto `reconstruir-banco.sql` quanto o SQL Editor executam declaração por
+-- declaração, cada uma na sua transação. O `insert` seguinte então morria
+-- com `relation "_exames" does not exist`, a 99% do script de reconstrução.
+--
+-- Quem pegou foi `banco-novo-nasce.test.js`, que EXECUTA o script num
+-- Postgres de verdade em vez de conferir presença de arquivo — a catraca do
+-- PR #279, nascida de um defeito parecido e pela mesma razão.
+--
+-- Sem a cláusula, a tabela vive até o fim da SESSÃO, que é o que se quer.
+-- O `drop if exists` antes torna o arquivo repetível na mesma conexão.
+drop table if exists _exames;
+create temporary table _exames (
+  nome text, categoria text, material text, preparo text,
+  rotina int, urgente int, sigtap_como text
+);
+
+insert into _exames (nome, categoria, material, preparo, rotina, urgente, sigtap_como) values
+  -- ── Hematologia ──
+  ('Hemograma completo',        'laboratorial', 'sangue (EDTA)',   null, 240, 60, 'hemograma completo'),
+  ('Coagulograma',              'laboratorial', 'sangue (citrato)',null, 240, 60, 'coagulograma'),
+  ('Tipagem sanguínea ABO/Rh',  'laboratorial', 'sangue (EDTA)',   null, 240, 60, 'determinacao de grupo sanguineo'),
+
+  -- ── Bioquímica ──
+  ('Glicemia',                  'laboratorial', 'sangue (fluoreto)', 'jejum de 8h para rotina; urgência sem jejum', 180, 30, 'glicose'),
+  ('Ureia',                     'laboratorial', 'soro', null, 240, 60, 'ureia'),
+  ('Creatinina',                'laboratorial', 'soro', null, 240, 60, 'creatinina'),
+  ('Eletrólitos (Na, K, Cl)',   'laboratorial', 'soro', null, 240, 45, 'sodio'),
+  ('Cálcio e magnésio',         'laboratorial', 'soro', null, 240, 60, 'calcio'),
+  ('Transaminases (TGO/TGP)',   'laboratorial', 'soro', null, 240, 90, 'transaminase'),
+  ('Bilirrubinas',              'laboratorial', 'soro', null, 240, 90, 'bilirrubina'),
+  ('Proteína C reativa (PCR)',  'laboratorial', 'soro', null, 240, 90, 'proteina c reativa'),
+  ('Lactato',                   'laboratorial', 'sangue (fluoreto)', null, 120, 30, 'acido latico'),
+  ('Troponina',                 'laboratorial', 'soro', null, 120, 30, 'troponina'),
+  ('TSH e T4 livre',            'laboratorial', 'soro', null, 1440, null, 'hormonio tireoestimulante'),
+
+  -- ── Gasometria ──
+  ('Gasometria arterial',       'laboratorial', 'sangue arterial (heparinizado)', 'processar em até 15 minutos', 60, 20, 'gasometria'),
+
+  -- ── Urina e microbiologia ──
+  ('Urina tipo I (EAS)',        'laboratorial', 'urina (jato médio)', 'higiene prévia; primeira urina da manhã para rotina', 240, 90, 'analise de caracteres fisicos'),
+  ('Urocultura',                'laboratorial', 'urina (jato médio)', 'colher antes do antibiótico', 4320, 4320, 'urocultura'),
+  ('Hemocultura',               'laboratorial', 'sangue (dois frascos)', 'colher ANTES do antibiótico, dois sítios diferentes', 7200, 7200, 'hemocultura'),
+
+  -- ── Gestação ──
+  ('Beta-hCG',                  'laboratorial', 'soro', null, 240, 60, 'gonadotrofina corionica'),
+
+  -- ── Imagem: laudo, sem analito ──
+  ('Eletrocardiograma (ECG)',   'outro',  null, null, 60, 10, 'eletrocardiograma'),
+  ('Radiografia de tórax',      'imagem', null, null, 120, 30, 'radiografia de torax'),
+  ('Radiografia de abdome',     'imagem', null, null, 120, 30, 'radiografia de abdomen'),
+  ('Tomografia de crânio',      'imagem', null, 'retirar objetos metálicos', 240, 60, 'tomografia computadorizada do cranio'),
+  ('Tomografia de abdome',      'imagem', null, 'jejum de 4h quando com contraste', 360, 90, 'tomografia computadorizada de abdomen'),
+  ('Ultrassonografia de abdome','imagem', null, 'jejum de 6h', 360, 90, 'ultrassonografia de abdomen'),
+  ('Ultrassonografia obstétrica','imagem', null, null, 360, 120, 'ultrassonografia obstetrica');
+
+-- O código vem do SIGTAP, por NOME, sem acento e sem caixa. Nulo quando
+-- não encontrado — e nulo é honesto.
+--
+-- 🔴 `public.f_unaccent`, E NÃO `public.unaccent` (14/10/2026).
+--
+-- No Supabase a extensão `unaccent` é instalada no schema `extensions`, não
+-- em `public` — `migracao-pacientes-busca.sql` faz isso e cria o envelope
+-- `public.f_unaccent`, que fixa o dicionário e é IMUTÁVEL. Chamar
+-- `public.unaccent` direto morre com "function public.unaccent(text) does
+-- not exist", e foi o que aconteceu ao rodar este arquivo no demo.
+--
+-- ⚠️ `banco-novo-nasce.test.js` NÃO pegou, e a razão importa: o PRELÚDIO
+-- dele criava um `public.unaccent` de mentira para substituir a extensão
+-- que o PGlite não tem. O substituto tornava verdadeira uma chamada que o
+-- banco real recusa. Substituto de ambiente que não imita o ambiente vira
+-- teste que aprova o que não funciona — o stub foi corrigido junto.
+--
+-- ⚠️ `limit 1` com ordem por tamanho do nome: "hemograma completo" casa com
+-- um procedimento só, mas "ureia" casa com vários (dosagem de ureia,
+-- ureia em líquidos). O mais CURTO é o mais genérico, que é o que se quer
+-- para um exame de rotina. É um palpite, e é por isso que a conferência no
+-- fim MOSTRA o que foi casado para alguém olhar.
+insert into public.sadt_catalogo
+  (codigo, nome, categoria, material, preparo, prazo_rotina_min, prazo_urgente_min, usuario)
+select (select s.codigo
+          from public.sigtap_procedimentos s
+         where public.f_unaccent(lower(s.nome)) like '%' || public.f_unaccent(lower(e.sigtap_como)) || '%'
+         order by length(s.nome), s.codigo
+         limit 1),
+       e.nome, e.categoria, e.material, e.preparo, e.rotina, e.urgente, 'adauam'
+  from _exames e
+ where not exists (select 1 from public.sadt_catalogo c where lower(c.nome) = lower(e.nome));
+
+-- Quem já estava cadastrado SEM código ganha o código, se o SIGTAP tiver
+-- sido importado depois. O resto da linha fica como está — o laboratório
+-- pode ter ajustado prazo ou preparo, e isto não desfaz.
+update public.sadt_catalogo c
+   set codigo = (select s.codigo
+                   from public.sigtap_procedimentos s
+                  where public.f_unaccent(lower(s.nome)) like '%' || public.f_unaccent(lower(e.sigtap_como)) || '%'
+                  order by length(s.nome), s.codigo
+                  limit 1),
+       updated_at = now()
+  from _exames e
+ where lower(c.nome) = lower(e.nome)
+   and c.codigo is null;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. OS ANALITOS
+--
+-- 🔴 É AQUI QUE O EXAME DEIXA DE SER TEXTO. "Hemograma" não tem valor de
+-- referência; hemoglobina tem.
+--
+-- `critico_min`/`critico_max` NULOS significam "este analito não tem valor
+-- crítico definido" — e nulo NÃO inventa pânico: o gatilho não acende
+-- `critico` para ele. Deixar nulo é a resposta certa para analito que não
+-- tem faixa de pânico reconhecida (VCM, RDW, eosinófilos).
+--
+-- `ref_texto` é para o que não é faixa numérica: "negativo", "ausente",
+-- "flora normal". Forçar tudo em número faria a cultura de urina não caber
+-- — e aí ela voltaria para o texto livre de onde o módulo saiu.
+-- ───────────────────────────────────────────────────────────
+-- Sem `on commit drop`, pela mesma razão anotada em `_exames`.
+drop table if exists _analitos;
+create temporary table _analitos (
+  exame text, nome text, unidade text, ordem int,
+  ref_min numeric, ref_max numeric, ref_texto text,
+  critico_min numeric, critico_max numeric
+);
+
+insert into _analitos (exame, nome, unidade, ordem, ref_min, ref_max, ref_texto, critico_min, critico_max) values
+  -- ── HEMOGRAMA ─────────────────────────────────────────────
+  -- ⚠️ Hemoglobina e hematócrito ALARGADOS para cobrir os dois sexos: a
+  -- tabela não separa sexo (ver o cabeçalho). O custo é real e está dito lá.
+  ('Hemograma completo', 'Hemoglobina',    'g/dL',   1, 12.0, 17.5, null,  7.0, 20.0),
+  ('Hemograma completo', 'Hematócrito',    '%',      2, 36,   52,   null,  21,  60),
+  ('Hemograma completo', 'Hemácias',       'milhões/mm³', 3, 4.0, 6.1, null, null, null),
+  ('Hemograma completo', 'VCM',            'fL',     4, 80,   100,  null, null, null),
+  ('Hemograma completo', 'HCM',            'pg',     5, 27,   32,   null, null, null),
+  ('Hemograma completo', 'RDW',            '%',      6, 11.5, 14.5, null, null, null),
+  ('Hemograma completo', 'Leucócitos',     '/mm³',   7, 4000, 11000, null, 1000, 50000),
+  -- 🔴 Neutropenia: ≤500 é neutropenia grave, e neutropenia febril é
+  -- emergência infecciosa. É um dos críticos que mais muda conduta.
+  ('Hemograma completo', 'Neutrófilos',    '/mm³',   8, 1800, 7700, null,  500, null),
+  ('Hemograma completo', 'Bastonetes',     '%',      9, 0,    5,    null, null, null),
+  ('Hemograma completo', 'Linfócitos',     '/mm³',  10, 1000, 4800, null, null, null),
+  ('Hemograma completo', 'Monócitos',      '/mm³',  11, 100,  800,  null, null, null),
+  ('Hemograma completo', 'Eosinófilos',    '/mm³',  12, 0,    500,  null, null, null),
+  ('Hemograma completo', 'Basófilos',      '/mm³',  13, 0,    200,  null, null, null),
+  ('Hemograma completo', 'Plaquetas',      '/mm³',  14, 150000, 450000, null, 20000, 1000000),
+
+  -- ── COAGULOGRAMA ──────────────────────────────────────────
+  ('Coagulograma', 'TAP (tempo de protrombina)', 'segundos', 1, 10, 14, null, null, null),
+  ('Coagulograma', 'INR',                        null,       2, 0.9, 1.2, null, null, 5.0),
+  ('Coagulograma', 'TTPA',                       'segundos', 3, 25, 35, null, null, null),
+  ('Coagulograma', 'TTPA (relação)',             null,       4, 0.8, 1.2, null, null, null),
+  ('Coagulograma', 'Fibrinogênio',               'mg/dL',    5, 200, 400, null, 100, null),
+
+  -- ── TIPAGEM ───────────────────────────────────────────────
+  -- Texto, não número: grupo sanguíneo não tem faixa.
+  ('Tipagem sanguínea ABO/Rh', 'Grupo ABO',  null, 1, null, null, 'A, B, AB ou O',       null, null),
+  ('Tipagem sanguínea ABO/Rh', 'Fator Rh',   null, 2, null, null, 'positivo ou negativo', null, null),
+
+  -- ── BIOQUÍMICA ────────────────────────────────────────────
+  ('Glicemia', 'Glicose', 'mg/dL', 1, 70, 99, null, 45, 500),
+  ('Ureia',    'Ureia',   'mg/dL', 1, 15, 45, null, null, 200),
+  -- ⚠️ Creatinina também difere por sexo e por massa muscular. Alargada.
+  ('Creatinina', 'Creatinina', 'mg/dL', 1, 0.6, 1.3, null, null, 7.0),
+
+  -- 🔴 ELETRÓLITOS: potássio é o crítico clássico — 7,2 é arritmia, e a
+  -- diferença entre 5,5 e 6,5 é a diferença entre ajustar a dieta e ir
+  -- para a sala de emergência.
+  ('Eletrólitos (Na, K, Cl)', 'Sódio',   'mEq/L', 1, 135, 145, null, 120, 160),
+  ('Eletrólitos (Na, K, Cl)', 'Potássio','mEq/L', 2, 3.5, 5.1, null, 2.5, 6.5),
+  ('Eletrólitos (Na, K, Cl)', 'Cloro',   'mEq/L', 3, 98,  107, null, null, null),
+
+  ('Cálcio e magnésio', 'Cálcio total',  'mg/dL', 1, 8.5, 10.5, null, 6.0, 13.0),
+  ('Cálcio e magnésio', 'Cálcio iônico', 'mg/dL', 2, 4.5, 5.3,  null, 3.0, 6.5),
+  ('Cálcio e magnésio', 'Magnésio',      'mg/dL', 3, 1.6, 2.6,  null, 1.0, 4.7),
+
+  ('Transaminases (TGO/TGP)', 'TGO (AST)', 'U/L', 1, 10, 40, null, null, null),
+  ('Transaminases (TGO/TGP)', 'TGP (ALT)', 'U/L', 2, 7,  56, null, null, null),
+
+  ('Bilirrubinas', 'Bilirrubina total',    'mg/dL', 1, 0.3, 1.2, null, null, null),
+  ('Bilirrubinas', 'Bilirrubina direta',   'mg/dL', 2, 0.0, 0.3, null, null, null),
+  ('Bilirrubinas', 'Bilirrubina indireta', 'mg/dL', 3, 0.1, 0.9, null, null, null),
+
+  ('Proteína C reativa (PCR)', 'PCR', 'mg/L', 1, null, 5.0, null, null, null),
+
+  -- 🔴 LACTATO ≥ 4: é critério de choque séptico, e o gatilho do protocolo
+  -- de sepse que este sistema já tem. É um crítico que já conversa com
+  -- outro módulo.
+  ('Lactato', 'Lactato', 'mmol/L', 1, 0.5, 2.2, null, null, 4.0),
+
+  -- ⚠️ TROPONINA NÃO LEVA FAIXA NUMÉRICA, e é de propósito: o valor de
+  -- corte depende do método (troponina I × T, ultrassensível ou não) e
+  -- muda com o fabricante do kit. Inventar um número aqui faria o sistema
+  -- acender ou deixar de acender infarto. O laboratório preenche com o
+  -- corte DO equipamento dele.
+  ('Troponina', 'Troponina', null, 1, null, null, 'conforme o método do laboratório — preencher', null, null),
+
+  ('TSH e T4 livre', 'TSH',      'µUI/mL', 1, 0.4, 4.0, null, null, null),
+  ('TSH e T4 livre', 'T4 livre', 'ng/dL',  2, 0.8, 1.8, null, null, null),
+
+  -- ── GASOMETRIA ARTERIAL ───────────────────────────────────
+  ('Gasometria arterial', 'pH',           null,     1, 7.35, 7.45, null, 7.20, 7.60),
+  ('Gasometria arterial', 'pCO₂',         'mmHg',   2, 35,   45,   null, 20,   70),
+  ('Gasometria arterial', 'pO₂',          'mmHg',   3, 80,   100,  null, 40,   null),
+  ('Gasometria arterial', 'HCO₃⁻',        'mEq/L',  4, 22,   26,   null, 10,   40),
+  ('Gasometria arterial', 'Excesso de base', 'mEq/L', 5, -3,  3,   null, -10,  null),
+  ('Gasometria arterial', 'Saturação O₂', '%',      6, 95,   100,  null, 80,   null),
+
+  -- ── URINA TIPO I ──────────────────────────────────────────
+  -- Quase tudo texto: é o exame que ensina por que `ref_texto` existe.
+  ('Urina tipo I (EAS)', 'Densidade',   null, 1, 1.005, 1.030, null, null, null),
+  ('Urina tipo I (EAS)', 'pH',          null, 2, 5.0,   7.0,   null, null, null),
+  ('Urina tipo I (EAS)', 'Proteínas',   null, 3, null, null, 'ausente',  null, null),
+  ('Urina tipo I (EAS)', 'Glicose',     null, 4, null, null, 'ausente',  null, null),
+  ('Urina tipo I (EAS)', 'Corpos cetônicos', null, 5, null, null, 'ausente', null, null),
+  ('Urina tipo I (EAS)', 'Hemoglobina', null, 6, null, null, 'ausente',  null, null),
+  ('Urina tipo I (EAS)', 'Nitrito',     null, 7, null, null, 'negativo', null, null),
+  ('Urina tipo I (EAS)', 'Leucócitos',  '/campo', 8, 0, 5, null, null, null),
+  ('Urina tipo I (EAS)', 'Hemácias',    '/campo', 9, 0, 3, null, null, null),
+  ('Urina tipo I (EAS)', 'Cilindros',   null, 10, null, null, 'ausentes', null, null),
+  ('Urina tipo I (EAS)', 'Flora bacteriana', null, 11, null, null, 'ausente ou escassa', null, null),
+
+  -- ── CULTURAS ──────────────────────────────────────────────
+  -- ⚠️ Cultura POSITIVA não é "valor crítico" no sentido numérico: ela é
+  -- texto. Quem precisa ser avisado de uma hemocultura positiva é o
+  -- plantão e o SCIH, e isso é a PR da comunicação de crítico — não um
+  -- número nesta tabela.
+  ('Urocultura',  'Resultado da cultura', null, 1, null, null, 'negativo', null, null),
+  ('Urocultura',  'Contagem de colônias', 'UFC/mL', 2, null, null, '< 10.000', null, null),
+  ('Urocultura',  'Antibiograma',         null, 3, null, null, 'quando houver crescimento', null, null),
+  ('Hemocultura', 'Resultado da cultura', null, 1, null, null, 'negativo', null, null),
+  ('Hemocultura', 'Antibiograma',         null, 2, null, null, 'quando houver crescimento', null, null),
+
+  -- ── GESTAÇÃO ──────────────────────────────────────────────
+  ('Beta-hCG', 'Beta-hCG', 'mUI/mL', 1, null, 5.0, null, null, null);
+
+insert into public.sadt_analitos
+  (catalogo_id, nome, unidade, ordem, ref_min, ref_max, ref_texto, critico_min, critico_max, usuario)
+select c.id, a.nome, a.unidade, a.ordem, a.ref_min, a.ref_max, a.ref_texto,
+       a.critico_min, a.critico_max, 'adauam'
+  from _analitos a
+  join public.sadt_catalogo c on lower(c.nome) = lower(a.exame)
+ -- ⚠️ NÃO SOBRESCREVE: se o laboratório já ajustou uma faixa, este arquivo
+ -- não desfaz o ajuste. Rodar de novo só acrescenta o que falta.
+ where not exists (select 1 from public.sadt_analitos x
+                    where x.catalogo_id = c.id and lower(x.nome) = lower(a.nome));
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-sadt-catalogo-seed.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao, detalhe from (
+  -- ⚠️ 26 e 63 são o que ESTE arquivo cadastra, contados — não arredondados.
+  -- Quem acrescentar um exame aqui tem de mexer nestes números, e isso é de
+  -- propósito: um `>= 1` passaria verde com metade da carga faltando, e
+  -- metade de um catálogo de exames é pior que nenhum, porque parece pronto.
+  select 'exames no catálogo' as item, count(*) >= 26 as ok, count(*)::text as detalhe
+    from public.sadt_catalogo
+  union all
+  select 'analitos cadastrados', count(*) >= 63, count(*)::text
+    from public.sadt_analitos
+  union all
+  -- 🔴 A faixa invertida é recusada pelo check — se esta linha falhar, a
+  -- migração não está aplicada.
+  select 'nenhuma faixa de referência invertida',
+         not exists (select 1 from public.sadt_analitos
+                      where ref_min is not null and ref_max is not null and ref_min > ref_max),
+         'conferido'
+  union all
+  select 'nenhuma faixa crítica invertida',
+         not exists (select 1 from public.sadt_analitos
+                      where critico_min is not null and critico_max is not null and critico_min > critico_max),
+         'conferido'
+  union all
+  -- ⚠️ O crítico TEM de ficar FORA da referência; se ficasse dentro, todo
+  -- valor normal sairia crítico. É a conferência que pega erro de digitação
+  -- nas faixas acima.
+  select '🔴 todo limite crítico fica FORA da faixa de referência',
+         not exists (select 1 from public.sadt_analitos
+                      where (critico_min is not null and ref_min is not null and critico_min > ref_min)
+                         or (critico_max is not null and ref_max is not null and critico_max < ref_max)),
+         'conferido'
+  union all
+  select 'todo analito pertence a um exame que existe',
+         not exists (select 1 from public.sadt_analitos a
+                      where not exists (select 1 from public.sadt_catalogo c where c.id = a.catalogo_id)),
+         'conferido'
+  union all
+  select 'a carga está anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas where arquivo = 'migracao-sadt-catalogo-seed.sql'),
+         'conferido'
+) x;
+
+-- 🔴 OS CÓDIGOS SIGTAP: o que foi casado, para alguém OLHAR.
+--
+-- ⚠️ Se `com_codigo` for 0, o SIGTAP não foi importado — e isso está certo:
+-- o exame funciona clinicamente sem código, só não fatura. Rodar a
+-- importação do DATASUS e repetir este arquivo preenche sem duplicar.
+select count(*) filter (where codigo is not null) as com_codigo,
+       count(*) filter (where codigo is null)     as sem_codigo,
+       count(*)                                    as total
+  from public.sadt_catalogo;
+
+-- Os nomes casados, um por um. Confira os que parecerem estranhos: o
+-- casamento é por semelhança de nome, e nome parecido não é o mesmo
+-- procedimento.
+select c.nome as exame_no_valentrax, c.codigo, s.nome as nome_no_sigtap
+  from public.sadt_catalogo c
+  left join public.sigtap_procedimentos s on s.codigo = c.codigo
+ order by (c.codigo is null), c.categoria, c.nome;
+
+-- 🔴 OS VALORES CRÍTICOS CADASTRADOS — a lista que o laboratório tem de
+-- assinar. É ela que faz alguém ser chamado.
+select c.nome as exame, a.nome as analito, a.unidade,
+       coalesce(a.ref_texto, concat_ws(' a ', a.ref_min, a.ref_max)) as referencia,
+       a.critico_min, a.critico_max
+  from public.sadt_analitos a
+  join public.sadt_catalogo c on c.id = a.catalogo_id
+ where a.critico_min is not null or a.critico_max is not null
+ order by c.nome, a.ordem;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 111/114 — migracao-tiss-guias.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- TISS: A GUIA EXISTE
+--
+-- 🔴 NÃO SE FATURA CONVÊNIO COM CONTA — FATURA-SE COM GUIA.
+--
+-- O sistema já sabe que a conta de convênio sai pela via `tiss`
+-- (`viaDeFaturamento`), já tem preço por operadora (`at_precos`), já guarda
+-- o registro ANS (`at_convenios.registro_ans`) e já tem conselho, número,
+-- UF e CBO do profissional (`profiles`). O que NÃO existe é o documento.
+--
+-- Medido em 14/10/2026: nenhuma tabela com "guia" no nome, em 118 tabelas.
+-- E `codigo_prestador` — o código do hospital DENTRO da operadora — não
+-- existe em coluna nenhuma do schema. Sem ele nenhuma guia pode ser
+-- emitida, porque é por ele que a operadora sabe quem está cobrando.
+--
+-- 💡 A GUIA APONTA PARA A CONTA; OS ITENS SÃO OS DA CONTA.
+--
+-- Copiar os itens para dentro da guia criaria duas verdades sobre o que foi
+-- feito — e foi exatamente isso que as duas últimas entregas gastaram
+-- esforço desfazendo no exame. Item é de `at_conta_itens`, e ponto.
+--
+-- 🔴 MAS O BENEFICIÁRIO E O PRESTADOR SÃO CARIMBADOS NA EMISSÃO.
+--
+-- Isso parece contradizer o parágrafo acima e não contradiz: a carteira do
+-- paciente muda, o contrato com a operadora é renegociado, o registro ANS
+-- de uma operadora incorporada troca. A guia que JÁ FOI EMITIDA não pode
+-- mudar junto — ela é o documento que a operadora recebeu. Então o que a
+-- guia carimba é o estado do cadastro NO MOMENTO da emissão, e o que ela
+-- referencia é o que continua vivo.
+--
+-- ⚠️ O XML NÃO É GERADO AQUI, e é a mesma recusa de `faturamento.js`: o
+-- padrão TISS é versionado (3.05, 4.01…), o XSD muda por norma da ANS e a
+-- operadora homologa. A diferença em relação ao SISAIH01 é que a ANS
+-- PUBLICA o XSD — então o gerador é escrevível contra algo conferível, no
+-- dia em que o arquivo estiver em mãos. Até lá existe a guia, que é um
+-- documento válido impresso, e é com ela que o hospital cobra hoje.
+--
+-- 🔒 RECUSAS (todas no gatilho, provadas em PGlite):
+--   1. emitir guia de conta que não é da via `tiss`;
+--   2. emitir sem o código do prestador na operadora;
+--   3. emitir sem registro ANS da operadora;
+--   4. emitir sem a carteira do beneficiário;
+--   5. emitir sem profissional completo (conselho, número, UF e CBO);
+--   6. emitir sem nenhum item na conta;
+--   7. mexer em campo CARIMBADO de guia já emitida;
+--   8. cancelar sem motivo;
+--   9. número do prestador repetido.
+--
+-- ADITIVA. IDEMPOTENTE.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_tiss_guia on public.tiss_guias;
+--   drop function if exists public.tiss_aplica_guia();
+--   drop table if exists public.tiss_guias;
+--   alter table public.at_convenios drop column if exists codigo_prestador;
+--   alter table public.at_conta_itens drop column if exists tabela;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. O QUE FALTAVA NO CADASTRO DA OPERADORA
+-- ───────────────────────────────────────────────────────────
+alter table public.at_convenios add column if not exists codigo_prestador text;
+
+-- 🔴 `versao_tiss` NÃO ENTRA, e isso é decisão, não esquecimento.
+--
+-- Eu a tinha criado para o gerador de XML — que esta entrega explicitamente
+-- NÃO constrói. A catraca `colunas-sem-input` apontou que nada a lia, e a
+-- regra dela é a certa: ou alguém lê a coluna, ou a migração não deveria
+-- tê-la criado. Coluna vazia não dá erro, não quebra tela, não quebra
+-- teste — só fica lá parecendo que alguém cuidou do assunto. Foi assim que
+-- o oxigênio do NEWS passou dois anos sem pontuar.
+--
+-- Quando o XML existir, ela entra na migração que o acompanha: uma linha.
+
+comment on column public.at_convenios.codigo_prestador is
+  'O código do HOSPITAL dentro desta operadora. É por ele que a operadora sabe quem cobra — sem ele nenhuma guia TISS é emitida. Cada operadora dá o seu.';
+
+-- 🔴 O CÓDIGO DO ITEM SEM A TABELA É AMBÍGUO.
+--
+-- "0301010072" é SIGTAP; o mesmo número pode existir no TUSS significando
+-- outra coisa. `at_procedimentos` já distingue (`tabela`), mas o ITEM da
+-- conta não carregava — então na hora de montar a guia não havia como
+-- dizer de qual tabela o código veio.
+alter table public.at_conta_itens add column if not exists tabela text;
+comment on column public.at_conta_itens.tabela is
+  'De qual tabela veio o `codigo`: sigtap, tuss, cbhpm ou proprio. Código sem tabela é ambíguo — o mesmo número existe em tabelas diferentes significando coisas diferentes.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. A GUIA
+-- ───────────────────────────────────────────────────────────
+create table if not exists public.tiss_guias (
+  id bigserial primary key,
+
+  -- O elo com o que foi feito. Os ITENS são os da conta.
+  conta_id bigint not null,
+  atendimento_id bigint,
+  prontuario text,
+  convenio_id bigint,
+
+  -- 🔴 OS QUATRO TIPOS DO PADRÃO. Não é enfeite: cada um tem campos
+  -- obrigatórios próprios, e a operadora recusa a guia no tipo errado.
+  tipo text not null default 'sp_sadt',
+
+  -- O número que o HOSPITAL dá. Único — guia repetida é cobrança duplicada.
+  numero_prestador text,
+  -- O número que a OPERADORA devolve, depois. Nulo até ela responder.
+  numero_operadora text,
+
+  -- ── CARIMBADO NA EMISSÃO ──────────────────────────────────
+  -- O cadastro muda; o documento emitido não.
+  registro_ans text,
+  codigo_prestador text,
+  beneficiario_nome text,
+  beneficiario_carteira text,
+  beneficiario_validade date,
+  beneficiario_cns text,
+
+  -- Autorização, quando a operadora exige.
+  senha text,
+  senha_validade date,
+
+  -- O profissional. TISS pede os quatro: conselho, número, UF e CBO.
+  profissional_nome text,
+  profissional_conselho text,
+  profissional_registro text,
+  profissional_uf text,
+  profissional_cbo text,
+
+  carater text not null default 'eletiva',
+  indicacao_clinica text,
+  atendimento_em timestamptz,
+
+  status text not null default 'rascunho',
+  emitida_em timestamptz,
+  emitida_por text,
+  enviada_em timestamptz,
+  cancelada_em timestamptz,
+  cancelamento_motivo text,
+
+  usuario text,
+  criado_em timestamptz not null default now(),
+  updated_at timestamptz default now()
+);
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'tiss_guia_conta_fk') then
+    alter table public.tiss_guias add constraint tiss_guia_conta_fk
+      foreign key (conta_id) references public.at_contas (id) on delete cascade;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'tiss_guia_tipo_ck') then
+    alter table public.tiss_guias add constraint tiss_guia_tipo_ck
+      check (tipo in ('consulta', 'sp_sadt', 'internacao', 'honorarios'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'tiss_guia_status_ck') then
+    alter table public.tiss_guias add constraint tiss_guia_status_ck
+      check (status in ('rascunho', 'emitida', 'enviada', 'paga', 'glosada', 'cancelada'));
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'tiss_guia_carater_ck') then
+    alter table public.tiss_guias add constraint tiss_guia_carater_ck
+      check (carater in ('eletiva', 'urgencia'));
+  end if;
+  -- Cancelar exige dizer por quê: guia cancelada sem motivo vira dúvida na
+  -- conciliação com a operadora, que é onde o dinheiro aparece ou some.
+  if not exists (select 1 from pg_constraint where conname = 'tiss_guia_cancel_ck') then
+    alter table public.tiss_guias add constraint tiss_guia_cancel_ck
+      check (status <> 'cancelada' or length(btrim(coalesce(cancelamento_motivo, ''))) >= 5);
+  end if;
+end $$;
+
+-- 🔴 GUIA REPETIDA É COBRANÇA DUPLICADA. O índice é parcial porque
+-- rascunho ainda não tem número.
+create unique index if not exists tiss_guias_numero_idx
+  on public.tiss_guias (numero_prestador) where numero_prestador is not null;
+create index if not exists tiss_guias_conta_idx on public.tiss_guias (conta_id);
+create index if not exists tiss_guias_status_idx on public.tiss_guias (status, emitida_em desc);
+create index if not exists tiss_guias_prontuario_idx on public.tiss_guias (prontuario, criado_em desc);
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. O NÚMERO DA GUIA
+--
+-- Sequência própria: o número é do PRESTADOR e precisa ser único no escopo
+-- dele. Derivar do id da linha funcionaria, mas vazaria quantos registros
+-- o banco tem — e número de guia é informação que vai para fora.
+-- ───────────────────────────────────────────────────────────
+create sequence if not exists public.tiss_guia_numero_seq start with 1;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. O GATILHO
+-- ───────────────────────────────────────────────────────────
+create or replace function public.tiss_aplica_guia()
+returns trigger
+language plpgsql
+set search_path = public
+as $tiss$
+declare
+  cta      public.at_contas%rowtype;
+  conv     public.at_convenios%rowtype;
+  n_itens  int;
+begin
+  -- ── CAMPOS CARIMBADOS NÃO MUDAM DEPOIS DE EMITIDA ────────
+  if tg_op = 'UPDATE' and old.status <> 'rascunho' then
+    if new.registro_ans      is distinct from old.registro_ans
+    or new.codigo_prestador  is distinct from old.codigo_prestador
+    or new.beneficiario_carteira is distinct from old.beneficiario_carteira
+    or new.beneficiario_nome is distinct from old.beneficiario_nome
+    or new.numero_prestador  is distinct from old.numero_prestador
+    or new.conta_id          is distinct from old.conta_id
+    or new.tipo              is distinct from old.tipo then
+      raise exception
+        'Esta guia já foi emitida (%). O que foi carimbado nela é o documento que a operadora recebeu e não muda — correção se faz cancelando e emitindo outra.',
+        old.status;
+    end if;
+  end if;
+
+  -- Rascunho não exige nada: é rascunho.
+  if new.status = 'rascunho' then
+    new.updated_at := now();
+    return new;
+  end if;
+
+  -- Cancelar não precisa das exigências de emissão.
+  if new.status = 'cancelada' then
+    new.cancelada_em := coalesce(new.cancelada_em, now());
+    new.updated_at := now();
+    return new;
+  end if;
+
+  -- 🔴 STATUS QUE NÃO CONHEÇO SAI DAQUI SEM OPINIÃO.
+  --
+  -- O gatilho BEFORE roda ANTES do check constraint. Sem esta saída, um
+  -- status inventado caía no caminho da emissão e recebia "sem o número da
+  -- carteira do beneficiário" — uma mensagem que não tem nada a ver com o
+  -- que a pessoa fez de errado. Quem sabe falar do vocabulário é
+  -- `tiss_guia_status_ck`, e ele fala logo em seguida.
+  if new.status not in ('emitida', 'enviada', 'paga', 'glosada') then
+    new.updated_at := now();
+    return new;
+  end if;
+
+  -- ── A PARTIR DAQUI É EMISSÃO ──────────────────────────────
+  select * into cta from public.at_contas where id = new.conta_id;
+  if not found then
+    raise exception 'A conta % não existe.', new.conta_id;
+  end if;
+  -- 🔴 Guia TISS é de convênio. Emitir sobre conta do SUS seria cobrar
+  -- duas vezes pela mesma coisa — e do lado errado.
+  if cta.via is distinct from 'tiss' then
+    raise exception
+      'A conta #% sai pela via "%", não por TISS. Guia TISS é para operadora — cobrar por aqui uma conta do SUS é cobrança indevida.',
+      cta.id, coalesce(cta.via, 'sem via');
+  end if;
+
+  select * into conv from public.at_convenios where id = coalesce(new.convenio_id, cta.convenio_id);
+  if not found then
+    raise exception 'A guia não tem operadora: nem a guia nem a conta #% apontam para um convênio.', cta.id;
+  end if;
+
+  new.convenio_id := conv.id;
+  new.registro_ans := coalesce(nullif(btrim(new.registro_ans), ''), conv.registro_ans);
+  new.codigo_prestador := coalesce(nullif(btrim(new.codigo_prestador), ''), conv.codigo_prestador);
+
+  if coalesce(btrim(new.codigo_prestador), '') = '' then
+    raise exception
+      'A operadora "%" não tem o código do prestador cadastrado. É por ele que ela sabe quem está cobrando — sem isso a guia não é aceita. Cadastre em Convênios.',
+      conv.nome;
+  end if;
+  if coalesce(btrim(new.registro_ans), '') = '' then
+    raise exception
+      'A operadora "%" não tem registro ANS cadastrado. Toda operadora tem um, e ele identifica a empresa na troca TISS.',
+      conv.nome;
+  end if;
+  if coalesce(btrim(new.beneficiario_carteira), '') = '' then
+    raise exception
+      'Sem o número da carteira do beneficiário. É a identificação dele dentro da operadora, e a guia é recusada sem ela.';
+  end if;
+
+  -- 🔴 O PROFISSIONAL INTEIRO, OS QUATRO CAMPOS. Conselho sem UF não
+  -- identifica ninguém: o CRM 1234 existe em 27 estados.
+  if coalesce(btrim(new.profissional_conselho), '') = ''
+  or coalesce(btrim(new.profissional_registro), '') = ''
+  or coalesce(btrim(new.profissional_uf), '') = ''
+  or coalesce(btrim(new.profissional_cbo), '') = '' then
+    raise exception
+      'O profissional está incompleto. A guia leva conselho, número, UF e CBO — conselho sem UF não identifica ninguém, porque o mesmo número existe em 27 estados.';
+  end if;
+
+  select count(*) into n_itens from public.at_conta_itens
+   where conta_id = cta.id and coalesce(cancelado, false) = false;
+  if n_itens = 0 then
+    raise exception
+      'A conta #% não tem item nenhum. Guia sem item é cobrança de nada.', cta.id;
+  end if;
+
+  -- O número nasce na emissão, não no rascunho.
+  if new.numero_prestador is null then
+    new.numero_prestador := lpad(nextval('public.tiss_guia_numero_seq')::text, 8, '0');
+  end if;
+  new.emitida_em := coalesce(new.emitida_em, now());
+  new.prontuario := coalesce(new.prontuario, cta.prontuario);
+  new.atendimento_id := coalesce(new.atendimento_id, cta.atendimento_id);
+  new.updated_at := now();
+  return new;
+end;
+$tiss$;
+
+drop trigger if exists trg_tiss_guia on public.tiss_guias;
+create trigger trg_tiss_guia
+  before insert or update on public.tiss_guias
+  for each row execute function public.tiss_aplica_guia();
+
+
+-- ───────────────────────────────────────────────────────────
+-- 5. RLS
+-- ───────────────────────────────────────────────────────────
+alter table public.tiss_guias enable row level security;
+
+do $$
+begin
+  execute 'drop policy if exists tiss_guias_leitura on public.tiss_guias';
+  execute 'create policy tiss_guias_leitura on public.tiss_guias for select to authenticated
+             using (public.pode_ver_algum(''faturamento''))';
+  execute 'drop policy if exists tiss_guias_ins on public.tiss_guias';
+  execute 'create policy tiss_guias_ins on public.tiss_guias for insert to authenticated
+             with check (public.my_role() in (''adm_master'',''adm_silver''))';
+  execute 'drop policy if exists tiss_guias_mod_ins on public.tiss_guias';
+  execute 'create policy tiss_guias_mod_ins on public.tiss_guias as restrictive for insert to authenticated
+             with check (public.pode_editar_algum(''faturamento''))';
+  execute 'drop policy if exists tiss_guias_upd on public.tiss_guias';
+  execute 'create policy tiss_guias_upd on public.tiss_guias for update to authenticated
+             using (public.pode_editar_algum(''faturamento''))
+             with check (public.pode_editar_algum(''faturamento''))';
+end $$;
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-tiss-guias.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'tabela tiss_guias' as item, to_regclass('public.tiss_guias') is not null as ok
+  union all
+  select 'sequência do número da guia',
+         to_regclass('public.tiss_guia_numero_seq') is not null
+  union all
+  select '🔴 gatilho que carimba e recusa',
+         exists (select 1 from pg_trigger where tgname = 'trg_tiss_guia')
+  union all
+  select '🔴 at_convenios.codigo_prestador (não existia em coluna nenhuma)', exists (
+           select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = 'at_convenios' and column_name = 'codigo_prestador')
+  union all
+  select '🔴 at_conta_itens.tabela (código sem tabela é ambíguo)', exists (
+           select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = 'at_conta_itens' and column_name = 'tabela')
+  union all
+  select 'trava ' || k, exists (select 1 from pg_constraint where conname = k)
+    from unnest(array['tiss_guia_tipo_ck','tiss_guia_status_ck','tiss_guia_carater_ck','tiss_guia_cancel_ck']) k
+  union all
+  select '🔴 número da guia é único (guia repetida é cobrança dupla)',
+         exists (select 1 from pg_class where relname = 'tiss_guias_numero_idx')
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas where arquivo = 'migracao-tiss-guias.sql')
+) x;
+
+-- O que o cadastro ainda precisa para a primeira guia sair.
+select nome,
+       case when coalesce(btrim(registro_ans), '') = '' then '❌ sem registro ANS' else '✅' end as ans,
+       case when coalesce(btrim(codigo_prestador), '') = '' then '❌ sem código do prestador' else '✅' end as prestador,
+       registro_ans, codigo_prestador
+  from public.at_convenios
+ where tipo = 'convenio' and coalesce(ativo, true)
+ order by nome;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 112/114 — migracao-documento-impressao-digital.sql
+-- └────────────────────────────────────────────────────────────
+-- ═══════════════════════════════════════════════════════════
+-- A IMPRESSÃO DIGITAL DO DOCUMENTO
+--
+-- ⚠️⚠️ ISTO NÃO É ASSINATURA DIGITAL, E A DIFERENÇA É O PONTO INTEIRO.
+--
+-- Hoje o campo `assinatura` deste sistema guarda um TEXTO: "Dra. Ana · CRM
+-- 1234". Isso é ATRIBUIÇÃO — diz quem foi —, e é útil. Mas não é assinatura
+-- no sentido da CFM 1.821/2007 e do manual SBIS/CFM: aquilo exige
+-- certificado ICP-Brasil, e sem ele o hospital NÃO pode parar de imprimir.
+-- Medido em 14/10/2026: zero colunas de hash ou certificado no schema.
+--
+-- Esta migração não resolve isso. Ela constrói o chão que falta.
+--
+-- 💡 POR QUE O CHÃO VEM PRIMEIRO
+--
+-- Toda assinatura digital assina UM HASH DE BYTES. E este sistema não tinha
+-- bytes: um laudo é um punhado de colunas numa tabela, e ninguém tinha
+-- decidido "este documento são ESTES campos, nesta ordem". Sem isso,
+-- nenhum dos três caminhos de assinatura (A1, A3 ou nuvem) consegue
+-- começar — e os três precisam exatamente da mesma coisa.
+--
+-- 💡 E ELA JÁ VALE SOZINHA
+--
+-- Com o hash gravado, um documento alterado por fora do sistema deixa de
+-- bater. Um laudo append-only continua append-only mesmo que alguém com
+-- acesso ao banco edite a linha — porque a edição não bate com a digital.
+--
+-- ⚠️ O QUE ISSO NÃO PROVA: quem tem acesso de ESCRITA ao banco pode
+-- recalcular o hash junto. A digital não substitui controle de acesso; ela
+-- pega alteração feita por fora do caminho do aplicativo, e dá os bytes
+-- exatos que a assinatura de verdade vai assinar depois.
+--
+-- 🔴 O HASH É CALCULADO PELO BANCO, NO GATILHO, e nunca enviado pela tela.
+-- Se a tela mandasse, bastaria mandar o hash de outro conteúdo — e a
+-- digital passaria a provar exatamente nada.
+--
+-- 🔴 A FORMA CANÔNICA É CONTRATO, e está documentada abaixo campo a campo.
+-- `src/clinico/impressao-digital.js` reproduz a MESMA string em JS para
+-- verificar, e há prova em PGlite de que as duas concordam byte a byte.
+-- Qualquer mudança aqui quebra a verificação de todo documento já gravado:
+-- por isso a versão do formato vai junto (`hash_formato`).
+--
+-- ADITIVA. IDEMPOTENTE. Documentos ANTIGOS ficam sem digital — e isso é
+-- honesto: ninguém pode afirmar o que eles eram no dia em que nasceram.
+--
+-- COMO DESFAZER:
+--   drop trigger if exists trg_cc_descricao_digital on public.cc_descricao;
+--   drop trigger if exists trg_sadt_resultados_digital on public.sadt_resultados;
+--   drop function if exists public.doc_digital_descricao();
+--   drop function if exists public.doc_digital_resultado();
+--   drop function if exists public.doc_canonico_descricao(public.cc_descricao);
+--   drop function if exists public.doc_canonico_resultado(public.sadt_resultados);
+--   drop function if exists public.doc_txt(text), public.doc_num(numeric), public.doc_ts(timestamptz);
+-- (nenhuma extensão a remover: `sha256` é nativo do Postgres.)
+--   alter table public.cc_descricao drop column if exists conteudo_hash, drop column if exists hash_formato;
+--   alter table public.sadt_resultados drop column if exists conteudo_hash, drop column if exists hash_formato;
+-- ═══════════════════════════════════════════════════════════
+
+set valentrax.quem = 'adauam';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 1. AS COLUNAS
+-- ───────────────────────────────────────────────────────────
+alter table public.cc_descricao      add column if not exists conteudo_hash text;
+alter table public.cc_descricao      add column if not exists hash_formato  text;
+alter table public.sadt_resultados   add column if not exists conteudo_hash text;
+alter table public.sadt_resultados   add column if not exists hash_formato  text;
+
+comment on column public.cc_descricao.conteudo_hash is
+  'SHA-256 do documento canônico, calculado pelo gatilho no momento da gravação. NÃO é assinatura digital: é a impressão digital que uma assinatura ICP-Brasil assinaria. Ver migracao-documento-impressao-digital.sql.';
+comment on column public.cc_descricao.hash_formato is
+  'Qual versão da forma canônica gerou o hash. Mudar a forma invalidaria a verificação de tudo que já existe — por isso a versão viaja com o documento.';
+comment on column public.sadt_resultados.conteudo_hash is
+  'SHA-256 do documento canônico, calculado pelo gatilho. NÃO é assinatura digital. Ver migracao-documento-impressao-digital.sql.';
+comment on column public.sadt_resultados.hash_formato is
+  'Qual versão da forma canônica gerou o hash.';
+
+
+-- ───────────────────────────────────────────────────────────
+-- 2. OS TRÊS FORMATADORES
+--
+-- 🔴 AQUI MORA O RISCO INTEIRO DESTA MIGRAÇÃO: se o Postgres e o JavaScript
+-- escreverem o mesmo valor de formas diferentes, a verificação acusa
+-- adulteração em documento íntegro — e um alarme falso em prova de
+-- integridade é pior que alarme nenhum, porque se aprende a ignorá-lo.
+--
+-- Por isso cada tipo tem uma regra explícita e estreita.
+-- ───────────────────────────────────────────────────────────
+
+/**
+ * Texto: nulo e vazio são a MESMA coisa, e espaço nas bordas não conta.
+ *
+ * ⚠️ Sem isso, salvar "achados" como `null` e depois como `''` daria hashes
+ * diferentes para o mesmo documento — e nenhum humano chamaria isso de
+ * alteração.
+ */
+create or replace function public.doc_txt(v text)
+returns text language sql immutable as $$
+  select coalesce(btrim(v), '')
+$$;
+
+/**
+ * Número: escala normalizada.
+ *
+ * 🔴 `7.20::numeric::text` é '7.20' e `7.2::numeric::text` é '7.2' — o mesmo
+ * número, dois textos. O JavaScript só conhece 7.2. `trim_scale` tira os
+ * zeros à direita e faz os dois lados dizerem a mesma coisa.
+ */
+create or replace function public.doc_num(v numeric)
+returns text language sql immutable as $$
+  select case when v is null then '' else trim_scale(v)::text end
+$$;
+
+/**
+ * Instante: UTC, precisão de SEGUNDO.
+ *
+ * ⚠️ O Postgres guarda microssegundos e o JavaScript só conhece
+ * milissegundos. Levar a precisão cheia para a forma canônica faria o
+ * truncamento de um lado divergir do outro em algum registro, um dia, sem
+ * ninguém entender por quê. Documento não muda de sentido dentro do mesmo
+ * segundo.
+ */
+create or replace function public.doc_ts(v timestamptz)
+returns text language sql immutable as $$
+  select case when v is null then ''
+         else to_char(v at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') end
+$$;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 3. A FORMA CANÔNICA
+--
+-- `campo=valor`, uma por linha, NA ORDEM DECLARADA. A ordem é parte do
+-- contrato: trocar duas linhas muda o hash sem mudar o documento.
+--
+-- ⚠️ O QUE ENTRA é o que, mudando, muda o DOCUMENTO. Ficam de fora:
+--   · `id`, `versao`, `criado_em` do próprio registro — são do registro,
+--     não do conteúdo; uma correção é documento novo, com hash próprio;
+--   · `conteudo_hash` e `hash_formato`, obviamente;
+--   · `usuario`, que é trilha de auditoria e não conteúdo clínico.
+--
+-- 🔴 `assinatura` ENTRA. Quem assinou é parte do documento: um laudo
+-- atribuído a outro profissional é outro documento, e trocar o nome do
+-- assinante sem quebrar a digital seria o buraco mais óbvio possível.
+-- ───────────────────────────────────────────────────────────
+
+/** A forma canônica da DESCRIÇÃO CIRÚRGICA (CFM 1.638/2002). */
+create or replace function public.doc_canonico_descricao(d public.cc_descricao)
+returns text language sql immutable as $$
+  select concat_ws(E'\n',
+    'documento=cc_descricao',
+    'formato=1',
+    'cirurgia_id='           || coalesce(d.cirurgia_id::text, ''),
+    'procedimento_cod='      || public.doc_txt(d.procedimento_cod),
+    'procedimento_realizado='|| public.doc_txt(d.procedimento_realizado),
+    'via_acesso='            || public.doc_txt(d.via_acesso),
+    'descricao='             || public.doc_txt(d.descricao),
+    'achados='               || public.doc_txt(d.achados),
+    'intercorrencias='       || public.doc_txt(d.intercorrencias),
+    'sangramento_ml='        || public.doc_num(d.sangramento_ml),
+    'hemotransfusao='        || coalesce(d.hemotransfusao::text, ''),
+    'drenos='                || public.doc_txt(d.drenos),
+    'amostra_enviada='       || coalesce(d.amostra_enviada::text, ''),
+    'amostras='              || public.doc_txt(d.amostras),
+    'conversao='             || coalesce(d.conversao::text, ''),
+    'conversao_motivo='      || public.doc_txt(d.conversao_motivo),
+    'cid_pos='               || public.doc_txt(d.cid_pos),
+    'corrige_id='            || coalesce(d.corrige_id::text, ''),
+    'motivo_correcao='       || public.doc_txt(d.motivo_correcao),
+    'assinatura='            || public.doc_txt(d.assinatura)
+  )
+$$;
+
+/** A forma canônica do RESULTADO DE EXAME. */
+create or replace function public.doc_canonico_resultado(r public.sadt_resultados)
+returns text language sql immutable as $$
+  select concat_ws(E'\n',
+    'documento=sadt_resultados',
+    'formato=1',
+    'item_id='        || coalesce(r.item_id::text, ''),
+    'analito_id='     || coalesce(r.analito_id::text, ''),
+    'nome='           || public.doc_txt(r.nome),
+    'valor_num='      || public.doc_num(r.valor_num),
+    'valor_texto='    || public.doc_txt(r.valor_texto),
+    'unidade='        || public.doc_txt(r.unidade),
+    'referencia='     || public.doc_txt(r.referencia),
+    'laudo='          || public.doc_txt(r.laudo),
+    -- 🔴 `anormal` e `critico` ENTRAM: quem lê o laudo age sobre eles, e um
+    -- crítico que virasse normal sem quebrar a digital seria a alteração
+    -- mais perigosa que este banco permite.
+    'anormal='        || coalesce(r.anormal::text, ''),
+    'critico='        || coalesce(r.critico::text, ''),
+    'corrige_id='     || coalesce(r.corrige_id::text, ''),
+    'motivo_correcao='|| public.doc_txt(r.motivo_correcao),
+    'liberado_por='   || public.doc_txt(r.liberado_por),
+    'assinatura='     || public.doc_txt(r.assinatura)
+  )
+$$;
+
+
+-- ───────────────────────────────────────────────────────────
+-- 4. OS GATILHOS
+--
+-- 🔴 A DIGITAL É TIRADA UMA VEZ, NO NASCIMENTO — e nunca retirada.
+--
+-- ⚠️ A primeira versão recalculava no UPDATE também, e isso ANULAVA a
+-- camada inteira: o hash guardado passaria a ser sempre o hash da linha
+-- atual, então a verificação nunca poderia acusar nada. Quem alterasse o
+-- conteúdo teria a digital recarimbada junto, de graça.
+--
+-- Descoberto CAMINHANDO no demo (15/10/2026), tentando adulterar um laudo
+-- para ver o selo acender — e percebendo que ele nunca acenderia.
+--
+-- Agora o UPDATE PRESERVA o que foi carimbado no insert. Consequência: um
+-- conteúdo alterado deixa de bater com a própria digital, que é exatamente
+-- o que esta camada existe para mostrar.
+--
+-- ⚠️ Estas tabelas são append-only e não têm política de UPDATE na RLS —
+-- então pelo caminho do aplicativo isto nem acontece. O que se pega aqui é
+-- alteração feita por FORA: SQL direto, restore parcial, cópia entre
+-- bancos, edição em massa. É menos do que uma assinatura, e é mais do que
+-- havia.
+-- ───────────────────────────────────────────────────────────
+create or replace function public.doc_digital_descricao()
+returns trigger language plpgsql set search_path = public as $d$
+begin
+  -- 🔴 NO UPDATE A DIGITAL NÃO MUDA. Ver o comentário acima: recalcular
+  -- aqui faria a verificação nunca poder acusar nada.
+  if tg_op = 'UPDATE' then
+    new.conteudo_hash := old.conteudo_hash;
+    new.hash_formato  := old.hash_formato;
+    return new;
+  end if;
+  new.hash_formato := '1';
+  new.conteudo_hash := encode(sha256(convert_to(public.doc_canonico_descricao(new), 'UTF8')), 'hex');
+  return new;
+end;
+$d$;
+
+create or replace function public.doc_digital_resultado()
+returns trigger language plpgsql set search_path = public as $d$
+begin
+  -- 🔴 NO UPDATE A DIGITAL NÃO MUDA. Ver o comentário acima: recalcular
+  -- aqui faria a verificação nunca poder acusar nada.
+  if tg_op = 'UPDATE' then
+    new.conteudo_hash := old.conteudo_hash;
+    new.hash_formato  := old.hash_formato;
+    return new;
+  end if;
+  new.hash_formato := '1';
+  new.conteudo_hash := encode(sha256(convert_to(public.doc_canonico_resultado(new), 'UTF8')), 'hex');
+  return new;
+end;
+$d$;
+
+-- 🔴 `sha256()` É NATIVO do Postgres desde a 11 — nenhuma extensão.
+--
+-- A primeira versão usava `digest(..., 'sha256')`, do pgcrypto, e o
+-- detector pegou: o PGlite não embarca pgcrypto, então o teste que prova
+-- SQL e JS concordando não rodava. Trocar pelo nativo tirou a dependência
+-- inteira — e dependência a menos numa migração que o hospital novo roda é
+-- um motivo a menos para o banco não nascer.
+--
+-- ⚠️ `convert_to(..., 'UTF8')` é obrigatório: `sha256` recebe `bytea`, e
+-- deixar o Postgres escolher a codificação faria o hash depender do
+-- `client_encoding` de quem gravou.
+
+-- 🔴 DEPOIS do gatilho que calcula a versão e sela os campos, nunca antes:
+-- o nome do gatilho decide a ordem (alfabética), e `trg_cc_desc_versao`
+-- vem antes de `trg_zz_cc_descricao_digital`. Se a digital rodasse
+-- primeiro, ela assinaria o conteúdo ANTES de o gatilho anterior ajustar a
+-- versão — e o hash gravado não descreveria a linha gravada.
+drop trigger if exists trg_cc_descricao_digital on public.cc_descricao;
+drop trigger if exists trg_zz_cc_descricao_digital on public.cc_descricao;
+create trigger trg_zz_cc_descricao_digital
+  before insert or update on public.cc_descricao
+  for each row execute function public.doc_digital_descricao();
+
+drop trigger if exists trg_sadt_resultados_digital on public.sadt_resultados;
+drop trigger if exists trg_zz_sadt_resultados_digital on public.sadt_resultados;
+create trigger trg_zz_sadt_resultados_digital
+  before insert or update on public.sadt_resultados
+  for each row execute function public.doc_digital_resultado();
+
+
+insert into public.migracoes_aplicadas (arquivo)
+values ('migracao-documento-impressao-digital.sql') on conflict do nothing;
+
+reset valentrax.quem;
+
+notify pgrst, 'reload schema';
+
+
+-- ───────────────────────────────────────────────────────────
+-- CONFERÊNCIA
+-- ───────────────────────────────────────────────────────────
+select item, case when ok then '✅' else '❌' end as situacao from (
+  select 'coluna ' || t || '.conteudo_hash' as item, exists (
+           select 1 from information_schema.columns
+            where table_schema = 'public' and table_name = t and column_name = 'conteudo_hash') as ok
+    from unnest(array['cc_descricao', 'sadt_resultados']) t
+  union all
+  select 'formatador ' || f, exists (
+           select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+            where n.nspname = 'public' and p.proname = f)
+    from unnest(array['doc_txt', 'doc_num', 'doc_ts',
+                      'doc_canonico_descricao', 'doc_canonico_resultado']) f
+  union all
+  select '🔴 gatilho ' || g, exists (select 1 from pg_trigger where tgname = g)
+    from unnest(array['trg_zz_cc_descricao_digital', 'trg_zz_sadt_resultados_digital']) g
+  union all
+  -- 🔴 A DIGITAL RODA DEPOIS da versão: o nome é o que garante a ordem.
+  select '🔴 a digital roda DEPOIS do gatilho de versão',
+         not exists (
+           select 1 from pg_trigger t join pg_class c on c.oid = t.tgrelid
+            where c.relname = 'cc_descricao' and not t.tgisinternal
+              and t.tgname > 'trg_zz_cc_descricao_digital')
+  union all
+  select '🔴 o hash usa sha256 NATIVO (sem extensão)',
+         (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'pg_catalog' and p.proname = 'sha256') > 0
+  union all
+  select 'migração anotada no registro',
+         exists (select 1 from public.migracoes_aplicadas
+                  where arquivo = 'migracao-documento-impressao-digital.sql')
+) x;
+
+-- ⚠️ Documentos ANTIGOS ficam sem digital, e isso é honesto: ninguém pode
+-- afirmar o que eles eram no dia em que nasceram. O número abaixo é a
+-- dívida, não um erro.
+select 'cc_descricao' as documento,
+       count(*) filter (where conteudo_hash is not null) as com_digital,
+       count(*) filter (where conteudo_hash is null)     as sem_digital
+  from public.cc_descricao
+union all
+select 'sadt_resultados',
+       count(*) filter (where conteudo_hash is not null),
+       count(*) filter (where conteudo_hash is null)
+  from public.sadt_resultados;
+
+
+-- ┌────────────────────────────────────────────────────────────
+-- │ 113/114 — migracao-perfis-executivo.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
 -- TORRE DE COMANDO ENTRA NOS PERFIS — a porta do painel executivo
@@ -12832,7 +17670,7 @@ values ('migracao-perfis-executivo.sql') on conflict do nothing;
 
 
 -- ┌────────────────────────────────────────────────────────────
--- │ 98/98 — migracao-rls-leitura.sql
+-- │ 114/114 — migracao-rls-leitura.sql
 -- └────────────────────────────────────────────────────────────
 -- ============================================================
 -- Valentrax — RLS: quem LÊ e quem ESCREVE em cada tabela
@@ -12883,6 +17721,10 @@ set search_path = public, extensions, pg_temp;
 
 -- ════════════════════════════════════════════════════════════
 -- PARTE 1/5 — AS FUNÇÕES DE PERMISSÃO
+--
+-- ⚠️ O MESMO TEXTO está em `migracao-acesso-funcoes.sql`, que roda CEDO na
+-- reconstrução do banco: aqui elas vêm por último, e 24 políticas criadas
+-- no meio do caminho já as citam. Os dois saem da const FUNCOES do gerador.
 --
 -- Espelham `src/acesso/permissoes.js`, nesta ordem: perfil → exceção
 -- individual → travas. `security definer` porque a função precisa ler
@@ -13049,7 +17891,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 105 tabelas ficam abertas a
+-- a mesma coisa em português. 27 das 119 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -13083,6 +17925,7 @@ begin
       ('at_conta_itens', 'public.pode_ver_algum(''faturamento'')'),                                   -- faturamento
       ('at_contas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_convenios', 'true'),                                                                       -- todos os autenticados
+      ('at_desfecho_correcoes', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'')'),   -- ps, atendimento, ambulatorio
       ('at_dominios', 'true'),                                                                        -- todos os autenticados
       ('at_glosas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_planos', 'true'),                                                                          -- todos os autenticados
@@ -13092,7 +17935,13 @@ begin
       ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
       ('atendimentos', 'public.pode_ver_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
-      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
+      ('cc_anestesia', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
+      ('cc_checklist', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
+      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
+      ('cc_descricao', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
+      ('cc_equipe', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                                -- bloco, paciente
+      ('cc_opme', 'public.pode_ver_algum(''bloco'', ''suprimentos'', ''paciente'')'),                 -- bloco, suprimentos, paciente
+      ('cc_rpa_aldrete', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                           -- bloco, paciente
       ('cc_salas', 'true'),                                                                           -- todos os autenticados
       ('cid_referencia', 'true'),                                                                     -- todos os autenticados
       ('enf_escala_faixas', 'true'),                                                                  -- todos os autenticados
@@ -13113,6 +17962,7 @@ begin
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_ver_algum(''farmacia'')'),                               -- farmacia
       ('farm_preparo', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                                -- farmacia, ps
+      ('farm_validacoes', 'public.pode_ver_algum(''farmacia'', ''paciente'')'),                       -- farmacia, paciente
       ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
@@ -13135,17 +17985,17 @@ begin
       ('pacientes', 'public.pode_ver_algum(''atendimento'', ''ambulatorio'', ''ps'', ''paciente'')'), -- atendimento, ambulatorio, ps, paciente
       ('pep_acessos', 'public.pode_ver_algum(''auditoria'')'),                                        -- auditoria
       ('pep_administracoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
-      ('pep_alergias', 'public.pode_ver_algum(''paciente'')'),                                        -- paciente
+      ('pep_alergias', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                          -- paciente, farmacia
       ('pep_anamneses', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_anotacoes_enfermagem', 'public.pode_ver_algum(''paciente'')'),                            -- paciente
       ('pep_aprazamentos', 'public.pode_ver_algum(''paciente'')'),                                    -- paciente
       ('pep_condicoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
-      ('pep_episodios', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_episodios', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                         -- paciente, farmacia
       ('pep_evolucoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_medicamentos_uso', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
-      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'')'),                              -- paciente
-      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
-      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'')'),                                     -- paciente
+      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                -- paciente, farmacia
+      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                  -- paciente, farmacia
+      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                       -- paciente, farmacia
       ('pep_reconciliacao_itens', 'public.pode_ver_algum(''paciente'')'),                             -- paciente
       ('pep_reconciliacoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
       ('pep_sinais_vitais', 'public.pode_ver_algum(''paciente'')'),                                   -- paciente
@@ -13166,6 +18016,11 @@ begin
       ('ps_registros', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),                  -- ps, paciente, farmacia
       ('ps_salas', 'public.pode_ver_algum(''ps'')'),                                                  -- ps
       ('ps_sinais', 'public.pode_ver_algum(''ps'', ''paciente'')'),                                   -- ps, paciente
+      ('sadt_analitos', 'true'),                                                                      -- todos os autenticados
+      ('sadt_catalogo', 'true'),                                                                      -- todos os autenticados
+      ('sadt_itens', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),                 -- ps, paciente, ambulatorio
+      ('sadt_pedidos', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),               -- ps, paciente, ambulatorio
+      ('sadt_resultados', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),            -- ps, paciente, ambulatorio
       ('scih_casos', 'public.pode_ver_algum(''scih'', ''paciente'')'),                                -- scih, paciente
       ('scih_germes', 'true'),                                                                        -- todos os autenticados
       ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
@@ -13181,6 +18036,7 @@ begin
       ('sup_parametros', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
       ('sup_pedidos', 'public.pode_ver_algum(''suprimentos'')'),                                      -- suprimentos
       ('sup_requisicoes', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
+      ('tiss_guias', 'public.pode_ver_algum(''faturamento'')'),                                       -- faturamento
       ('usuarios_permissoes', 'public.pode_ver_algum(''users'') or user_id = auth.uid()')             -- users, @proprio
     ) as v(tabela, cond)
   loop
@@ -13277,12 +18133,19 @@ begin
       ('ag_grades', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
       ('at_conta_itens', 'public.pode_editar_algum(''faturamento'')'),                                -- faturamento
       ('at_contas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
+      ('at_desfecho_correcoes', 'public.pode_editar_algum(''ps'', ''atendimento'', ''ambulatorio'')'), -- ps, atendimento, ambulatorio
       ('at_glosas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
       ('at_precos', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
       ('at_repasses', 'public.pode_editar_algum(''faturamento'')'),                                   -- faturamento
       ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
       ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
+      ('cc_anestesia', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('cc_checklist', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
       ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('cc_descricao', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('cc_equipe', 'public.pode_editar_algum(''bloco'')'),                                           -- bloco
+      ('cc_opme', 'public.pode_editar_algum(''bloco'', ''suprimentos'')'),                            -- bloco, suprimentos
+      ('cc_rpa_aldrete', 'public.pode_editar_algum(''bloco'')'),                                      -- bloco
       ('enf_escalas', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                          -- paciente, leitos
       ('enf_lesao_pressao', 'public.pode_editar_algum(''paciente'', ''leitos'', ''nsp'')'),           -- paciente, leitos, nsp
       ('enf_sae_checagem', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                     -- paciente, leitos
@@ -13296,6 +18159,7 @@ begin
       ('farm_movimentos', 'public.pode_editar_algum(''farmacia'', ''controlados'', ''ps'')'),         -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_editar_algum(''farmacia'')'),                            -- farmacia
       ('farm_preparo', 'public.pode_editar_algum(''farmacia'', ''ps'')'),                             -- farmacia, ps
+      ('farm_validacoes', 'public.pode_editar_algum(''farmacia'')'),                                  -- farmacia
       ('leitos', 'public.pode_editar_algum(''leitos'', ''paciente'', ''scih'')'),                     -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_editar_algum(''leitos'', ''paciente'')'),                        -- leitos, paciente
       ('leitos_turnover', 'public.pode_editar_algum(''leitos'', ''overview'', ''print'')'),           -- leitos, overview, print
@@ -13337,6 +18201,9 @@ begin
       ('ps_registros', 'public.pode_editar_algum(''ps'', ''paciente'', ''farmacia'')'),               -- ps, paciente, farmacia
       ('ps_salas', 'public.pode_editar_algum(''ps'')'),                                               -- ps
       ('ps_sinais', 'public.pode_editar_algum(''ps'', ''paciente'')'),                                -- ps, paciente
+      ('sadt_itens', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),              -- ps, paciente, ambulatorio
+      ('sadt_pedidos', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),            -- ps, paciente, ambulatorio
+      ('sadt_resultados', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),         -- ps, paciente, ambulatorio
       ('scih_casos', 'public.pode_editar_algum(''scih'', ''paciente'')'),                             -- scih, paciente
       ('scih_indicadores', 'public.pode_editar_algum(''scih'', ''overview'', ''print'')'),            -- scih, overview, print
       ('solicitacoes', 'public.pode_editar_algum(''ps'', ''leitos'')'),                               -- ps, leitos
@@ -13349,6 +18216,7 @@ begin
       ('sup_parametros', 'public.pode_editar_algum(''suprimentos'', ''farmacia'')'),                  -- suprimentos, farmacia
       ('sup_pedidos', 'public.pode_editar_algum(''suprimentos'')'),                                   -- suprimentos
       ('sup_requisicoes', 'public.pode_editar_algum(''suprimentos'')'),                               -- suprimentos
+      ('tiss_guias', 'public.pode_editar_algum(''faturamento'')'),                                    -- faturamento
       ('usuarios_permissoes', 'public.pode_editar_algum(''users'') or user_id = auth.uid()')          -- users, @proprio
     ) as v(tabela, cond)
   loop
@@ -13408,6 +18276,8 @@ with esperadas_abertas(tabela) as (values
   ('ps_faixas_obstetricas'),
   ('ps_faixas_pediatricas'),
   ('ps_protocolos'),
+  ('sadt_analitos'),
+  ('sadt_catalogo'),
   ('scih_germes'),
   ('setores'),
   ('sigtap_procedimentos')
@@ -13526,7 +18396,7 @@ select
 --
 -- ⚠️ FALTA UM PASSO: ANOTAR O REGISTRO DE MIGRAÇÕES.
 --
--- Só 22 das 98 migrações acima terminam se anotando em
+-- Só 38 das 114 migrações acima terminam se anotando em
 -- `migracoes_aplicadas`; as outras 76 são anteriores à regra
 -- (27/08/2026) e nunca foram reescritas.
 --

@@ -22,6 +22,7 @@
 
 import { assinaturaDe } from "../clinico/papeis.js";
 import { listaLida } from "../util/leitura.js";
+import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 
 /**
  * Autoria congelada dentro do registro: nome e conselho de quem assinou,
@@ -52,11 +53,18 @@ function assinatura(user, campoNome = "profissional_nome") {
  */
 export async function carregarProntuario(sb, prontuario) {
   const p = encodeURIComponent(prontuario);
-  const [episodios, alergias, condicoes] = await Promise.all([
+  const [episodios, alergias, condicoes, pacientes] = await Promise.all([
     sb(`pep_episodios?prontuario=eq.${p}&select=*&order=admissao_em.desc`).catch(() => []),
-    sb(`pep_alergias?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    // Pela PESSOA, não pelo número: a alergia registrada antes de unificar
+    // o prontuário não aparecia aqui — nem na prescrição, nem na pulseira.
+    carregarAlergiasDoPaciente(sb, prontuario),
     sb(`pep_condicoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
+    // A data de nascimento alimenta as regras de criança e de idoso do motor
+    // de alertas. Sem ela o contexto ia com `idade: null` fixo, e nenhuma das
+    // duas disparava para paciente internado.
+    sb(`pacientes?prontuario=eq.${p}&select=prontuario,data_nascimento&limit=1`).catch(() => null),
   ]);
+  const paciente = listaLida(pacientes)[0] || null;
 
   const eps = listaLida(episodios);
   const ativo = eps.find(e => (e.status || "aberto") === "aberto" && !e.alta_em) || null;
@@ -65,8 +73,8 @@ export async function carregarProntuario(sb, prontuario) {
   const medicamentosUso = await sb(`pep_medicamentos_uso?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []);
 
   if (!ativo) {
-    return { episodios: eps, episodio: null, alergias: alergias || [], condicoes: condicoes || [],
-             medicamentosUso: listaLida(medicamentosUso),
+    return { episodios: eps, episodio: null, paciente, alergias: alergias || [], condicoes: condicoes || [],
+             medicamentosUso: listaLida(medicamentosUso), validacoesFarmacia: [],
              prescricoes: [], itens: [], eventos: [], administracoes: [], sinais: [], evolucoes: [],
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
              escalas: [], lpp: [], faixasEscalas: [],
@@ -76,7 +84,7 @@ export async function carregarProntuario(sb, prontuario) {
 
   const e = ativo.id;
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
-         reconciliacoes, reconciliacaoItens, sumarios, escalas, lpp, faixasEscalas,
+         reconciliacoes, reconciliacaoItens, sumarios, validacoesFarmacia, escalas, lpp, faixasEscalas,
          saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
@@ -92,6 +100,9 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`pep_reconciliacoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_reconciliacao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_sumarios_alta?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
+    // A avaliação da farmácia sobre a prescrição (tabela de 17/09/2026).
+    // Quem prescreve precisa ver a ressalva e a pendência SEM ir à farmácia.
+    sb(`farm_validacoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     // Escalas de enfermagem + LPP (Tier 1 Fase 1a) + cortes globais de classificação.
     sb(`enf_escalas?episodio_id=eq.${e}&select=*&order=aferido_em.desc`).catch(() => []),
     sb(`enf_lesao_pressao?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
@@ -113,14 +124,14 @@ export async function carregarProntuario(sb, prontuario) {
   // que esta tela pode dizer.
   const arr = listaLida;
   return {
-    episodios: eps, episodio: ativo,
+    episodios: eps, episodio: ativo, paciente,
     alergias: arr(alergias), condicoes: arr(condicoes),
     prescricoes: arr(prescricoes), itens: arr(itens), eventos: arr(eventos),
     administracoes: arr(administracoes), sinais: arr(sinais),
     evolucoes: arr(evolucoes), anotacoes: arr(anotacoes), anamneses: arr(anamneses),
     medicamentosUso: arr(medicamentosUso),
     reconciliacoes: arr(reconciliacoes), reconciliacaoItens: arr(reconciliacaoItens),
-    sumarios: arr(sumarios),
+    sumarios: arr(sumarios), validacoesFarmacia: arr(validacoesFarmacia),
     escalas: arr(escalas), lpp: arr(lpp), faixasEscalas: arr(faixasEscalas),
     saeCatalogo: arr(saeCatalogo), saeHistorico: arr(saeHistorico),
     saeDiagnosticos: arr(saeDiagnosticos), saePrescricoes: arr(saePrescricoes),

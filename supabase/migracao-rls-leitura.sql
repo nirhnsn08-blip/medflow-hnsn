@@ -48,6 +48,10 @@ set search_path = public, extensions, pg_temp;
 -- ════════════════════════════════════════════════════════════
 -- PARTE 1/5 — AS FUNÇÕES DE PERMISSÃO
 --
+-- ⚠️ O MESMO TEXTO está em `migracao-acesso-funcoes.sql`, que roda CEDO na
+-- reconstrução do banco: aqui elas vêm por último, e 24 políticas criadas
+-- no meio do caminho já as citam. Os dois saem da const FUNCOES do gerador.
+--
 -- Espelham `src/acesso/permissoes.js`, nesta ordem: perfil → exceção
 -- individual → travas. `security definer` porque a função precisa ler
 -- `profiles` e `perfis_permissoes` por baixo do RLS delas.
@@ -213,7 +217,7 @@ $converter$;
 -- PARTE 3/5 — A POLÍTICA DE LEITURA DE CADA TABELA
 --
 -- Uma linha por tabela: o nome e quem pode ler. O comentário à direita é
--- a mesma coisa em português. 25 das 105 tabelas ficam abertas a
+-- a mesma coisa em português. 27 das 119 tabelas ficam abertas a
 -- qualquer autenticado — são catálogo, referência e configuração, sem
 -- nenhum dado de paciente. Isso é DECISÃO declarada, não sobra: negar
 -- `farm_medicamentos` desligaria o motor de alertas dentro do PS e do PEP.
@@ -247,6 +251,7 @@ begin
       ('at_conta_itens', 'public.pode_ver_algum(''faturamento'')'),                                   -- faturamento
       ('at_contas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_convenios', 'true'),                                                                       -- todos os autenticados
+      ('at_desfecho_correcoes', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'')'),   -- ps, atendimento, ambulatorio
       ('at_dominios', 'true'),                                                                        -- todos os autenticados
       ('at_glosas', 'public.pode_ver_algum(''faturamento'')'),                                        -- faturamento
       ('at_planos', 'true'),                                                                          -- todos os autenticados
@@ -256,7 +261,13 @@ begin
       ('at_responsaveis', 'public.pode_ver_algum(''atendimento'', ''paciente'')'),                    -- atendimento, paciente
       ('atendimentos', 'public.pode_ver_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
       ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
-      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
+      ('cc_anestesia', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
+      ('cc_checklist', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
+      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
+      ('cc_descricao', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
+      ('cc_equipe', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                                -- bloco, paciente
+      ('cc_opme', 'public.pode_ver_algum(''bloco'', ''suprimentos'', ''paciente'')'),                 -- bloco, suprimentos, paciente
+      ('cc_rpa_aldrete', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                           -- bloco, paciente
       ('cc_salas', 'true'),                                                                           -- todos os autenticados
       ('cid_referencia', 'true'),                                                                     -- todos os autenticados
       ('enf_escala_faixas', 'true'),                                                                  -- todos os autenticados
@@ -277,6 +288,7 @@ begin
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_ver_algum(''farmacia'')'),                               -- farmacia
       ('farm_preparo', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                                -- farmacia, ps
+      ('farm_validacoes', 'public.pode_ver_algum(''farmacia'', ''paciente'')'),                       -- farmacia, paciente
       ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
@@ -299,17 +311,17 @@ begin
       ('pacientes', 'public.pode_ver_algum(''atendimento'', ''ambulatorio'', ''ps'', ''paciente'')'), -- atendimento, ambulatorio, ps, paciente
       ('pep_acessos', 'public.pode_ver_algum(''auditoria'')'),                                        -- auditoria
       ('pep_administracoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
-      ('pep_alergias', 'public.pode_ver_algum(''paciente'')'),                                        -- paciente
+      ('pep_alergias', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                          -- paciente, farmacia
       ('pep_anamneses', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_anotacoes_enfermagem', 'public.pode_ver_algum(''paciente'')'),                            -- paciente
       ('pep_aprazamentos', 'public.pode_ver_algum(''paciente'')'),                                    -- paciente
       ('pep_condicoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
-      ('pep_episodios', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_episodios', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                         -- paciente, farmacia
       ('pep_evolucoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_medicamentos_uso', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
-      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'')'),                              -- paciente
-      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
-      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'')'),                                     -- paciente
+      ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                -- paciente, farmacia
+      ('pep_prescricao_itens', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                  -- paciente, farmacia
+      ('pep_prescricoes', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                       -- paciente, farmacia
       ('pep_reconciliacao_itens', 'public.pode_ver_algum(''paciente'')'),                             -- paciente
       ('pep_reconciliacoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
       ('pep_sinais_vitais', 'public.pode_ver_algum(''paciente'')'),                                   -- paciente
@@ -330,6 +342,11 @@ begin
       ('ps_registros', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),                  -- ps, paciente, farmacia
       ('ps_salas', 'public.pode_ver_algum(''ps'')'),                                                  -- ps
       ('ps_sinais', 'public.pode_ver_algum(''ps'', ''paciente'')'),                                   -- ps, paciente
+      ('sadt_analitos', 'true'),                                                                      -- todos os autenticados
+      ('sadt_catalogo', 'true'),                                                                      -- todos os autenticados
+      ('sadt_itens', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),                 -- ps, paciente, ambulatorio
+      ('sadt_pedidos', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),               -- ps, paciente, ambulatorio
+      ('sadt_resultados', 'public.pode_ver_algum(''ps'', ''paciente'', ''ambulatorio'')'),            -- ps, paciente, ambulatorio
       ('scih_casos', 'public.pode_ver_algum(''scih'', ''paciente'')'),                                -- scih, paciente
       ('scih_germes', 'true'),                                                                        -- todos os autenticados
       ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
@@ -345,6 +362,7 @@ begin
       ('sup_parametros', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
       ('sup_pedidos', 'public.pode_ver_algum(''suprimentos'')'),                                      -- suprimentos
       ('sup_requisicoes', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
+      ('tiss_guias', 'public.pode_ver_algum(''faturamento'')'),                                       -- faturamento
       ('usuarios_permissoes', 'public.pode_ver_algum(''users'') or user_id = auth.uid()')             -- users, @proprio
     ) as v(tabela, cond)
   loop
@@ -441,12 +459,19 @@ begin
       ('ag_grades', 'public.pode_editar_algum(''atendimento'')'),                                     -- atendimento
       ('at_conta_itens', 'public.pode_editar_algum(''faturamento'')'),                                -- faturamento
       ('at_contas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
+      ('at_desfecho_correcoes', 'public.pode_editar_algum(''ps'', ''atendimento'', ''ambulatorio'')'), -- ps, atendimento, ambulatorio
       ('at_glosas', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
       ('at_precos', 'public.pode_editar_algum(''faturamento'')'),                                     -- faturamento
       ('at_repasses', 'public.pode_editar_algum(''faturamento'')'),                                   -- faturamento
       ('at_responsaveis', 'public.pode_editar_algum(''atendimento'', ''paciente'')'),                 -- atendimento, paciente
       ('atendimentos', 'public.pode_editar_algum(''overview'', ''atendimento'', ''ambulatorio'', ''print'')'), -- overview, atendimento, ambulatorio, print
+      ('cc_anestesia', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('cc_checklist', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
       ('cc_cirurgias', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('cc_descricao', 'public.pode_editar_algum(''bloco'')'),                                        -- bloco
+      ('cc_equipe', 'public.pode_editar_algum(''bloco'')'),                                           -- bloco
+      ('cc_opme', 'public.pode_editar_algum(''bloco'', ''suprimentos'')'),                            -- bloco, suprimentos
+      ('cc_rpa_aldrete', 'public.pode_editar_algum(''bloco'')'),                                      -- bloco
       ('enf_escalas', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                          -- paciente, leitos
       ('enf_lesao_pressao', 'public.pode_editar_algum(''paciente'', ''leitos'', ''nsp'')'),           -- paciente, leitos, nsp
       ('enf_sae_checagem', 'public.pode_editar_algum(''paciente'', ''leitos'')'),                     -- paciente, leitos
@@ -460,6 +485,7 @@ begin
       ('farm_movimentos', 'public.pode_editar_algum(''farmacia'', ''controlados'', ''ps'')'),         -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_editar_algum(''farmacia'')'),                            -- farmacia
       ('farm_preparo', 'public.pode_editar_algum(''farmacia'', ''ps'')'),                             -- farmacia, ps
+      ('farm_validacoes', 'public.pode_editar_algum(''farmacia'')'),                                  -- farmacia
       ('leitos', 'public.pode_editar_algum(''leitos'', ''paciente'', ''scih'')'),                     -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_editar_algum(''leitos'', ''paciente'')'),                        -- leitos, paciente
       ('leitos_turnover', 'public.pode_editar_algum(''leitos'', ''overview'', ''print'')'),           -- leitos, overview, print
@@ -501,6 +527,9 @@ begin
       ('ps_registros', 'public.pode_editar_algum(''ps'', ''paciente'', ''farmacia'')'),               -- ps, paciente, farmacia
       ('ps_salas', 'public.pode_editar_algum(''ps'')'),                                               -- ps
       ('ps_sinais', 'public.pode_editar_algum(''ps'', ''paciente'')'),                                -- ps, paciente
+      ('sadt_itens', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),              -- ps, paciente, ambulatorio
+      ('sadt_pedidos', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),            -- ps, paciente, ambulatorio
+      ('sadt_resultados', 'public.pode_editar_algum(''ps'', ''paciente'', ''ambulatorio'')'),         -- ps, paciente, ambulatorio
       ('scih_casos', 'public.pode_editar_algum(''scih'', ''paciente'')'),                             -- scih, paciente
       ('scih_indicadores', 'public.pode_editar_algum(''scih'', ''overview'', ''print'')'),            -- scih, overview, print
       ('solicitacoes', 'public.pode_editar_algum(''ps'', ''leitos'')'),                               -- ps, leitos
@@ -513,6 +542,7 @@ begin
       ('sup_parametros', 'public.pode_editar_algum(''suprimentos'', ''farmacia'')'),                  -- suprimentos, farmacia
       ('sup_pedidos', 'public.pode_editar_algum(''suprimentos'')'),                                   -- suprimentos
       ('sup_requisicoes', 'public.pode_editar_algum(''suprimentos'')'),                               -- suprimentos
+      ('tiss_guias', 'public.pode_editar_algum(''faturamento'')'),                                    -- faturamento
       ('usuarios_permissoes', 'public.pode_editar_algum(''users'') or user_id = auth.uid()')          -- users, @proprio
     ) as v(tabela, cond)
   loop
@@ -572,6 +602,8 @@ with esperadas_abertas(tabela) as (values
   ('ps_faixas_obstetricas'),
   ('ps_faixas_pediatricas'),
   ('ps_protocolos'),
+  ('sadt_analitos'),
+  ('sadt_catalogo'),
   ('scih_germes'),
   ('setores'),
   ('sigtap_procedimentos')

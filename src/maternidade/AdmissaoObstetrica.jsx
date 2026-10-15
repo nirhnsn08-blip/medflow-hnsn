@@ -174,6 +174,10 @@ export default function AdmissaoObstetrica({ sb, currentUser, canEdit, pacienteI
     setCadastrando(false);
     if (!r.ok) { setErroCadastro(r.motivo); return; }
     setGestante(r.paciente);   // agora com prontuário — o formulário destrava
+    // O leito/PS pode não ter sido religado (trocou de paciente, ou a RLS
+    // negou). A admissão vale; a pendência precisa ser dita, senão a fila
+    // continua mostrando a paciente como "sem cadastro".
+    if (r.aviso) setAvisoEpisodio(r.aviso);
     const aberto = await episodioAtivoDaGestante(sb, r.paciente.prontuario).catch(() => null);
     if (aberto) { setEpisodioId(aberto.id); setAvisoEpisodio(`Já existe um episódio aberto desta gestante (nº ${aberto.id}). A admissão vai pendurar nele.`); }
   }

@@ -16,10 +16,11 @@ import { avisoDeCatalogo, filtrarProcedimentos, opcoesDeProcedimento, viaDaEscol
 import { avisoDeConta, convenioSugerido, geraConta, valoresIniciais } from "../atendimento/faturavel.js";
 import { PS_VIAS_TRANSF } from "../atendimento/recepcao.js";
 import { registrarAuditoria } from "../auditoria/dados.js";
-import { carregarAlergias } from "../clinico/alergias-dados.js";
+import { carregarAlergiasDoPaciente } from "../clinico/alergias-dados.js";
 import { AbaPrescricao } from "./AbaPrescricao.jsx";
 import { AbaChecagem } from "./AbaChecagem.jsx";
-import { AbaExames } from "./AbaExames.jsx";
+import { AbaExames } from "../sadt/AbaExames.jsx";
+import { contarSadtDoAtendimento } from "../sadt/dados.js";
 import { avaliarSinaisVitais } from "../clinico/adulto.js";
 import { normTxt } from "../clinico/alertas.js";
 import { COMORBIDADES } from "../clinico/comorbidades.js";
@@ -34,6 +35,7 @@ import { addPsRegistroRemote, deletePsProtocoloRemote, loadPsAdministracoes, loa
 import { useEffect, useRef, useState } from "react";
 import { psContaCenso, saveFaixaObstetrica, saveFaixaPediatrica } from "./apoio.js";
 import { pendentesDeChecagem } from "./prescricao.js";
+import { listaLida } from "../util/leitura.js";
 
 // Biblioteca de protocolos do PS — abrir e cadastrar
 export function PsProtocolosModal({ sb, currentUser, canEdit, isMaster, onClose }) {
@@ -436,7 +438,7 @@ export function PsDesfechoModal({ sb, paciente, setores, leitos = [], catalogos 
     sb(`ps_atendimentos?prontuario=eq.${encodeURIComponent(paciente.prontuario)}` +
             `&convenio_id=not.is.null&id=neq.${paciente.id}` +
             `&select=convenio_id,chegada_em&order=chegada_em.desc&limit=5`)
-      .then(r => setSugestao(convenioSugerido(Array.isArray(r) ? r : [])));
+      .then(r => setSugestao(convenioSugerido(listaLida(r))));
   }, [paciente.id]);
 
   // Só depois de escolher o desfecho — antes disso não se sabe sequer se
@@ -655,11 +657,26 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
   const suportaVoz = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const inp = { background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "9px 11px", color: "var(--text)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", width: "100%", boxSizing: "border-box" };
   const carregarRegistros = () => loadPsRegistros(sb, paciente.id).then(setRegistros);
+  // 🔴 O NÚMERO DA ABA DE EXAMES VEM DAQUI, e não de dentro da aba: a aba só
+  // é montada quando alguém clica nela, e é justamente pelo número no botão
+  // que o médico descobre que há exame esperando. `null` enquanto não se
+  // sabe — "Exames (0)" afirma que não há exame pedido.
+  const carregarExames = () => contarSadtDoAtendimento(sb, paciente.id).then(setNExames);
   const carregarPrescricao = () => { loadPsPrescricaoItens(sb, paciente.id).then(setPresItensSalvos); loadFarmSaidasByAtendimento(sb, paciente.id).then(setSaidas); loadPsAdministracoes(sb, paciente.id).then(setAdms); };
-  useEffect(() => { carregarRegistros(); }, []);
+  useEffect(() => { carregarRegistros(); carregarExames(); }, []);
   useEffect(() => { loadFarmMedicamentos(sb).then(setCatalogo); loadFarmLotes(sb).then(setPresLotes); loadFarmInteracoes(sb).then(setInteracoes); loadFarmIncompatY(sb).then(setIncompatY); carregarPrescricao(); }, []);
-  useEffect(() => { carregarAlergias(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
-  useEffect(() => { setTexto(""); if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
+  // Pela PESSOA: segue a unificação de prontuário (ver clinico/pessoa.js).
+  useEffect(() => { carregarAlergiasDoPaciente(sb, paciente.prontuario).then(setAlergiasPep); }, [paciente.prontuario]);
+  // Trocar de aba DESLIGA o ditado — voz sendo transcrita para uma aba que
+  // não está na tela é texto entrando sem ninguém ver.
+  //
+  // 🔴 MAS NÃO APAGA O TEXTO. Até 04/09/2026 esta linha fazia `setTexto("")`
+  // a cada troca de aba: resto da época em que o mesmo campo servia à
+  // evolução e à prescrição livre, e trocar de aba precisava evitar que um
+  // texto fosse salvo como o outro. A prescrição virou estruturada e o campo
+  // ficou só da evolução — e a limpeza passou a apagar evolução ditada de
+  // quem só foi conferir um exame antes de terminar de escrever.
+  useEffect(() => { if (gravando) { recRef.current?.stop(); setGravando(false); } }, [aba]);
 
   function toggleVoz() {
     if (gravando) { recRef.current?.stop(); setGravando(false); return; }
@@ -670,21 +687,42 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
     rec.onend = () => setGravando(false); rec.onerror = () => setGravando(false);
     recRef.current = rec; rec.start(); setGravando(true);
   }
-  async function salvarTexto(tipo) {
+  /**
+   * 🔴 O TEXTO SÓ SAI DA TELA DEPOIS QUE O BANCO DEVOLVE A LINHA.
+   *
+   * Até 04/09/2026 esta função gravava sem olhar o retorno e limpava o campo
+   * em seguida. Com a gravação recusada — RLS sem escrita no módulo, sessão
+   * vencida, rede caída — a evolução ditada sumia da tela e nunca chegava ao
+   * prontuário, e o próximo plantão lia um atendimento sem evolução nenhuma.
+   * Ditado é o pior caso: não há rascunho em lugar nenhum para refazer.
+   *
+   * (Chamava-se `salvarTexto(tipo)` e servia também à prescrição livre, que
+   * virou estruturada na `AbaPrescricao`. O ramo de prescrição era morto.)
+   */
+  async function salvarEvolucao() {
     if (!texto.trim()) { alert("Escreva (ou dite) o texto."); return; }
-    if (!confirm(`Salvar esta ${tipo === "evolucao" ? "evolução" : "prescrição"}? Ela NÃO poderá ser editada nem apagada depois (registro clínico).`)) return;
+    if (!confirm("Salvar esta evolução? Ela NÃO poderá ser editada nem apagada depois (registro clínico).")) return;
     setBusy(true);
     if (gravando) { recRef.current?.stop(); setGravando(false); }
-    await addPsRegistroRemote(sb, { atendimento_id: paciente.id, tipo, categoria: tipo === "evolucao" ? evolCat : null, texto: texto.trim(), criado_em: nowISO() }, currentUser);
-    registrarAuditoria(sb, currentUser, `PS: ${tipo === "evolucao" ? (PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução") : "prescrição"}`, paciente.iniciais, {});
-    setTexto(""); setBusy(false); carregarRegistros(); onChanged?.();
+    const linhas = await addPsRegistroRemote(sb, { atendimento_id: paciente.id, tipo: "evolucao", categoria: evolCat, texto: texto.trim(), criado_em: nowISO() }, currentUser);
+    setBusy(false);
+    if (!Array.isArray(linhas) || linhas.length === 0) {
+      alert("A evolução NÃO foi gravada — a gravação não chegou ao banco ou falta permissão de escrita neste módulo.\n\nO texto continua na tela. Tente salvar de novo.");
+      return;                                   // texto preservado de propósito
+    }
+    registrarAuditoria(sb, currentUser, `PS: ${PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução"}`, paciente.iniciais, {});
+    setTexto(""); carregarRegistros(); onChanged?.();
   }
   // A farmácia entregou e ninguém registrou o que foi feito com o medicamento
   const itensPendentesChecagem = pendentesDeChecagem(presItensSalvos, saidas, adms);
 
   const evolucoes = registros.filter(r => r.tipo === "evolucao");
   const prescricoes = registros.filter(r => r.tipo === "prescricao");
-  const exames = registros.filter(r => r.tipo === "exame");
+  // 🔴 O exame NÃO mora mais em `registros`: saiu de `ps_registros` para as
+  // tabelas do SADT. A aba carrega os próprios dados e devolve a contagem
+  // por aqui — contar `registros` daria zero para sempre, e zero nesta
+  // tela lê-se "não há exame pedido".
+  const [nExames, setNExames] = useState(null);
   const abaBtn = ativo => ({ background: ativo ? "#22d3ee" : "transparent", color: ativo ? "#000" : "var(--text-3)", border: `1px solid ${ativo ? "#22d3ee" : "var(--border)"}`, borderRadius: 7, padding: "7px 14px", fontWeight: 700, cursor: "pointer", fontSize: 12.5 });
 
   return (
@@ -705,7 +743,9 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
             Checagem ({adms.length})
             {itensPendentesChecagem.length > 0 && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: aba === "checagem" ? "#000" : "#d97706" }}>● {itensPendentesChecagem.length} a checar</span>}
           </button>
-          <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>Exames ({exames.length})</button>
+          <button onClick={() => setAba("exames")} style={abaBtn(aba === "exames")}>
+            Exames{nExames == null ? "" : ` (${nExames})`}
+          </button>
         </div>
 
         {aba === "evolucao" && (
@@ -722,7 +762,7 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
             <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={5} placeholder={`Escreva a ${(PS_EVOL_CATEGORIAS[evolCat]?.label || "evolução").toLowerCase()} — ou clique em Ditar e fale.`} style={{ ...inp, resize: "vertical", lineHeight: 1.55, marginBottom: 8 }} />
             <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14 }}>
               {suportaVoz && <button onClick={toggleVoz} style={{ background: gravando ? "#f43f5e" : "transparent", color: gravando ? "#fff" : "var(--text-2)", border: `1px solid ${gravando ? "#f43f5e" : "var(--border-2)"}`, borderRadius: 6, padding: "8px 14px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>{gravando ? "● Gravando… (parar)" : "Ditar por voz"}</button>}
-              <button onClick={() => salvarTexto("evolucao")} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
+              <button onClick={salvarEvolucao} disabled={busy} style={{ background: "#22d3ee", color: "#000", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, marginLeft: "auto" }}>{busy ? "…" : "Salvar evolução"}</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {evolucoes.map(r => { const ec = PS_EVOL_CATEGORIAS[r.categoria] || PS_EVOL_CATEGORIAS.medica; return (
@@ -755,8 +795,9 @@ export function AtendimentoModal({ sb, sbCru, paciente, currentUser, onClose, on
         )}
 
         {aba === "exames" && (
-          <AbaExames sb={sb} paciente={paciente} currentUser={currentUser} exames={exames}
-            busy={busy} setBusy={setBusy} onMudou={() => { carregarRegistros(); onChanged?.(); }} />
+          <AbaExames sb={sb} paciente={paciente} currentUser={currentUser}
+            busy={busy} setBusy={setBusy} onContou={setNExames}
+            onMudou={() => { carregarExames(); onChanged?.(); }} />
         )}
 
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>

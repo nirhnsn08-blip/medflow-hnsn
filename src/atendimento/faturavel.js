@@ -32,6 +32,9 @@
 // "não havia como preencher".
 // ═══════════════════════════════════════════════════════════
 
+import { EVASAO, ehEvasao } from "../clinico/desfechos.js";
+import { diaLocal } from "../util/datas.js";
+
 const texto = v => String(v ?? "").trim();
 
 /**
@@ -43,9 +46,12 @@ const texto = v => String(v ?? "").trim();
  * fingir o contrário seria perder produção real num momento em que
  * ninguém vai voltar para corrigir.
  */
-export const SEM_CONTA = ["evasao"];
+// 🔴 "evadiu" (ambulatório) e "evasao" (PS/internação) são a MESMA coisa, e
+// esta lista conhecia só uma: o paciente que foi embora antes de ser
+// atendido virava conta. O vocabulário agora é único — ver clinico/desfechos.js.
+export const SEM_CONTA = EVASAO;
 
-export const geraConta = desfecho => !SEM_CONTA.includes(texto(desfecho));
+export const geraConta = desfecho => !ehEvasao(texto(desfecho));
 
 /**
  * O que falta para este episódio virar conta.
@@ -150,8 +156,44 @@ export function convenioSugerido(historico = []) {
     .filter(a => texto(a?.convenio_id))
     .sort((a, b) => texto(b?.chegada_em).localeCompare(texto(a?.chegada_em)));
   if (!comConvenio.length) return null;
+  const ultimo = comConvenio[0];
   return {
-    convenio_id: texto(comConvenio[0].convenio_id),
-    de: texto(comConvenio[0].chegada_em).slice(0, 10),
+    convenio_id: texto(ultimo.convenio_id),
+    // O plano vem JUNTO porque é filho do convênio e da mesma linha: separar
+    // os dois faria a recepção aceitar a sugestão e ainda ter de escolher o
+    // plano à mão, que é metade do trabalho que a sugestão vinha poupar.
+    plano_id: texto(ultimo.plano_id),
+    de: diaLocal(ultimo.chegada_em),
+  };
+}
+
+/**
+ * A sugestão depois de conferida contra o catálogo de HOJE. `null` = não há
+ * o que sugerir.
+ *
+ * 🔴 Sugestão vem do passado; catálogo é do presente. Um convênio
+ * descredenciado some de `catalogos.convenios` mas continua gravado nos
+ * atendimentos antigos — oferecê-lo mandaria a recepção abrir a conta para
+ * quem não paga mais, e o episódio só seria recusado no processamento.
+ *
+ * O plano cai sozinho quando não pertence mais àquele convênio (renomeado,
+ * desativado, migrado): aí sugere-se o convênio e deixa-se o plano em
+ * branco, que é a parte verdadeira da sugestão.
+ */
+export function sugestaoUtil(sugestao, catalogos = {}) {
+  const id = texto(sugestao?.convenio_id);
+  if (!id) return null;
+  const convenio = (catalogos.convenios || []).find(c => texto(c?.id) === id);
+  if (!convenio) return null;
+  const planoId = texto(sugestao?.plano_id);
+  const plano = planoId
+    ? (catalogos.planos || []).find(p => texto(p?.id) === planoId && texto(p?.convenio_id) === id)
+    : null;
+  return {
+    convenio_id: id,
+    plano_id: plano ? planoId : "",
+    de: sugestao?.de ?? null,
+    nome: texto(convenio.nome) || `convênio ${id}`,
+    nomePlano: plano ? texto(plano.nome) : "",
   };
 }

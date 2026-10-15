@@ -23,6 +23,51 @@
         --text:#16202e; --text-2:#31404f; --text-3:#54657a; --text-muted:#8595a8;
       }
       body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
+
+      /* ── O MENU EM TELA BAIXA ──────────────────────────────
+         🔴 Medido em 07/10/2026, num 1366×768: o menu tem 832px de conteúdo
+         para 661px de altura. QUATRO dos dezessete itens ficam fora da
+         primeira vista — Imprimir Dashboard, Auditoria, Importar Dados e
+         Usuários e Perfis. Há barra de rolagem nativa, então não é invisível;
+         mas 1366×768 é o monitor comum de recepção, e num notebook real a
+         barra do navegador come mais uns 100px, o que piora a conta.
+
+         Pesa mais do que parece: "Usuários e Perfis" é onde o hospital
+         atribui os cargos — e cargo é o que decide acesso a dado clínico;
+         "Auditoria" é exigência legal (pep_acessos).
+
+         🔒 A ORDEM NÃO MUDA. Ela é o caminho do trabalho (atende → trata →
+         confere → fatura → apoio) e o grupo APOIO E TI é último de propósito.
+         Subir os itens escondidos "resolveria" a vista e quebraria o
+         princípio: o problema é CABER, não ordenar.
+
+         Por que CSS aqui e não estilo inline no App.jsx: o App.jsx é
+         território compartilhado, e altura de janela não se lê em estilo
+         inline sem um ouvinte de resize. Uma media query de ALTURA resolve
+         sem JavaScript e sem disputar o arquivo.
+
+         O `!important` é necessário e não é preguiça: o estilo inline do
+         elemento vence qualquer seletor, e é justamente o padding inline
+         que precisa ceder. Fica restrito aos três ganchos do menu. */
+      @media (max-height: 860px) {
+        .vx-nav-grupo { padding-top: 9px !important; padding-bottom: 3px !important; }
+        .vx-nav-item  { padding-top: .32rem !important; padding-bottom: .32rem !important; }
+        .vx-nav       { padding-top: .4rem !important; padding-bottom: .4rem !important; }
+      }
+
+      /* Segunda faixa: o notebook de 768 REAL, depois que a barra do
+         navegador come ~130px. Medido: com a faixa de cima sozinha, os mesmos
+         quatro itens continuavam fora aos 640px de viewport.
+         Aqui o cabeçalho de grupo perde a linha inteira de respiro e o item
+         fica no mínimo legível. Abaixo disto não se aperta mais sem a barra
+         virar um borrão — e aí a rolagem nativa volta a ser a resposta certa,
+         porque esconder texto é pior que rolar. */
+      @media (max-height: 700px) {
+        .vx-nav-grupo { padding-top: 6px !important; padding-bottom: 1px !important;
+                        font-size: 9.5px !important; line-height: 1.1 !important; }
+        .vx-nav-item  { padding-top: .2rem !important; padding-bottom: .2rem !important; }
+        .vx-nav       { padding-top: 2px !important; padding-bottom: 2px !important; }
+      }
     </style>
     <script>try{document.documentElement.setAttribute('data-theme', localStorage.getItem('hnsn_theme')||'dark')}catch(e){}</script>
   </head>

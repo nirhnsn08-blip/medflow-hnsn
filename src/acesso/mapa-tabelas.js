@@ -74,10 +74,17 @@ export const MAPA_TABELAS = {
   // parte do Atendimento. Ver `migracao-faturamento-modulo.sql`.
   at_conta_itens:           ["faturamento"],
   at_contas:                ["faturamento"],
+  // A correção de desfecho é do ATENDIMENTO (quem registrou o episódio é
+  // quem corrige), não do faturamento — embora o faturamento seja quem mais
+  // sente o erro. Ver migracao-correcao-desfecho.sql.
+  at_desfecho_correcoes:    ["ps", "atendimento", "ambulatorio"],
   // A glosa recebida carrega prontuário e valor da conta de um paciente.
   at_glosas:                ["faturamento"],
   // O repasse aponta para a conta de um paciente e diz quanto foi pago por ela.
   at_repasses:              ["faturamento"],
+  // 🔴 A guia TISS carrega a carteira do beneficiário e o que foi cobrado
+  // dele na operadora. É do Faturamento, e só.
+  tiss_guias:               ["faturamento"],
   // Preco por convenio. NAO tem paciente, mas e informacao comercial —
   // quem nao fatura nao precisa da tabela de precos da operadora.
   at_precos:                ["faturamento"],
@@ -113,6 +120,13 @@ export const MAPA_TABELAS = {
   pep_acessos:              ["auditoria"],
 
   // ── Bloco cirúrgico ───────────────────────────────────────
+  cc_checklist:             ["bloco"],
+  cc_anestesia:             ["bloco"],
+  cc_descricao:             ["bloco"],
+  cc_rpa_aldrete:           ["bloco"],
+  cc_equipe:                ["bloco"],
+  // Suprimentos LÊ para conduzir recall de lote; a escrita fica no bloco.
+  cc_opme:                  ["bloco", "suprimentos"],
   cc_cirurgias:             ["bloco"],
   cc_salas:                 [TODOS],
 
@@ -146,6 +160,9 @@ export const MAPA_TABELAS = {
   farm_interacoes:          [TODOS],
   farm_medicamentos:        [TODOS],
   farm_intervencoes:        ["farmacia"],
+  // Avaliação farmacêutica da prescrição da internação (append-only). Quem
+  // prescreve LÊ — ver LEITURA_EXTRA —, mas só a farmácia grava.
+  farm_validacoes:          ["farmacia"],
   // Contagem cega do estoque. Não carrega paciente — é saldo, como
   // `sup_inventarios`, e por isso não entra em SENSIVEIS.
   farm_inventarios:         ["farmacia"],
@@ -233,6 +250,21 @@ export const MAPA_TABELAS = {
   // A farmácia lê a prescrição do PS para preparar e dispensar.
   ps_prescricao_itens:      ["ps", "paciente", "farmacia"],
   ps_registros:             ["ps", "paciente", "farmacia"],
+
+  // ── Exames (SADT) ─────────────────────────────────────────
+  // O pedido e o resultado são prontuário: quem cuida do paciente lê.
+  // O exame é pedido no PS, no ambulatório e na internação — e lido
+  // sobretudo por quem NÃO pediu, que é o plantão seguinte.
+  sadt_pedidos:             ["ps", "paciente", "ambulatorio"],
+  sadt_itens:               ["ps", "paciente", "ambulatorio"],
+  sadt_resultados:          ["ps", "paciente", "ambulatorio"],
+  // 🔴 O catálogo e os ANALITOS são referência sem dado de paciente — e
+  // o analito precisa ser legível por quem lê o resultado, porque é dele
+  // que vêm a unidade e a faixa. Catálogo escondido faria o laudo
+  // aparecer sem referência, que é o estado de onde saímos.
+  sadt_catalogo:            [TODOS],
+  sadt_analitos:            [TODOS],
+
   // Fila de internação: nasce no PS, é trabalhada pelo NIR no Giro.
   solicitacoes:             ["ps", "leitos"],
 
@@ -305,13 +337,17 @@ export const ESCRITA_ABERTA = new Set([
 ]);
 
 export const SENSIVEIS = new Set([
-  "ag_agendamentos", "at_conta_itens", "at_contas", "at_glosas", "at_repasses",
+  "ag_agendamentos", "at_conta_itens", "at_contas", "at_desfecho_correcoes",
+  "at_glosas", "at_repasses",
+  "tiss_guias",
   "at_responsaveis",
-  "auditoria", "cc_cirurgias",
+  "auditoria", "cc_anestesia", "cc_checklist", "cc_cirurgias", "cc_descricao",
+  "cc_equipe", "cc_opme", "cc_rpa_aldrete",
   "enf_escalas", "enf_lesao_pressao", "enf_sae_checagem",
   "enf_sae_diagnosticos", "enf_sae_historico",
   "enf_sae_prescricao_itens", "enf_sae_prescricoes",
   "farm_intervencoes", "farm_movimentos", "farm_nao_padronizados", "farm_preparo",
+  "farm_validacoes",
   "leitos", "leitos_saidas",
   "mat_admissoes", "mat_alojamento", "mat_episodios", "mat_partos", "mat_recem_nascidos",
   "mat_trabalho_parto",
@@ -326,8 +362,75 @@ export const SENSIVEIS = new Set([
   "prot_ativacoes", "prot_bundle_itens",
   "ps_administracoes", "ps_atendimentos", "ps_prescricao_itens",
   "ps_registros", "ps_salas", "ps_sinais",
+  "sadt_itens", "sadt_pedidos", "sadt_resultados",
   "scih_casos", "solicitacoes",
 ]);
+
+/**
+ * Módulos que LEEM uma tabela sem ganhar ESCRITA nela.
+ *
+ * 🔴 POR QUE ISTO NÃO ENTROU NA LISTA DE CIMA
+ * A lista de `MAPA_TABELAS` decide as duas coisas: quem lê e — pelo
+ * gerador (`condicaoDeEscrita`) — quem grava. Pôr `farmacia` em
+ * `pep_prescricoes` ali daria ao auxiliar de farmácia permissão de INSERIR
+ * prescrição médica pela API. Aqui a leitura se amplia e a escrita fica onde
+ * estava.
+ *
+ * A FARMÁCIA E A INTERNAÇÃO (17/09/2026)
+ * Até esta data a farmácia só enxergava o pronto-socorro: a prescrição da
+ * internação não chegava à fila, e o paciente internado era dispensado pela
+ * "dispensação avulsa", digitando iniciais à mão. O farmacêutico tem
+ * `paciente: leitura` e já alcançava estas tabelas; quem não alcançava era
+ * o AUXILIAR, que é quem separa. Sem ler a prescrição ele não dispensa, e
+ * sem ler `pep_alergias` a tela dele recebia lista vazia — que o RLS não
+ * distingue de "sem alergia" (ver o ⚠️ 3 no topo deste arquivo).
+ *
+ * O resto do prontuário (evolução, sinais, condições, administrações) NÃO
+ * entra: a análise clínica completa é do farmacêutico, que já tem acesso.
+ */
+export const LEITURA_EXTRA = {
+  pep_episodios:          ["farmacia"],   // leito, setor e iniciais da fila
+  pep_prescricoes:        ["farmacia"],   // vigência, substituição, prescritor
+  pep_prescricao_itens:   ["farmacia"],   // o que dispensar
+  pep_prescricao_eventos: ["farmacia"],   // item suspenso não se dispensa
+  pep_alergias:           ["farmacia"],   // a mesma lista que imprime a pulseira
+  farm_validacoes:        ["paciente"],   // o prescritor vê a avaliação da farmácia
+
+  // 🔴 ANTECEDENTE CIRÚRGICO É DADO DE ANAMNESE (10/2026).
+  //
+  // O médico que atende o paciente seis meses depois precisa saber que ele
+  // foi operado: é risco anestésico, é aderência, é diagnóstico diferencial.
+  // Até aqui `cc_cirurgias` era gated só por `bloco`, então o Paciente 360
+  // de quem não trabalha no centro cirúrgico recebia lista vazia — e lista
+  // vazia na tela é "nunca operou", que é omissão de informação
+  // assistencial. O prontuário é legalmente ÚNICO (CFM 1.638/2002), não um
+  // por módulo.
+  //
+  // Leitura, não escrita: quem edita cadastro de paciente não agenda
+  // cirurgia nem registra equipe. A escrita fica onde estava, no `bloco`.
+  // ⚠️ SÓ `paciente`. A regra que me contive de quebrar: amplia-se a
+  // leitura onde uma TELA de fato lê. Hoje só o Paciente 360 lê cirurgia;
+  // dar `ps` e `leitos` "por utilidade" ampliaria alcance a dado cirúrgico
+  // sem nenhuma tela do outro lado — e alcance que ninguém usa é só risco.
+  cc_cirurgias:           ["paciente"],
+  cc_equipe:              ["paciente"],   // quem operou faz parte do antecedente
+  cc_descricao:           ["paciente"],   // a descrição cirúrgica É prontuário
+  // 🔴 Via aérea difícil é dado da PESSOA, não do episódio: precede toda
+  // anestesia futura dela. E a ficha de recuperação fecha o trio da
+  // CFM 1.638/2002 — o prontuário é único.
+  cc_anestesia:           ["paciente"],
+  cc_rpa_aldrete:         ["paciente"],
+  // Implante é dado vitalício da pessoa: compatibilidade com ressonância,
+  // cirurgia de revisão, e o telefonema do recall.
+  cc_opme:                ["paciente"],
+};
+
+/** Quem LÊ a tabela: a lista do mapa mais os leitores extras. */
+export function leitoresDe(tabela, mapa = MAPA_TABELAS, extra = LEITURA_EXTRA) {
+  const base = mapa[tabela] || [];
+  const mais = (extra[tabela] || []).filter(m => !base.includes(m));
+  return [...base, ...mais];
+}
 
 /** Os módulos citados no mapa, sem repetição. */
 export function modulosCitados(mapa = MAPA_TABELAS) {

@@ -75,21 +75,50 @@ export async function loadPsAtendimentosPeriodo(sb, ano, mes) {
   return listaLida(rows);
 }
 
-export async function loadPsExamesPeriodo(sb, ano, mes) {
-  const ini = new Date(ano, mes, 1); ini.setHours(0, 0, 0, 0);
-  const fim = new Date(ano, mes + 1, 1); fim.setHours(0, 0, 0, 0);
-  const rows = await sb(`ps_registros?tipo=eq.exame&criado_em=gte.${ini.toISOString()}&criado_em=lt.${fim.toISOString()}&select=categoria,status,criado_em,resultado_em&order=criado_em.asc`);
-  return listaLida(rows);
-}
 
 export async function addPsAtendimentoRemote(sb, at, user) {
   if (!sb) return null;
   return await sb("ps_atendimentos", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...at, usuario: user?.name || null }) });
 }
 
+/**
+ * 🔴 A ÚNICA FORMA HONESTA DE ALTERAR NESTE MÓDULO.
+ *
+ * Sem `Prefer: return=representation` o PostgREST responde 204 SEM CORPO a
+ * um PATCH que alterou ZERO linha — e 204 é idêntico para "alterou" e para
+ * "a RLS recusou". Dar `await` e seguir é acreditar no status.
+ *
+ * Devolve `{ ok, linha }` ou `{ ok: false, erro }`. Quem chama decide o que
+ * fazer, mas não pode mais confundir "gravou" com "não deu erro".
+ */
+async function patchConferido(sb, recurso, campos) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const linhas = await sb(recurso, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify(campos),
+  });
+  // `null` é falha de rede/permissão já anotada pelo `sbFetch`; `[]` é a
+  // gravação recusada em silêncio. As duas são "não gravou".
+  if (linhas == null) return { ok: false, erro: "A gravação não chegou ao banco. Tente de novo." };
+  if (!Array.isArray(linhas) || linhas.length === 0) {
+    return { ok: false, erro: "Nada foi gravado — pode faltar permissão de escrita neste módulo." };
+  }
+  return { ok: true, linha: linhas[0] };
+}
+
+/**
+ * Altera o atendimento do PS: triagem, reavaliação, início e desfecho.
+ *
+ * 🔴 AS QUATRO COISAS QUE ESTA FUNÇÃO GRAVA SÃO O ESTADO DO PACIENTE NA
+ * FILA. Até 04/09/2026 ela dava `await` e seguia, e a tela chamava
+ * `refresh()` logo depois: a triagem "acontecia", a lista recarregava, e o
+ * paciente reaparecia sem classificação — sem uma palavra. Pior no desfecho,
+ * onde o código seguia reservando leito e abrindo pedido no NIR para um
+ * episódio que continuava aberto.
+ */
 export async function updatePsAtendimentoRemote(sb, id, campos) {
-  if (!sb) return;
-  await sb(`ps_atendimentos?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...campos, updated_at: nowISO() }) });
+  return patchConferido(sb, `ps_atendimentos?id=eq.${id}`, { ...campos, updated_at: nowISO() });
 }
 
 /**
@@ -125,12 +154,27 @@ export async function loadPsRegistros(sb, atendimentoId) {
   return listaLida(rows);
 }
 
-export async function loadPsExamesPendentes(sb, ids) {
-  if (!ids.length) return [];
-  const rows = await sb(`ps_registros?atendimento_id=in.(${ids.join(",")})&tipo=eq.exame&status=neq.visto&select=atendimento_id,status`);
-  return listaLida(rows);
-}
 
+/**
+ * 🔴 `loadPsExamesPeriodo` E `loadPsExamesPendentes` SAÍRAM DAQUI (13/10/2026).
+ *
+ * O exame deixou de ser uma linha de `ps_registros` com `tipo='exame'` e
+ * passou às tabelas do SADT (`migracao-sadt-exames.sql`), que levou o que
+ * havia no backfill. Os substitutos são `loadSadtExamesPeriodo` e
+ * `loadSadtPendentesPorAtendimento`, em `src/sadt/dados.js`, e devolvem o
+ * MESMO formato de propósito — `contarExames` e `resumoExamesPorCategoria`
+ * são as réguas da fila e do relatório, e régua é uma só.
+ *
+ * ⚠️ APAGADOS, e não deixados de lado: enquanto existissem, haveria dois
+ * caminhos para "os exames do paciente" — um deles lendo uma tabela que já
+ * não recebe exame novo. Duas fontes concordando por sorte foi o defeito
+ * que este módulo inteiro existe para desfazer.
+ *
+ * ⚠️ `neq.visto` da versão antiga virou uma lista explícita de estados no
+ * substituto: com `cancelado` no vocabulário, `neq.visto` faria exame
+ * cancelado contar como pendente e travar a alta de um paciente por um
+ * exame que ninguém vai fazer.
+ */
 export async function addPsRegistroRemote(sb, reg, user) {
   if (!sb) return null;
   return await sb("ps_registros", { method: "POST", headers: { "Prefer": "return=representation" }, body: JSON.stringify({ ...reg, usuario: user?.name || null }) });
@@ -150,19 +194,7 @@ export async function addPsRegistroRemote(sb, reg, user) {
  * fazer, mas não pode mais confundir "gravou" com "não deu erro".
  */
 export async function updatePsRegistroRemote(sb, id, campos) {
-  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
-  const linhas = await sb(`ps_registros?id=eq.${id}`, {
-    method: "PATCH",
-    headers: { "Prefer": "return=representation" },
-    body: JSON.stringify(campos),
-  });
-  // `null` é falha de rede/permissão já anotada pelo `sbFetch`; `[]` é a
-  // gravação recusada em silêncio. As duas são "não gravou".
-  if (linhas == null) return { ok: false, erro: "A gravação não chegou ao banco. Tente de novo." };
-  if (!Array.isArray(linhas) || linhas.length === 0) {
-    return { ok: false, erro: "Nada foi gravado — pode faltar permissão de escrita neste módulo." };
-  }
-  return { ok: true, linha: linhas[0] };
+  return patchConferido(sb, `ps_registros?id=eq.${id}`, campos);
 }
 
 export async function addPsPrescricaoItens(sb, itens, user) {

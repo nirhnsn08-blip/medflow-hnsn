@@ -50,7 +50,9 @@ describe("⚠️ quando NÃO se cobra nada", () => {
   it("evasão não gera conta — o paciente saiu sem alta", () => {
     expect(geraConta("evasao")).toBe(false);
     expect(pendenciasDeConta({ atendimento: vazio, desfecho: "evasao" })).toEqual([]);
-    expect(SEM_CONTA).toEqual(["evasao"]);
+    // A lista agora é o vocabulário único (clinico/desfechos.js): as duas
+    // grafias em uso, porque há dado gravado com cada uma nos bancos.
+    expect([...SEM_CONTA].sort()).toEqual(["evadiu", "evasao"]);
   });
 
   it("🔴 mas ÓBITO gera conta — o hospital fez o que fez", () => {

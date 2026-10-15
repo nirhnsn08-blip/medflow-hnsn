@@ -4,6 +4,8 @@
 // Errar significa mostrar como ativo um medicamento que foi suspenso — ou
 // o contrário, esconder um que está valendo.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   episodioAtivo, diasInternacao, estadoDosItens, prescricaoVigente,
@@ -118,6 +120,83 @@ describe("aprazamento", () => {
 
   it("intervalo_horas tem precedência sobre a frequência", () => {
     expect(horariosDoDia({ frequencia_dia: 4, intervalo_horas: 8 }, dia)).toHaveLength(3);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 🔴 A DOSE QUE NUNCA EXISTIU NÃO ESTÁ ATRASADA
+  //
+  // MEDIDO EM 15/10/2026, antes de escrever: paciente internado às 22h com
+  // medicação 8/8h abria o primeiro dia com DUAS doses atrasadas — 06h e
+  // 14h, horários que passaram ANTES de a prescrição existir. Todo paciente
+  // admitido depois das 07h começava assim.
+  //
+  // Alarme falso em sinal de segurança é pior que alarme nenhum: ensina a
+  // ignorar os verdadeiros, e aí o atraso de verdade passa junto.
+  //
+  // ⚠️ O dado já existia: `pep_prescricoes.inicio_em` é gravado em TODA
+  // prescrição assinada desde sempre, e nunca tinha sido lido.
+  // ═══════════════════════════════════════════════════════════
+  describe("🔴 horários anteriores ao início da prescrição", () => {
+    const item = { frequencia_dia: 3, intervalo_horas: 8 };   // 06h, 14h, 22h
+
+    it("prescrição das 22h: só a dose das 22h existe", () => {
+      const h = horariosDoDia(item, dia, 6, new Date("2026-07-22T22:00:00"));
+      expect(h.map(d => d.getHours())).toEqual([22]);
+    });
+
+    it("prescrição das 14h: some a das 06h, ficam 14h e 22h", () => {
+      const h = horariosDoDia(item, dia, 6, new Date("2026-07-22T14:00:00"));
+      expect(h.map(d => d.getHours())).toEqual([14, 22]);
+    });
+
+    it("🔴 e aí NÃO há dose atrasada no primeiro dia", () => {
+      const agora = new Date("2026-07-22T23:00:00");
+      const h = horariosDoDia(item, agora, 6, new Date("2026-07-22T22:00:00"));
+      expect(checarAprazamento(h, [], agora).filter(x => x.atrasado)).toHaveLength(0);
+    });
+
+    it("🔴 MAS no dia seguinte a dose atrasada de verdade continua acusando", () => {
+      // O controle que impede o conserto de virar uma mordaça: suprimir
+      // atraso real seria trocar um defeito por outro, pior.
+      const amanha = new Date("2026-07-23T13:00:00");
+      const h = horariosDoDia(item, amanha, 6, new Date("2026-07-22T22:00:00"));
+      const atrasadas = checarAprazamento(h, [], amanha).filter(x => x.atrasado);
+      expect(atrasadas.map(x => x.horario.getHours())).toEqual([6]);
+    });
+
+    it("dose exatamente NO instante do início conta — não é anterior", () => {
+      const h = horariosDoDia(item, dia, 6, new Date("2026-07-22T14:00:00"));
+      expect(h.map(d => d.getHours())).toContain(14);
+    });
+
+    it("sem início, nada é filtrado — comportamento de antes", () => {
+      expect(horariosDoDia(item, dia)).toHaveLength(3);
+      expect(horariosDoDia(item, dia, 6, null)).toHaveLength(3);
+    });
+
+    it("🔴 início ILEGÍVEL não filtra nada — e não filtra TUDO", () => {
+      // `new Date("lixo")` é Invalid Date, e toda comparação com ele é
+      // `false`: sem a guarda, um `inicio_em` corrompido faria a grade
+      // inteira sumir, e a tela mostraria o paciente sem medicação nenhuma.
+      expect(horariosDoDia(item, dia, 6, "não é data")).toHaveLength(3);
+      expect(horariosDoDia(item, dia, 6, undefined)).toHaveLength(3);
+    });
+
+    it("prescrição iniciada ONTEM não filtra nada hoje", () => {
+      expect(horariosDoDia(item, dia, 6, new Date("2026-07-21T22:00:00"))).toHaveLength(3);
+    });
+
+    it("🔴 E A TELA PASSA O INÍCIO — a regra sozinha não conserta nada", () => {
+      // ⚠️ Sem esta asserção, tudo acima passa verde com a tela chamando
+      // `horariosDoDia(item, hoje)` sem o início — e o alarme falso volta,
+      // intacto, sem nada ficar vermelho. Medido por mutação: foi a ÚNICA
+      // das cinco que passou verde antes deste teste existir.
+      //
+      // É o mesmo elo que já faltou cinco vezes nesta semana: coluna,
+      // campo, escrita, leitura — e CHAMADA.
+      const tela = readFileSync(join(__dirname, "../prontuario/ProntuarioInternado.jsx"), "utf8");
+      expect(tela).toContain("horariosDoDia(item, hoje, 6, presc.inicio_em)");
+    });
   });
 
   it("marca dose administrada dentro da tolerância", () => {
@@ -253,5 +332,81 @@ describe("timeline do episódio", () => {
 
   it("não quebra com tudo vazio", () => {
     expect(timelineEpisodio({})).toEqual([]);
+  });
+});
+
+// ── O OXIGÊNIO NO NEWS ──────────────────────────────────────
+//
+// 🔴 A COLUNA EXISTIA PARA ISSO, E O ESCORE NUNCA A LEU (13/10/2026).
+//
+// `migracao-pep-sinais-spo2.sql` criou `o2_suplementar` dizendo no próprio
+// cabeçalho por quê: "o NEWS pontua o paciente em oxigênio mesmo com
+// saturação normal — respirar 95% em ar ambiente e respirar 95% sob cateter
+// são situações clínicas diferentes."
+//
+// A caixa foi para a tela, a enfermagem marcava, o banco gravava — e
+// `scoreAlertaPrecoce` nunca leu. O paciente em O₂ saía DOIS PONTOS ABAIXO,
+// e sub-triagem é a direção que mata.
+describe("🔴 o NEWS pontua o oxigênio suplementar", () => {
+  // Paciente com sinais todos normais: NEWS 0 em ar ambiente.
+  const estavel = { fr: 16, spo2: 98, temp: 36.5, pa_sist: 120, fc: 70, consciencia: "A" };
+
+  it("em ar ambiente, o escore não muda", () => {
+    expect(scoreAlertaPrecoce(estavel).score).toBe(0);
+    expect(scoreAlertaPrecoce({ ...estavel, o2_suplementar: false }).score).toBe(0);
+  });
+
+  it("🔴 o MESMO paciente em O₂ vale 2 — é a diferença clínica que a migração descreveu", () => {
+    const r = scoreAlertaPrecoce({ ...estavel, o2_suplementar: true });
+    expect(r.score).toBe(2);
+    expect(r.oxigenio).toBe(true);
+    expect(r.nivel).toBe("baixo");   // deixa de ser "normal"
+  });
+
+  it("🔴 e isso ATRAVESSA o gatilho da sepse", () => {
+    // NEWS 3 em ar ambiente fica abaixo do gatilho (≥5); em O₂, chega a 5.
+    const quase = { fr: 22, spo2: 94, temp: 36.5, pa_sist: 120, fc: 70, consciencia: "A" };
+    expect(scoreAlertaPrecoce(quase).score).toBe(3);
+    expect(scoreAlertaPrecoce({ ...quase, o2_suplementar: true }).score).toBe(5);
+    expect(scoreAlertaPrecoce({ ...quase, o2_suplementar: true }).nivel).toBe("medio");
+  });
+
+  it("a coluna ANTIGA também conta — linha velha não perde ponto por nome", () => {
+    // `pep_sinais_vitais` tem DUAS colunas para a mesma coisa:
+    // `o2_suplementar` (pep-sinais-spo2, que a tela grava) e `suporte_o2`
+    // (pep-fase1, que ninguém escreveu).
+    expect(scoreAlertaPrecoce({ ...estavel, suporte_o2: true }).score).toBe(2);
+    // A nova manda quando as duas vêm.
+    expect(scoreAlertaPrecoce({ ...estavel, o2_suplementar: false, suporte_o2: true }).score).toBe(0);
+  });
+
+  it("🔴 o oxigênio NÃO conta como parâmetro aferido para a trava dos três", () => {
+    // "Ar ambiente" vale 0, mas é um zero que o sistema ASSUME (booleano com
+    // default false). Se contasse, uma aferição com dois sinais passaria da
+    // trava — e a trava existe para o escore não sair de meia medição.
+    expect(scoreAlertaPrecoce({ fc: 80, temp: 36.5, o2_suplementar: true })).toBeNull();
+    const r = scoreAlertaPrecoce({ fc: 80, temp: 36.5, fr: 16, o2_suplementar: true });
+    expect(r.parametros).toBe(3);
+    expect(r.score).toBe(2);
+  });
+});
+
+// ── A FAIXA DE FEBRE ALTA ───────────────────────────────────
+describe("🔴 febre alta vale 2, não 3", () => {
+  const base = { fr: 16, spo2: 98, pa_sist: 120, fc: 70, consciencia: "A" };
+
+  it("39,5 °C pontua 2 — caía no fallback e valia 3", () => {
+    // Sobrepontuar não mata ninguém, mas alarme que exagera é alarme que se
+    // aprende a descontar — e aí o que importa some junto.
+    expect(scoreAlertaPrecoce({ ...base, temp: 39.5 }).score).toBe(2);
+    expect(scoreAlertaPrecoce({ ...base, temp: 41 }).score).toBe(2);
+  });
+
+  it("as faixas vizinhas continuam como o NEWS manda", () => {
+    expect(scoreAlertaPrecoce({ ...base, temp: 38.5 }).score).toBe(1);
+    expect(scoreAlertaPrecoce({ ...base, temp: 36.5 }).score).toBe(0);
+    expect(scoreAlertaPrecoce({ ...base, temp: 35.5 }).score).toBe(1);
+    // ≤ 35,0 continua no fallback 3, que é o certo.
+    expect(scoreAlertaPrecoce({ ...base, temp: 34.0 }).score).toBe(3);
   });
 });

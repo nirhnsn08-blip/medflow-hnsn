@@ -64,6 +64,28 @@ export const prontuarioVigente = paciente =>
 export const foiUnificado = paciente => !!texto(paciente?.unificado_para);
 
 /**
+ * A frase que RECUSA registrar algo novo numa ficha unificada — ou `null`.
+ *
+ * 🔴 A unificação só grava o ponteiro; nada impedia de continuar usando a
+ * ficha antiga. A busca acha as duas, a recepcionista escolhe a primeira da
+ * lista, e nasce um atendimento novo no número que foi aposentado — o
+ * histórico se parte de novo, que é exatamente o que unificar consertou.
+ *
+ * Uma frase só, usada por toda porta de entrada (Recepção, Agenda, PS),
+ * para todas dizerem a mesma coisa e apontarem o mesmo número.
+ *
+ * ⚠️ Precisa do cadastro COMPLETO (`select=*`): a lista da busca não traz
+ * `unificado_para`, de propósito — se a coluna faltar num banco, pô-la na
+ * busca derrubaria a busca do balcão inteira.
+ */
+export function recusaPorUnificacao(paciente) {
+  if (!foiUnificado(paciente)) return null;
+  const para = prontuarioVigente(paciente);
+  return `O prontuário ${texto(paciente?.prontuario)} foi unificado em ${para} — é a mesma pessoa. ` +
+    `Registre no ${para}: um registro novo aqui dividiria o histórico em dois de novo.`;
+}
+
+/**
  * Pode ligar `origem` em `destino`?
  *
  * `origem` é a ficha que passa a apontar; `destino` é a que sobrevive como

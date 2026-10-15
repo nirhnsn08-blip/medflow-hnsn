@@ -6,7 +6,7 @@
 -- ⚠️ ARQUIVO GERADO — não edite à mão (node supabase/gerar-conferencia.mjs).
 --
 -- ⚠️ O QUE ELE ASSUME, E COMO CONFERIR ANTES DE ACREDITAR
--- Ele marca as 84 migrações do repositório como aplicadas. A
+-- Ele marca as 112 migrações do repositório como aplicadas. A
 -- suposição é que o esquema deste banco está completo — razoável num
 -- sistema em uso, mas NÃO é fato até alguém olhar.
 --
@@ -18,9 +18,12 @@
 
 insert into public.migracoes_aplicadas (arquivo, aplicada_por, observacao)
 values
+  ('migracao-acesso-funcoes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-agenda-confirmacao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-agenda-remarcacao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-agenda-vaga-por-profissional.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-alertas-peso-gestacao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-ambulatorio-especialidades.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-atendimento-agenda.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-atendimento-ciclo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-atendimento-fase2.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -29,6 +32,16 @@ values
   ('migracao-atendimento-recepcao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-atendimento-responsavel.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-auditoria-atribuivel.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-anestesia-rpa.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-descricao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-elo-atendimento.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-opme.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-paciente-equipe-codigo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-cirurgia-segura-registro.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-correcao-desfecho-corrida.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-correcao-desfecho.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-descricao-aux-farmacia.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-documento-impressao-digital.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-enf-escalas-lpp.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-enf-sae.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-episodio-id-tipo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -39,16 +52,27 @@ values
   ('migracao-farmacia-estorno-inventario.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-faseA.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-faseB.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-farmacia-hospital.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-intervencoes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-lote-vencido.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-nao-padronizados.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-preparo-exige-baixa.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-preparo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-farmacia-seed.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-faturamento-glosas.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-faturamento-modulo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-faturamento-precos.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-faturamento-remessa.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-faturamento-repasses.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-glosas-rls.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-leitos-kanban-metas.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-leitos-nir-regulacao.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-leitos-saida-setor.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-maternidade-alojamento.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-maternidade-fase0.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-maternidade-parto.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-maternidade-partograma.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-maternidade-recem-nascido.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-nsp-capacitacoes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-nsp-comunicados.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-nsp-incidentes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -72,6 +96,7 @@ values
   ('migracao-perfis-acesso.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-perfis-auditoria-diretor.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-perfis-faturamento.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-perfis-maternidade.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-perfis-nsp.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-protocolos-avc.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-protocolos-iam.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -87,6 +112,8 @@ values
   ('migracao-ps-triagem-tipo.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-registro-de-migracoes.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-rls-leitura.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-sadt-catalogo-seed.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-sadt-exames.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-scih-germes-seed.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-sigtap-valores.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-sigtap.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
@@ -101,11 +128,12 @@ values
   ('migracao-suprimentos-inventario.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-suprimentos-ponto-de-pedido.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
   ('migracao-suprimentos-seed.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
-  ('migracao-suprimentos-unidade-compra.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql')
+  ('migracao-suprimentos-unidade-compra.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql'),
+  ('migracao-tiss-guias.sql', 'anotacao-inicial', 'esquema conferido pelo auditoria-banco.sql')
 on conflict (arquivo) do nothing;
 
 select
   case when (select count(*) from public.pacientes) >= 40
        then 'DEMO (banco de teste)' else 'PRINCIPAL (hospital)' end as banco,
   (select count(*) from public.migracoes_aplicadas) as registradas,
-  84 as esperadas;
+  112 as esperadas;

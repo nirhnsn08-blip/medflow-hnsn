@@ -52,10 +52,26 @@ describe("🔴 sem `sb` é modo offline — e cada função devolve o vazio DELA
     expect(await fn(undefined)).toEqual([]);
   });
 
-  it("⚠️ loadLppAdquiridas devolve 0, não lista vazia — ele conta", () => {
-    // `[]` aqui viraria "0 LPP adquiridas" por acidente e ninguém notaria;
-    // mas `[].length` num indicador que espera número já deu bug nesta casa.
-    return expect(loadLppAdquiridas(null)).resolves.toBe(0);
+  // ⚠️ ESTA ASSERÇÃO FOI INVERTIDA DE PROPÓSITO (07/10/2026).
+  //
+  // Ela exigia `0`. A preocupação original continua valendo e está mantida
+  // abaixo: este carregador CONTA, então não pode devolver lista — `[].length`
+  // num indicador que espera número já deu bug nesta casa.
+  //
+  // O que mudou é o outro lado. `0` é uma AFIRMAÇÃO: "não há lesão por pressão
+  // adquirida nesta unidade". Sem `sb` não houve leitura nenhuma, e o cartão
+  // do painel pinta o zero de VERDE — a melhor notícia possível, dita sem ter
+  // perguntado. Num indicador de segurança do paciente isso é subnotificação
+  // com cara de resultado, que é exatamente o que o cabeçalho deste arquivo
+  // diz ser o pior defeito do módulo.
+  //
+  // `null` ("não li") não é lista, satisfaz a preocupação original, e a tela
+  // passou a desenhá-lo como "não lido" em âmbar.
+  it("⚠️ loadLppAdquiridas devolve null sem banco — ele conta, e zero afirmaria", async () => {
+    const r = await loadLppAdquiridas(null);
+    expect(r).toBeNull();
+    expect(Array.isArray(r)).toBe(false);   // a preocupação original, intacta
+    expect(await loadLppAdquiridas(undefined)).toBeNull();
   });
 
   it("as escritas que devolvem a linha criada devolvem null", async () => {

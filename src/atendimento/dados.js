@@ -27,11 +27,13 @@ import { iniciaisDe } from "../pacientes/identidade.js";
 import { CATALOGO_POR_CHAVE, corpoDoCatalogo } from "./catalogo.js";
 import { camposDaCorrecao, FILTRO_ATENDIMENTO_ABERTO } from "./ciclo.js";
 import { CAMPOS_DO_EPISODIO } from "./consultas.js";
+import { versaoVigente } from "../bloco/descricao.js";
 import { camposDaProducao } from "./producao.js";
 import { camposDoResponsavel } from "./responsavel.js";
 import { camposDaConta, camposDoItem } from "./faturamento.js";
 import { listaLida, naoDeuParaLer } from "../util/leitura.js";
 import { numeroDigitado } from "../util/numero-brasileiro.js";
+import { diaLocal, nowISO, todayStr } from "../util/datas.js";
 
 // Campos do paciente que a recepção precisa ver na lista de resultados.
 // Lista explícita em vez de `*`: a busca aparece no balcão, com gente
@@ -236,6 +238,31 @@ export async function atendimentosAbertos(sb, prontuario) {
 }
 
 /**
+ * A fonte pagadora dos últimos episódios desta pessoa, para SUGERIR.
+ *
+ * Existe porque `ag_agendamentos` NÃO guarda convênio: a marcação sabe quem,
+ * quando e com quem, mas não sabe quem paga. Sem isto a recepção redigita a
+ * fonte pagadora a cada visita de um paciente que vem todo mês — e a ficha
+ * que chega vazia ao faturamento só é notada no fechamento da competência.
+ *
+ * Cinco linhas porque a sugestão é o ÚLTIMO convênio, e as outras quatro só
+ * servem para o caso de a mais recente estar com o campo nulo.
+ *
+ * ⚠️ Devolve `FALHA` quando não deu para ler — "não li" não é "nunca teve
+ * convênio". Quem chama simplesmente não sugere nada, que é o silêncio certo:
+ * sugestão ausente faz digitar, sugestão errada faz faturar errado.
+ */
+export async function convenioDoHistorico(sb, prontuario, { exceto = null } = {}) {
+  const p = normalizarProntuario(prontuario);
+  if (!p) return [];
+  const fora = exceto == null ? "" : `&id=neq.${encodeURIComponent(exceto)}`;
+  const r = await sb(
+    `ps_atendimentos?prontuario=eq.${encodeURIComponent(p)}&convenio_id=not.is.null${fora}` +
+    `&select=convenio_id,plano_id,chegada_em&order=chegada_em.desc&limit=5`);
+  return listaLida(r);
+}
+
+/**
  * Abre o atendimento.
  *
  * As `iniciais` são copiadas do cadastro em vez de digitadas de novo: era
@@ -350,7 +377,12 @@ export async function carregarCatalogos(sb) {
  * cadastrado, antes de a produção ser rejeitada.
  */
 export async function carregarProfissionais(sb) {
-  const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,cbo&order=nome");
+  // 🔴 `uf_conselho` ENTROU AQUI em 14/10/2026. Este select era o único do
+  // projeto sem ela — `src/bloco/dados.js` já trazia. E a UF não é detalhe:
+  // a guia TISS leva conselho, número, UF e CBO, e o mesmo CRM 1234 existe
+  // em 27 estados. Sem a UF, o profissional vinha incompleto para a guia
+  // sem nada na tela explicando por quê.
+  const r = await sb("profiles?select=username,nome,categoria,conselho,registro_conselho,uf_conselho,cbo&order=nome");
   const lista = listaLida(r);
   // Só quem tem competência clínica assinala atendimento; administrativo
   // não vira responsável por ato assistencial.
@@ -389,7 +421,7 @@ export async function historicoDoPaciente(sb, prontuario, { limite = 200 } = {})
 export async function agendamentosFuturos(sb, prontuario, { de } = {}) {
   const p = normalizarProntuario(prontuario);
   if (!p) return [];
-  const inicio = de || new Date().toISOString().slice(0, 10);
+  const inicio = de || todayStr();
   const r = await sb(`ag_agendamentos?prontuario=eq.${encodeURIComponent(p)}` +
     // `confirmado` entra na lista: sem ele, o paciente que confirmou na
     // vespera SUMIRIA do cartao "tem consulta hoje" da Recepcao — e quem
@@ -444,7 +476,18 @@ export async function contarRegistrosClinicos(sb, atendimentoId) {
     `ps_administracoes?atendimento_id=eq.${atendimentoId}&select=id`,
   ];
   const rs = await Promise.all(alvos.map(a => sb(a).catch(() => null)));
-  return rs.reduce((s, r) => s + (Array.isArray(r) ? r.length : 0), 0);
+  // 🔴 `null` = NÃO SEI, e é diferente de zero.
+  //
+  // Antes isto somava `Array.isArray(r) ? r.length : 0`: as três leituras
+  // podiam falhar e o resultado era `0`, que `validarCancelamento` lê como
+  // "não há registro clínico" e LIBERA o cancelamento. O comentário acima
+  // diz o contrário — "se o atendimento já tem evolução ou prescrição, ele
+  // aconteceu" —, e era justamente nessa hora que a regra ficava cega.
+  //
+  // Basta UMA das três falhar: contar as outras duas daria um número menor
+  // que o real, e número menor aqui é permissão indevida.
+  if (rs.some(r => !Array.isArray(r))) return null;
+  return rs.reduce((s, r) => s + r.length, 0);
 }
 
 /**
@@ -592,7 +635,7 @@ export async function salvarGrade(sb, grade, user) {
     vagas_regulacao: Number(grade.vagas_regulacao) || 0,
     vagas_internas: Number(grade.vagas_internas) || 0,
     vagas_chegada: Number(grade.vagas_chegada) || 0,
-    vigencia_inicio: grade.vigencia_inicio || new Date().toISOString().slice(0, 10),
+    vigencia_inicio: grade.vigencia_inicio || todayStr(),
     vigencia_fim: grade.vigencia_fim || null,
     ativo: grade.ativo !== false,
     observacao: String(grade.observacao ?? "").trim() || null,
@@ -711,7 +754,8 @@ export async function amarrarChegadaNaAgenda(sb, { atendimento, grade, tipoAtend
   if (!grade?.id) return { ok: false, motivo: "Sem grade para amarrar." };
 
   const corpo = {
-    data: String(atendimento.chegada_em ?? "").slice(0, 10) || new Date().toISOString().slice(0, 10),
+    // Dia LOCAL da chegada: a das 22h é de hoje, não de amanhã em UTC.
+    data: diaLocal(atendimento.chegada_em) || todayStr(),
     hora: null,                       // fila de chegada não tem relógio: tem ordem
     especialidade_cod: grade.especialidade_cod,
     profissional_username: grade.profissional_username || null,
@@ -976,8 +1020,20 @@ const CAMPOS_CONTA = [
   "faturada_em", "faturada_por", "remessa_protocolo",
 ].join(",");
 
+// 🔴 `tabela` ENTROU AQUI em 14/10/2026 — e foi o QUARTO lugar que a mesma
+// coluna precisou, descoberto um de cada vez andando no demo:
+//
+//   1. a coluna                 (migracao-tiss-guias.sql)
+//   2. o campo na tela          (Faturamento.jsx)
+//   3. a lista de ESCRITA       (camposDoItem, em faturamento.js)
+//   4. a lista de LEITURA       (aqui)
+//
+// Faltando qualquer um, o dado não chega — e os sintomas são diferentes:
+// sem o 3 ele morre a caminho do banco; sem o 4 ele está no banco e a tela
+// age como se não estivesse. Foi este: o item tinha `tabela='tuss'` gravada
+// e a guia seguia dizendo "3 de 3 itens sem a tabela do código".
 const CAMPOS_ITEM = [
-  "id", "conta_id", "tipo", "codigo", "descricao", "quantidade",
+  "id", "conta_id", "tipo", "codigo", "tabela", "descricao", "quantidade",
   "valor_unitario", "valor_total", "executante", "executante_cbo",
   "data_execucao", "cobrar_do_paciente", "observacao", "cancelado", "criado_em",
 ].join(",");
@@ -1045,8 +1101,13 @@ export async function carregarLeitosDoEpisodio(sb, { atendimentoId, prontuario }
  * e dois selects simples não dependem de relação declarada no schema.
  */
 export async function carregarWorklistFaturamento(sb, { limite = 100 } = {}) {
-  const internacoes = await sb(`ps_atendimentos?desfecho=eq.internacao` +
-    `&select=id,prontuario,iniciais,chegada_em,desfecho,desfecho_em,convenio_id,procedimento_cod,cid` +
+  // 🔴 ERA SÓ `desfecho=eq.internacao`. O ambulatório — que é de onde
+  // nascem BPA e APAC — não aparecia em lista nenhuma: a consulta
+  // acontecia, era registrada, e ninguém via que faltava a conta. Agora
+  // vêm também os ambulatoriais CONCLUÍDOS; quem decide o que entra é
+  // `podeVirarConta`, que também descarta quem foi embora sem ser atendido.
+  const internacoes = await sb(`ps_atendimentos?or=(desfecho.eq.internacao,and(status.eq.finalizado,tipo_atendimento.eq.ambulatorial))` +
+    `&select=id,prontuario,iniciais,chegada_em,desfecho,desfecho_em,convenio_id,procedimento_cod,cid,status,tipo_atendimento` +
     `&order=chegada_em.desc&limit=${limite}`);
   const lista = listaLida(internacoes);
   if (!lista.length) return { internacoes: [], contas: [] };
@@ -1623,6 +1684,124 @@ export async function itensDasContas(sb, ids) {
   return { porConta, falhou: false };
 }
 
+/**
+ * O que a conferência de remessa precisa olhar, numa ida só por tabela.
+ *
+ * 🔴 A MARCA DE FALHA ATRAVESSA. `conferirRemessa` devolve `null` quando
+ * qualquer uma das três não desceu — e tem de ser assim: "nenhuma pendência"
+ * é a frase que libera a transmissão, e ela não pode sair de uma lista de
+ * pacientes que o banco não entregou. Por isso aqui se devolve a lista
+ * MARCADA, e não um vazio limpo.
+ *
+ * ⚠️ Lê por PRONTUÁRIO, que é como `at_contas` guarda o elo com a pessoa.
+ */
+export async function dadosDaConferencia(sb, contas) {
+  const lista = (Array.isArray(contas) ? contas : []).filter(Boolean);
+  if (!sb) return { pacientes: listaLida(null), atendimentos: listaLida(null), itens: listaLida(null) };
+  if (!lista.length) return { pacientes: [], atendimentos: [], itens: [] };
+
+  const prontuarios = [...new Set(lista.map(c => String(c.prontuario ?? "").trim()).filter(Boolean))];
+  const atendimentos = [...new Set(lista.map(c => c.atendimento_id).filter(v => v != null))];
+
+  const [pac, at, it] = await Promise.all([
+    prontuarios.length
+      ? sb(`pacientes?prontuario=in.(${prontuarios.map(encodeURIComponent).join(",")})` +
+          "&select=prontuario,cns,raca_cor,end_municipio_ibge,data_nascimento,sexo,nome_mae")
+      : Promise.resolve([]),
+    atendimentos.length
+      ? sb(`ps_atendimentos?id=in.(${atendimentos.join(",")})&select=id,cid,medico,medico_cbo`)
+      : Promise.resolve([]),
+    sb(`at_conta_itens?conta_id=in.(${lista.map(c => c.id).join(",")})&select=${CAMPOS_ITEM}&cancelado=is.false`),
+  ]);
+
+  return { pacientes: listaLida(pac), atendimentos: listaLida(at), itens: listaLida(it) };
+}
+
+// ── GUIA TISS ───────────────────────────────────────────────
+//
+// 🔴 TODA ESCRITA CONFERE A LINHA DE VOLTA. O PostgREST responde 2xx com
+// ZERO linhas quando a RLS filtra. Guia gravada em silêncio é cobrança que
+// o faturista acha que saiu e não saiu — e só se descobre quando o dinheiro
+// não entra.
+
+export async function carregarGuiasDaConta(sb, contaId) {
+  if (!sb || contaId == null) return listaLida(null);
+  const r = await sb(`tiss_guias?conta_id=eq.${encodeURIComponent(contaId)}&select=*&order=criado_em.desc`);
+  return listaLida(r);
+}
+
+export async function carregarGuiasDaCompetencia(sb, competencia) {
+  if (!sb || !competencia) return listaLida(null);
+  const contas = await sb(`at_contas?competencia=eq.${encodeURIComponent(competencia)}&via=eq.tiss&select=id`);
+  if (!Array.isArray(contas)) return listaLida(null);
+  if (!contas.length) return [];
+  const r = await sb(`tiss_guias?conta_id=in.(${contas.map(c => c.id).join(",")})&select=*&order=criado_em.desc`);
+  return listaLida(r);
+}
+
+/**
+ * Grava a guia.
+ *
+ * ⚠️ `status` vem de FORA e é o que decide se o gatilho exige tudo:
+ * 'rascunho' passa sem exigência, 'emitida' é a emissão de verdade. A tela
+ * manda um ou outro de propósito — salvar rascunho não pode falhar porque
+ * falta a carteira, senão ninguém consegue guardar trabalho pela metade.
+ */
+export async function salvarGuia(sb, linha, status, user) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const corpo = { ...linha, status, usuario: user?.name || null };
+  if (status === "emitida") corpo.emitida_por = user?.name || null;
+  const r = await sb("tiss_guias", { method: "POST", body: JSON.stringify(corpo) });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, erro: status === "emitida"
+      ? "A guia NÃO foi emitida — ou o banco recusou, ou falta permissão de escrita no Faturamento. O que você preencheu continua na tela."
+      : "O rascunho NÃO foi salvo — a gravação não chegou ao banco ou falta permissão de escrita no Faturamento." };
+  }
+  return { ok: true, guia: r[0] };
+}
+
+async function patchGuia(sb, id, campos, oQue) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const r = await sb(`tiss_guias?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ ...campos, updated_at: nowISO() }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, erro: `${oQue} NÃO foi gravado — a alteração não chegou ao banco ou falta permissão de escrita no Faturamento.` };
+  }
+  return { ok: true, guia: r[0] };
+}
+
+/** Emite um rascunho que já existe. O gatilho é quem carimba e recusa. */
+export function emitirGuia(sb, id, user) {
+  return patchGuia(sb, id, { status: "emitida", emitida_por: user?.name || null }, "A emissão");
+}
+
+export function cancelarGuia(sb, id, motivo) {
+  // ⚠️ `cancelada_em` NÃO vai daqui: quem acende é o gatilho. Mandá-la da
+  // tela deixaria a hora do cancelamento à mercê do relógio do navegador.
+  return patchGuia(sb, id, {
+    status: "cancelada",
+    cancelamento_motivo: String(motivo ?? "").trim(),
+  }, "O cancelamento");
+}
+
+/**
+ * O que a operadora devolve: o número dela e o que aconteceu com a guia.
+ *
+ * ⚠️ É o ÚNICO caminho que mexe em guia já emitida, e mexe só no que não é
+ * carimbo — o gatilho recusa qualquer alteração em número do prestador,
+ * carteira, registro ANS ou tipo.
+ */
+export function registrarRetorno(sb, id, { numeroOperadora, status, quando } = {}) {
+  const campos = {};
+  if (numeroOperadora != null) campos.numero_operadora = String(numeroOperadora).trim() || null;
+  if (status) campos.status = status;
+  if (status === "enviada") campos.enviada_em = quando || nowISO();
+  return patchGuia(sb, id, campos, "O retorno da operadora");
+}
+
 // ── REPASSE (o dinheiro que ENTROU) ─────────────────────────
 //
 // As regras (conciliação, estados, agrupamentos) moram em `receitas.js`;
@@ -1821,4 +2000,139 @@ export async function salvarPreco(sb, p, user) {
     return { ok: false, motivo: `Nada foi gravado. ${RECUSA_DO_BANCO}` };
   }
   return { ok: true, preco: r[0] };
+}
+
+/**
+ * Os desfechos dos atendimentos ligados à agenda do dia.
+ *
+ * 🔴 "Realizadas" contava PRESENÇA. Quem dava presença e desistia antes de
+ * ser chamado entrava no numerador — o indicador saía bonito e falso. O
+ * desfecho não mora no agendamento (mora no atendimento), então ele precisa
+ * ser buscado para o número dizer a verdade.
+ *
+ * Uma consulta só, por `id in (...)`. Lista vazia devolve `{}` sem ir ao
+ * banco; falha devolve `null`, e `producaoDoDia` sem o mapa se comporta
+ * como antes em vez de zerar o dia.
+ */
+export async function carregarDesfechosDosAtendimentos(sb, ids) {
+  const lista = [...new Set((Array.isArray(ids) ? ids : []).filter(v => v != null))];
+  if (!sb || !lista.length) return {};
+  const r = await sb(`ps_atendimentos?id=in.(${lista.join(",")})&select=id,desfecho,status`).catch(() => null);
+  if (!Array.isArray(r)) return null;
+  return Object.fromEntries(r.map(a => [String(a.id), a.desfecho]));
+}
+
+// ── CORREÇÃO DE DESFECHO ────────────────────────────────────
+
+/**
+ * As correções de desfecho de um atendimento, da mais recente para a mais
+ * antiga.
+ *
+ * `ps_atendimentos.desfecho` é a verdade CORRENTE; esta lista é como se
+ * chegou nela. Sem ela, "atendido" de hoje e "atendido" que nunca mudou
+ * seriam indistinguíveis — e é justamente a diferença que alguém procura
+ * quando a conta não bate.
+ */
+export async function carregarCorrecoesDeDesfecho(sb, atendimentoId) {
+  if (!sb || !atendimentoId) return [];
+  const r = await sb(`at_desfecho_correcoes?atendimento_id=eq.${encodeURIComponent(atendimentoId)}` +
+    `&select=id,de,para,motivo,usuario,criado_em&order=criado_em.desc`).catch(() => null);
+  return listaLida(r);
+}
+
+/**
+ * Corrige o desfecho — gravando a correção, não editando o campo.
+ *
+ * 🔴 UMA ESCRITA SÓ. O `UPDATE` de `ps_atendimentos` é feito pelo GATILHO
+ * do banco, dentro deste mesmo INSERT (ver migracao-correcao-desfecho.sql):
+ * ou a trilha e o valor corrente mudam juntos, ou nada muda. Se a tela
+ * fizesse as duas escritas, uma poderia falhar depois da outra — e o
+ * histórico passaria a contar uma correção que não aconteceu.
+ *
+ * As quatro recusas (motivo curto, desfecho mudou debaixo da tela, conta
+ * fechada/faturada, óbito) vêm do banco com a frase pronta. A tela mostra
+ * o que o banco disse em vez de reescrever a regra aqui — regra duplicada
+ * é regra que diverge.
+ */
+export async function corrigirDesfecho(sb, { atendimentoId, de, para, motivo }, user) {
+  if (!atendimentoId) return { ok: false, motivo: "Atendimento inválido." };
+  const corpo = {
+    atendimento_id: atendimentoId,
+    de: de ?? null,
+    para: String(para ?? "").trim(),
+    motivo: String(motivo ?? "").trim(),
+    usuario: user?.name || null,
+  };
+  const r = await sb("at_desfecho_correcoes", {
+    method: "POST", headers: { Prefer: "return=representation" },
+    body: JSON.stringify(corpo),
+  }).catch(e => ({ _erro: String(e?.message || e) }));
+
+  if (Array.isArray(r) && r.length) return { ok: true, correcao: r[0] };
+  // A mensagem do banco é a que explica o que fazer; sem ela, a tela diria
+  // "não foi possível" para quatro causas diferentes.
+  const bruto = r && r._erro ? r._erro : "";
+  const msg = (bruto.match(/"message"\s*:\s*"([^"]+)"/) || [])[1] || bruto;
+  return {
+    ok: false,
+    motivo: msg
+      || "Não consegui registrar a correção, e nada foi alterado. Tente de novo; se repetir, chame a TI.",
+  };
+}
+
+/**
+ * As cirurgias de um episódio e a equipe de cada uma, para a conta.
+ *
+ * Pelo ELO (`ps_atendimento_id`), nunca por prontuário+data: a mesma pessoa
+ * pode ter dois atendimentos no mesmo dia, e adivinhar poria o porte
+ * cirúrgico na conta do episódio errado. Cirurgia sem elo simplesmente não
+ * entra — e a tela diz quantas ficaram de fora, porque silêncio aqui é
+ * receita perdida.
+ *
+ * ⚠️ Devolve `{ cirurgias, equipePorCirurgia, naoLi }`. `naoLi` é verdadeiro
+ * quando a leitura falhou — e aí a conta NÃO pode dizer "esta internação não
+ * teve cirurgia", que é a frase que faria o faturista fechar sem o item mais
+ * caro da conta.
+ */
+export async function carregarCirurgiasDoEpisodio(sb, atendimentoId) {
+  const vazio = { cirurgias: [], equipePorCirurgia: {}, descricaoPorCirurgia: {}, naoLi: false };
+  if (!sb || !atendimentoId) return vazio;
+  const r = await sb(`cc_cirurgias?ps_atendimento_id=eq.${atendimentoId}&select=*&order=data`);
+  const cirurgias = listaLida(r);
+  if (naoDeuParaLer(cirurgias)) return { ...vazio, naoLi: true };
+  if (!cirurgias.length) return vazio;
+
+  const ids = cirurgias.map(c => c.id).join(",");
+  const [eq, de] = await Promise.all([
+    sb(`cc_equipe?cirurgia_id=in.(${ids})&select=*&order=id`),
+    sb(`cc_descricao?cirurgia_id=in.(${ids})&select=*&order=versao.desc`),
+  ]);
+  const equipe = listaLida(eq);
+  const equipePorCirurgia = {};
+  for (const m of equipe) {
+    (equipePorCirurgia[m.cirurgia_id] ||= []).push(m);
+  }
+
+  // A descrição VIGENTE de cada cirurgia — a corrigida não é a que vale, e
+  // é dela que sai o código do que foi REALIZADO.
+  const descricoes = listaLida(de);
+  const porCirurgia = {};
+  for (const x of descricoes) (porCirurgia[x.cirurgia_id] ||= []).push(x);
+  const descricaoPorCirurgia = {};
+  for (const [id, lista] of Object.entries(porCirurgia)) {
+    const v = versaoVigente(lista);
+    if (v) descricaoPorCirurgia[id] = v;
+  }
+
+  // Falha ao ler a EQUIPE também é "não li": sem ela a conta sairia sem
+  // executante, que é pior que não sair.
+  //
+  // ⚠️ E falha ao ler a DESCRIÇÃO entra na mesma conta, por um motivo
+  // diferente e pior: sem ela o motor cobra o código do AGENDAMENTO sem
+  // saber que não o leu, e uma conversão de via passaria batida — a conta
+  // fecharia com o porte errado, batendo com o agendamento.
+  return {
+    cirurgias, equipePorCirurgia, descricaoPorCirurgia,
+    naoLi: naoDeuParaLer(equipe) || naoDeuParaLer(descricoes),
+  };
 }

@@ -22,7 +22,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { MAPA_TABELAS, SENSIVEIS, ESCRITA_ABERTA, TODOS, PROPRIO, modulosCitados } from "./mapa-tabelas.js";
+import { MAPA_TABELAS, SENSIVEIS, ESCRITA_ABERTA, TODOS, PROPRIO, modulosCitados, LEITURA_EXTRA, leitoresDe } from "./mapa-tabelas.js";
 import { MODULOS } from "./modulos.js";
 import { tabelasDoBanco, condicaoDe, condicaoDeEscrita, conferir, gerarSql } from "../../supabase/gerar-rls.mjs";
 
@@ -199,5 +199,85 @@ describe("condicaoDeEscrita", () => {
 
   it("toda tabela de ESCRITA_ABERTA existe no mapa", () => {
     for (const t of ESCRITA_ABERTA) expect(MAPA_TABELAS[t], t).toBeTruthy();
+  });
+});
+
+// ── LEITORES EXTRAS: lê sem ganhar escrita ─────────────────
+// A farmácia passou a ler a prescrição da internação em 17/09/2026. O risco
+// de fazer isso pelo mapa principal era dar ao auxiliar de farmácia ESCRITA
+// em prescrição médica — ver o comentário de LEITURA_EXTRA.
+describe("LEITURA_EXTRA", () => {
+  it("toda tabela citada existe no mapa, e todo módulo existe no catálogo", () => {
+    const chaves = new Set(MODULOS.map(m => m.chave));
+    for (const [t, mods] of Object.entries(LEITURA_EXTRA)) {
+      expect(MAPA_TABELAS[t], t).toBeTruthy();
+      for (const m of mods) expect(chaves.has(m), `${t}: módulo ${m}`).toBe(true);
+    }
+  });
+
+  it("🔴 a farmácia lê SÓ o que precisa para dispensar — o resto do prontuário continua fechado", () => {
+    const daFarmacia = Object.entries(LEITURA_EXTRA).filter(([, m]) => m.includes("farmacia")).map(([t]) => t).sort();
+    expect(daFarmacia).toEqual(["pep_alergias", "pep_episodios", "pep_prescricao_eventos", "pep_prescricao_itens", "pep_prescricoes"]);
+    for (const t of ["pep_evolucoes", "pep_sinais_vitais", "pep_anamneses", "pep_condicoes", "pacientes"])
+      expect(leitoresDe(t), t).not.toContain("farmacia");
+  });
+
+  it("🔴 ler não dá escrita: o SQL gerado não põe a farmácia na escrita do prontuário", () => {
+    const sql = gerarSql(TABELAS, MAPA_TABELAS);
+    const escrita = sql.slice(sql.indexOf("pode_editar_algum(''"));
+    for (const t of ["pep_prescricoes", "pep_prescricao_itens", "pep_prescricao_eventos", "pep_alergias", "pep_episodios"]) {
+      const linha = escrita.split("\n").find(l => l.includes(`('${t}',`));
+      expect(linha, t).toBeTruthy();
+      expect(linha, t).not.toContain("farmacia");
+    }
+  });
+
+  it("a leitura usa o mapa MAIS o extra, sem repetir módulo", () => {
+    expect(leitoresDe("pep_prescricoes")).toEqual(["paciente", "farmacia"]);
+    expect(leitoresDe("farm_validacoes")).toEqual(["farmacia", "paciente"]);
+    expect(leitoresDe("farm_lotes")).toEqual(["farmacia"]);
+    expect(leitoresDe("x", { x: ["a"] }, { x: ["a", "b"] })).toEqual(["a", "b"]);
+  });
+
+  it("a migração da farmácia do hospital aplica EXATAMENTE a leitura do mapa", () => {
+    const mig = leia("supabase", "migracao-farmacia-hospital.sql");
+    const pares = [...mig.matchAll(/\('(pep_[a-z_]+)',\s*'([^\n]+)'\)/g)].map(m => [m[1], m[2]]);
+    expect(pares.length).toBe(5);
+    for (const [t, cond] of pares) expect(cond, t).toBe(condicaoDe(leitoresDe(t)));
+    expect(mig).toContain(`using (${condicaoDe(leitoresDe("farm_validacoes")).replace(/''/g, "'")})`);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 QUEM OPERA O BLOCO PRECISA LER O CADASTRO DO PACIENTE
+//
+// O item 1 do Sign In é "Paciente confirmou identidade" (Meta 1 da OMS), e
+// desde 09/10/2026 o mapa cirúrgico confere as iniciais da cirurgia contra
+// `pacientes` — justamente porque `cc_cirurgias.iniciais` era texto livre e
+// o cartão mostrava o que alguém digitou.
+//
+// A conferência depende de uma permissão que NÃO está no módulo `bloco`:
+// `pacientes` é lido por atendimento / ambulatorio / ps / paciente. Hoje
+// todo perfil com Bloco tem um desses, por coincidência de como os perfis
+// foram montados. Um perfil novo de centro cirúrgico ("circulante", só com
+// `bloco`) desligaria a conferência EM SILÊNCIO: a RLS devolve lista vazia,
+// o cartão diria "não conferi" em cada cirurgia, e fadiga de alarme é como
+// esse tipo de aviso morre.
+//
+// Daí a catraca: ou o perfil enxerga o cadastro, ou o mapa entra em
+// LEITURA_EXTRA para `pacientes`. Decisão consciente, não descoberta no
+// centro cirúrgico.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 perfil com Bloco Cirúrgico consegue conferir a identidade do paciente", () => {
+  it("todo perfil com `bloco` lê `pacientes`", async () => {
+    const { PERFIS_MODELO } = await import("./modulos.js");
+    const perfis = Array.isArray(PERFIS_MODELO) ? PERFIS_MODELO : Object.values(PERFIS_MODELO);
+    const leem = leitoresDe("pacientes");
+    const comBloco = perfis.filter(p => p.grants?.bloco && p.grants.bloco !== "nenhum");
+    expect(comBloco.length).toBeGreaterThan(0);
+    const cegos = comBloco
+      .filter(p => !leem.some(m => p.grants?.[m] && p.grants[m] !== "nenhum"))
+      .map(p => p.chave);
+    expect(cegos).toEqual([]);
   });
 });

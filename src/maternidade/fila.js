@@ -1,3 +1,4 @@
+import { saiuDoHospital } from "../clinico/desfechos.js";
 // ═══════════════════════════════════════════════════════════
 // FILA OBSTÉTRICA — motor puro
 //
@@ -33,7 +34,9 @@ export function severidadeTriagem(cor) {
 
 // Uma vez finalizado E embora, o atendimento do PS não é mais fila: quem
 // internou vira leito; quem teve alta/evasão/óbito/transferência saiu.
-const DESFECHOS_FORA = new Set(["alta", "evasao", "obito", "transferencia"]);
+// Pela lista única: o ambulatorial grava "evadiu" e ficava na fila para
+// sempre, porque este conjunto só conhecia "evasao".
+const estaFora = desfecho => saiuDoHospital(desfecho);
 
 /**
  * O setor é texto livre, configurado por hospital. Sem uma lista explícita,
@@ -75,7 +78,7 @@ function psRelevante(a) {
   if (!obst) return false;
   // Saiu do PS? (alta/evasão/óbito/transferência já foram embora; internação
   // vira leito e é a fonte de leitos que cobre, sem duplicar aqui.)
-  if (a.desfecho && DESFECHOS_FORA.has(a.desfecho)) return false;
+  if (a.desfecho && estaFora(a.desfecho)) return false;
   if (a.desfecho === "internacao") return false;
   return true;
 }

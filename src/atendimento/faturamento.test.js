@@ -18,11 +18,13 @@
 //      mês anterior — que é justamente o que já foi transmitido.
 // ═══════════════════════════════════════════════════════════
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   centavos, reais, competenciaDe, competenciaLabel, VIAS, viaDeFaturamento, internouPeloSus,
   TIPOS_ITEM, totalDaConta, conferirItem, STATUS_CONTA, validarFechamento,
-  resumoDaConta, camposDaConta, camposDoItem,
+  resumoDaConta, camposDaConta, camposDoItem, tabelaPadraoDaVia,
 } from "./faturamento.js";
 
 const sus = { id: 1, nome: "SUS", tipo: "sus" };
@@ -88,10 +90,27 @@ describe("dinheiro", () => {
 });
 
 describe("competência", () => {
-  it("não passa por new Date — o dia 1º fica no próprio mês", () => {
+  it("só-dia não passa por new Date — o dia 1º fica no próprio mês", () => {
     expect(competenciaDe("2026-07-01")).toBe("2026-07");
-    expect(competenciaDe("2026-07-01T02:00:00Z")).toBe("2026-07");
     expect(competenciaDe("2026-01-01")).toBe("2026-01");
+  });
+
+  // ⚠️ ESTA ASSERÇÃO FOI INVERTIDA DE PROPÓSITO.
+  //
+  // Antes este teste exigia `competenciaDe("2026-07-01T02:00:00Z") === "2026-07"`,
+  // tratando o texto do carimbo como se já fosse local. Mas 02:00Z do dia 1º
+  // é 23:00 do dia 30 em Brasília: o paciente foi atendido em JUNHO. A conta
+  // ia para uma competência que ainda não começou, e o mês que de fato
+  // atendeu fechava e transmitia sem ela.
+  //
+  // Só-dia e carimbo são coisas diferentes: um já é dia civil, o outro é um
+  // instante que precisa do relógio do hospital para virar dia.
+  it("🔴 carimbo vai pelo relógio do hospital, não pela fatia do texto", () => {
+    // 22:00 de 30/06 em Brasília → gravado como 01/07 01:00Z. É junho.
+    expect(competenciaDe("2026-07-01T01:00:00Z")).toBe("2026-06");
+    expect(competenciaDe("2026-07-01T02:00:00Z")).toBe("2026-06");
+    // 10:00 de 01/07 → 13:00Z do mesmo dia. Segue julho.
+    expect(competenciaDe("2026-07-01T13:00:00Z")).toBe("2026-07");
   });
 
   it("lixo devolve null, não uma competência inventada", () => {
@@ -409,5 +428,79 @@ describe("validarFechamento — pré-glosa", () => {
     expect(v.ok).toBe(false);
     expect(v.erros.filter(e => /Impedimento de glosa/.test(e))).toHaveLength(1);
     expect(v.avisos.some(a => /CID A00/.test(a))).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 A TABELA DO CÓDIGO — o segundo "coluna sem campo" da mesma entrega
+//
+// `at_conta_itens.tabela` nasceu com a guia TISS (14/10/2026) e por um
+// momento não teve input: a guia acusava "item sem a tabela do código" e
+// não havia onde consertar. Achado ANDANDO no demo, na mesma caminhada que
+// achou o `codigo_prestador` impreenchível.
+//
+// ⚠️ Código sem tabela é ambíguo: "10101012" existe no SIGTAP e no TUSS
+// querendo dizer coisas diferentes.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 de qual tabela vem o código do item", () => {
+  it("as vias do SUS usam SIGTAP", () => {
+    for (const v of ["bpa", "apac", "aih"]) expect(tabelaPadraoDaVia(v), v).toBe("sigtap");
+  });
+
+  it("operadora usa TUSS", () => expect(tabelaPadraoDaVia("tiss")).toBe("tuss"));
+  it("particular usa tabela própria", () => expect(tabelaPadraoDaVia("direta")).toBe("proprio"));
+  it("aceita maiúscula e espaço — o dado vem do banco", () => {
+    expect(tabelaPadraoDaVia(" TISS ")).toBe("tuss");
+  });
+
+  it("🔴 via desconhecida devolve null, NÃO 'sigtap'", () => {
+    // Chutar faria o item sair com a tabela errada numa conta que o sistema
+    // nem sabe classificar — e tabela errada é pior que tabela ausente:
+    // ausente aparece como pendência, errada é cobrada.
+    for (const v of ["", null, undefined, "convenio", "xpto"]) {
+      expect(tabelaPadraoDaVia(v), String(v)).toBeNull();
+    }
+  });
+
+  it("🔴 EXISTE O CAMPO NA TELA — era a metade que faltava", () => {
+    const tela = readFileSync(join(__dirname, "Faturamento.jsx"), "utf8");
+    expect(tela).toMatch(/Tabela do código/);
+    expect(tela).toMatch(/tabela: e\.target\.value|\.\.\.p, tabela:/);
+  });
+
+  it("🔴 e o item LEVA a tabela ao gravar", () => {
+    // Sem esta linha o campo existe, a pessoa escolhe, e nada chega ao banco.
+    const tela = readFileSync(join(__dirname, "Faturamento.jsx"), "utf8");
+    expect(tela).toMatch(/tabela: novo\.tabela \|\| tabelaPadraoDaVia/);
+  });
+});
+
+describe("🔴 a tabela ATRAVESSA até o corpo que vai ao banco", () => {
+  it("camposDoItem leva a tabela", () => {
+    // ⚠️ `camposDoItem` é lista FECHADA, e foi por isso que o conserto da
+    // tela não bastou: o campo chegava do formulário e morria aqui. É o
+    // terceiro elo da mesma corrente — coluna, campo, campo ACEITO — e
+    // faltando qualquer um o dado não chega.
+    expect(camposDoItem({ conta_id: 1, tabela: "tuss" }).tabela).toBe("tuss");
+  });
+
+  it("vazia vira null, não string vazia", () => {
+    expect(camposDoItem({ conta_id: 1, tabela: "   " }).tabela).toBeNull();
+    expect(camposDoItem({ conta_id: 1 }).tabela).toBeNull();
+  });
+});
+
+describe("🔴 a corrente inteira: a coluna precisa de QUATRO lugares", () => {
+  it("a lista de LEITURA traz a tabela", () => {
+    // O quarto elo, e o de sintoma mais traiçoeiro: sem ele o dado ESTÁ no
+    // banco e a tela age como se não estivesse. O item tinha
+    // `tabela='tuss'` gravada e a guia seguia acusando "sem a tabela".
+    const dados = readFileSync(join(__dirname, "dados.js"), "utf8");
+    const bloco = dados.match(/const CAMPOS_ITEM = \[([\s\S]*?)\]\.join/)[1];
+    expect(bloco).toMatch(/"tabela"/);
+  });
+
+  it("a lista de ESCRITA traz a tabela", () => {
+    expect(camposDoItem({ conta_id: 1, tabela: "tuss" })).toHaveProperty("tabela", "tuss");
   });
 });
