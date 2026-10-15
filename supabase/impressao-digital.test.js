@@ -265,15 +265,43 @@ describe("🔴 o hash é do banco, não da tela", () => {
     expect(r.conteudo_hash).toBe(sha256(canonicoDescricao({ cirurgia_id: 1, descricao: "conteudo real" })));
   });
 
-  it("🔴 alterar a linha por SQL recalcula — e o hash ANTIGO não bate mais", async () => {
-    // É isto que a verificação pega: o documento guardado em outro lugar
-    // (impresso, assinado, exportado) deixa de corresponder.
+  it("🔴 alterar a linha por SQL NÃO recarimba — e aí a digital acusa", async () => {
+    // ⚠️ ESTE TESTE AFIRMAVA O CONTRÁRIO, e documentava um defeito meu como
+    // se fosse o comportamento certo. Recalcular no UPDATE anula a camada
+    // inteira: o hash guardado passa a ser sempre o da linha atual, então a
+    // verificação nunca pode acusar nada.
+    //
+    // Achado CAMINHANDO no demo (15/10/2026), tentando adulterar um laudo
+    // para ver o selo acender — e percebendo que ele nunca acenderia.
     const r = await canonicoNoBanco("cc_descricao", "doc_canonico_descricao",
       { cirurgia_id: 1, descricao: "sem intercorrencias" });
     const antes = r.conteudo_hash;
     const id = (await db.query("select max(id) id from public.cc_descricao")).rows[0].id;
+
     await db.exec(`update public.cc_descricao set descricao = 'com intercorrencias' where id = ${id}`);
-    const depois = (await db.query(`select conteudo_hash from public.cc_descricao where id = ${id}`)).rows[0];
-    expect(depois.conteudo_hash).not.toBe(antes);
+    const depois = (await db.query(
+      `select descricao, conteudo_hash, public.doc_canonico_descricao(t.*) as canonico
+         from public.cc_descricao t where id = ${id}`)).rows[0];
+
+    // O conteúdo mudou…
+    expect(depois.descricao).toBe("com intercorrencias");
+    // …a digital NÃO…
+    expect(depois.conteudo_hash).toBe(antes);
+    // …e por isso ela deixou de descrever a linha. É o que a tela mostra.
+    expect(sha256(depois.canonico)).not.toBe(depois.conteudo_hash);
+  });
+
+  it("🔴 e o UPDATE não consegue FORJAR a digital", async () => {
+    // Quem altera o conteúdo tentaria mandar o hash novo junto. O gatilho
+    // devolve o antigo de qualquer forma.
+    const r = await canonicoNoBanco("cc_descricao", "doc_canonico_descricao",
+      { cirurgia_id: 1, descricao: "original" });
+    const id = (await db.query("select max(id) id from public.cc_descricao")).rows[0].id;
+    await db.exec(`update public.cc_descricao
+                      set descricao = 'outra coisa', conteudo_hash = 'forjado', hash_formato = '9'
+                    where id = ${id}`);
+    const d = (await db.query(`select conteudo_hash, hash_formato from public.cc_descricao where id = ${id}`)).rows[0];
+    expect(d.conteudo_hash).toBe(r.conteudo_hash);
+    expect(d.hash_formato).toBe(FORMATO);
   });
 });

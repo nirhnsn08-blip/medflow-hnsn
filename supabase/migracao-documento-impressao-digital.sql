@@ -202,20 +202,36 @@ $$;
 -- ───────────────────────────────────────────────────────────
 -- 4. OS GATILHOS
 --
--- 🔴 BEFORE INSERT **E** BEFORE UPDATE. O insert é o óbvio; o update é o
--- que importa: se alguém alterar a linha pelo SQL, o hash é RECALCULADO e
--- passa a bater de novo — o que parece derrotar o propósito e não derrota,
--- porque a verificação compara com o hash de QUANDO a assinatura foi feita
--- (que viverá na tabela de assinaturas) e porque o `updated_at` muda.
+-- 🔴 A DIGITAL É TIRADA UMA VEZ, NO NASCIMENTO — e nunca retirada.
 --
--- ⚠️ Enquanto a assinatura de verdade não existe, o que a digital pega é
--- alteração feita DIRETO NA LINHA sem passar pelo gatilho (restore de
--- backup parcial, cópia entre bancos, edição em massa por `copy`). É
--- menos do que uma assinatura, e é mais do que havia.
+-- ⚠️ A primeira versão recalculava no UPDATE também, e isso ANULAVA a
+-- camada inteira: o hash guardado passaria a ser sempre o hash da linha
+-- atual, então a verificação nunca poderia acusar nada. Quem alterasse o
+-- conteúdo teria a digital recarimbada junto, de graça.
+--
+-- Descoberto CAMINHANDO no demo (15/10/2026), tentando adulterar um laudo
+-- para ver o selo acender — e percebendo que ele nunca acenderia.
+--
+-- Agora o UPDATE PRESERVA o que foi carimbado no insert. Consequência: um
+-- conteúdo alterado deixa de bater com a própria digital, que é exatamente
+-- o que esta camada existe para mostrar.
+--
+-- ⚠️ Estas tabelas são append-only e não têm política de UPDATE na RLS —
+-- então pelo caminho do aplicativo isto nem acontece. O que se pega aqui é
+-- alteração feita por FORA: SQL direto, restore parcial, cópia entre
+-- bancos, edição em massa. É menos do que uma assinatura, e é mais do que
+-- havia.
 -- ───────────────────────────────────────────────────────────
 create or replace function public.doc_digital_descricao()
 returns trigger language plpgsql set search_path = public as $d$
 begin
+  -- 🔴 NO UPDATE A DIGITAL NÃO MUDA. Ver o comentário acima: recalcular
+  -- aqui faria a verificação nunca poder acusar nada.
+  if tg_op = 'UPDATE' then
+    new.conteudo_hash := old.conteudo_hash;
+    new.hash_formato  := old.hash_formato;
+    return new;
+  end if;
   new.hash_formato := '1';
   new.conteudo_hash := encode(sha256(convert_to(public.doc_canonico_descricao(new), 'UTF8')), 'hex');
   return new;
@@ -225,6 +241,13 @@ $d$;
 create or replace function public.doc_digital_resultado()
 returns trigger language plpgsql set search_path = public as $d$
 begin
+  -- 🔴 NO UPDATE A DIGITAL NÃO MUDA. Ver o comentário acima: recalcular
+  -- aqui faria a verificação nunca poder acusar nada.
+  if tg_op = 'UPDATE' then
+    new.conteudo_hash := old.conteudo_hash;
+    new.hash_formato  := old.hash_formato;
+    return new;
+  end if;
   new.hash_formato := '1';
   new.conteudo_hash := encode(sha256(convert_to(public.doc_canonico_resultado(new), 'UTF8')), 'hex');
   return new;
