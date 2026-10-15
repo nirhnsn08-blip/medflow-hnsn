@@ -4,6 +4,8 @@
 // Errar significa mostrar como ativo um medicamento que foi suspenso — ou
 // o contrário, esconder um que está valendo.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   episodioAtivo, diasInternacao, estadoDosItens, prescricaoVigente,
@@ -118,6 +120,83 @@ describe("aprazamento", () => {
 
   it("intervalo_horas tem precedência sobre a frequência", () => {
     expect(horariosDoDia({ frequencia_dia: 4, intervalo_horas: 8 }, dia)).toHaveLength(3);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // 🔴 A DOSE QUE NUNCA EXISTIU NÃO ESTÁ ATRASADA
+  //
+  // MEDIDO EM 15/10/2026, antes de escrever: paciente internado às 22h com
+  // medicação 8/8h abria o primeiro dia com DUAS doses atrasadas — 06h e
+  // 14h, horários que passaram ANTES de a prescrição existir. Todo paciente
+  // admitido depois das 07h começava assim.
+  //
+  // Alarme falso em sinal de segurança é pior que alarme nenhum: ensina a
+  // ignorar os verdadeiros, e aí o atraso de verdade passa junto.
+  //
+  // ⚠️ O dado já existia: `pep_prescricoes.inicio_em` é gravado em TODA
+  // prescrição assinada desde sempre, e nunca tinha sido lido.
+  // ═══════════════════════════════════════════════════════════
+  describe("🔴 horários anteriores ao início da prescrição", () => {
+    const item = { frequencia_dia: 3, intervalo_horas: 8 };   // 06h, 14h, 22h
+
+    it("prescrição das 22h: só a dose das 22h existe", () => {
+      const h = horariosDoDia(item, dia, 6, new Date("2026-07-22T22:00:00"));
+      expect(h.map(d => d.getHours())).toEqual([22]);
+    });
+
+    it("prescrição das 14h: some a das 06h, ficam 14h e 22h", () => {
+      const h = horariosDoDia(item, dia, 6, new Date("2026-07-22T14:00:00"));
+      expect(h.map(d => d.getHours())).toEqual([14, 22]);
+    });
+
+    it("🔴 e aí NÃO há dose atrasada no primeiro dia", () => {
+      const agora = new Date("2026-07-22T23:00:00");
+      const h = horariosDoDia(item, agora, 6, new Date("2026-07-22T22:00:00"));
+      expect(checarAprazamento(h, [], agora).filter(x => x.atrasado)).toHaveLength(0);
+    });
+
+    it("🔴 MAS no dia seguinte a dose atrasada de verdade continua acusando", () => {
+      // O controle que impede o conserto de virar uma mordaça: suprimir
+      // atraso real seria trocar um defeito por outro, pior.
+      const amanha = new Date("2026-07-23T13:00:00");
+      const h = horariosDoDia(item, amanha, 6, new Date("2026-07-22T22:00:00"));
+      const atrasadas = checarAprazamento(h, [], amanha).filter(x => x.atrasado);
+      expect(atrasadas.map(x => x.horario.getHours())).toEqual([6]);
+    });
+
+    it("dose exatamente NO instante do início conta — não é anterior", () => {
+      const h = horariosDoDia(item, dia, 6, new Date("2026-07-22T14:00:00"));
+      expect(h.map(d => d.getHours())).toContain(14);
+    });
+
+    it("sem início, nada é filtrado — comportamento de antes", () => {
+      expect(horariosDoDia(item, dia)).toHaveLength(3);
+      expect(horariosDoDia(item, dia, 6, null)).toHaveLength(3);
+    });
+
+    it("🔴 início ILEGÍVEL não filtra nada — e não filtra TUDO", () => {
+      // `new Date("lixo")` é Invalid Date, e toda comparação com ele é
+      // `false`: sem a guarda, um `inicio_em` corrompido faria a grade
+      // inteira sumir, e a tela mostraria o paciente sem medicação nenhuma.
+      expect(horariosDoDia(item, dia, 6, "não é data")).toHaveLength(3);
+      expect(horariosDoDia(item, dia, 6, undefined)).toHaveLength(3);
+    });
+
+    it("prescrição iniciada ONTEM não filtra nada hoje", () => {
+      expect(horariosDoDia(item, dia, 6, new Date("2026-07-21T22:00:00"))).toHaveLength(3);
+    });
+
+    it("🔴 E A TELA PASSA O INÍCIO — a regra sozinha não conserta nada", () => {
+      // ⚠️ Sem esta asserção, tudo acima passa verde com a tela chamando
+      // `horariosDoDia(item, hoje)` sem o início — e o alarme falso volta,
+      // intacto, sem nada ficar vermelho. Medido por mutação: foi a ÚNICA
+      // das cinco que passou verde antes deste teste existir.
+      //
+      // É o mesmo elo que já faltou cinco vezes nesta semana: coluna,
+      // campo, escrita, leitura — e CHAMADA.
+      const tela = readFileSync(join(__dirname, "../prontuario/ProntuarioInternado.jsx"), "utf8");
+      expect(tela).toContain("horariosDoDia(item, hoje, 6, presc.inicio_em)");
+    });
   });
 
   it("marca dose administrada dentro da tolerância", () => {
