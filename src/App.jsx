@@ -1348,7 +1348,7 @@ export default function App() {
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
           {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "maternidade" && <MaternidadePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
-          {active === "executivo" && <TorreDeComando sb={SB()} currentUser={currentUser} onNav={navegar} />}
+          {active === "executivo" && <TorreDeComando sb={SB()} />}
           {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} especialidades={especialidades} />}
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
           {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} especialidades={especialidades} />}

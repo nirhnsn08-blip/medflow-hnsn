@@ -31,7 +31,7 @@ import {
   NIVEL, censoGeral, censoDeSetores, setoresDeUti, mapaDeSetores,
   altasDoDia, permanenciaMedia, giroDeLeito, esperaNoPa, aceitesGerint,
   fluxoCirurgico, ambulatorioDoDia, itensEmFalta, faltasConsolidadas,
-  resumoDaTorre, diaDe,
+  resumoDaTorre,
 } from "./torre.js";
 import { carregarTorre } from "./dados.js";
 import { HOSPITAL_SIGLA } from "../ui/base.jsx";
@@ -131,7 +131,7 @@ function NaoLido({ oQue }) {
   );
 }
 
-export default function TorreDeComando({ sb, currentUser, onNav }) {
+export default function TorreDeComando({ sb }) {
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [lidoEm, setLidoEm] = useState(null);

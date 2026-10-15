@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  NIVEL, LIMIARES, medida, semLeitura, nivelPorLimiar, diaDe, minutosEntre,
+  NIVEL, medida, semLeitura, nivelPorLimiar, diaDe, minutosEntre,
   censoGeral, censoDeSetores, setoresDeUti, mapaDeSetores,
   altasDoDia, permanenciaMedia, giroDeLeito,
   esperaNoPa, aceitesGerint, ORIGEM_GERINT,
