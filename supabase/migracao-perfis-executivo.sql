@@ -59,10 +59,19 @@ on conflict (perfil_chave, modulo) do nothing;
 -- A linha da `gestao` sai "— fora por decisão" e é o esperado.
 -- ═══════════════════════════════════════════════════════════
 select item, resultado from (
-  select 0 as ord, '🔎 BANCO' as item,
-         case when (select count(*) from public.pacientes) >= 40
-              then '🟠 DEMO (banco de teste) — pode rodar aqui'
-              else '🔴 PRINCIPAL (HNSN) — produção' end as resultado
+  -- 🔴 O SQL NÃO SABE EM QUAL BANCO ESTÁ, E NÃO VAI FINGIR QUE SABE.
+  --
+  -- A versão anterior deste selo chutava pelo número de pacientes ("≥40 = é o
+  -- demo"), o que era verdade enquanto o HNSN estava quase vazio e deixou de
+  -- ser quando o hospital passou a cadastrar gente. Uma etiqueta de segurança
+  -- que inverte de significado sozinha é pior que etiqueta nenhuma: ela diria
+  -- "pode rodar aqui" em cima da produção.
+  --
+  -- Quem sabe de verdade é o REF DO PROJETO, que está na barra de endereço do
+  -- navegador. Então o selo mostra o que ele tem e manda conferir lá.
+  select 0 as ord, '🔎 BANCO — confira o ref na URL' as item,
+         'demo = ufxqdvxhruaswuzhmxyf · produção HNSN = riuvyxppixeclxudsgpv  (há ' ||
+         (select count(*) from public.pacientes)::text || ' pacientes neste banco)' as resultado
   union all
   select 1, 'perfil ' || pa.chave,
          case when pp.nivel is not null then '✅ ' || pp.nivel
