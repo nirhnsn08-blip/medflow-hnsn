@@ -136,3 +136,51 @@ describe("🔴 a aba não apaga a contagem que o modal já tinha", () => {
     await waitFor(() => expect(contou).toHaveBeenCalledWith(0));
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 O SELO DE ALTERAÇÃO APARECE — e só quando acusa
+//
+// A impressão digital só serve se alguma tela a mostrar. Este bloco é o
+// quinto elo da corrente que a caminhada de hoje ensinou: coluna, campo,
+// escrita, leitura — e TELA. Sem ele o módulo existe, os testes passam, e
+// nenhum ser humano é avisado de nada.
+// ═══════════════════════════════════════════════════════════
+describe("🔴 laudo alterado acusa na tela", () => {
+  const COM_RESULTADO = {
+    pedidos: [{ id: 10, criado_em: "2026-10-13T08:00:00.000Z", prioridade: "rotina", ps_atendimento_id: 7 }],
+    itens: [{ id: 1, pedido_id: 10, descricao: "Potássio", categoria: "laboratorial", status: "resultado_disponivel" }],
+  };
+  const laudo = extra => ({
+    id: 100, item_id: 1, analito_id: 2, nome: "Potássio", valor_num: 7.2,
+    unidade: "mEq/L", referencia: "3.5 a 5.1", anormal: true, critico: true,
+    criado_em: "2026-10-13T09:00:00.000Z", hash_formato: "1", ...extra,
+  });
+
+  it("🔴 hash que não bate mostra ALTERADO", async () => {
+    render(<AbaExames sb={bancoCom({ ...COM_RESULTADO, resultados: [laudo({ conteudo_hash: "naobate" })] })}
+      paciente={PACIENTE} currentUser={USER} />);
+    await waitFor(() => expect(screen.getByText("ALTERADO")).toBeTruthy(), { timeout: 3000 });
+  });
+
+  it("⚠️ laudo SEM digital não acusa nada — é documento antigo", async () => {
+    // Acusar o histórico inteiro do hospital de adulteração por causa de
+    // uma migração nova seria o pior alarme falso possível.
+    render(<AbaExames sb={bancoCom({ ...COM_RESULTADO, resultados: [laudo({ conteudo_hash: null })] })}
+      paciente={PACIENTE} currentUser={USER} />);
+    await waitFor(() => expect(screen.getAllByText(/Potássio/).length).toBeGreaterThan(0));
+    expect(screen.queryByText("ALTERADO")).toBeNull();
+  });
+
+  it("⚠️ nem o íntegro ganha selo — selo em toda linha vira ruído", async () => {
+    // E ruído é o que faz ninguém ver o dia em que ele mudar.
+    const { canonicoResultado } = await import("../clinico/impressao-digital.js");
+    const { createHash } = await import("node:crypto");
+    const base = laudo({});
+    const hash = createHash("sha256").update(canonicoResultado(base), "utf8").digest("hex");
+    render(<AbaExames sb={bancoCom({ ...COM_RESULTADO, resultados: [{ ...base, conteudo_hash: hash }] })}
+      paciente={PACIENTE} currentUser={USER} />);
+    await waitFor(() => expect(screen.getAllByText(/Potássio/).length).toBeGreaterThan(0));
+    expect(screen.queryByText("ALTERADO")).toBeNull();
+    expect(screen.queryByText("Íntegro")).toBeNull();
+  });
+});
