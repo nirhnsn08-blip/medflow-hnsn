@@ -345,6 +345,8 @@ const ORDEM = [
   // Depois de tudo que cria tabela assinável: ela acrescenta coluna e
   // gatilho em `cc_descricao` e `sadt_resultados`, que precisam existir.
   "migracao-documento-impressao-digital.sql",
+  // Acrescenta colunas em `pep_aprazamentos`, que vem da pep-fase1.
+  "migracao-aprazamento-cancelar.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.

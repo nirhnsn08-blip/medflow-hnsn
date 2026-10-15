@@ -79,16 +79,26 @@ export async function carregarProntuario(sb, prontuario) {
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
              escalas: [], lpp: [], faixasEscalas: [],
              saeCatalogo: [], saeHistorico: [], saeDiagnosticos: [], saePrescricoes: [],
-             saePrescricaoItens: [], saeChecagem: [] };
+             saePrescricaoItens: [], saeChecagem: [], aprazamentos: [] };
   }
 
   const e = ativo.id;
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
          reconciliacoes, reconciliacaoItens, sumarios, validacoesFarmacia, escalas, lpp, faixasEscalas,
-         saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem] = await Promise.all([
+         saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem,
+         aprazamentos] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_prescricao_eventos?episodio_id=eq.${e}&select=*&order=criado_em`).catch(() => []),
+    // 🔴 O APRAZAMENTO. A tabela existia desde a pep-fase1 e ficou com ZERO
+    // usos até 15/10/2026 — a grade derivava os horários de uma âncora fixa
+    // de 06h, que é palpite. Quem decide a hora da dose é a enfermagem.
+    //
+    // ⚠️ O `.catch` é a mesma razão das outras: o código chega à Vercel
+    // antes de alguém rodar o SQL no painel. Mas ele devolve `null`, não
+    // `[]` — `listaLida` marca a falha, e a grade precisa distinguir "não
+    // foi aprazado" de "não consegui ler" antes de derivar horário.
+    sb(`pep_aprazamentos?episodio_id=eq.${e}&select=*&order=previsto_para`).catch(() => null),
     sb(`pep_administracoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_sinais_vitais?episodio_id=eq.${e}&select=*&order=aferido_em`).catch(() => []),
     sb(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
@@ -136,6 +146,11 @@ export async function carregarProntuario(sb, prontuario) {
     saeCatalogo: arr(saeCatalogo), saeHistorico: arr(saeHistorico),
     saeDiagnosticos: arr(saeDiagnosticos), saePrescricoes: arr(saePrescricoes),
     saePrescricaoItens: arr(saePrescricaoItens), saeChecagem: arr(saeChecagem),
+    // ⚠️ `listaLida` e NÃO `arr`: a marca de falha precisa chegar à grade.
+    // Se a leitura não desceu, "não foi aprazado" e "não consegui ler" são
+    // respostas diferentes — a primeira faz a tela derivar horário, e
+    // derivar em cima de ignorância é inventar.
+    aprazamentos: listaLida(aprazamentos),
   };
 }
 
@@ -336,6 +351,66 @@ export async function eventoDoItem(sb, episodio, item, evento, motivo, user) {
       ...assinatura(user),
     }),
   });
+}
+
+// ── APRAZAMENTO ─────────────────────────────────────────────
+
+/**
+ * Grava as doses aprazadas.
+ *
+ * 🔴 CONFERE A LINHA DE VOLTA. O PostgREST responde 2xx com ZERO linhas
+ * quando a RLS filtra — e um aprazamento gravado em silêncio é uma grade
+ * que a enfermagem acha que combinou e não existe.
+ */
+export async function aprazarDoses(sb, linhas, user) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  if (!linhas?.length) return { ok: false, erro: "Nenhuma dose para aprazar." };
+  const corpo = linhas.map(l => ({ ...l, usuario: user?.name || null }));
+  const r = await sb("pep_aprazamentos", { method: "POST", body: JSON.stringify(corpo) });
+  // ⚠️ "NÃO DEU PARA SABER" E "ENTROU METADE" SÃO COISAS DIFERENTES, e a
+  // conduta de quem lê também: no primeiro caso é preciso ABRIR a grade
+  // para ver o que há; no segundo o sistema já sabe quantas faltam.
+  // Colapsar os dois num "0 de N" diria à enfermagem que nada foi aprazado
+  // quando talvez tudo tenha sido — e aí ela apraza de novo, duplicando.
+  if (!Array.isArray(r)) {
+    return {
+      ok: false,
+      erro: `O aprazamento foi enviado mas NÃO FOI POSSÍVEL CONFIRMAR se as ${corpo.length} doses entraram. Abra a grade e confira antes de aprazar de novo — repetir agora pode duplicar.`,
+    };
+  }
+  if (r.length !== corpo.length) {
+    return {
+      ok: false,
+      erro: `O aprazamento NÃO foi gravado por inteiro (${r.length} de ${corpo.length} doses). Confira a grade antes de aprazar de novo — repetir agora duplicaria o que entrou.`,
+    };
+  }
+  return { ok: true, doses: r };
+}
+
+/**
+ * Cancela doses aprazadas, com motivo.
+ *
+ * ⚠️ CANCELA, não apaga: aprazar é ato de enfermagem com registro no
+ * conselho, e apagar a linha apaga quem aprazou aquela dose. O gatilho
+ * recusa cancelar dose JÁ ADMINISTRADA — o plano não reescreve o fato.
+ */
+export async function cancelarDoses(sb, ids, motivo, user) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  const lista = (Array.isArray(ids) ? ids : []).filter(v => v != null);
+  if (!lista.length) return { ok: true, canceladas: [] };
+  const r = await sb(`pep_aprazamentos?id=in.(${lista.join(",")})`, {
+    method: "PATCH",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({
+      cancelado_em: new Date().toISOString(),
+      cancelado_por: user?.name || null,
+      cancelamento_motivo: String(motivo ?? "").trim(),
+    }),
+  });
+  if (!Array.isArray(r) || !r.length) {
+    return { ok: false, erro: "O cancelamento NÃO foi gravado — a alteração não chegou ao banco, ou alguma dose já foi administrada." };
+  }
+  return { ok: true, canceladas: r };
 }
 
 /** Registra administração (ou a não-administração, com o motivo). */

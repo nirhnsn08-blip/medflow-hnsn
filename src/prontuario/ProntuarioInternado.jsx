@@ -17,6 +17,7 @@ import {
   horariosDoDia, checarAprazamento, serieSinaisVitais, scoreAlertaPrecoce, ESCALA_ALERTA,
   timelineEpisodio,
 } from "../clinico/prontuario.js";
+import { diaLocal } from "../util/datas.js";
 import { situacaoAlergica } from "../clinico/alergias.js";
 import { contextoDoInternado } from "./contexto-internado.js";
 import { analisarPrescricaoClinica, FARM_GRAV } from "../clinico/alertas.js";
@@ -25,7 +26,13 @@ import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js"
 import {
   carregarProntuario, registrarSinais, registrarAnotacao,
   eventoDoItem, registrarAdministracao, registrarAcesso,
+  aprazarDoses, cancelarDoses,
 } from "./dados.js";
+import {
+  MIN_MOTIVO, horariosSugeridos, hhmm, conferirAprazamento,
+  divergenciasDeFrequencia, linhasDoAprazamento, dosesVigentes,
+  horariosDoItemNoDia, doseQueEstaSendoCumprida,
+} from "../clinico/aprazamento.js";
 import { resumoReconciliacao, analisarReconciliacao, vigentesDeUso, situacaoUsoDomiciliar, chaveMedicamento } from "../clinico/reconciliacao.js";
 import NovaPrescricao from "./NovaPrescricao.jsx";
 import Anamnese from "./Anamnese.jsx";
@@ -175,6 +182,7 @@ export default function ProntuarioInternado({ sb, prontuario, currentUser, canEd
               onPronto={() => { setPrescrevendo(false); recarregar(); }}
               onCancelar={() => setPrescrevendo(false)} />
           : <Prescricao presc={presc} itens={itens} alertas={alertas} adms={d.administracoes} ep={ep} validacoesFarmacia={d.validacoesFarmacia}
+              aprazamentos={d.aprazamentos}
               canEdit={canEdit} sb={sb} user={currentUser} onOk={recarregar}
               onNova={() => setPrescrevendo(true)} />
       )}
@@ -370,7 +378,8 @@ function SeloFarmacia({ validacoes, prescricao }) {
   );
 }
 
-function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarmacia, onOk, onNova }) {
+function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarmacia, aprazamentos, onOk, onNova }) {
+  const [aprazando, setAprazando] = useState(null);   // { item, doses, erro }
   const podePrescrever = podeClinico(user, "prescricao_medica") || podeClinico(user, "prescricao_enfermagem");
   const botaoNova = canEdit && (
     podePrescrever
@@ -392,23 +401,188 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
     await eventoDoItem(sb, ep, item, "suspenso", motivo, user);
     onOk();
   }
+  /**
+   * Abre o aprazamento com a sugestão — que a enfermagem ajusta.
+   *
+   * ⚠️ A sugestão parte do INÍCIO DA PRESCRIÇÃO, não das 06h. Uma
+   * medicação 8/8h iniciada às 22h vira 22h, 06h, 14h — que é o que de
+   * fato acontece na enfermaria, e é o que evita a enfermagem corrigir
+   * a mesma coisa toda vez.
+   */
+  function abrirAprazamento(item) {
+    const jaTem = dosesVigentes(aprazamentos, item.id);
+    const sugeridas = horariosSugeridos(item, presc.inicio_em || presc.assinada_em);
+    setAprazando({
+      item,
+      doses: (jaTem?.length ? jaTem.map(d => ({ ...d, previsto_para: new Date(d.previsto_para) })) : sugeridas),
+      reaprazando: !!jaTem?.length,
+      motivo: "",
+      erro: "",
+    });
+  }
+
+  async function confirmarAprazamento() {
+    const { item, doses, reaprazando, motivo } = aprazando;
+    const prof = { nome: user?.name, ...assinaturaDe(user) };
+    const r = conferirAprazamento({ item, doses, profissional: prof });
+    if (r) { setAprazando(a => ({ ...a, erro: r })); return; }
+    // 🔴 REAPRAZAR EXIGE MOTIVO, e o mesmo mínimo do banco: a grade mudou
+    // para quem está na enfermaria, e "por que a dose das 18h sumiu" é a
+    // pergunta que aparece depois.
+    if (reaprazando && String(motivo).trim().length < MIN_MOTIVO) {
+      setAprazando(a => ({ ...a, erro: `Diga por que está reaprazando (ao menos ${MIN_MOTIVO} caracteres). A grade muda para quem está na enfermaria.` }));
+      return;
+    }
+
+    if (reaprazando) {
+      const vigentes = dosesVigentes(aprazamentos, item.id) || [];
+      // ⚠️ Só as que NÃO foram administradas: o gatilho recusa cancelar
+      // dose que já aconteceu, e com razão — o plano não reescreve o fato.
+      const dadas = new Set(adms.filter(a => a.aprazamento_id != null).map(a => String(a.aprazamento_id)));
+      const alvos = vigentes.filter(d => !dadas.has(String(d.id))).map(d => d.id);
+      const c = await cancelarDoses(sb, alvos, motivo, user);
+      if (!c.ok) { setAprazando(a => ({ ...a, erro: c.erro })); return; }
+    }
+
+    const linhas = linhasDoAprazamento({
+      item, episodio: ep, doses: aprazando.doses, profissional: prof,
+      observacao: reaprazando ? motivo : null,
+    });
+    const g = await aprazarDoses(sb, linhas, user);
+    if (!g.ok) { setAprazando(a => ({ ...a, erro: g.erro })); return; }
+    setAprazando(null);
+    onOk();
+  }
+
   async function administrar(item) {
     if (!confirm(`Registrar administração de "${item.descricao}" agora?`)) return;
     // Nomes conforme `pep_administracoes`: `item_id` e `descricao`.
     // (No módulo do PS as colunas equivalentes chamam-se
     // `prescricao_item_id` e `medicamento_nome` — as duas tabelas nasceram
     // em momentos diferentes e não convergiram.)
+    // 🔴 QUAL DOSE ESTA ADMINISTRAÇÃO CUMPRIU — e isto substitui uma
+    // inferência. Sem o elo, `checarAprazamento` ADIVINHA ("o último
+    // horário previsto igual ou anterior"), e adivinhar erra quando há
+    // dose extra, dose fora do plano ou duas no mesmo turno.
+    //
+    // `pep_administracoes.aprazamento_id` e `previsto_para` existem desde
+    // a pep-fase1, com zero usos até hoje.
+    const cumprida = doseQueEstaSendoCumprida(
+      (dosesVigentes(aprazamentos, item.id) || []).map(d => ({
+        ...d,
+        administrado: adms.some(a => String(a.aprazamento_id) === String(d.id)
+          && (a.status || "administrado") === "administrado"),
+      })), new Date());
     await registrarAdministracao(sb, ep, {
       item_id: item.id, prescricao_id: item.prescricao_id,
       medicamento_id: item.medicamento_id || null,
       descricao: item.descricao, dose: item.dose, via: item.via, status: "administrado",
+      // ⚠️ `null` quando nenhuma dose aprazada está aberta, e isso é
+      // legítimo: dose extra, SOS, administração fora do plano. Forçar um
+      // casamento inventaria que a dose das 14h foi dada.
+      aprazamento_id: cumprida?.id ?? null,
+      previsto_para: cumprida?.previsto_para ?? null,
     }, user);
     onOk();
   }
 
+  /**
+   * O painel de aprazamento.
+   *
+   * ⚠️ A enfermagem AJUSTA a sugestão — ela não é imposta. Quem conhece a
+   * rotina da unidade é quem está lá: horário de visita, troca de turno,
+   * jejum para exame. Um sistema que só aceitasse os horários que ele
+   * mesmo calculou seria contornado no papel.
+   */
+  const painelAprazamento = aprazando && (() => {
+    const { item, doses, reaprazando, motivo, erro } = aprazando;
+    const avisos = divergenciasDeFrequencia(item, doses);
+    const setDose = (i, hhmmNovo) => setAprazando(a => {
+      const [h, m] = String(hhmmNovo).split(":").map(Number);
+      const novas = a.doses.map((d, k) => {
+        if (k !== i) return d;
+        const x = new Date(d.previsto_para);
+        x.setHours(h || 0, m || 0, 0, 0);
+        return { ...d, previsto_para: x };
+      });
+      return { ...a, doses: novas, erro: "" };
+    });
+    const porDia = {};
+    doses.forEach((d, i) => {
+      const dia = diaLocal(d.previsto_para);
+      (porDia[dia] ||= []).push({ d, i });
+    });
+
+    return (
+      <div onClick={() => setAprazando(null)}
+        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
+        <div onClick={e => e.stopPropagation()}
+          style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.4rem", width: 620, maxWidth: "95vw", maxHeight: "90vh", overflowY: "auto" }}>
+          <div style={{ fontSize: 15, fontWeight: 700 }}>
+            {reaprazando ? "Reaprazar" : "Aprazar"} — {item.descricao}
+          </div>
+          <div style={{ fontSize: 12, color: cor.txt3, marginBottom: 12 }}>
+            {item.dose} · {item.via} · {item.frequencia}
+          </div>
+          <p style={{ margin: "0 0 12px", fontSize: 12, color: cor.txt3, lineHeight: 1.5 }}>
+            Os horários abaixo são uma sugestão a partir do início da prescrição — ajuste
+            conforme a rotina da unidade. Aprazar é ato de enfermagem: vai assinado com o
+            seu conselho e registro.
+          </p>
+
+          {Object.entries(porDia).slice(0, 3).map(([dia, lista]) => (
+            <div key={dia} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10.5, color: cor.txt3, fontWeight: 700, marginBottom: 4 }}>{dia}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {lista.map(({ d, i }) => (
+                  <input key={i} type="time" value={hhmm(d.previsto_para)}
+                    onChange={e => setDose(i, e.target.value)}
+                    style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", color: "var(--text)", fontSize: 13 }} />
+                ))}
+              </div>
+            </div>
+          ))}
+          {Object.keys(porDia).length > 3 && (
+            <div style={{ fontSize: 11, color: cor.txt3, marginBottom: 10 }}>
+              … e mais {Object.keys(porDia).length - 3} dia(s), com os mesmos horários.
+            </div>
+          )}
+
+          {/* ⚠️ AVISO, NÃO RECUSA: o número de doses pode legitimamente
+              diferir da frequência, e a enfermagem conhece o serviço. */}
+          {avisos.map((a, i) => (
+            <div key={i} style={{ fontSize: 11.5, color: "#d97706", marginBottom: 4, lineHeight: 1.5 }}>{a}</div>
+          ))}
+
+          {reaprazando && (
+            <>
+              <div style={{ fontSize: 11.5, color: "#d97706", fontWeight: 600, margin: "8px 0", lineHeight: 1.5 }}>
+                As doses futuras ainda não administradas serão canceladas e substituídas.
+                As que já foram dadas ficam como estão — o plano não reescreve o fato.
+              </div>
+              <input value={motivo} onChange={e => setAprazando(a => ({ ...a, motivo: e.target.value, erro: "" }))}
+                placeholder="Por que está reaprazando?"
+                style={{ background: "var(--input-bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "8px 10px", color: "var(--text)", fontSize: 13, width: "100%", boxSizing: "border-box", marginBottom: 8 }} />
+            </>
+          )}
+
+          {erro && <div style={{ fontSize: 11.5, color: "#f43f5e", fontWeight: 600, marginBottom: 8, lineHeight: 1.5 }}>{erro}</div>}
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
+            <button onClick={() => setAprazando(null)} style={btn("var(--surface-2)")}>Cancelar</button>
+            <button onClick={confirmarAprazamento} style={btn("#6366f1")}>
+              {reaprazando ? "Reaprazar" : "Aprazar"} {doses.length} dose(s)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
   return (
     <div>
       {botaoNova}
+      {painelAprazamento}
       <div style={{ ...cartao, display: "flex", gap: 12, alignItems: "baseline", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 13.5 }}>Prescrição {presc.tipo} de {presc.data_referencia}</strong>
         <SeloFarmacia validacoes={validacoesFarmacia} prescricao={presc} />
@@ -416,6 +590,11 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
       </div>
 
       {itens.map(item => {
+        // 🔴 O APRAZADO MANDA SOBRE O DERIVADO. Quem decide a hora da dose
+        // é a enfermagem; a âncora de 06h é palpite do sistema, e só vale
+        // enquanto ninguém aprazou.
+        const apraz = horariosDoItemNoDia(aprazamentos, item, hoje);
+
         // 🔴 `inicio_em` ENTRA AQUI, e era o que faltava para a grade parar
         // de inventar dose atrasada. Medido em 15/10/2026: paciente
         // internado às 22h com medicação 8/8h abria o primeiro dia com
@@ -424,7 +603,8 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
         //
         // ⚠️ A coluna era gravada em toda prescrição assinada desde sempre
         // e nunca tinha sido lida.
-        const horarios = horariosDoDia(item, hoje, 6, presc.inicio_em);
+        const derivados = horariosDoDia(item, hoje, 6, presc.inicio_em);
+        const horarios = apraz.origem === "aprazado" ? apraz.horarios : derivados;
         const doItem = adms.filter(a => a.item_id === item.id);
         const grade = checarAprazamento(horarios, doItem, hoje);
         return (
@@ -433,8 +613,29 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
               <strong style={{ fontSize: 13.5 }}>{item.descricao}</strong>
               <span style={{ fontSize: 12, color: cor.txt3 }}>{item.dose} · {item.via} · {item.frequencia}</span>
               {item.se_necessario && <span style={{ fontSize: 10, fontWeight: 800, color: "#d97706" }}>SE NECESSÁRIO</span>}
+              {/* 🔴 A ORIGEM DO HORÁRIO APARECE. Um horário APRAZADO foi
+                  combinado por alguém e tem nome; um DERIVADO é palpite do
+                  sistema. Mostrar os dois iguais faria a enfermagem confiar
+                  no palpite como confia no combinado. */}
+              {!item.se_necessario && apraz.origem === "aprazado" && (
+                <span title={apraz.doses?.[0]?.aprazado_por ? `aprazado por ${apraz.doses[0].aprazado_por}${apraz.doses[0].conselho ? ` · ${apraz.doses[0].conselho} ${apraz.doses[0].registro_conselho || ""}` : ""}` : "aprazado"}
+                  style={{ fontSize: 10, fontWeight: 800, color: "#34d399" }}>APRAZADO</span>
+              )}
+              {!item.se_necessario && apraz.origem === "sem_aprazamento" && (
+                <span title="Horários derivados da frequência, a partir das 06h. Não foram combinados por ninguém."
+                  style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>horário sugerido</span>
+              )}
+              {!item.se_necessario && apraz.origem === "indisponivel" && (
+                <span title="Não foi possível ler o aprazamento deste episódio. Os horários abaixo são derivados, e pode haver aprazamento que a tela não mostrou."
+                  style={{ fontSize: 10, fontWeight: 700, color: "#f43f5e" }}>aprazamento não lido</span>
+              )}
               {canEdit && (
                 <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                  {!item.se_necessario && (
+                    <button onClick={() => abrirAprazamento(item)} style={btn("#6366f1")}>
+                      {apraz.origem === "aprazado" ? "Reaprazar" : "Aprazar"}
+                    </button>
+                  )}
                   <button onClick={() => administrar(item)} style={btn("#34d399")}>Administrar</button>
                   <button onClick={() => suspender(item)} style={btn("#f43f5e")}>Suspender</button>
                 </span>
