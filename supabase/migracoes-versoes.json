@@ -5,6 +5,7 @@
   "migracao-agenda-vaga-por-profissional.sql": "b65671d61ff6934d",
   "migracao-alertas-peso-gestacao.sql": "cf1b6de3de38046e",
   "migracao-ambulatorio-especialidades.sql": "8ddc57227514741f",
+  "migracao-aprazamento-cancelar.sql": "24321b00dad72539",
   "migracao-atendimento-agenda.sql": "0a8f5d665389b784",
   "migracao-atendimento-ciclo.sql": "242332746570f3a3",
   "migracao-atendimento-fase2.sql": "764a7fa9c19673bd",

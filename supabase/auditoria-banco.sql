@@ -13,7 +13,7 @@
 --    Editar na mão faz a auditoria ficar cega ao módulo novo (já aconteceu
 --    duas vezes) e passar a reportar "tudo ok" sem olhar tabelas inteiras.
 --
--- Cobertura atual: 119 tabelas, 1962 colunas.
+-- Cobertura atual: 119 tabelas, 1965 colunas.
 -- ============================================================
 
 with
@@ -1291,6 +1291,9 @@ colunas(tabela, coluna, origem) as (values
   ('pep_anotacoes_enfermagem','turno','pep-fase1'),
   ('pep_anotacoes_enfermagem','usuario','pep-fase1'),
   ('pep_aprazamentos','aprazado_por','pep-fase1'),
+  ('pep_aprazamentos','cancelado_em','aprazamento-cancelar'),
+  ('pep_aprazamentos','cancelado_por','aprazamento-cancelar'),
+  ('pep_aprazamentos','cancelamento_motivo','aprazamento-cancelar'),
   ('pep_aprazamentos','conselho','pep-fase1'),
   ('pep_aprazamentos','criado_em','pep-fase1'),
   ('pep_aprazamentos','dose_prevista','pep-fase1'),
