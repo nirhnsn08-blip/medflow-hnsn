@@ -79,14 +79,25 @@ describe("🔴 migração publicada não muda em silêncio", () => {
     ).toEqual([]);
   });
 
-  it("migração NOVA aparece como nova, não como alterada", () => {
-    // Ela simplesmente ainda não está no registro. Entra quando rodar.
+  it("⏳ ESPERANDO O SQL RODAR: nenhuma migração sem versão registrada", () => {
+    // ⚠️ VERMELHO AQUI NÃO É CÓDIGO QUEBRADO — é a entrega esperando o
+    // passo que falta. A regra do projeto sempre foi "só mergear depois de
+    // rodar o SQL nos DOIS bancos"; isto a transforma de regra humana em
+    // regra de máquina, que é o ponto.
+    //
+    // ⚠️ E deixar passar abriria o buraco de verdade: arquivo que nunca
+    // entrou no registro pode ser MUDADO depois sem nada acusar, porque o
+    // detector de alteração só olha o que está registrado.
     const r = registro();
     const novas = migracoes().filter(f => !r[f]);
     expect(novas,
-      `Migração nova, ainda sem versão registrada:\n  ${novas.join("\n  ")}\n\n` +
-      "→ Isto é esperado enquanto ela não rodou. Depois de rodar nos DOIS bancos:\n" +
-      "      node supabase/registrar-versoes.mjs"
+      `⏳ Migração aguardando o SQL rodar:\n  ${novas.join("\n  ")}\n\n` +
+      "→ Isto NÃO é defeito de código. É a ordem acordada:\n" +
+      "      1. rodar no demo  →  2. caminhar  →  3. rodar no principal\n" +
+      "      4. node supabase/registrar-versoes.mjs --aplicar\n" +
+      "      5. merge\n\n" +
+      "  O passo 4 é a AFIRMAÇÃO de que rodou nos dois. Rodá-lo antes faz o\n" +
+      "  registro mentir, e aí ele fica pior que não existir."
     ).toEqual([]);
   });
 

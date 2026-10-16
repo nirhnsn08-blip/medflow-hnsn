@@ -79,13 +79,25 @@ export async function carregarProntuario(sb, prontuario) {
              anotacoes: [], anamneses: [], reconciliacoes: [], reconciliacaoItens: [], sumarios: [],
              escalas: [], lpp: [], faixasEscalas: [],
              saeCatalogo: [], saeHistorico: [], saeDiagnosticos: [], saePrescricoes: [],
-             saePrescricaoItens: [], saeChecagem: [] };
+             saePrescricaoItens: [], saeChecagem: [], aprazamentos: [] };
   }
 
   const e = ativo.id;
+  // 🔴🔴 A ORDEM DESTA LISTA E A DO `Promise.all` SÃO A MESMA COISA.
+  //
+  // Em 15/10/2026 eu acrescentei a consulta do aprazamento na POSIÇÃO 4 do
+  // array e o nome `aprazamentos` no FIM da desestruturação. Resultado:
+  // `administracoes` passou a receber os APRAZAMENTOS, `sinais` as
+  // administrações, `evolucoes` os sinais vitais — tudo deslocado em um,
+  // num prontuário. E a suíte ficou VERDE.
+  //
+  // ⚠️ Consulta nova entra NO FIM do array e o nome NO FIM desta lista.
+  // Nunca no meio. E há teste (`carregarProntuario` com `sb` espião) que
+  // confere nome por nome contra a tabela de origem.
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
          reconciliacoes, reconciliacaoItens, sumarios, validacoesFarmacia, escalas, lpp, faixasEscalas,
-         saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem] = await Promise.all([
+         saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem,
+         aprazamentos] = await Promise.all([
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_prescricao_eventos?episodio_id=eq.${e}&select=*&order=criado_em`).catch(() => []),
@@ -115,6 +127,13 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`enf_sae_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`enf_sae_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`enf_sae_checagem?episodio_id=eq.${e}&select=*&order=executado_em.desc`).catch(() => []),
+    // 🔴 O APRAZAMENTO, E POR ÚLTIMO DE PROPÓSITO — ver o comentário sobre
+    // a ORDEM logo acima da desestruturação.
+    //
+    // ⚠️ O `.catch` devolve `null`, não `[]`: `listaLida` marca a falha, e
+    // a grade precisa distinguir "não foi aprazado" de "não consegui ler"
+    // antes de derivar horário. Derivar em cima de ignorância é inventar.
+    sb(`pep_aprazamentos?episodio_id=eq.${e}&select=*&order=previsto_para`).catch(() => null),
   ]);
 
   // 🔴 ERA UM ATALHO LOCAL, e o atalho escondia a origem: para o censo
@@ -136,6 +155,11 @@ export async function carregarProntuario(sb, prontuario) {
     saeCatalogo: arr(saeCatalogo), saeHistorico: arr(saeHistorico),
     saeDiagnosticos: arr(saeDiagnosticos), saePrescricoes: arr(saePrescricoes),
     saePrescricaoItens: arr(saePrescricaoItens), saeChecagem: arr(saeChecagem),
+    // ⚠️ `listaLida` e NÃO `arr`: a marca de falha precisa chegar à grade.
+    // Se a leitura não desceu, "não foi aprazado" e "não consegui ler" são
+    // respostas diferentes — a primeira faz a tela derivar horário, e
+    // derivar em cima de ignorância é inventar.
+    aprazamentos: listaLida(aprazamentos),
   };
 }
 
@@ -336,6 +360,93 @@ export async function eventoDoItem(sb, episodio, item, evento, motivo, user) {
       ...assinatura(user),
     }),
   });
+}
+
+// ── APRAZAMENTO ─────────────────────────────────────────────
+
+/**
+ * Grava as doses aprazadas.
+ *
+ * 🔴 CONFERE A LINHA DE VOLTA. O PostgREST responde 2xx com ZERO linhas
+ * quando a RLS filtra — e um aprazamento gravado em silêncio é uma grade
+ * que a enfermagem acha que combinou e não existe.
+ */
+export async function aprazarDoses(sb, linhas, user) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  if (!linhas?.length) return { ok: false, erro: "Nenhuma dose para aprazar." };
+  const corpo = linhas.map(l => ({ ...l, usuario: user?.name || null }));
+  const r = await sb("pep_aprazamentos", { method: "POST", body: JSON.stringify(corpo) });
+  // ⚠️ "NÃO DEU PARA SABER" E "ENTROU METADE" SÃO COISAS DIFERENTES, e a
+  // conduta de quem lê também: no primeiro caso é preciso ABRIR a grade
+  // para ver o que há; no segundo o sistema já sabe quantas faltam.
+  // Colapsar os dois num "0 de N" diria à enfermagem que nada foi aprazado
+  // quando talvez tudo tenha sido — e aí ela apraza de novo, duplicando.
+  if (!Array.isArray(r)) {
+    return {
+      ok: false,
+      erro: `O aprazamento foi enviado mas NÃO FOI POSSÍVEL CONFIRMAR se as ${corpo.length} doses entraram. Abra a grade e confira antes de aprazar de novo — repetir agora pode duplicar.`,
+    };
+  }
+  if (r.length !== corpo.length) {
+    return {
+      ok: false,
+      erro: `O aprazamento NÃO foi gravado por inteiro (${r.length} de ${corpo.length} doses). Confira a grade antes de aprazar de novo — repetir agora duplicaria o que entrou.`,
+    };
+  }
+  return { ok: true, doses: r };
+}
+
+/**
+ * Reaprazar: cancela as doses futuras e insere as novas NUMA TRANSAÇÃO SÓ.
+ *
+ * ⚠️ CANCELA, não apaga: aprazar é ato de enfermagem com registro no
+ * conselho, e apagar a linha apaga quem aprazou aquela dose. O gatilho do
+ * banco recusa cancelar dose JÁ ADMINISTRADA — o plano não reescreve o
+ * fato — e a função nem a alcança.
+ *
+ * 🔴 POR QUE NÃO SÃO DUAS CHAMADAS (um PATCH cancelando, um POST inserindo).
+ *
+ * Era assim, e o demo mostrou o estrago em 16/10/2026: o cancelamento
+ * gravou (21 doses), a inserção bateu num `duplicate key`, e o paciente
+ * ficou com UMA dose vigente. A grade de medicação esvaziou.
+ *
+ * Duas chamadas HTTP não têm transação entre si. Qualquer motivo para a
+ * segunda falhar — colisão de horário, RLS, rede caindo no meio — deixa o
+ * plano cancelado e nada no lugar. E grade vazia, para quem está na
+ * enfermaria, é indistinguível de "não há prescrição".
+ *
+ * A função `apraz_reaprazar` faz as duas coisas no banco: ou a troca
+ * inteira vale, ou nada muda e o plano antigo continua de pé.
+ */
+export async function reaprazarDoses(sb, itemId, motivo, linhas, user) {
+  if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
+  if (!linhas?.length) return { ok: false, erro: "Nenhuma dose para aprazar." };
+  const corpo = linhas.map(l => ({ ...l, usuario: user?.name || null }));
+  const r = await sb("rpc/apraz_reaprazar", {
+    method: "POST",
+    body: JSON.stringify({
+      p_item_id: itemId,
+      p_motivo: String(motivo ?? "").trim(),
+      p_quem: user?.name || null,
+      p_doses: corpo,
+    }),
+  });
+  // ⚠️ Aqui "não deu para saber" é MENOS perigoso do que era: a troca é
+  // atômica, então o plano antigo ou foi substituído por inteiro ou
+  // continua inteiro. O que nunca mais acontece é ficar sem nenhum.
+  if (!Array.isArray(r)) {
+    return {
+      ok: false,
+      erro: `Não foi possível confirmar o reaprazamento das ${corpo.length} doses. A troca é feita de uma vez: ou valeu inteira, ou o plano anterior continua valendo. Abra a grade e veja qual dos dois antes de refazer.`,
+    };
+  }
+  if (r.length !== corpo.length) {
+    return {
+      ok: false,
+      erro: `O reaprazamento voltou com ${r.length} de ${corpo.length} doses. Confira a grade antes de refazer.`,
+    };
+  }
+  return { ok: true, doses: r };
 }
 
 /** Registra administração (ou a não-administração, com o motivo). */

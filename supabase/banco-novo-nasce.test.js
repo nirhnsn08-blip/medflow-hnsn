@@ -36,10 +36,11 @@
 //   • Dado. Nenhuma linha é inserida — é a DDL que está sob teste.
 // ═══════════════════════════════════════════════════════════
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import { escritasDoCodigo, furosDeEscrita, leiturasDoCodigo, furosDeLeitura } from "./acessos-do-codigo.mjs";
 
 const DIR = path.resolve(__dirname);
 const ARQUIVO = path.join(DIR, "reconstruir-banco.sql");
@@ -153,63 +154,74 @@ function parte3() {
   return bruto.slice(bruto.indexOf("\n", i), j);
 }
 
+// 🔴 O BANCO NASCE UMA VEZ SÓ, e os testes abaixo perguntam coisas a ele.
+//
+// Antes a construção vivia dentro do primeiro `it`. Ela passou a ser um
+// `beforeAll` quando a catraca de escrita entrou: construir o banco duas
+// vezes custaria dois minutos para responder duas perguntas sobre o MESMO
+// banco. Se a construção falhar, todos os testes deste arquivo falham com a
+// mensagem dela — que é a informação certa de qualquer forma.
+let db;
+let ignoradas = [];
+let totalCmds = 0;
+
+beforeAll(async () => {
+  const cmds = declaracoes(parte3());
+  totalCmds = cmds.length;
+  db = new PGlite();
+  await db.exec(PRELUDIO);
+
+  let n = 0;
+  for (const c of cmds) {
+    n++;
+    try {
+      await db.exec(c);
+    } catch (e) {
+      const t = TOLERADO.find(x => x.re.test(c));
+      if (t) { ignoradas.push(`#${n} ${t.por}`); continue; }
+      // A mensagem é para quem acabou de criar a migração: diz ONDE
+      // morreu e com qual comando, que é o que falta quando o erro
+      // aparece só no painel do Supabase com o banco pela metade.
+      throw new Error(
+        `o banco novo MORREU na declaração ${n} de ${cmds.length} ` +
+        `(${Math.round((100 * n) / cmds.length)}% do script):\n\n` +
+        `  ${String(e.message).split("\n")[0]}\n\n` +
+        `  comando:\n  ${c.slice(0, 400).replace(/\n/g, "\n  ")}\n\n` +
+        `→ quase sempre é ORDEM: algo citado antes de existir. ` +
+        `Confira a posição em supabase/gerar-reconstrucao.mjs (ORDEM) ` +
+        `e rode \`node supabase/gerar-reconstrucao.mjs\`.`);
+    }
+  }
+}, 180_000);
+
+afterAll(async () => { await db?.close?.(); });
+
 describe("reconstruir-banco.sql roda num Postgres de verdade", () => {
   it("🔴 as declarações da PARTE 3 rodam todas — o banco novo nasce", async () => {
-    const cmds = declaracoes(parte3());
     // Se este número despencar, o recorte quebrou e o teste passaria sem
     // provar nada — vazio é a mentira que este projeto mais caça.
-    expect(cmds.length).toBeGreaterThan(1500);
+    expect(totalCmds).toBeGreaterThan(1500);
 
-    const db = new PGlite();
-    const ignoradas = [];
-    try {
-      await db.exec(PRELUDIO);
+    // ⚠️ Contagem exata, de propósito. Se uma declaração nova cair na
+    // lista de toleradas, este número muda e alguém TEM de olhar: foi
+    // tolerância silenciosa que deixou o defeito original sobreviver.
+    expect(ignoradas.length,
+      `declarações toleradas mudaram:\n  ${ignoradas.join("\n  ")}\n` +
+      "→ se for mais um limite real do PGlite, atualize TOLERADAS_ESPERADAS " +
+      "com o motivo no comentário. Se não for, é defeito."
+    ).toBe(TOLERADAS_ESPERADAS);
 
-      let n = 0;
-      for (const c of cmds) {
-        n++;
-        try {
-          await db.exec(c);
-        } catch (e) {
-          const t = TOLERADO.find(x => x.re.test(c));
-          if (t) { ignoradas.push(`#${n} ${t.por}`); continue; }
-          // A mensagem é para quem acabou de criar a migração: diz ONDE
-          // morreu e com qual comando, que é o que falta quando o erro
-          // aparece só no painel do Supabase com o banco pela metade.
-          throw new Error(
-            `o banco novo MORREU na declaração ${n} de ${cmds.length} ` +
-            `(${Math.round((100 * n) / cmds.length)}% do script):\n\n` +
-            `  ${String(e.message).split("\n")[0]}\n\n` +
-            `  comando:\n  ${c.slice(0, 400).replace(/\n/g, "\n  ")}\n\n` +
-            `→ quase sempre é ORDEM: algo citado antes de existir. ` +
-            `Confira a posição em supabase/gerar-reconstrucao.mjs (ORDEM) ` +
-            `e rode \`node supabase/gerar-reconstrucao.mjs\`.`);
-        }
-      }
+    // E o banco tem de ter NASCIDO, não só não ter dado erro.
+    const t = await db.query(
+      "select count(*)::int n from information_schema.tables where table_schema = 'public'");
+    expect(t.rows[0].n).toBeGreaterThan(100);
 
-      // ⚠️ Contagem exata, de propósito. Se uma declaração nova cair na
-      // lista de toleradas, este número muda e alguém TEM de olhar: foi
-      // tolerância silenciosa que deixou o defeito original sobreviver.
-      expect(ignoradas.length,
-        `declarações toleradas mudaram:\n  ${ignoradas.join("\n  ")}\n` +
-        "→ se for mais um limite real do PGlite, atualize TOLERADAS_ESPERADAS " +
-        "com o motivo no comentário. Se não for, é defeito."
-      ).toBe(TOLERADAS_ESPERADAS);
-
-      // E o banco tem de ter NASCIDO, não só não ter dado erro.
-      const t = await db.query(
-        "select count(*)::int n from information_schema.tables where table_schema = 'public'");
-      expect(t.rows[0].n).toBeGreaterThan(100);
-
-      // 🔴 A função que faltava, no banco que acabou de nascer — e
-      // RESPONDENDO, não só existindo: corpo `language sql` que cite tabela
-      // ausente é criado e só estoura no primeiro uso, dentro de uma
-      // política de RLS, com o hospital aberto.
-      const r = await db.query("select public.pode_ver_algum('overview') as ok");
-      expect(r.rows[0].ok).not.toBeNull();
-    } finally {
-      await db.close();
-    }
+    // 🔴 A função que faltava, no banco que acabou de nascer — e
+    // RESPONDENDO, não só existindo: corpo `language sql` que cite tabela
+    // ausente é criado e só estoura no primeiro uso, dentro de uma
+    // política de RLS, com o hospital aberto.
+    const r = await db.query("select public.pode_ver_algum('overview') as ok");
+    expect(r.rows[0].ok).not.toBeNull();
   }, 120_000);
 });
 
@@ -262,4 +274,108 @@ describe("as funções de permissão nascem ANTES de quem as usa", () => {
     const rls = fs.readFileSync(path.join(DIR, "migracao-rls-leitura.sql"), "utf8");
     expect(corpo(funcoes)).toBe(corpo(rls));
   });
+});
+
+// ═══════════════════════════════════════════════════════════
+// 🔴 A TELA ESCREVE ONDE O BANCO NÃO DEIXA?
+//
+// NASCEU DE `pep_aprazamentos` (16/10/2026). A tabela tinha política de
+// SELECT e de INSERT e mais nada. A tela mandava PATCH para cancelar uma
+// dose aprazada, e o PostgREST respondia 2xx alterando ZERO linhas — sem
+// erro, sem log, sem pista. O cancelamento "funcionava" e não gravava, numa
+// grade de medicação. Só apareceu caminhando.
+//
+// ⚠️ POR QUE NENHUMA CATRACA PEGOU. O gerador de RLS abre escrita ampla
+// apenas para tabela que não tem NENHUMA política de escrita — "se tiver,
+// foi a migração dela que definiu, não encostar". A regra é certa, e o
+// efeito é que ESCRITA PARCIAL fica sem rede: a tabela com política só de
+// INSERT é justamente a que ninguém socorre.
+//
+// 💡 POR QUE PERGUNTAR AO BANCO E NÃO LER O SQL. A primeira varredura que
+// fiz à mão, lendo texto, deu 7 suspeitas das quais 6 eram falsas: metade
+// das políticas nasce dentro de `do $$ ... execute format(...)`, invisível
+// para quem lê. Aqui o banco já nasceu — `pg_policy` tem a verdade, inclusive
+// o que foi criado dinamicamente.
+// ═══════════════════════════════════════════════════════════
+
+describe("🔴 toda escrita da tela tem política que a receba", () => {
+  it("nenhuma tabela recebe PATCH/POST/DELETE sem política permissiva para o verbo", async () => {
+    const { escritas, naoLidos } = await escritasDoCodigo(path.join(DIR, "..", "src"));
+
+    // 🔴 "Não consegui ler" não vira "não há furo". Chamada com alvo montado
+    // em variável precisa ser resolvida à mão em RESOLVIDOS_A_MAO; enquanto
+    // não for, ela é um ponto cego, e ponto cego silencioso é como o defeito
+    // original sobreviveu.
+    expect(naoLidos,
+      `há chamada de escrita que esta catraca NÃO conseguiu resolver:\n  ${naoLidos.join("\n  ")}\n\n` +
+      "→ resolva em supabase/acessos-do-codigo.mjs (RESOLVIDOS_A_MAO), dizendo\n" +
+      "  quais tabelas aquela chamada alcança e como você sabe."
+    ).toEqual([]);
+    expect(escritas.size).toBeGreaterThan(80);   // varredura vazia não passa
+
+    // O que o BANCO permite — perguntado a ele, não lido do SQL. A regra do
+    // cruzamento mora em `furosDeEscrita`, onde é testada com dados de
+    // mentira (ver `acessos-do-codigo.test.js`); aqui ela recebe a verdade.
+    const pol = await db.query(`
+      select c.relname as tabela, c.relrowsecurity as rls,
+             p.polcmd as cmd, p.polpermissive as permissiva
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+        left join pg_policy p on p.polrelid = c.oid
+       where c.relkind = 'r'`);
+
+    const { furos, inexistentes } = furosDeEscrita(escritas, pol.rows);
+
+    expect(furos,
+      `🔴 ESCRITA QUE O BANCO VAI RECUSAR EM SILÊNCIO (2xx, zero linhas):\n  ` +
+      furos.join("\n  ") + "\n\n" +
+      "→ a migração da tabela precisa criar a política do verbo que falta.\n" +
+      "  O gerador de RLS NÃO socorre: ele só abre escrita para tabela que\n" +
+      "  não tem política de escrita NENHUMA. Escrita parcial fica sem rede."
+    ).toEqual([]);
+
+    // Tabela que o código escreve e o banco novo não tem: ou é tabela de
+    // outro schema, ou ficou de fora da ORDEM — e aí o hospital novo
+    // nasceria sem ela.
+    expect(inexistentes,
+      `o código escreve em tabela que o banco NOVO não tem:\n  ${inexistentes.join("\n  ")}\n` +
+      "→ confira se a migração dela está em supabase/gerar-reconstrucao.mjs (ORDEM)."
+    ).toEqual([]);
+  }, 60_000);
+
+  // ═══════════════════════════════════════════════════════════
+  // 🔴 E A LEITURA — A MESMA MENTIRA, DO OUTRO LADO
+  //
+  // Escrita sem política responde 2xx e não grava. Leitura sem política
+  // responde 200 com LISTA VAZIA, e vazio numa tela lê-se "não há nada".
+  //
+  // ⚠️ ESTE LADO É MAIS TRAIÇOEIRO. Quem grava e não vê o registro
+  // aparecer desconfia. Quem abre uma lista vazia conclui que o paciente
+  // não tem alergia, não tem exame, não tem prescrição — e segue.
+  //
+  // É a mesma confusão que `listaLida`/`FALHA` combate no código; só que
+  // ali a defesa é contra a rede cair, e aqui é contra o próprio banco
+  // devolver vazio porque a política não existe. O código não distingue:
+  // o PostgREST entrega `[]` com 200 nos dois casos.
+  // ═══════════════════════════════════════════════════════════
+  it("🔴 nenhuma tabela é LIDA sem política permissiva de SELECT", async () => {
+    const leituras = await leiturasDoCodigo(path.join(DIR, "..", "src"));
+    expect(leituras.size).toBeGreaterThan(80);   // varredura vazia não passa
+
+    const pol = await db.query(`
+      select c.relname as tabela, c.relrowsecurity as rls,
+             p.polcmd as cmd, p.polpermissive as permissiva
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+        left join pg_policy p on p.polrelid = c.oid
+       where c.relkind = 'r'`);
+
+    const furos = furosDeLeitura(leituras, pol.rows);
+    expect(furos,
+      `🔴 TELA QUE VAI MOSTRAR LISTA VAZIA, SEM ERRO NENHUM:\n  ` +
+      furos.join("\n  ") + "\n\n" +
+      "→ a tabela precisa de política de SELECT. Vazio não é 'não há':\n" +
+      "  é a resposta que o banco dá quando ninguém pode ler."
+    ).toEqual([]);
+  }, 60_000);
 });

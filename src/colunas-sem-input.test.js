@@ -61,11 +61,12 @@ const INFRA = new Set([
  * o aprazamento, por exemplo, estas quatro saem daqui.
  */
 const CONHECIDAS = new Set([
-  // Aprazamento: a tabela existe com horário previsto, dose e sequência, e
-  // nada lê. "Dose atrasada" não tem como ser detectada.
-  "pep_aprazamentos.aprazado_por", "pep_aprazamentos.dose_prevista",
-  "pep_aprazamentos.previsto_para", "pep_aprazamentos.sequencia",
-  "pep_administracoes.aprazamento_id", "pep_administracoes.previsto_para",
+  // ✅ APRAZAMENTO — RESOLVIDO em 15/10/2026. As seis colunas desta família
+  // (`pep_aprazamentos.*` e o elo em `pep_administracoes`) estavam aqui
+  // desde que esta lista nasceu, com o motivo "nada lê, dose atrasada não
+  // tem como ser detectada". Agora a enfermagem apraza de verdade e a
+  // administração diz QUAL dose cumpriu. Saíram da lista por este teste —
+  // foi ele que avisou que a dívida tinha sido paga.
   // Cadastro de pessoal — admissão, matrícula, validade do conselho.
   "profiles.admitido_em", "profiles.conselho_validade",
   "profiles.desligado_em", "profiles.matricula",
