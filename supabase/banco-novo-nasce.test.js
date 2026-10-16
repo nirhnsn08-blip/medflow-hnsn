@@ -40,7 +40,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { escritasDoCodigo, furosDeEscrita } from "./escritas-do-codigo.mjs";
+import { escritasDoCodigo, furosDeEscrita, leiturasDoCodigo, furosDeLeitura } from "./acessos-do-codigo.mjs";
 
 const DIR = path.resolve(__dirname);
 const ARQUIVO = path.join(DIR, "reconstruir-banco.sql");
@@ -308,14 +308,14 @@ describe("🔴 toda escrita da tela tem política que a receba", () => {
     // original sobreviveu.
     expect(naoLidos,
       `há chamada de escrita que esta catraca NÃO conseguiu resolver:\n  ${naoLidos.join("\n  ")}\n\n` +
-      "→ resolva em supabase/escritas-do-codigo.mjs (RESOLVIDOS_A_MAO), dizendo\n" +
+      "→ resolva em supabase/acessos-do-codigo.mjs (RESOLVIDOS_A_MAO), dizendo\n" +
       "  quais tabelas aquela chamada alcança e como você sabe."
     ).toEqual([]);
     expect(escritas.size).toBeGreaterThan(80);   // varredura vazia não passa
 
     // O que o BANCO permite — perguntado a ele, não lido do SQL. A regra do
     // cruzamento mora em `furosDeEscrita`, onde é testada com dados de
-    // mentira (ver `escritas-do-codigo.test.js`); aqui ela recebe a verdade.
+    // mentira (ver `acessos-do-codigo.test.js`); aqui ela recebe a verdade.
     const pol = await db.query(`
       select c.relname as tabela, c.relrowsecurity as rls,
              p.polcmd as cmd, p.polpermissive as permissiva
@@ -340,6 +340,42 @@ describe("🔴 toda escrita da tela tem política que a receba", () => {
     expect(inexistentes,
       `o código escreve em tabela que o banco NOVO não tem:\n  ${inexistentes.join("\n  ")}\n` +
       "→ confira se a migração dela está em supabase/gerar-reconstrucao.mjs (ORDEM)."
+    ).toEqual([]);
+  }, 60_000);
+
+  // ═══════════════════════════════════════════════════════════
+  // 🔴 E A LEITURA — A MESMA MENTIRA, DO OUTRO LADO
+  //
+  // Escrita sem política responde 2xx e não grava. Leitura sem política
+  // responde 200 com LISTA VAZIA, e vazio numa tela lê-se "não há nada".
+  //
+  // ⚠️ ESTE LADO É MAIS TRAIÇOEIRO. Quem grava e não vê o registro
+  // aparecer desconfia. Quem abre uma lista vazia conclui que o paciente
+  // não tem alergia, não tem exame, não tem prescrição — e segue.
+  //
+  // É a mesma confusão que `listaLida`/`FALHA` combate no código; só que
+  // ali a defesa é contra a rede cair, e aqui é contra o próprio banco
+  // devolver vazio porque a política não existe. O código não distingue:
+  // o PostgREST entrega `[]` com 200 nos dois casos.
+  // ═══════════════════════════════════════════════════════════
+  it("🔴 nenhuma tabela é LIDA sem política permissiva de SELECT", async () => {
+    const leituras = await leiturasDoCodigo(path.join(DIR, "..", "src"));
+    expect(leituras.size).toBeGreaterThan(80);   // varredura vazia não passa
+
+    const pol = await db.query(`
+      select c.relname as tabela, c.relrowsecurity as rls,
+             p.polcmd as cmd, p.polpermissive as permissiva
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace and n.nspname = 'public'
+        left join pg_policy p on p.polrelid = c.oid
+       where c.relkind = 'r'`);
+
+    const furos = furosDeLeitura(leituras, pol.rows);
+    expect(furos,
+      `🔴 TELA QUE VAI MOSTRAR LISTA VAZIA, SEM ERRO NENHUM:\n  ` +
+      furos.join("\n  ") + "\n\n" +
+      "→ a tabela precisa de política de SELECT. Vazio não é 'não há':\n" +
+      "  é a resposta que o banco dá quando ninguém pode ler."
     ).toEqual([]);
   }, 60_000);
 });

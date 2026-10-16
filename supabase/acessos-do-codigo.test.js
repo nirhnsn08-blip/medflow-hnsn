@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 import path from "node:path";
-import { furosDeEscrita, escritasDoCodigo, VERBO, NOME_DO_VERBO } from "./escritas-do-codigo.mjs";
+import { furosDeEscrita, escritasDoCodigo, VERBO, NOME_DO_VERBO } from "./acessos-do-codigo.mjs";
 
 const RAIZ = path.join(path.resolve(__dirname), "..", "src");
 

@@ -190,3 +190,70 @@ export function furosDeEscrita(escritas, politicas) {
   }
   return { furos, inexistentes };
 }
+
+// ═══════════════════════════════════════════════════════════
+// E A LEITURA — A MESMA MENTIRA, DO OUTRO LADO
+//
+// Escrita sem política responde 2xx e não grava. Leitura sem política
+// responde 200 com LISTA VAZIA — e vazio, numa tela, lê-se "não há nada".
+//
+// 🔴 É a mesma confusão que o projeto inteiro combate no código com
+// `listaLida`/`FALHA`: "não li" não pode virar "não tem". Só que ali a
+// defesa é contra a REDE cair; aqui é contra o próprio banco devolver vazio
+// porque a política não existe. O código não tem como distinguir: o
+// PostgREST entrega `[]` nos dois casos, com 200.
+//
+// ⚠️ ESTE LADO É MAIS TRAIÇOEIRO QUE O DA ESCRITA. Quem grava e não vê o
+// registro aparecer desconfia. Quem abre uma lista vazia conclui que o
+// paciente não tem alergia, não tem exame, não tem prescrição — e segue.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Em que tabelas o código LÊ (chamada sem `method`, que é GET).
+ *
+ * Devolve tabela → arquivos que leem, porque na falha o que falta saber é
+ * QUAL tela vai mostrar lista vazia.
+ */
+export async function leiturasDoCodigo(raiz) {
+  const leituras = new Map();
+  for (const arquivo of arquivosDe(raiz)) {
+    const texto = fs.readFileSync(arquivo, "utf8");
+    const curto = path.relative(raiz, arquivo).replace(/\\/g, "/");
+    for (const m of texto.matchAll(/sb\(\s*[`"']([a-z_][a-z_0-9]*)[?`"']/g)) {
+      // Se o objeto de opções traz um verbo de escrita, não é leitura.
+      if (/method:\s*["'](POST|PATCH|PUT|DELETE)/.test(texto.slice(m.index, m.index + 300))) continue;
+      if (m[1] === "rpc") continue;
+      if (!leituras.has(m[1])) leituras.set(m[1], new Set());
+      leituras.get(m[1]).add(curto);
+    }
+  }
+  return leituras;
+}
+
+/**
+ * Tabela que o código lê e o banco devolve sempre vazia.
+ *
+ * @param leituras Map<tabela, Set<arquivo>> — de `leiturasDoCodigo`
+ * @param politicas as mesmas linhas de `pg_policy` usadas em `furosDeEscrita`
+ */
+export function furosDeLeitura(leituras, politicas) {
+  const leem = new Set();
+  const comRls = new Set();
+  const existem = new Set();
+  for (const p of politicas) {
+    existem.add(p.tabela);
+    if (p.rls) comRls.add(p.tabela);
+    // 'r' é SELECT; '*' é `for all`, que inclui SELECT.
+    if (p.permissiva && (p.cmd === "r" || p.cmd === "*")) leem.add(p.tabela);
+  }
+
+  const furos = [];
+  for (const [tabela, arquivos] of [...leituras].sort()) {
+    if (!existem.has(tabela)) continue;        // ausência é outro assunto
+    if (!comRls.has(tabela)) continue;         // sem RLS, lê
+    if (leem.has(tabela)) continue;
+    const quem = [...arquivos].sort().slice(0, 3).join(", ");
+    furos.push(`${tabela} — sem política permissiva de SELECT: a tela mostra lista VAZIA, sem erro (${quem})`);
+  }
+  return furos;
+}
