@@ -345,6 +345,10 @@ const ORDEM = [
   // Depois de tudo que cria tabela assinável: ela acrescenta coluna e
   // gatilho em `cc_descricao` e `sadt_resultados`, que precisam existir.
   "migracao-documento-impressao-digital.sql",
+  // Torre de Comando (painel executivo): o módulo `executivo` entra nos
+  // perfis. Só grants — não cria tabela nem toca em RLS, porque a Torre LÊ
+  // tabelas que já existem. Depende de perfis_acesso/perfis_permissoes.
+  "migracao-perfis-executivo.sql",
   // Acrescenta colunas em `pep_aprazamentos`, que vem da pep-fase1.
   "migracao-aprazamento-cancelar.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
