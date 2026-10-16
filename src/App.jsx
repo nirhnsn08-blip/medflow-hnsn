@@ -916,7 +916,14 @@ export default function App() {
   // primeira versão desta caminhada testou a coisa errada e acusou um bug
   // que não existia.
   const [abaAtendimento, setAbaAtendimento] = useState(null);
-  const navegar = (id, aba = null) => { setAbaAtendimento(aba); setActive(id); };
+  // O terceiro argumento é o ALVO dentro do módulo de destino — hoje só o
+  // prontuário que a Torre de Comando manda para o Paciente 360 ao clicar
+  // num paciente cancelado. Fica aqui, e não num contexto, porque é a mesma
+  // natureza do `abaAtendimento` logo acima: estado de navegação, não de dado.
+  const [alvoNavegacao, setAlvoNavegacao] = useState(null);
+  const navegar = (id, aba = null, alvo = null) => {
+    setAbaAtendimento(aba); setAlvoNavegacao(alvo); setActive(id);
+  };
   const [ambOpen, setAmbOpen] = useState(true);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("hnsn_theme") || "dark"; } catch { return "dark"; } });
   useEffect(() => { document.title = `Valentrax · ${HOSPITAL_SIGLA}`; }, []);
@@ -1346,9 +1353,9 @@ export default function App() {
           {active === "farmacia"  && <FarmaciaPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} podeControlados={verModulo("controlados", false)} leProntuario={verModulo("paciente", false)} lePs={verModulo("ps", false)} />}
           {active === "suprimentos" && <SuprimentosPage sb={SB()} sbCru={SB_CRU()} currentUser={currentUser} canEdit={canLaunch} />}
           {active === "faturamento" && <FaturamentoPage sb={sbFetch} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
-          {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} />}
+          {active === "paciente"  && <PacientePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} prontuarioInicial={alvoNavegacao} />}
           {active === "maternidade" && <MaternidadePage sb={SB()} currentUser={currentUser} canEdit={canLaunch} onIrPara={navegar} />}
-          {active === "executivo" && <TorreDeComando sb={SB()} />}
+          {active === "executivo" && <TorreDeComando sb={SB()} verModulo={verModulo} navegar={navegar} />}
           {active === "print"     && canPrint    && <PrintDashboard sb={SB()} db={db} especialidades={especialidades} />}
           {active === "auditoria" && canAudit    && <TrilhaAuditoria sb={sbFetch} />}
           {active === "import"    && canImport   && <ImportPage sb={SB()} onImport={newDb => setDb({ ...newDb })} currentUser={currentUser} especialidades={especialidades} />}

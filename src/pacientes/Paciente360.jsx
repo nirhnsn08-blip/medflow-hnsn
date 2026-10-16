@@ -33,7 +33,7 @@ const BASE_PACIENTES = [
   { o: "pacientes", tabela: "pacientes", onde: "Atendimento → Recepção" },
 ];
 
-export default function PacientePage({ sb, currentUser, canEdit }) {
+export default function PacientePage({ sb, currentUser, canEdit, prontuarioInicial = null }) {
   const [busca, setBusca] = useState("");
   const [sugestoes, setSugestoes] = useState([]);
   const [prontuario, setProntuario] = useState(null);
@@ -72,6 +72,14 @@ export default function PacientePage({ sb, currentUser, canEdit }) {
     const d = await loadPaciente360(sb, pront);
     setDados(d); setCadForm(null); setCarregando(false); setAlgForm(null); setAlgMsg(null);
   }
+
+  // Chegou por clique de outra tela (hoje: a Torre de Comando, numa linha de
+  // paciente cancelado) já dizendo QUEM abrir. Só o valor de entrada — depois
+  // de aberto, quem manda na busca é quem está olhando, igual ao `abaInicial`
+  // do Atendimento.
+  useEffect(() => {
+    if (prontuarioInicial) abrir(prontuarioInicial);
+  }, [prontuarioInicial]);
 
   /**
    * Grava a alergia e recarrega — sem recarregar, a pessoa registra e a
