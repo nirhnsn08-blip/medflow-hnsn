@@ -26,11 +26,11 @@ import { podeClinico, motivoDaRecusa, assinaturaDe } from "../clinico/papeis.js"
 import {
   carregarProntuario, registrarSinais, registrarAnotacao,
   eventoDoItem, registrarAdministracao, registrarAcesso,
-  aprazarDoses, cancelarDoses,
+  aprazarDoses, reaprazarDoses,
 } from "./dados.js";
 import {
   MIN_MOTIVO, horariosSugeridos, hhmm, conferirAprazamento,
-  divergenciasDeFrequencia, linhasDoAprazamento, dosesVigentes,
+  divergenciasDeFrequencia, linhasDoAprazamento, dosesVigentes, dosesSubstituiveis,
   horariosDoItemNoDia, doseQueEstaSendoCumprida,
 } from "../clinico/aprazamento.js";
 import { resumoReconciliacao, analisarReconciliacao, vigentesDeUso, situacaoUsoDomiciliar, chaveMedicamento } from "../clinico/reconciliacao.js";
@@ -410,7 +410,9 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
    * a mesma coisa toda vez.
    */
   function abrirAprazamento(item) {
-    const jaTem = dosesVigentes(aprazamentos, item.id);
+    // 🔴 O PAINEL MOSTRA EXATAMENTE O QUE VAI SER SUBSTITUÍDO — e não
+    // todas as vigentes. A regra (e o porquê) está em `dosesSubstituiveis`.
+    const jaTem = dosesSubstituiveis(dosesVigentes(aprazamentos, item.id), adms);
     const sugeridas = horariosSugeridos(item, presc.inicio_em || presc.assinada_em);
     setAprazando({
       item,
@@ -434,21 +436,20 @@ function Prescricao({ presc, itens, adms, ep, canEdit, sb, user, validacoesFarma
       return;
     }
 
-    if (reaprazando) {
-      const vigentes = dosesVigentes(aprazamentos, item.id) || [];
-      // ⚠️ Só as que NÃO foram administradas: o gatilho recusa cancelar
-      // dose que já aconteceu, e com razão — o plano não reescreve o fato.
-      const dadas = new Set(adms.filter(a => a.aprazamento_id != null).map(a => String(a.aprazamento_id)));
-      const alvos = vigentes.filter(d => !dadas.has(String(d.id))).map(d => d.id);
-      const c = await cancelarDoses(sb, alvos, motivo, user);
-      if (!c.ok) { setAprazando(a => ({ ...a, erro: c.erro })); return; }
-    }
-
     const linhas = linhasDoAprazamento({
       item, episodio: ep, doses: aprazando.doses, profissional: prof,
       observacao: reaprazando ? motivo : null,
     });
-    const g = await aprazarDoses(sb, linhas, user);
+
+    // 🔴 REAPRAZAR VAI NUMA CHAMADA SÓ — ver `reaprazarDoses`.
+    //
+    // Era cancelar e depois inserir, em dois pedidos. No demo o
+    // cancelamento gravou, a inserção falhou, e o paciente ficou com a
+    // grade de medicação VAZIA. Entre dois pedidos HTTP não há transação;
+    // dentro da função do banco há.
+    const g = reaprazando
+      ? await reaprazarDoses(sb, item.id, motivo, linhas, user)
+      : await aprazarDoses(sb, linhas, user);
     if (!g.ok) { setAprazando(a => ({ ...a, erro: g.erro })); return; }
     setAprazando(null);
     onOk();

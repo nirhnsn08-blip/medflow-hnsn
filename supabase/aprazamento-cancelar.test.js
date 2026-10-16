@@ -324,6 +324,110 @@ describe("as recusas do gatilho (as 18 provas de antes, agora no repositório)",
   });
 });
 
+describe("🔴 D) reaprazar é uma transação só", () => {
+  /** Chama a função como a tela chama. */
+  async function reaprazar(itemId, motivo, doses) {
+    return comoApp(
+      `select * from public.apraz_reaprazar($1, $2, 'Ana', $3::jsonb)`,
+      [itemId, motivo, JSON.stringify(doses)]);
+  }
+
+  /** Uma dose para mandar na chamada. */
+  function dose(previsto, seq = 1) {
+    return { prontuario: "T1", previsto_para: previsto, sequencia: seq,
+             dose_prevista: "600 mg", via: "VO", aprazado_por: "Ana",
+             conselho: "COREN", registro_conselho: "98765" };
+  }
+
+  it("troca as futuras e devolve as novas", async () => {
+    const d = await doseNova("2027-01-10T08:00:00Z");
+    const r = await reaprazar(d.item_id, "troca de turno da unidade",
+      [dose("2027-01-10T09:00:00Z", 1), dose("2027-01-10T17:00:00Z", 2)]);
+    expect(r.rows).toHaveLength(2);
+
+    const estado = await db.query(
+      `select id, cancelado_em, cancelamento_motivo from public.pep_aprazamentos
+        where item_id = $1 order by id`, [d.item_id]);
+    expect(estado.rows[0].cancelado_em, "a dose antiga não foi cancelada").toBeTruthy();
+    expect(estado.rows[0].cancelamento_motivo).toBe("troca de turno da unidade");
+    expect(estado.rows.filter(x => !x.cancelado_em)).toHaveLength(2);
+  });
+
+  it("🔴 SE A INSERÇÃO FALHA, O CANCELAMENTO VOLTA ATRÁS", async () => {
+    // ═══════════════════════════════════════════════════════════
+    // Este é o cenário medido no demo em 16/10/2026, com as duas
+    // chamadas separadas: o cancelamento gravou, a inserção bateu num
+    // `duplicate key`, e o paciente ficou com a grade VAZIA.
+    //
+    // Grade vazia, para quem está na enfermaria, é indistinguível de
+    // "não há prescrição". Era o pior desfecho possível da tela.
+    // ═══════════════════════════════════════════════════════════
+    const dada = await doseNova("2027-02-10T08:00:00Z");
+    await db.query(
+      `insert into public.pep_administracoes (aprazamento_id, status) values ($1, 'administrado')`,
+      [dada.id]);
+    // uma segunda dose do MESMO item, futura e não administrada: é esta
+    // que o reaprazamento cancelaria.
+    const futura = await db.query(
+      `insert into public.pep_aprazamentos (item_id, prontuario, previsto_para, aprazado_por, conselho, registro_conselho)
+       values ($1, 'T1', '2027-02-10T16:00:00Z', 'Ana', 'COREN', '98765') returning id`,
+      [dada.item_id]);
+
+    // A dose nova cai no MESMO instante da que já foi administrada — que
+    // continua vigente, porque não se cancela o que aconteceu.
+    const erro = await erroDe(() => reaprazar(dada.item_id, "tentativa que vai falhar",
+      [dose("2027-02-10T08:00:00Z", 1)]));
+    expect(erro).toMatch(/duplicate key|unique/i);
+
+    const estado = await db.query(
+      `select id, cancelado_em from public.pep_aprazamentos where item_id = $1 order by id`,
+      [dada.item_id]);
+    expect(estado.rows, "apareceu linha nova apesar da falha").toHaveLength(2);
+    expect(estado.rows.find(x => String(x.id) === String(futura.rows[0].id)).cancelado_em,
+      "🔴 A DOSE FOI CANCELADA E NADA ENTROU NO LUGAR — a grade esvaziou").toBeNull();
+  });
+
+  it("🔴 reaprazar sem dose nenhuma é recusado", async () => {
+    // Cancelar tudo e não pôr nada no lugar é o mesmo estrago, pedido de
+    // outro jeito.
+    const d = await doseNova("2027-03-10T08:00:00Z");
+    for (const vazio of [[], null]) {
+      const erro = await erroDe(() => reaprazar(d.item_id, "motivo qualquer", vazio));
+      expect(erro).toMatch(/sem grade|dose nenhuma/i);
+    }
+    const estado = await db.query(
+      `select cancelado_em from public.pep_aprazamentos where id = $1`, [d.id]);
+    expect(estado.rows[0].cancelado_em).toBeNull();
+  });
+
+  it("🔴 dose PASSADA não é cancelada — ela é a prova de que a dose foi perdida", async () => {
+    const passada = await doseNova("2020-05-05T08:00:00Z");
+    await reaprazar(passada.item_id, "reaprazando daqui para a frente",
+      [dose("2027-04-10T08:00:00Z", 1)]);
+    const estado = await db.query(
+      `select cancelado_em from public.pep_aprazamentos where id = $1`, [passada.id]);
+    expect(estado.rows[0].cancelado_em,
+      "a dose perdida foi apagada da história junto com o plano").toBeNull();
+  });
+
+  it("🔴 a função é `security invoker`: quem não pode escrever não reapraza", async () => {
+    // Uma `security definer` aqui seria porta dos fundos para escrever no
+    // prontuário sem passar pela barreira de módulo.
+    const d = await doseNova("2027-05-10T08:00:00Z");
+    await db.exec("set valentrax.papel = 'medico'");
+    try {
+      const erro = await erroDe(() => reaprazar(d.item_id, "tentativa indevida",
+        [dose("2027-05-10T09:00:00Z", 1)]));
+      expect(erro).toMatch(/row-level security|violates/i);
+    } finally {
+      await db.exec("reset valentrax.papel");
+    }
+    const estado = await db.query(
+      `select cancelado_em from public.pep_aprazamentos where id = $1`, [d.id]);
+    expect(estado.rows[0].cancelado_em).toBeNull();
+  });
+});
+
 describe("a migração é idempotente", () => {
   it("rodar de novo não quebra nada, e o cancelamento continua gravando", async () => {
     await rodarMigracao();

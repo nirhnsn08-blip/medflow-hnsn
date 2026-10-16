@@ -19,7 +19,7 @@ import { describe, it, expect } from "vitest";
 import {
   MIN_MOTIVO, DIAS_PADRAO, intervaloDe, horariosSugeridos, hhmm,
   conferirAprazamento, divergenciasDeFrequencia, linhasDoAprazamento,
-  dosesVigentes, foiAprazado, horariosDoItemNoDia, doseQueEstaSendoCumprida,
+  dosesVigentes, dosesSubstituiveis, foiAprazado, horariosDoItemNoDia, doseQueEstaSendoCumprida,
 } from "./aprazamento.js";
 import { FALHA } from "../util/leitura.js";
 
@@ -372,5 +372,63 @@ describe("o motivo de cancelar", () => {
   it(`o mínimo é ${MIN_MOTIVO}, igual ao do banco`, () => {
     // Dois números diferentes fariam a tela aceitar o que o banco recusa.
     expect(MIN_MOTIVO).toBe(5);
+  });
+});
+
+// ── O QUE O REAPRAZAMENTO PODE TROCAR ───────────────────────
+describe("🔴 das vigentes, quais o reaprazamento substitui", () => {
+  // 🔴 ACHADO CAMINHANDO NO DEMO (16/10/2026): o painel vinha com TODAS as
+  // vigentes enquanto o texto dizia "as que já foram dadas ficam como
+  // estão". A lista contradizia a frase logo acima dela.
+  const AGORA = new Date("2026-10-16T12:00:00Z");
+  const DOSES = [
+    { id: 1, previsto_para: "2026-10-15T20:00:00Z" },   // passada, administrada
+    { id: 2, previsto_para: "2026-10-16T04:00:00Z" },   // passada, perdida
+    { id: 3, previsto_para: "2026-10-16T20:00:00Z" },   // futura
+    { id: 4, previsto_para: "2026-10-17T04:00:00Z" },   // futura
+  ];
+  const ADMS = [{ aprazamento_id: 1, status: "administrado" }];
+
+  it("só as futuras, e só as que ninguém deu", () => {
+    expect(dosesSubstituiveis(DOSES, ADMS, AGORA).map(d => d.id)).toEqual([3, 4]);
+  });
+
+  it("🔴 a dose JÁ ADMINISTRADA fica de fora — e é o que derrubava o reaprazamento", () => {
+    // Ela continua VIGENTE (não se cancela o que aconteceu), então
+    // reinseri-la no mesmo instante bate no índice único e a troca inteira
+    // falha. Foi o que esvaziou a grade no demo.
+    const futuraDada = [{ id: 9, previsto_para: "2026-10-16T20:00:00Z" }];
+    const dada = [{ aprazamento_id: 9, status: "administrado" }];
+    expect(dosesSubstituiveis(futuraDada, dada, AGORA)).toEqual([]);
+  });
+
+  it("🔴 a dose PASSADA e perdida fica — ela é a prova de que a dose não foi dada", () => {
+    // Cancelá-la apagaria a falha junto com o plano.
+    const r = dosesSubstituiveis(DOSES, ADMS, AGORA);
+    expect(r.find(d => d.id === 2)).toBeUndefined();
+    // e continua na lista de vigentes, intacta
+    expect(DOSES.find(d => d.id === 2)).toBeTruthy();
+  });
+
+  it("administração que NÃO foi administração (ausência, recusa) não protege a dose", () => {
+    const naoDada = [{ aprazamento_id: 3, status: "nao_administrado" }];
+    expect(dosesSubstituiveis(DOSES, naoDada, AGORA).map(d => d.id)).toEqual([3, 4]);
+  });
+
+  it("🔴 leitura que não desceu atravessa como null, e não como lista vazia", () => {
+    // Lista vazia aqui leria "não há o que trocar" e o reaprazamento
+    // inseriria por cima sem cancelar nada.
+    expect(dosesSubstituiveis(null, ADMS, AGORA)).toBeNull();
+    expect(dosesSubstituiveis(FALHA, ADMS, AGORA)).toBeNull();
+    expect(dosesSubstituiveis(DOSES, ADMS, "não é data")).toBeNull();
+  });
+
+  it("sem administração nenhuma, todas as futuras entram", () => {
+    expect(dosesSubstituiveis(DOSES, [], AGORA).map(d => d.id)).toEqual([3, 4]);
+    expect(dosesSubstituiveis(DOSES, null, AGORA).map(d => d.id)).toEqual([3, 4]);
+  });
+
+  it("dose com horário ilegível não entra na troca", () => {
+    expect(dosesSubstituiveis([{ id: 7, previsto_para: "qualquer coisa" }], [], AGORA)).toEqual([]);
   });
 });

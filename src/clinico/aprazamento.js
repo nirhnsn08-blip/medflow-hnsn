@@ -220,6 +220,40 @@ export function dosesVigentes(aprazamentos, itemId) {
 }
 
 /**
+ * Das doses vigentes, as que um reaprazamento pode trocar.
+ *
+ * 🔴 ACHADO CAMINHANDO NO DEMO (16/10/2026). O painel de reaprazamento
+ * vinha com TODAS as vigentes — inclusive as do passado e a que já tinha
+ * sido administrada — enquanto o texto logo acima dizia o contrário: "as
+ * que já foram dadas ficam como estão". Duas consequências:
+ *
+ *   1. reaprazar REINSERIA doses no passado, que é o defeito da
+ *      prescrição velha voltando por outra porta;
+ *   2. a dose já administrada continua VIGENTE (não se cancela o que
+ *      aconteceu), então reinseri-la no mesmo instante batia no índice
+ *      único e derrubava o reaprazamento inteiro.
+ *
+ * ⚠️ DOSE PASSADA E NÃO ADMINISTRADA TAMBÉM FICA. Ela é a prova de que
+ * uma dose foi perdida; cancelá-la apagaria a falha junto com o plano.
+ *
+ * 🔴 `null` atravessa: leitura que não desceu não é "não há dose".
+ */
+export function dosesSubstituiveis(vigentes, administracoes, agora = new Date()) {
+  if (vigentes == null || naoDeuParaLer(vigentes)) return null;
+  const t = new Date(agora).getTime();
+  if (!Number.isFinite(t)) return null;
+  const dadas = new Set((Array.isArray(administracoes) ? administracoes : [])
+    .filter(a => a && a.aprazamento_id != null
+              && (a.status || "administrado") === "administrado")
+    .map(a => String(a.aprazamento_id)));
+  return (Array.isArray(vigentes) ? vigentes : []).filter(d => {
+    if (!d || dadas.has(String(d.id))) return false;
+    const q = new Date(d.previsto_para).getTime();
+    return Number.isFinite(q) && q > t;
+  });
+}
+
+/**
  * Este item foi aprazado?
  *
  * ⚠️ `null` quando não se sabe — e quem chama precisa distinguir, porque a

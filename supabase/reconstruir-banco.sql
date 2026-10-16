@@ -17809,6 +17809,87 @@ create trigger trg_apraz_cancelar
   for each row execute function public.apraz_cancelar();
 
 
+-- ═══════════════════════════════════════════════════════════
+-- 🔴 D) REAPRAZAR É UMA TRANSAÇÃO SÓ
+--
+-- ⚠️ ESTE É O DEFEITO MAIS GRAVE QUE A CAMINHADA ACHOU, e ele não estava
+-- no banco: estava na ORDEM das duas chamadas.
+--
+-- A tela fazia dois PATCHes/POSTs separados — cancela as futuras, depois
+-- insere as novas. Medido no demo em 16/10/2026: o cancelamento gravou
+-- (21 doses), a inserção bateu num `duplicate key`, e o paciente ficou
+-- com UMA dose vigente. A grade de medicação esvaziou.
+--
+-- Duas chamadas HTTP não têm transação entre si. Qualquer motivo para a
+-- segunda falhar — colisão, RLS, rede caindo no meio — deixa o plano
+-- cancelado e nada no lugar. E quem está na enfermaria vê uma grade
+-- vazia, que é indistinguível de "não há prescrição".
+--
+-- 💡 Aqui as duas coisas acontecem dentro de UMA função, então o banco
+-- garante o que o HTTP não garantia: ou a troca inteira vale, ou nada
+-- muda e o plano antigo continua de pé.
+--
+-- `security invoker` DE PROPÓSITO: a função roda com o papel de quem
+-- chamou, então a RLS do cancelamento e da inserção continua valendo. Uma
+-- `security definer` aqui seria uma porta dos fundos para escrever no
+-- prontuário sem passar pela barreira de módulo.
+-- ═══════════════════════════════════════════════════════════
+create or replace function public.apraz_reaprazar(
+  p_item_id bigint,
+  p_motivo  text,
+  p_quem    text,
+  p_doses   jsonb
+) returns setof public.pep_aprazamentos
+language plpgsql
+security invoker
+set search_path = public
+as $rp$
+begin
+  -- 🔴 Reaprazar sem dose nenhuma cancelaria a grade e não poria nada no
+  -- lugar. É o mesmo estrago, pedido de outro jeito.
+  if p_doses is null or jsonb_typeof(p_doses) <> 'array' or jsonb_array_length(p_doses) = 0 then
+    raise exception
+      'Reaprazar sem dose nenhuma deixaria o paciente sem grade. Para suspender a medicação, o caminho é suspender o item.';
+  end if;
+
+  -- As futuras ainda não administradas. A dose que já aconteceu fica —
+  -- o gatilho recusaria de qualquer forma, e aqui ela nem é alcançada.
+  update public.pep_aprazamentos a
+     set cancelado_em       = now(),
+         cancelado_por      = p_quem,
+         cancelamento_motivo = p_motivo
+   where a.item_id = p_item_id
+     and a.cancelado_em is null
+     and a.previsto_para > now()
+     and not exists (
+       select 1 from public.pep_administracoes x
+        where x.aprazamento_id = a.id
+          and coalesce(x.status, 'administrado') = 'administrado');
+
+  -- ⚠️ `with ... insert ... returning` e não `return query insert`: o
+  -- plpgsql não aceita a segunda forma.
+  return query
+    with nova as (
+      insert into public.pep_aprazamentos
+        (item_id, prescricao_id, prontuario, episodio_id, previsto_para, sequencia,
+         dose_prevista, via, observacao, aprazado_por, conselho, registro_conselho, usuario)
+      select p_item_id, d.prescricao_id, d.prontuario, d.episodio_id, d.previsto_para,
+             d.sequencia, d.dose_prevista, d.via, d.observacao, d.aprazado_por,
+             d.conselho, d.registro_conselho, d.usuario
+        from jsonb_to_recordset(p_doses) as d(
+          prescricao_id bigint, prontuario text, episodio_id bigint,
+          previsto_para timestamptz, sequencia int, dose_prevista text, via text,
+          observacao text, aprazado_por text, conselho text, registro_conselho text,
+          usuario text)
+      returning *
+    )
+    select * from nova;
+end;
+$rp$;
+
+grant execute on function public.apraz_reaprazar(bigint, text, text, jsonb) to authenticated;
+
+
 insert into public.migracoes_aplicadas (arquivo)
 values ('migracao-aprazamento-cancelar.sql') on conflict do nothing;
 
@@ -17847,6 +17928,10 @@ select item, case when ok then '✅' else '❌' end as situacao from (
   union all
   select '🔴 C) e o único antigo saiu do caminho',
          not exists (select 1 from pg_class where relname = 'pep_aprz_uq')
+  union all
+  select '🔴 D) reaprazar numa transação só (cancelar + inserir)',
+         exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'apraz_reaprazar')
   union all
   select 'migração anotada no registro',
          exists (select 1 from public.migracoes_aplicadas

@@ -397,29 +397,56 @@ export async function aprazarDoses(sb, linhas, user) {
 }
 
 /**
- * Cancela doses aprazadas, com motivo.
+ * Reaprazar: cancela as doses futuras e insere as novas NUMA TRANSAÇÃO SÓ.
  *
  * ⚠️ CANCELA, não apaga: aprazar é ato de enfermagem com registro no
- * conselho, e apagar a linha apaga quem aprazou aquela dose. O gatilho
- * recusa cancelar dose JÁ ADMINISTRADA — o plano não reescreve o fato.
+ * conselho, e apagar a linha apaga quem aprazou aquela dose. O gatilho do
+ * banco recusa cancelar dose JÁ ADMINISTRADA — o plano não reescreve o
+ * fato — e a função nem a alcança.
+ *
+ * 🔴 POR QUE NÃO SÃO DUAS CHAMADAS (um PATCH cancelando, um POST inserindo).
+ *
+ * Era assim, e o demo mostrou o estrago em 16/10/2026: o cancelamento
+ * gravou (21 doses), a inserção bateu num `duplicate key`, e o paciente
+ * ficou com UMA dose vigente. A grade de medicação esvaziou.
+ *
+ * Duas chamadas HTTP não têm transação entre si. Qualquer motivo para a
+ * segunda falhar — colisão de horário, RLS, rede caindo no meio — deixa o
+ * plano cancelado e nada no lugar. E grade vazia, para quem está na
+ * enfermaria, é indistinguível de "não há prescrição".
+ *
+ * A função `apraz_reaprazar` faz as duas coisas no banco: ou a troca
+ * inteira vale, ou nada muda e o plano antigo continua de pé.
  */
-export async function cancelarDoses(sb, ids, motivo, user) {
+export async function reaprazarDoses(sb, itemId, motivo, linhas, user) {
   if (!sb) return { ok: false, erro: "Sem conexão com o banco." };
-  const lista = (Array.isArray(ids) ? ids : []).filter(v => v != null);
-  if (!lista.length) return { ok: true, canceladas: [] };
-  const r = await sb(`pep_aprazamentos?id=in.(${lista.join(",")})`, {
-    method: "PATCH",
-    headers: { "Prefer": "return=representation" },
+  if (!linhas?.length) return { ok: false, erro: "Nenhuma dose para aprazar." };
+  const corpo = linhas.map(l => ({ ...l, usuario: user?.name || null }));
+  const r = await sb("rpc/apraz_reaprazar", {
+    method: "POST",
     body: JSON.stringify({
-      cancelado_em: new Date().toISOString(),
-      cancelado_por: user?.name || null,
-      cancelamento_motivo: String(motivo ?? "").trim(),
+      p_item_id: itemId,
+      p_motivo: String(motivo ?? "").trim(),
+      p_quem: user?.name || null,
+      p_doses: corpo,
     }),
   });
-  if (!Array.isArray(r) || !r.length) {
-    return { ok: false, erro: "O cancelamento NÃO foi gravado — a alteração não chegou ao banco, ou alguma dose já foi administrada." };
+  // ⚠️ Aqui "não deu para saber" é MENOS perigoso do que era: a troca é
+  // atômica, então o plano antigo ou foi substituído por inteiro ou
+  // continua inteiro. O que nunca mais acontece é ficar sem nenhum.
+  if (!Array.isArray(r)) {
+    return {
+      ok: false,
+      erro: `Não foi possível confirmar o reaprazamento das ${corpo.length} doses. A troca é feita de uma vez: ou valeu inteira, ou o plano anterior continua valendo. Abra a grade e veja qual dos dois antes de refazer.`,
+    };
   }
-  return { ok: true, canceladas: r };
+  if (r.length !== corpo.length) {
+    return {
+      ok: false,
+      erro: `O reaprazamento voltou com ${r.length} de ${corpo.length} doses. Confira a grade antes de refazer.`,
+    };
+  }
+  return { ok: true, doses: r };
 }
 
 /** Registra administração (ou a não-administração, com o motivo). */
