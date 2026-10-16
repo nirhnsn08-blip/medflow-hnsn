@@ -55,6 +55,7 @@ export async function carregarTorre(sb, { hoje = new Date(), janelaDias = 90 } =
       leitos: cego, setores: cego, saidas: cego, ps: cego,
       cirurgias: cego, grades: cego, agendamentos: cego,
       supItens: cego, supLotes: cego, farmItens: cego, farmLotes: cego,
+      cirCanceladas: cego, agCancelados: cego, agRemarcados: cego,
     };
   }
 
@@ -62,10 +63,13 @@ export async function carregarTorre(sb, { hoje = new Date(), janelaDias = 90 } =
     leitosR, setoresR, saidasR, psR,
     cirurgiasR, gradesR, agendamentosR,
     supItensR, supLotesR, farmItensR, farmLotesR,
+    cirCanceladasR, agCanceladosR, agRemarcadosR,
   ] = await Promise.all([
     sb("leitos?select=identificacao,status,setor,prontuario,iniciais,data_internacao,isolamento&limit=2000").catch(() => null),
     sb("setores?select=nome,ordem,alerta_amarelo,alerta_vermelho,meta_ocupacao,meta_giro,meta_permanencia&order=ordem&limit=200").catch(() => null),
-    sb(`leitos_saidas?data_alta=gte.${desde}&select=data_alta,dias_permanencia,setor,leito,prontuario,desfecho&order=data_alta.desc&limit=5000`).catch(() => null),
+    // `data_internacao` entrou para a TENDÊNCIA: sem ela não há intervalo, e
+    // sem intervalo não há censo diário para reconstruir.
+    sb(`leitos_saidas?data_alta=gte.${desde}&select=data_alta,data_internacao,dias_permanencia,setor,leito,prontuario,desfecho&order=data_alta.desc&limit=5000`).catch(() => null),
     // O PS do dia + tudo que ainda está aberto: a fila de agora não cabe
     // num recorte de data, porque quem chegou ontem à noite e não foi
     // atendido é exatamente o caso que o painel precisa mostrar.
@@ -79,6 +83,24 @@ export async function carregarTorre(sb, { hoje = new Date(), janelaDias = 90 } =
     sb("sup_lotes?select=item_id,quantidade,validade&limit=8000").catch(() => null),
     sb("farm_medicamentos?select=id,nome,unidade,estoque_minimo,ativo&limit=3000").catch(() => null),
     sb("farm_lotes?select=medicamento_id,quantidade,validade&limit=8000").catch(() => null),
+
+    // ── Cancelamentos da JANELA (não só de hoje) ──────────────
+    // O indicador é "quem foi cancelado de novo", e reincidência não cabe num
+    // dia. São três leituras simples em vez de um `or=()` esperto: filtro
+    // composto esconde nome de coluna dentro do valor, e é justamente isso
+    // que o contrato com o banco não consegue conferir.
+    sb(`cc_cirurgias?status=eq.cancelada&data=gte.${desde}` +
+       "&select=id,data,status,iniciais,prontuario,procedimento,cancelamento_motivo" +
+       "&order=data.desc&limit=2000").catch(() => null),
+    sb(`ag_agendamentos?status=eq.cancelado&data=gte.${desde}` +
+       "&select=id,data,status,prontuario,especialidade_cod,cancelado_motivo,remarcado_de" +
+       "&order=data.desc&limit=4000").catch(() => null),
+    // 🔴 A TERCEIRA EXISTE SÓ PARA SEPARAR REMARCAÇÃO DE CANCELAMENTO.
+    // Remarcar deixa o agendamento original como `cancelado` e cria um novo
+    // apontando para ele. Sem ler quem aponta, toda remarcação de rotina
+    // entraria na conta e o painel acusaria pacientes que só mudaram de data.
+    sb(`ag_agendamentos?remarcado_de=not.is.null&data=gte.${desde}` +
+       "&select=id,remarcado_de&limit=4000").catch(() => null),
   ]);
 
   return {
@@ -94,5 +116,8 @@ export async function carregarTorre(sb, { hoje = new Date(), janelaDias = 90 } =
     supLotes: lida(supLotesR),
     farmItens: lida(farmItensR),
     farmLotes: lida(farmLotesR),
+    cirCanceladas: lida(cirCanceladasR),
+    agCancelados: lida(agCanceladosR),
+    agRemarcados: lida(agRemarcadosR),
   };
 }

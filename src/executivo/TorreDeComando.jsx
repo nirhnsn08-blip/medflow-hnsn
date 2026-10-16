@@ -33,8 +33,17 @@ import {
   fluxoCirurgico, ambulatorioDoDia, itensEmFalta, faltasConsolidadas,
   resumoDaTorre,
 } from "./torre.js";
-import { carregarTorre } from "./dados.js";
+import { carregarTorre, diasAtras } from "./dados.js";
+import { montarMapa } from "./mapa3d.js";
+import { intervalosDeInternacao, censoDiario, direcaoDaSerie } from "./tendencia.js";
+import { relatorioDeCancelamentos, ROTULO_ORIGEM } from "./cancelamentos.js";
+import MapaIsometrico from "./MapaIsometrico.jsx";
+import GraficoTendencia from "./GraficoTendencia.jsx";
 import { HOSPITAL_SIGLA } from "../ui/base.jsx";
+
+/** Quantos dias a curva de tendência mostra. Curto de propósito: a direção
+ *  olha o mês, e quanto mais para trás, mais a reconstrução fica cega. */
+const DIAS_DA_CURVA = 30;
 
 const COR = {
   [NIVEL.BOM]: "#34d399",
@@ -187,8 +196,41 @@ export default function TorreDeComando({ sb }) {
           detalhe: `${censo.livres} leito${censo.livres === 1 ? "" : "s"} livre${censo.livres === 1 ? "" : "s"}` }
       : { chave: "internados", rotulo: "Pacientes internados", valor: null, lido: false, detalhe: "Não consegui ler os leitos." };
 
+    // ── O mapa isométrico: um cubo por leito ──
+    const mapa3d = lidoLeitos ? montarMapa(leitos, setores) : null;
+
+    // ── A tendência: censo diário reconstruído do intervalo internação→alta ──
+    // Só faz sentido com as DUAS fontes lidas; com uma só, a curva seria uma
+    // metade do hospital desenhada como se fosse o todo.
+    const podeTendencia = dados.saidas.lido && lidoLeitos;
+    const { itens: intervalos, semInicio } = intervalosDeInternacao(dados.saidas.lista, leitos);
+    const censoSerie = podeTendencia
+      ? censoDiario(intervalos, {
+          de: diasAtras(DIAS_DA_CURVA, agora), ate: dados.dia,
+          operacionais: censo.operacionais, janelaDesde: dados.desde,
+        })
+      : null;
+    const tendencia = censoSerie ? direcaoDaSerie(censoSerie.linhas) : null;
+
+    // A meta de ocupação do hospital: a média das metas cadastradas por
+    // setor. Sem meta cadastrada em nenhum setor, não há linha de meta — e
+    // inventar uma régua seria pior que não ter régua.
+    const metas = setores.map(s => s.meta_ocupacao).filter(v => v != null && v !== "");
+    const metaOcupacao = metas.length
+      ? Math.round(metas.reduce((t, v) => t + Number(v), 0) / metas.length)
+      : null;
+
+    // ── Cancelamento reincidente: as duas portas cruzadas por prontuário ──
+    const cancelamentos = relatorioDeCancelamentos(
+      dados.cirCanceladas.lista,
+      [...dados.agCancelados.lista, ...dados.agRemarcados.lista],
+      { lido: dados.cirCanceladas.lido && dados.agCancelados.lido && dados.agRemarcados.lido });
+
     const resumo = resumoDaTorre([censo, uti, perm, pa, cirurgias, ambulatorio, falta, altas, giro, gerint]);
-    return { censo, uti, mapa, altas, perm, giro, pa, gerint, cirurgias, ambulatorio, falta, internados, resumo };
+    return {
+      censo, uti, mapa, altas, perm, giro, pa, gerint, cirurgias, ambulatorio, falta, internados, resumo,
+      mapa3d, censoSerie, tendencia, metaOcupacao, semInicio, cancelamentos, podeTendencia,
+    };
   }, [dados]);
 
   if (!v) {
@@ -199,7 +241,8 @@ export default function TorreDeComando({ sb }) {
     );
   }
 
-  const { censo, uti, mapa, altas, perm, giro, pa, gerint, cirurgias, ambulatorio, falta, internados, resumo } = v;
+  const { censo, uti, mapa, altas, perm, giro, pa, gerint, cirurgias, ambulatorio, falta, internados, resumo,
+          mapa3d, censoSerie, tendencia, metaOcupacao, semInicio, cancelamentos, podeTendencia } = v;
   const idade = lidoEm ? Date.now() - lidoEm : null;
 
   return (
@@ -294,6 +337,31 @@ export default function TorreDeComando({ sb }) {
         </div>
       </div>
 
+      {/* ── o hospital como volume ──
+          Vem logo abaixo do anel de propósito: é a leitura que a direção faz
+          antes de qualquer número. Um cubo é um leito, então a contagem é
+          exata — nenhuma perspectiva distorcendo magnitude. */}
+      <Secao titulo="O hospital agora — um cubo, um leito"
+        direita="passe o cursor por um leito">
+        {!dados.leitos.lido ? <NaoLido oQue="os leitos" /> : <MapaIsometrico mapa={mapa3d} />}
+      </Secao>
+
+      {/* ── tendência ── */}
+      <Secao titulo={`Tendência de ocupação — ${DIAS_DA_CURVA} dias`}
+        direita={censoSerie?.diasCegos ? `${censoSerie.diasCegos} dia(s) fora da janela de leitura` : null}>
+        {!podeTendencia ? <NaoLido oQue="as saídas de leito ou os leitos" /> : (
+          <>
+            <GraficoTendencia censo={censoSerie} direcao={tendencia} metaOcupacao={metaOcupacao} />
+            {semInicio > 0 && (
+              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "7px 0 0" }}>
+                {semInicio} internação(ões) sem data de entrada ficaram <b>fora</b> da curva — sem o começo
+                não há intervalo, e inventar um começo inventaria leito-dia.
+              </p>
+            )}
+          </>
+        )}
+      </Secao>
+
       {/* ── mapa de ocupação por setor ── */}
       <Secao titulo="Mapa de ocupação por setor"
         direita={mapa.lido && mapa.semSetor > 0 ? `${mapa.semSetor} leito(s) sem setor — fora do mapa` : null}>
@@ -369,9 +437,6 @@ export default function TorreDeComando({ sb }) {
                     </div>
                   ))}
                 </div>
-                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "9px 0 0" }}>
-                  A contagem de <b>quantas vezes cada paciente já foi cancelado</b> — na cirurgia e no ambulatório — entra na próxima fatia deste painel.
-                </p>
               </div>
             )}
           </div>
@@ -507,9 +572,106 @@ export default function TorreDeComando({ sb }) {
         </Secao>
       )}
 
+      {/* ── quem está sendo cancelado de novo ──
+          TABELA, e não gráfico: é uma lista de pessoas para agir. Um gráfico
+          de barras com nomes no eixo seria mais bonito e menos útil. */}
+      <Secao titulo="Pacientes cancelados mais de uma vez"
+        direita={cancelamentos.lido
+          ? `janela de ${dados.desde} até ${dados.dia}`
+          : null}>
+        {!cancelamentos.lido ? <NaoLido oQue="os cancelamentos do bloco ou da agenda" /> : (
+          <div style={cx.card}>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: cancelamentos.reincidentes.length ? 14 : 0 }}>
+              {[
+                { r: "Reincidentes", n: cancelamentos.reincidentes.length, c: cancelamentos.reincidentes.length ? "#fb7185" : "#34d399" },
+                { r: "Nas duas portas", n: cancelamentos.nasDuasPortas, c: cancelamentos.nasDuasPortas ? "#fbbf24" : "var(--text-3)" },
+                { r: "Cancelamentos na janela", n: cancelamentos.total, c: "var(--text-2)" },
+              ].map(b => (
+                <div key={b.r}>
+                  <div style={cx.rotulo}>{b.r}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 24, fontWeight: 700, color: b.c, lineHeight: 1.2 }}>{b.n}</div>
+                </div>
+              ))}
+            </div>
+
+            {cancelamentos.podeDizerNinguem ? (
+              <div style={{ fontSize: 12.5, color: "#34d399" }}>
+                Nenhum paciente foi cancelado mais de uma vez nesta janela.
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, minWidth: 520 }}>
+                  <thead>
+                    <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
+                      <th style={{ padding: "6px 8px", fontWeight: 700 }}>Paciente</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 700, textAlign: "right" }}>Vezes</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 700 }}>Onde</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 700 }}>Último</th>
+                      <th style={{ padding: "6px 8px", fontWeight: 700 }}>Motivos registrados</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cancelamentos.reincidentes.slice(0, 15).map(p => (
+                      <tr key={p.prontuario} style={{ borderTop: "1px solid var(--border)" }}>
+                        <td style={{ padding: "8px" }}>
+                          <b>{p.iniciais || "—"}</b>
+                          <span style={{ fontFamily: MONO, color: "var(--text-muted)", marginLeft: 7, fontSize: 11.5 }}>{p.prontuario}</span>
+                        </td>
+                        <td style={{ padding: "8px", textAlign: "right", fontFamily: MONO, fontWeight: 700, color: p.total >= 3 ? "#fb7185" : "#fbbf24" }}>
+                          {p.total}
+                        </td>
+                        <td style={{ padding: "8px", color: "var(--text-3)" }}>
+                          {p.cirurgia > 0 && `${p.cirurgia} ${ROTULO_ORIGEM.cirurgia.toLowerCase()}${p.cirurgia > 1 ? "s" : ""}`}
+                          {p.cirurgia > 0 && p.ambulatorio > 0 && " · "}
+                          {p.ambulatorio > 0 && `${p.ambulatorio} ${ROTULO_ORIGEM.ambulatorio.toLowerCase()}${p.ambulatorio > 1 ? "s" : ""}`}
+                          {p.nasDuasPortas && (
+                            <span title="cancelado no bloco E no ambulatório — nenhum relatório de módulo vê este paciente"
+                              style={{ marginLeft: 7, fontSize: 10, fontWeight: 800, color: "#fbbf24", border: "1px solid #fbbf2455", borderRadius: 99, padding: "1px 7px" }}>
+                              AS DUAS
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: "8px", fontFamily: MONO, color: "var(--text-3)", whiteSpace: "nowrap" }}>
+                          {p.ultimoDia || "—"}
+                        </td>
+                        <td style={{ padding: "8px", color: p.semMotivoRegistrado ? "#fbbf24" : "var(--text-3)", fontStyle: p.semMotivoRegistrado ? "italic" : "normal" }}>
+                          {p.semMotivoRegistrado ? "nenhum motivo registrado" : p.motivos.join(" · ")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {cancelamentos.reincidentes.length > 15 && (
+                  <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>
+                    e mais {cancelamentos.reincidentes.length - 15} paciente(s) com cancelamento repetido.
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "10px 0 0", lineHeight: 1.55 }}>
+              {/* 🔴 A tela DIZ que soube distinguir remarcação de cancelamento.
+                  Sem essa linha, quem conhece a agenda desconfiaria do número —
+                  e com razão, porque remarcar deixa o original como cancelado. */}
+              {cancelamentos.remarcacoes > 0 && (
+                <>
+                  <b>{cancelamentos.remarcacoes} remarcação(ões)</b> foram descontadas: remarcar deixa o agendamento
+                  original como cancelado, e contar isso apontaria pacientes que só mudaram de data.{" "}
+                </>
+              )}
+              {cancelamentos.naoAtribuidos > 0 && (
+                <>
+                  {cancelamentos.naoAtribuidos} cancelamento(s) sem prontuário não puderam ser ligados a ninguém.
+                </>
+              )}
+            </p>
+          </div>
+        )}
+      </Secao>
+
       <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 26, lineHeight: 1.6 }}>
         Apoio à gestão, nunca verdade absoluta — os limiares são ponto de partida e se ajustam por setor no cadastro.
-        Tendência de ocupação, reinternação, infecção hospitalar e o histórico de pacientes cancelados entram na próxima fatia.
+        Reinternação em 30 dias e infecção hospitalar (SCIH) entram na próxima fatia.
       </p>
     </div>
   );

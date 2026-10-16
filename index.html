@@ -16,11 +16,24 @@
         --bg:#0c1220; --bg-2:#101a2c; --surface:#142238; --surface-2:#121e33; --surface-3:#1a2a44;
         --input-bg:#0d1728; --border:#22334f; --border-2:#2e4368;
         --text:#e9eef5; --text-2:#c9d4e3; --text-3:#8fa2bd; --text-muted:#5b6f8f;
+        /* ── Paleta dos GRÁFICOS da Torre de Comando ──────────────────────
+           🔴 PASSO PRÓPRIO POR TEMA, e não é capricho: as cores de status do
+           app (#34d399, #fbbf24, #fb7185, #22d3ee) rendem contraste de 1,7 a
+           2,7 contra o branco do tema claro — abaixo do mínimo de 3:1. Em
+           chip pequeno passa raspando; num mapa denso de leitos, some.
+           Estes quatro passos foram escolhidos COM VALIDADOR (faixa de
+           luminosidade, piso de croma, separação para daltonismo e contraste
+           contra a superfície de cada tema), não a olho. Ver executivo/paleta.js. */
+        --torre-livre:#059669; --torre-ocupado:#3b82f6;
+        --torre-higiene:#d97706; --torre-bloqueado:#5b6f8f;
       }
       :root[data-theme="light"] {
         --bg:#eef1f5; --bg-2:#ffffff; --surface:#ffffff; --surface-2:#f7f9fb; --surface-3:#edf1f6;
         --input-bg:#f2f5f8; --border:#d9e0e8; --border-2:#c4cfdc;
         --text:#16202e; --text-2:#31404f; --text-3:#54657a; --text-muted:#8595a8;
+        /* Os mesmos quatro papéis, re-escalonados contra o branco. */
+        --torre-livre:#047857; --torre-ocupado:#1d4ed8;
+        --torre-higiene:#ca8a04; --torre-bloqueado:#54657a;
       }
       body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); }
 
