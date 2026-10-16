@@ -90,10 +90,10 @@ function conferirFiltros(recurso) {
 const HOJE = new Date("2026-09-14T12:00:00");
 
 describe("carregarTorre — o que vai para o banco", () => {
-  it("as onze leituras acontecem, e toda tabela/coluna existe", async () => {
+  it("as catorze leituras acontecem, e toda tabela/coluna existe", async () => {
     const { sb, chamadas } = espiao();
     await carregarTorre(sb, { hoje: HOJE });
-    expect(chamadas).toHaveLength(11);
+    expect(chamadas).toHaveLength(14);
     for (const c of chamadas) { conferirLeitura(c); conferirFiltros(c); }
   });
 
@@ -103,6 +103,31 @@ describe("carregarTorre — o que vai para o banco", () => {
     expect(chamadas.find(c => c.startsWith("cc_cirurgias"))).toContain("data=eq.2026-09-14");
     expect(chamadas.find(c => c.startsWith("ag_agendamentos"))).toContain("data=eq.2026-09-14");
     expect(chamadas.find(c => c.startsWith("leitos_saidas"))).toContain("data_alta=gte.2026-06-16");
+  });
+
+  it("🔴 a terceira leitura da agenda existe para separar remarcação de cancelamento", async () => {
+    // Remarcar deixa o original como `cancelado` e cria um novo apontando
+    // para ele. Sem ler quem aponta, toda remarcação de rotina entraria na
+    // conta de "paciente cancelado de novo".
+    const { sb, chamadas } = espiao();
+    await carregarTorre(sb, { hoje: HOJE });
+    const agenda = chamadas.filter(c => c.startsWith("ag_agendamentos"));
+    expect(agenda).toHaveLength(3);
+    expect(agenda.some(c => c.includes("remarcado_de=not.is.null"))).toBe(true);
+  });
+
+  it("os cancelamentos são da JANELA, não do dia — reincidência não cabe num dia", async () => {
+    const { sb, chamadas } = espiao();
+    await carregarTorre(sb, { hoje: HOJE, janelaDias: 90 });
+    expect(chamadas.find(c => c.startsWith("cc_cirurgias?status=eq.cancelada"))).toContain("data=gte.2026-06-16");
+    expect(chamadas.find(c => c.startsWith("ag_agendamentos?status=eq.cancelado"))).toContain("data=gte.2026-06-16");
+  });
+
+  it("a tendência precisa da data de internação na saída de leito", async () => {
+    // Sem ela não há intervalo, e sem intervalo não há censo diário.
+    const { sb, chamadas } = espiao();
+    await carregarTorre(sb, { hoje: HOJE });
+    expect(chamadas.find(c => c.startsWith("leitos_saidas"))).toContain("data_internacao");
   });
 
   it("🔴 o PS traz o que está ABERTO, não só o que chegou na janela", async () => {
@@ -140,7 +165,8 @@ describe("carregarTorre — leitura que falhou não é lista vazia", () => {
     const r = await carregarTorre(null, { hoje: HOJE });
     expect(r.semConexao).toBe(true);
     for (const chave of ["leitos", "setores", "saidas", "ps", "cirurgias", "grades",
-                         "agendamentos", "supItens", "supLotes", "farmItens", "farmLotes"]) {
+                         "agendamentos", "supItens", "supLotes", "farmItens", "farmLotes",
+                         "cirCanceladas", "agCancelados", "agRemarcados"]) {
       expect(r[chave].lido, `${chave} deveria ser não-lido`).toBe(false);
     }
   });
