@@ -64,8 +64,19 @@ export function intervaloDe(item) {
  * ⚠️ Devolve `[]` para SOS, e isso não é omissão: "se necessário" não tem
  * hora marcada por definição. Propor horário para SOS faria a grade cobrar
  * uma dose que ninguém prometeu.
+ *
+ * 🔴 `agora` EXISTE PORQUE PRESCRIÇÃO VELHA É O CASO COMUM, e isso foi
+ * visto ANDANDO no demo (15/10/2026): um item de uma prescrição com 89
+ * dias sugeria 21 doses começando em 23 de julho — todas no passado, todas
+ * nascendo atrasadas. Aprazar é um ato de HOJE.
+ *
+ * ⚠️ Mas o RITMO continua vindo do início: as doses de uma prescrição
+ * iniciada às 08:55 seguem caindo em 08:55/16:55/00:55, só que a partir de
+ * agora. Reancorar no relógio do momento do aprazamento mudaria o horário
+ * da medicação toda vez que alguém reaprazasse — e aí o paciente tomaria o
+ * antibiótico numa hora diferente a cada turno.
  */
-export function horariosSugeridos(item, inicio, dias = null) {
+export function horariosSugeridos(item, inicio, dias = null, agora = new Date()) {
   const intervalo = intervaloDe(item);
   if (!intervalo) return [];
   // 🔴 `new Date(null)` É 1970, NÃO data inválida — e `new Date(undefined)`
@@ -83,9 +94,20 @@ export function horariosSugeridos(item, inicio, dias = null) {
   // significam nada e fariam cada reaprazamento gerar horários diferentes.
   t0.setSeconds(0, 0);
 
+  // 🔴 A PRIMEIRA DOSE É A PRIMEIRA QUE AINDA NÃO PASSOU, mantendo o ritmo
+  // do início. Avança em passos do intervalo em vez de reancorar no
+  // relógio: assim 08:55/16:55/00:55 continua sendo 08:55/16:55/00:55.
+  const ms = intervalo * 3600000;
+  const tAgora = new Date(agora).getTime();
+  let inicioReal = t0.getTime();
+  if (Number.isFinite(tAgora) && inicioReal < tAgora) {
+    const passos = Math.ceil((tAgora - inicioReal) / ms);
+    inicioReal += passos * ms;
+  }
+
   const out = [];
-  const fim = t0.getTime() + quantosDias * 24 * 3600000;
-  for (let t = t0.getTime(), seq = 1; t < fim; t += intervalo * 3600000, seq++) {
+  const fim = inicioReal + quantosDias * 24 * 3600000;
+  for (let t = inicioReal, seq = 1; t < fim; t += ms, seq++) {
     out.push({ previsto_para: new Date(t), sequencia: seq });
   }
   return out;

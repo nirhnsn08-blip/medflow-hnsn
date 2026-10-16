@@ -49,10 +49,22 @@ describe("o intervalo entre doses", () => {
 
 // ── A SUGESTÃO ──────────────────────────────────────────────
 describe("🔴 a sugestão começa no INÍCIO da prescrição, não às 06h", () => {
+  // 🔴 O `agora` VAI EXPLÍCITO NOS TESTES DE HORÁRIO.
+  //
+  // Sem ele, `horariosSugeridos` usa o relógio de verdade, e a regra "a
+  // primeira dose é a primeira que ainda não passou" faz o resultado
+  // depender do DIA EM QUE A SUÍTE RODA. Estes dois testes passaram em
+  // 15/10 e falharam em 16/10 sem ninguém tocar no código: às 22h de
+  // ontem a dose era futura, hoje é passada, e a sugestão começa às 14h.
+  //
+  // É a mesma lição do dia civil, do outro lado: quem lê o relógio dentro
+  // do teste não está medindo a regra, está medindo o calendário.
+  const ANTES = new Date("2026-10-15T21:00:00");
+
   it("8/8h iniciada às 22h sugere 22h, 06h, 14h", () => {
     // É o que de fato acontece na enfermaria. A âncora de 06h sugeriria
     // 06h/14h/22h — e a enfermagem corrigiria toda vez.
-    const s = horariosSugeridos(ITEM, new Date("2026-10-15T22:00:00"), 1);
+    const s = horariosSugeridos(ITEM, new Date("2026-10-15T22:00:00"), 1, ANTES);
     expect(s.map(d => hhmm(d.previsto_para))).toEqual(["22:00", "06:00", "14:00"]);
   });
 
@@ -81,8 +93,48 @@ describe("🔴 a sugestão começa no INÍCIO da prescrição, não às 06h", ()
     expect(horariosSugeridos(ITEM, null)).toEqual([]);
   });
 
+  // 🔴 ACHADO ANDANDO NO DEMO (15/10/2026): um item de prescrição com 89
+  // dias sugeria 21 doses começando em 23 de JULHO — todas no passado,
+  // todas nascendo atrasadas. Aprazar é um ato de HOJE.
+  describe("🔴 prescrição velha: a sugestão começa AGORA, no mesmo ritmo", () => {
+    const INICIO = new Date("2026-07-23T08:55:00");
+
+    it("a primeira dose é a primeira que ainda não passou", () => {
+      const agora = new Date("2026-10-15T10:00:00");
+      const s = horariosSugeridos(ITEM, INICIO, 1, agora);
+      expect(new Date(s[0].previsto_para) >= agora).toBe(true);
+    });
+
+    it("🔴 MAS O RITMO CONTINUA SENDO O DO INÍCIO", () => {
+      // Reancorar no relógio do momento mudaria o horário da medicação toda
+      // vez que alguém reaprazasse — e aí o paciente tomaria o antibiótico
+      // numa hora diferente a cada turno.
+      const s = horariosSugeridos(ITEM, INICIO, 1, new Date("2026-10-15T10:00:00"));
+      expect(s.map(d => hhmm(d.previsto_para))).toEqual(["16:55", "00:55", "08:55"]);
+    });
+
+    it("nenhuma dose sugerida no passado", () => {
+      const agora = new Date("2026-10-15T10:00:00");
+      const s = horariosSugeridos(ITEM, INICIO, 3, agora);
+      expect(s.filter(d => new Date(d.previsto_para) < agora)).toEqual([]);
+    });
+
+    it("prescrição que começa no FUTURO não é empurrada", () => {
+      // Prescrição programada para amanhã deve começar amanhã, não agora.
+      const futuro = new Date("2026-10-16T08:00:00");
+      const s = horariosSugeridos(ITEM, futuro, 1, new Date("2026-10-15T10:00:00"));
+      expect(new Date(s[0].previsto_para).getTime()).toBe(futuro.getTime());
+    });
+
+    it("prescrição de agora mesmo começa agora", () => {
+      const agora = new Date("2026-10-15T10:00:00");
+      const s = horariosSugeridos(ITEM, agora, 1, agora);
+      expect(hhmm(s[0].previsto_para)).toBe("10:00");
+    });
+  });
+
   it("⚠️ os segundos são zerados — senão cada reaprazamento muda o horário", () => {
-    const s = horariosSugeridos(ITEM, new Date("2026-10-15T22:17:43.500"), 1);
+    const s = horariosSugeridos(ITEM, new Date("2026-10-15T22:17:43.500"), 1, ANTES);
     const d = new Date(s[0].previsto_para);
     expect(d.getSeconds()).toBe(0);
     expect(d.getMilliseconds()).toBe(0);

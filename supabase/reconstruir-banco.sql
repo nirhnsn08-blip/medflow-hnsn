@@ -17611,11 +17611,50 @@ select 'sadt_resultados',
 -- ⚠️ POR QUE UM GATILHO E NÃO SÓ UM CHECK: a recusa 2 precisa olhar
 -- `pep_administracoes`, que um check constraint não alcança.
 --
--- ADITIVA. IDEMPOTENTE.
+-- ═══════════════════════════════════════════════════════════
+-- 🔴 O QUE A CAMINHADA NO DEMO ACHOU (16/10/2026)
+--
+-- A primeira versão desta migração tinha as colunas e o gatilho, e o
+-- cancelamento NÃO GRAVAVA. A tela dizia a verdade ("o cancelamento não
+-- foi gravado") e o motivo era mais fundo: `pep_aprazamentos` não tem
+-- política de UPDATE. Está escrito em `migracao-pep-fase1.sql`:
+--
+--     -- sem update/delete: o plano aprazado é registro clínico.
+--
+-- O PATCH voltava 2xx alterando zero linhas. O gatilho nunca rodou — não
+-- havia linha a alcançar.
+--
+-- ⚠️ E OS 18 CENÁRIOS EM PGLITE ESTAVAM VERDES. Eles rodavam o `update`
+-- como DONO da tabela, onde RLS não se aplica. A prova era real e
+-- respondia outra pergunta: o gatilho recusa os cancelamentos errados.
+-- Ninguém perguntou se o update CHEGA na linha. Por isso este arquivo
+-- agora tem um teste no repositório (`aprazamento-cancelar.test.js`) que
+-- confere a existência da política — e não só o comportamento do gatilho.
+--
+-- Então aqui entram TRÊS coisas que faltavam:
+--
+--   A) a política permissiva de UPDATE, sem a qual nada disto funciona;
+--
+--   B) a trava que congela TODAS as outras colunas. Abrir UPDATE sem ela
+--      trocaria um defeito por outro pior: `previsto_para` e `aprazado_por`
+--      passariam a ser reescrevíveis em silêncio, que é exatamente o fato
+--      clínico que a tabela existe para guardar;
+--
+--   C) o índice único `pep_aprz_uq` (item_id, previsto_para) passa a
+--      ignorar as canceladas. Sem isto, reaprazar mantendo QUALQUER
+--      horário bate no índice — e o painel vem preenchido com os horários
+--      atuais, então é o caso comum, não o raro.
+-- ═══════════════════════════════════════════════════════════
+--
+-- ADITIVA. IDEMPOTENTE. Pode rodar de novo onde a primeira versão já rodou.
 --
 -- COMO DESFAZER:
 --   drop trigger if exists trg_apraz_cancelar on public.pep_aprazamentos;
 --   drop function if exists public.apraz_cancelar();
+--   drop policy if exists pep_aprz_cancelar_upd on public.pep_aprazamentos;
+--   drop index if exists public.pep_aprz_uq_vigentes;
+--   create unique index pep_aprz_uq
+--     on public.pep_aprazamentos (item_id, previsto_para);
 --   alter table public.pep_aprazamentos
 --     drop column if exists cancelado_em,
 --     drop column if exists cancelado_por,
@@ -17643,9 +17682,58 @@ begin
   end if;
 end $$;
 
--- As doses que ainda valem, que é a consulta de toda grade.
+-- ═══════════════════════════════════════════════════════════
+-- 🔴 C) O ÚNICO PASSA A IGNORAR AS CANCELADAS
+--
+-- `pep_aprz_uq` (item_id, previsto_para) nasceu em fase1 para impedir que
+-- a geração automática rodando duas vezes duplicasse a fila da enfermagem.
+-- A regra continua certa; o que mudou é que agora existe linha cancelada,
+-- e ela não ocupa horário na grade.
+--
+-- Sem esta troca, reaprazar mantendo qualquer um dos horários bate em
+-- "duplicate key": a dose cancelada das 00h55 continuaria reservando as
+-- 00h55 para sempre. E o painel de reaprazamento vem PREENCHIDO com os
+-- horários atuais — quem muda um horário mantém os outros três. É o
+-- caminho comum.
+--
+-- ⚠️ SE ALGUÉM REEXECUTAR `migracao-pep-fase1.sql`, o índice antigo volta
+--    (ela o cria com `if not exists`) e o reaprazamento quebra de novo.
+--    Rode esta migração outra vez: ela é idempotente.
+-- ═══════════════════════════════════════════════════════════
+create unique index if not exists pep_aprz_uq_vigentes
+  on public.pep_aprazamentos (item_id, previsto_para) where cancelado_em is null;
+drop index if exists public.pep_aprz_uq;
+
+-- As doses que ainda valem, que é a consulta de toda grade. O único acima
+-- já serve de índice para isto, mas o nome antigo fica: outra migração
+-- pode citá-lo, e índice sobrando não atrapalha leitura.
 create index if not exists pep_apraz_vigentes_idx
   on public.pep_aprazamentos (item_id, previsto_para) where cancelado_em is null;
+
+
+-- ═══════════════════════════════════════════════════════════
+-- 🔴 A) A POLÍTICA DE UPDATE — SEM ELA, NADA DISTO FUNCIONA
+--
+-- `migracao-pep-fase1.sql` criou SELECT e INSERT e escreveu "sem
+-- update/delete: o plano aprazado é registro clínico". A intenção estava
+-- certa e a consequência era um PATCH que responde 2xx sem alterar nada.
+--
+-- Cancelar não reescreve o registro: acrescenta a ele a informação de que
+-- aquela dose deixou de valer, com motivo e com autor. O que torna isto
+-- append-only DE VERDADE é a trava (B) logo abaixo, que congela todas as
+-- outras colunas — a política sozinha abriria a linha inteira.
+--
+-- Mesmo papel do INSERT: quem pode aprazar pode cancelar o que aprazou.
+-- A `pep_aprazamentos_mod_upd` do RLS por módulo é RESTRICTIVE e continua
+-- valendo por cima desta — ela estreita para quem tem escrita em
+-- `paciente`, e nunca concede nada sozinha. Esta aqui é a permissiva que
+-- faltava, e sem uma permissiva a restritiva nega tudo.
+-- ═══════════════════════════════════════════════════════════
+drop policy if exists pep_aprz_cancelar_upd on public.pep_aprazamentos;
+create policy pep_aprz_cancelar_upd on public.pep_aprazamentos
+  for update to authenticated
+  using (public.my_role() in ('adm_master','adm_silver'))
+  with check (public.my_role() in ('adm_master','adm_silver'));
 
 
 create or replace function public.apraz_cancelar()
@@ -17656,6 +17744,29 @@ as $apz$
 declare
   ja bigint;
 begin
+  -- ═══════════════════════════════════════════════════════════
+  -- 🔴 B) NO UPDATE, SÓ AS TRÊS COLUNAS DE CANCELAMENTO MUDAM
+  --
+  -- A política de UPDATE abre a LINHA, não as colunas — RLS não sabe
+  -- falar de coluna. Sem esta trava, quem pode cancelar poderia reescrever
+  -- `previsto_para` ("a dose era das 18h, não das 14h") ou `aprazado_por`
+  -- ("não fui eu que aprazei"), em silêncio, sem deixar rastro. O fato
+  -- clínico que esta tabela existe para guardar iria junto.
+  --
+  -- 💡 Compara os dois registros MENOS as três colunas, em vez de listar
+  -- as outras quinze: coluna nova nasce congelada sem ninguém precisar
+  -- lembrar deste gatilho. É a lição das "cinco casas" de sempre — aqui
+  -- o número de casas é zero.
+  -- ═══════════════════════════════════════════════════════════
+  if tg_op = 'UPDATE' then
+    if (to_jsonb(new) - 'cancelado_em' - 'cancelado_por' - 'cancelamento_motivo')
+       is distinct from
+       (to_jsonb(old) - 'cancelado_em' - 'cancelado_por' - 'cancelamento_motivo') then
+      raise exception
+        'Aprazamento não se reescreve: no UPDATE só cancelado_em, cancelado_por e cancelamento_motivo podem mudar. Para trocar o horário, cancele esta dose com motivo e apraze a nova.';
+    end if;
+  end if;
+
   -- Só interessa a transição para cancelado.
   if new.cancelado_em is null then
     -- 🔴 DESCANCELAR NÃO EXISTE. Uma dose cancelada foi comunicada como
@@ -17723,6 +17834,19 @@ select item, case when ok then '✅' else '❌' end as situacao from (
   union all
   select 'índice das doses vigentes',
          exists (select 1 from pg_class where relname = 'pep_apraz_vigentes_idx')
+  union all
+  -- 🔴 As três que a caminhada no demo cobrou. Sem a primeira, o
+  -- cancelamento responde 2xx e não grava nada.
+  select '🔴 A) política de UPDATE (sem ela o cancelamento não grava)',
+         exists (select 1 from pg_policies
+                  where schemaname = 'public' and tablename = 'pep_aprazamentos'
+                    and policyname = 'pep_aprz_cancelar_upd' and cmd = 'UPDATE')
+  union all
+  select '🔴 C) único ignora as canceladas',
+         exists (select 1 from pg_class where relname = 'pep_aprz_uq_vigentes')
+  union all
+  select '🔴 C) e o único antigo saiu do caminho',
+         not exists (select 1 from pg_class where relname = 'pep_aprz_uq')
   union all
   select 'migração anotada no registro',
          exists (select 1 from public.migracoes_aplicadas

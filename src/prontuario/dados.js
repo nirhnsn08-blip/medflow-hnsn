@@ -83,6 +83,17 @@ export async function carregarProntuario(sb, prontuario) {
   }
 
   const e = ativo.id;
+  // 🔴🔴 A ORDEM DESTA LISTA E A DO `Promise.all` SÃO A MESMA COISA.
+  //
+  // Em 15/10/2026 eu acrescentei a consulta do aprazamento na POSIÇÃO 4 do
+  // array e o nome `aprazamentos` no FIM da desestruturação. Resultado:
+  // `administracoes` passou a receber os APRAZAMENTOS, `sinais` as
+  // administrações, `evolucoes` os sinais vitais — tudo deslocado em um,
+  // num prontuário. E a suíte ficou VERDE.
+  //
+  // ⚠️ Consulta nova entra NO FIM do array e o nome NO FIM desta lista.
+  // Nunca no meio. E há teste (`carregarProntuario` com `sb` espião) que
+  // confere nome por nome contra a tabela de origem.
   const [prescricoes, itens, eventos, administracoes, sinais, evolucoes, anotacoes, anamneses,
          reconciliacoes, reconciliacaoItens, sumarios, validacoesFarmacia, escalas, lpp, faixasEscalas,
          saeCatalogo, saeHistorico, saeDiagnosticos, saePrescricoes, saePrescricaoItens, saeChecagem,
@@ -90,15 +101,6 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`pep_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`pep_prescricao_eventos?episodio_id=eq.${e}&select=*&order=criado_em`).catch(() => []),
-    // 🔴 O APRAZAMENTO. A tabela existia desde a pep-fase1 e ficou com ZERO
-    // usos até 15/10/2026 — a grade derivava os horários de uma âncora fixa
-    // de 06h, que é palpite. Quem decide a hora da dose é a enfermagem.
-    //
-    // ⚠️ O `.catch` é a mesma razão das outras: o código chega à Vercel
-    // antes de alguém rodar o SQL no painel. Mas ele devolve `null`, não
-    // `[]` — `listaLida` marca a falha, e a grade precisa distinguir "não
-    // foi aprazado" de "não consegui ler" antes de derivar horário.
-    sb(`pep_aprazamentos?episodio_id=eq.${e}&select=*&order=previsto_para`).catch(() => null),
     sb(`pep_administracoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`pep_sinais_vitais?episodio_id=eq.${e}&select=*&order=aferido_em`).catch(() => []),
     sb(`pep_evolucoes?prontuario=eq.${p}&select=*&order=criado_em.desc`).catch(() => []),
@@ -125,6 +127,13 @@ export async function carregarProntuario(sb, prontuario) {
     sb(`enf_sae_prescricoes?episodio_id=eq.${e}&select=*&order=criado_em.desc`).catch(() => []),
     sb(`enf_sae_prescricao_itens?episodio_id=eq.${e}&select=*&order=ordem`).catch(() => []),
     sb(`enf_sae_checagem?episodio_id=eq.${e}&select=*&order=executado_em.desc`).catch(() => []),
+    // 🔴 O APRAZAMENTO, E POR ÚLTIMO DE PROPÓSITO — ver o comentário sobre
+    // a ORDEM logo acima da desestruturação.
+    //
+    // ⚠️ O `.catch` devolve `null`, não `[]`: `listaLida` marca a falha, e
+    // a grade precisa distinguir "não foi aprazado" de "não consegui ler"
+    // antes de derivar horário. Derivar em cima de ignorância é inventar.
+    sb(`pep_aprazamentos?episodio_id=eq.${e}&select=*&order=previsto_para`).catch(() => null),
   ]);
 
   // 🔴 ERA UM ATALHO LOCAL, e o atalho escondia a origem: para o censo
