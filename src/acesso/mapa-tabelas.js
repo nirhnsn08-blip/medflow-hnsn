@@ -272,12 +272,18 @@ export const MAPA_TABELAS = {
   // O episódio obstétrico e a admissão são parte do prontuário da gestante:
   // quem tem o Paciente 360 lê. Quando a Fase 1 criar o módulo `maternidade`
   // próprio, ele entra nesta lista (sem tirar o `paciente`).
-  mat_episodios:            ["paciente"],
-  mat_admissoes:            ["paciente"],
-  mat_trabalho_parto:       ["paciente"],
-  mat_partos:               ["paciente"],
-  mat_recem_nascidos:       ["paciente"],
-  mat_alojamento:           ["paciente"],
+  // 🔴 O MÓDULO NÃO LIA AS PRÓPRIAS TABELAS (20/10/2026). Estas seis
+  // estavam só com `paciente`, então a tela da Maternidade — que é quem
+  // registra parto, trabalho de parto e alojamento conjunto — recebia
+  // lista vazia de quem não tivesse também o Paciente 360. Vivo hoje para
+  // o perfil `gestao`. Não é escolha de desenho, é falta: a casa que
+  // produz o dado tem de conseguir lê-lo.
+  mat_episodios:            ["paciente", "maternidade"],
+  mat_admissoes:            ["paciente", "maternidade"],
+  mat_trabalho_parto:       ["paciente", "maternidade"],
+  mat_partos:               ["paciente", "maternidade"],
+  mat_recem_nascidos:       ["paciente", "maternidade"],
+  mat_alojamento:           ["paciente", "maternidade"],
 
   // ── SCIH ──────────────────────────────────────────────────
   scih_casos:               ["scih", "paciente"],
@@ -389,11 +395,11 @@ export const SENSIVEIS = new Set([
  * entra: a análise clínica completa é do farmacêutico, que já tem acesso.
  */
 export const LEITURA_EXTRA = {
-  pep_episodios:          ["farmacia"],   // leito, setor e iniciais da fila
+  pep_episodios:          ["farmacia", "leitos"],  // leito, setor e iniciais da fila
   pep_prescricoes:        ["farmacia"],   // vigência, substituição, prescritor
   pep_prescricao_itens:   ["farmacia"],   // o que dispensar
   pep_prescricao_eventos: ["farmacia"],   // item suspenso não se dispensa
-  pep_alergias:           ["farmacia"],   // a mesma lista que imprime a pulseira
+  pep_alergias:           ["farmacia", "ps"],  // a mesma lista que imprime a pulseira
   farm_validacoes:        ["paciente"],   // o prescritor vê a avaliação da farmácia
 
   // 🔴 ANTECEDENTE CIRÚRGICO É DADO DE ANAMNESE (10/2026).
@@ -412,9 +418,13 @@ export const LEITURA_EXTRA = {
   // leitura onde uma TELA de fato lê. Hoje só o Paciente 360 lê cirurgia;
   // dar `ps` e `leitos` "por utilidade" ampliaria alcance a dado cirúrgico
   // sem nenhuma tela do outro lado — e alcance que ninguém usa é só risco.
-  cc_cirurgias:           ["paciente"],
-  cc_equipe:              ["paciente"],   // quem operou faz parte do antecedente
-  cc_descricao:           ["paciente"],   // a descrição cirúrgica É prontuário
+  // 🔴 E `faturamento` desde 20/10/2026 — ver o bloco no fim do arquivo:
+  // a conta SUS cobra o procedimento REALIZADO, que mora na descrição e
+  // sobrepõe o do agendamento. Sem isto, o faturista fechava a conta sem
+  // o item mais caro dela, e sem nenhum aviso.
+  cc_cirurgias:           ["paciente", "faturamento"],
+  cc_equipe:              ["paciente", "faturamento"],   // a AIH exige quem executou
+  cc_descricao:           ["paciente", "faturamento"],   // a descrição cirúrgica É prontuário
   // 🔴 Via aérea difícil é dado da PESSOA, não do episódio: precede toda
   // anestesia futura dela. E a ficha de recuperação fecha o trio da
   // CFM 1.638/2002 — o prontuário é único.
@@ -423,6 +433,151 @@ export const LEITURA_EXTRA = {
   // Implante é dado vitalício da pessoa: compatibilidade com ressonância,
   // cirurgia de revisão, e o telefonema do recall.
   cc_opme:                ["paciente"],
+
+  // ═══════════════════════════════════════════════════════════
+  // 🔴 TELA QUE LÊ E NÃO PODE LER — 17 PARES (20/10/2026)
+  //
+  // A catraca `leitura-por-modulo` mediu: 26 pares em que o módulo que
+  // abre a tela NÃO está entre os leitores da tabela que ela lê. Treze
+  // deles atingem perfil que EXISTE hoje. E a recusa não aparece: o
+  // PostgREST devolve `[]` com 200, e lista vazia numa tela lê-se "não
+  // há nada".
+  //
+  // ⚠️ A REGRA CONTINUA SENDO A DE CIMA — amplia-se onde uma TELA DE FATO
+  // LÊ, nunca "por utilidade". Cada linha abaixo tem a função de quem lê;
+  // onde eu não soube justificar pela função, NÃO ampliei (ver o que
+  // ficou de fora, no fim do bloco).
+  // ═══════════════════════════════════════════════════════════
+
+  // ── FATURAMENTO ────────────────────────────────────────────
+  // 🔴 Atinge `recepcao` E O PRÓPRIO PERFIL `faturamento`, hoje.
+  //
+  // A conta SUS cobra o procedimento REALIZADO, e ele mora na descrição
+  // cirúrgica (`codigoParaFaturar`: o código da descrição sobrepõe o do
+  // agendamento). Sem leitura, o faturista fecha a conta sem o item mais
+  // caro dela — e o aviso que existe para isso não dispara, porque ele
+  // foi feito para a rede cair e a RLS não cai: devolve vazio com 200.
+  //
+  // A equipe entra porque a AIH exige o profissional que executou.
+  //
+  // ⚠️ DÍVIDA ASSUMIDA: `cc_descricao` guarda o laudo inteiro (achados,
+  // intercorrências, narrativa) e a conta usa TRÊS campos —
+  // `procedimento_cod`, `procedimento_realizado`, `conversao`. O mínimo
+  // necessário seria uma view com essas colunas. Não é o que faço aqui
+  // porque o projeto não tem NENHUMA view, e as três catracas (RLS,
+  // escrita, leitura) pressupõem tabela — a primeira view entraria cega
+  // para todas elas. Fica anotado como desenho melhor, não como pendência
+  // de permissão.
+  //
+  // (As três linhas de `cc_*` ficam lá em cima, junto do antecedente
+  // cirúrgico: chave repetida neste objeto sobrescreveria em silêncio.)
+
+  // ── FARMÁCIA ───────────────────────────────────────────────
+  // A dispensação do PS acontece contra o atendimento, não a internação —
+  // é o equivalente de `pep_episodios`, que a farmácia já lê.
+  //
+  // 🔒 `pacientes` NÃO ENTRA AQUI, e isso é decisão, não esquecimento.
+  // Está mais abaixo, no bloco do que ficou de fora.
+  // (`ps_atendimentos` ficou numa linha só, lá embaixo, com a maternidade
+  // junto: chave repetida neste objeto sobrescreve em silêncio.)
+
+  // ── PRONTO-SOCORRO ─────────────────────────────────────────
+  // 🔴 Atinge `tecnico_enfermagem`, `fisioterapeuta`, `nir`, `recepcao`.
+  // A intervenção do farmacêutico (trocar dose, suspender, alertar
+  // interação) só vale se CHEGA a quem prescreveu e a quem administra.
+  farm_intervencoes:      ["ps"],
+  // 🔴 ALERGIA — E ESTE É O MAIS GRAVE DE TODOS (20/10/2026).
+  //
+  // Vivo para `nir` e `recepcao`. O projeto construiu `alergiasIncertas`
+  // exatamente para que leitura falha NÃO vire "sem alergia" — está no
+  // cabeçalho de `clinico/contexto.js`: "silêncio é indistinguível de sem
+  // alergia (…) uma queda de rede silenciaria justamente a conferência
+  // que mata quando falha".
+  //
+  // ⚠️ MAS A GUARDA NÃO ALCANÇA A RLS. Rede caindo devolve erro; política
+  // ausente devolve `[]` com 200. `naoDeuParaLer` é falso, o alerta de
+  // "alergias não conferidas" não sai, e o motor segue como se o paciente
+  // não tivesse nenhuma. É a terceira vez nesta frente que uma guarda
+  // feita para a rede é derrotada pela permissão — foi o que mais me
+  // ensinou aqui.
+  // A tela do PS mostra saldo para dispensar na própria unidade.
+  farm_lotes:             ["suprimentos", "ps"],
+  // O PS decide internação olhando leito livre; sem isso a tela mostra
+  // "nenhum leito" e a decisão sai pelo telefone, fora do registro.
+  leitos:                 ["ps", "faturamento", "overview", "atendimento", "maternidade"],
+  leitos_saidas:          ["ps", "faturamento", "overview", "atendimento"],
+  // A Maternidade acompanha a gestante que chegou pelo PS.
+  ps_atendimentos:        ["farmacia", "faturamento", "maternidade"],
+
+  // ── GIRO DE LEITOS ─────────────────────────────────────────
+  // 🔴 Atinge `nir`, `recepcao`, `faturamento`. Quem gere leito trabalha
+  // sobre o episódio: é ele que diz quem ocupa e desde quando.
+
+  // ── BLOCO CIRÚRGICO ────────────────────────────────────────
+  // 🔴 Atinge `nir`. OPME e material da sala saem do catálogo de itens.
+  sup_itens:              ["bloco"],
+
+  // ── CENTRO DE MONITORAMENTO ────────────────────────────────
+  // 🔴 Atinge `matriz`. É o painel de visão geral — `leitos` e
+  // `leitos_saidas` já subiram acima; falta a fila de solicitação.
+  solicitacoes:           ["overview"],
+
+  // ── ESTOQUE & COMPRAS ──────────────────────────────────────
+  // (`farm_lotes` subiu para o bloco do PS: lote é saldo, e o almoxarifado
+  // precisa dele para comprar — a lista está lá, com `suprimentos`.)
+
+  // ── A ANÁLISE CLÍNICA DA FARMÁCIA ──────────────────────────
+  // 🔴 Vivo para `aux_farmacia` e `gestao`. O farmacêutico clínico avalia
+  // a prescrição contra as CONDIÇÕES do paciente (função renal, gestação,
+  // alergia) e contra o que de fato FOI ADMINISTRADO. Sem essas duas
+  // leituras a análise roda sobre metade do quadro e não diz que está
+  // incompleta — devolve vazio com sucesso.
+  pep_condicoes:          ["farmacia"],
+  pep_administracoes:     ["farmacia"],
+  ps_administracoes:      ["farmacia"],
+
+  // ── MATERNIDADE E RECEPÇÃO: operacional ────────────────────
+  // Leito e atendimento são o chão de onde as duas telas partem. As
+  // tabelas próprias da Maternidade foram para o MAPA, não aqui: lá o
+  // módulo também ESCREVE, e é ele que produz o dado.
+  tiss_guias:             ["atendimento"],   // a guia é emitida na aba do Atendimento
+
+  // ═══════════════════════════════════════════════════════════
+  // 🔒 O QUE EU NÃO AMPLIEI, E POR QUÊ
+  //
+  // 🔴 `farmacia → pacientes` — E ESTE TEM CONSEQUÊNCIA CLÍNICA.
+  //
+  // A farmácia lê `pacientes?select=prontuario,data_nascimento`: só a
+  // IDADE, que é o que aciona dose pediátrica e os critérios de Beers.
+  // Para `aux_farmacia` a leitura volta vazia, a idade fica nula, e as
+  // regras de criança e de idoso NÃO DISPARAM — exatamente o defeito que
+  // `prontuario/contexto-internado.js` foi escrito para consertar
+  // ("os dois escreviam idade: null"), reintroduzido pela permissão.
+  //
+  // ⚠️ E MESMO ASSIM NÃO AMPLIEI. RLS é por LINHA: dar `pacientes` à
+  // farmácia entrega nome, CPF, CNS, nome da mãe e endereço para buscar
+  // UM campo. A decisão de manter essa tabela fechada à farmácia é
+  // antiga e deliberada — há teste guardando-a — e a farmácia identifica
+  // o paciente por leito e iniciais via `pep_episodios`.
+  //
+  // O conserto certo é levar a idade para onde a farmácia JÁ LÊ:
+  // `data_nascimento` em `pep_episodios`, como `iniciais` já está. Isso é
+  // migração com backfill, não ajuste de permissão — e some com a leitura
+  // de `pacientes` em vez de ampliá-la, que é estritamente melhor.
+  //
+  // `suprimentos → farm_movimentos`: a MESMA tabela guarda movimento de
+  // medicamento CONTROLADO (por isso `controlados` está entre os
+  // leitores). Dar visibilidade disso ao almoxarifado não é ajuste de
+  // permissão, é decisão de custódia — Portaria 344/98. Fica para quem
+  // decide o fluxo de controlados no hospital.
+  //
+  // `executivo → 8 tabelas`: a Torre de Comando lê `prontuario` e
+  // `iniciais` em `cc_cirurgias` e `ag_agendamentos` — identificador de
+  // paciente — e os cartões dela são CONTAGEM. Antes de ampliar, a
+  // pergunta é se a Torre precisa da linha ou de um agregado. É tela
+  // nova, da Laura, com PR aberta; mexer agora atropelaria o trabalho
+  // dela.
+  // ═══════════════════════════════════════════════════════════
 };
 
 /** Quem LÊ a tabela: a lista do mapa mais os leitores extras. */

@@ -39,62 +39,50 @@ const MODULOS_COM_TELA = [
  * quando o módulo for vendido sozinho — que é o plano do produto.
  */
 const CONHECIDOS = [
-  // ── FATURAMENTO: a conta SUS fecha sem a cirurgia ──────────
-  // 🔴 ATINGE `recepcao` E O PRÓPRIO PERFIL `faturamento`. A tela lê a
-  // cirurgia para cobrar o procedimento REALIZADO (que sobrepõe o
-  // agendado). Sem leitura, o faturista fecha a conta sem o item mais
-  // caro dela — e o próprio código já avisa disso num comentário, mas a
-  // guarda (`naoLi`) não dispara: RLS não falha, devolve vazio com 200.
-  "faturamento → cc_cirurgias (leem: bloco, paciente)",
-  "faturamento → cc_descricao (leem: bloco, paciente)",
-  "faturamento → cc_equipe (leem: bloco, paciente)",
-  // atinge recepcao e faturamento
-  "faturamento → leitos (leem: leitos, paciente, scih)",
-  "faturamento → leitos_saidas (leem: leitos, paciente)",
-  "faturamento → ps_atendimentos (leem: ps, atendimento, ambulatorio, paciente)",
-
-  // ── FARMÁCIA: quem dispensa não vê para quem ───────────────
-  // 🔴 ATINGE `aux_farmacia`.
-  "farmacia → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
-  "farmacia → ps_atendimentos (leem: ps, atendimento, ambulatorio, paciente)",
-
-  // ── SUPRIMENTOS: o almoxarifado não vê o lote ──────────────
-  // 🔴 ATINGE `almoxarifado` e `matriz`.
-  "suprimentos → farm_lotes (leem: farmacia)",
-  "suprimentos → farm_movimentos (leem: farmacia, controlados, ps)",
-
-  // ── CENTRO DE MONITORAMENTO: o painel de todo mundo ────────
-  // 🔴 ATINGE `matriz`.
-  "overview → leitos (leem: leitos, paciente, scih)",
-  "overview → leitos_saidas (leem: leitos, paciente)",
-  "overview → solicitacoes (leem: ps, leitos)",
-
-  // ── GIRO DE LEITOS ─────────────────────────────────────────
-  // 🔴 ATINGE `nir`, `recepcao`, `faturamento`.
-  "leitos → pep_episodios (leem: paciente, farmacia)",
-
-  // ── PRONTO-SOCORRO ─────────────────────────────────────────
-  // 🔴 ATINGE `tecnico_enfermagem`, `fisioterapeuta`, `nir`, `recepcao`.
-  "ps → farm_intervencoes (leem: farmacia)",
-  "ps → leitos (leem: leitos, paciente, scih)",
-  "ps → leitos_saidas (leem: leitos, paciente)",
-
-  // ── BLOCO CIRÚRGICO ────────────────────────────────────────
-  // 🔴 ATINGE `nir`.
-  "bloco → sup_itens (leem: suprimentos, farmacia)",
-
   // ── TORRE DE COMANDO: lê de nove módulos, por desenho ───────
-  // Nenhum perfil atual é atingido (quem tem `executivo` hoje tem tudo).
-  // Vira defeito no dia em que a Torre for vendida sozinha — e ela é o
-  // painel da direção, onde zero se lê como "está tudo certo".
+  //
+  // Nenhum perfil atual é atingido: quem tem `executivo` hoje tem todos os
+  // outros. Vira defeito no dia em que a Torre for vendida sozinha — e ela
+  // é o painel da direção, onde zero se lê como "está tudo certo".
+  //
+  // 🔒 NÃO AMPLIADO DE PROPÓSITO. A Torre lê `prontuario` e `iniciais` em
+  // `cc_cirurgias` e `ag_agendamentos` — identificador de paciente — e os
+  // cartões dela são CONTAGEM. A pergunta antes de ampliar é se ela precisa
+  // da LINHA ou de um agregado. É tela nova, da Laura, com PR aberta.
   "executivo → ag_agendamentos (leem: atendimento)",
   "executivo → ag_grades (leem: atendimento)",
-  "executivo → cc_cirurgias (leem: bloco, paciente)",
-  "executivo → farm_lotes (leem: farmacia)",
-  "executivo → leitos (leem: leitos, paciente, scih)",
-  "executivo → leitos_saidas (leem: leitos, paciente)",
-  "executivo → sup_itens (leem: suprimentos, farmacia)",
+  "executivo → cc_cirurgias (leem: bloco, paciente, faturamento)",
+  "executivo → farm_lotes (leem: farmacia, suprimentos, ps)",
+  "executivo → leitos (leem: leitos, paciente, scih, ps, faturamento, overview, atendimento, maternidade)",
+  "executivo → leitos_saidas (leem: leitos, paciente, ps, faturamento, overview, atendimento)",
+  "executivo → sup_itens (leem: suprimentos, farmacia, bloco)",
   "executivo → sup_lotes (leem: suprimentos)",
+
+  // ── ESTOQUE & COMPRAS × CONTROLADOS ────────────────────────
+  //
+  // 🔴 Atinge `almoxarifado` e `matriz` hoje — e mesmo assim fica.
+  //
+  // A MESMA tabela guarda movimento de medicamento CONTROLADO (por isso
+  // `controlados` está entre os leitores). Dar essa visibilidade ao
+  // almoxarifado não é ajuste de permissão, é decisão de CUSTÓDIA —
+  // Portaria 344/98.
+  "suprimentos → farm_movimentos (leem: farmacia, controlados, ps)",
+
+  // ── A TABELA DE IDENTIFICAÇÃO ──────────────────────────────
+  //
+  // 🔴 `farmacia → pacientes` ATINGE `aux_farmacia` E TEM CONSEQUÊNCIA
+  // CLÍNICA: a farmácia lê `select=prontuario,data_nascimento` só para ter
+  // a IDADE, que aciona dose pediátrica e critérios de Beers. Vindo vazio,
+  // a idade fica nula e as regras de criança e de idoso NÃO DISPARAM — o
+  // mesmo defeito que `contexto-internado.js` foi escrito para consertar.
+  //
+  // ⚠️ FICAM NA LISTA DE PROPÓSITO. RLS é por LINHA: abrir `pacientes`
+  // entregaria nome, CPF, CNS, nome da mãe e endereço para buscar UM
+  // campo. O conserto é levar `data_nascimento` para `pep_episodios`,
+  // que a farmácia já lê — e aí a leitura SOME em vez de ser permitida.
+  // É migração com backfill, não ajuste de permissão.
+  "farmacia → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
+  "maternidade → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
 ];
 
 const leitores = t => (MAPA_TABELAS[t] ? leitoresDe(t, MAPA_TABELAS, LEITURA_EXTRA) : null);
