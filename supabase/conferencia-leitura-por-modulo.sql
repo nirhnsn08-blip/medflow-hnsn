@@ -6,6 +6,10 @@
 --
 -- ⚠️ NÃO ALTERA NADA. Só lê `pg_policies` e compara.
 --
+-- 🔴 UM RESULTADO SÓ: o SQL Editor mostra apenas a ÚLTIMA consulta, e
+-- na versão anterior as 22 linhas de leitura ficavam escondidas atrás
+-- da checagem de escrita.
+--
 -- Cada linha pergunta: a política de SELECT desta tabela cita o módulo
 -- que passou a precisar dela? ❌ aqui significa que a tela continua
 -- mostrando lista vazia, sem erro nenhum.
@@ -45,20 +49,19 @@ select case when a.condicao is null then '⚠️ sem política de leitura'
             else '❌ NÃO CHEGOU' end as situacao,
        e.tabela, e.modulo_novo, e.leitores_no_mapa
   from esperado e left join atual a on a.tabela = e.tabela
- order by situacao, e.tabela;
 
+union all
 
--- 🔴 E A ESCRITA NÃO PODE TER ENCOLHIDO.
---
--- Só a Maternidade ganhou escrita (o módulo produz o próprio dado).
--- Ninguém pode ter PERDIDO — foi assim que o PR #60 trancou 18 tabelas
--- ao vivo, e a lição ficou.
-select case when count(*) >= 6
-            then '✅ as 6 tabelas da maternidade aceitam escrita do módulo'
-            else '❌ só ' || count(*) || ' de 6 — confira antes de seguir'
-       end as situacao
+-- 🔴 E A ESCRITA NÃO PODE TER ENCOLHIDO. Só a Maternidade ganhou
+-- escrita (o módulo produz o próprio dado); ninguém pode ter PERDIDO —
+-- foi assim que o PR #60 trancou 18 tabelas ao vivo.
+select case when count(*) >= 6 then '✅' else '❌' end,
+       'ESCRITA da maternidade', 'maternidade',
+       count(*) || ' de 6 políticas'
   from pg_policies
  where schemaname = 'public'
    and tablename like 'mat\_%'
    and cmd in ('INSERT', 'UPDATE', 'ALL')
-   and coalesce(qual, with_check) like '%maternidade%';
+   and coalesce(qual, with_check) like '%maternidade%'
+
+order by 1, 2;
