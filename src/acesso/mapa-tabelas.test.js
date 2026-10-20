@@ -217,7 +217,10 @@ describe("LEITURA_EXTRA", () => {
 
   it("🔴 a farmácia lê SÓ o que precisa para dispensar — o resto do prontuário continua fechado", () => {
     const daFarmacia = Object.entries(LEITURA_EXTRA).filter(([, m]) => m.includes("farmacia")).map(([t]) => t).sort();
-    expect(daFarmacia).toEqual(["pep_alergias", "pep_episodios", "pep_prescricao_eventos", "pep_prescricao_itens", "pep_prescricoes"]);
+    // `ps_atendimentos` entrou em 20/10/2026: a dispensação do PS acontece
+    // contra o ATENDIMENTO, como a da internação acontece contra o
+    // episódio — que já estava aqui. Operacional, não identificação.
+    expect(daFarmacia).toEqual(["pep_alergias", "pep_episodios", "pep_prescricao_eventos", "pep_prescricao_itens", "pep_prescricoes", "ps_atendimentos"]);
     for (const t of ["pep_evolucoes", "pep_sinais_vitais", "pep_anamneses", "pep_condicoes", "pacientes"])
       expect(leitoresDe(t), t).not.toContain("farmacia");
   });
@@ -235,16 +238,37 @@ describe("LEITURA_EXTRA", () => {
   it("a leitura usa o mapa MAIS o extra, sem repetir módulo", () => {
     expect(leitoresDe("pep_prescricoes")).toEqual(["paciente", "farmacia"]);
     expect(leitoresDe("farm_validacoes")).toEqual(["farmacia", "paciente"]);
-    expect(leitoresDe("farm_lotes")).toEqual(["farmacia"]);
+    expect(leitoresDe("farm_lotes")).toEqual(["farmacia", "suprimentos"]);
     expect(leitoresDe("x", { x: ["a"] }, { x: ["a", "b"] })).toEqual(["a", "b"]);
   });
 
-  it("a migração da farmácia do hospital aplica EXATAMENTE a leitura do mapa", () => {
+  it("a migração da farmácia do hospital não concede MAIS que o mapa", () => {
+    // 🔴 ERA `EXATAMENTE`, E ESTAVA ERRADO POR UM MOTIVO SUTIL (20/10/2026).
+    //
+    // Esta migração está CONGELADA (rodou, tem hash registrado). O mapa, não:
+    // ele cresce quando uma tela nova precisa ler. Exigir igualdade fazia a
+    // suíte quebrar a cada ampliação legítima — e a leitura de `pep_episodios`
+    // cresceu agora, para o Giro de Leitos.
+    //
+    // Quem decide o estado final é `migracao-rls-leitura.sql`, que roda por
+    // ÚLTIMO na ordem e reescreve a política de SELECT de todas as tabelas.
+    // A migração antiga é um estado intermediário.
+    //
+    // ⚠️ O QUE AINDA IMPORTA, E É O QUE ESTE TESTE GUARDA: ela não pode
+    // conceder a NINGUÉM que o mapa não conceda. Grant velho mais largo que
+    // o mapa sobreviveria no intervalo entre as duas migrações — e num banco
+    // novo esse intervalo é a reconstrução inteira.
     const mig = leia("supabase", "migracao-farmacia-hospital.sql");
     const pares = [...mig.matchAll(/\('(pep_[a-z_]+)',\s*'([^\n]+)'\)/g)].map(m => [m[1], m[2]]);
     expect(pares.length).toBe(5);
-    for (const [t, cond] of pares) expect(cond, t).toBe(condicaoDe(leitoresDe(t)));
-    expect(mig).toContain(`using (${condicaoDe(leitoresDe("farm_validacoes")).replace(/''/g, "'")})`);
+    for (const [t, cond] of pares) {
+      const doMapa = leitoresDe(t);
+      const naMigracao = [...cond.matchAll(/''([a-z_]+)''/g)].map(m => m[1]);
+      const demais = naMigracao.filter(m => !doMapa.includes(m));
+      expect(demais, `${t}: a migração concede a quem o mapa não concede`).toEqual([]);
+    }
+    const naValidacao = [...condicaoDe(leitoresDe("farm_validacoes")).matchAll(/''([a-z_]+)''/g)].map(m => m[1]);
+    for (const m of naValidacao) expect(mig, `farm_validacoes: ${m}`).toContain(m);
   });
 });
 

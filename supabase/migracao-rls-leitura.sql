@@ -263,9 +263,9 @@ begin
       ('auditoria', 'public.pode_ver_algum(''auditoria'')'),                                          -- auditoria
       ('cc_anestesia', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
       ('cc_checklist', 'public.pode_ver_algum(''bloco'')'),                                           -- bloco
-      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
-      ('cc_descricao', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                             -- bloco, paciente
-      ('cc_equipe', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                                -- bloco, paciente
+      ('cc_cirurgias', 'public.pode_ver_algum(''bloco'', ''paciente'', ''faturamento'')'),            -- bloco, paciente, faturamento
+      ('cc_descricao', 'public.pode_ver_algum(''bloco'', ''paciente'', ''faturamento'')'),            -- bloco, paciente, faturamento
+      ('cc_equipe', 'public.pode_ver_algum(''bloco'', ''paciente'', ''faturamento'')'),               -- bloco, paciente, faturamento
       ('cc_opme', 'public.pode_ver_algum(''bloco'', ''suprimentos'', ''paciente'')'),                 -- bloco, suprimentos, paciente
       ('cc_rpa_aldrete', 'public.pode_ver_algum(''bloco'', ''paciente'')'),                           -- bloco, paciente
       ('cc_salas', 'true'),                                                                           -- todos os autenticados
@@ -281,16 +281,16 @@ begin
       ('enf_sae_prescricoes', 'public.pode_ver_algum(''paciente'', ''leitos'')'),                     -- paciente, leitos
       ('farm_incompat_y', 'true'),                                                                    -- todos os autenticados
       ('farm_interacoes', 'true'),                                                                    -- todos os autenticados
-      ('farm_intervencoes', 'public.pode_ver_algum(''farmacia'')'),                                   -- farmacia
+      ('farm_intervencoes', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                           -- farmacia, ps
       ('farm_inventarios', 'public.pode_ver_algum(''farmacia'')'),                                    -- farmacia
-      ('farm_lotes', 'public.pode_ver_algum(''farmacia'')'),                                          -- farmacia
+      ('farm_lotes', 'public.pode_ver_algum(''farmacia'', ''suprimentos'')'),                         -- farmacia, suprimentos
       ('farm_medicamentos', 'true'),                                                                  -- todos os autenticados
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_ver_algum(''farmacia'')'),                               -- farmacia
       ('farm_preparo', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                                -- farmacia, ps
       ('farm_validacoes', 'public.pode_ver_algum(''farmacia'', ''paciente'')'),                       -- farmacia, paciente
-      ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'')'),                        -- leitos, paciente, scih
-      ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'')'),                           -- leitos, paciente
+      ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'', ''ps'', ''faturamento'', ''overview'')'), -- leitos, paciente, scih, ps, faturamento, overview
+      ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'', ''ps'', ''faturamento'', ''overview'')'), -- leitos, paciente, ps, faturamento, overview
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
       ('mat_admissoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('mat_alojamento', 'public.pode_ver_algum(''paciente'')'),                                      -- paciente
@@ -316,7 +316,7 @@ begin
       ('pep_anotacoes_enfermagem', 'public.pode_ver_algum(''paciente'')'),                            -- paciente
       ('pep_aprazamentos', 'public.pode_ver_algum(''paciente'')'),                                    -- paciente
       ('pep_condicoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
-      ('pep_episodios', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                         -- paciente, farmacia
+      ('pep_episodios', 'public.pode_ver_algum(''paciente'', ''farmacia'', ''leitos'')'),             -- paciente, farmacia, leitos
       ('pep_evolucoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_medicamentos_uso', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
       ('pep_prescricao_eventos', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                -- paciente, farmacia
@@ -334,7 +334,7 @@ begin
       ('prot_catalogo', 'true'),                                                                      -- todos os autenticados
       ('prot_setor', 'true'),                                                                         -- todos os autenticados
       ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'', ''faturamento'')'),          -- ps, paciente, faturamento
-      ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'')'), -- ps, atendimento, ambulatorio, paciente
+      ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'', ''farmacia'', ''faturamento'')'), -- ps, atendimento, ambulatorio, paciente, farmacia, faturamento
       ('ps_faixas_obstetricas', 'true'),                                                              -- todos os autenticados
       ('ps_faixas_pediatricas', 'true'),                                                              -- todos os autenticados
       ('ps_prescricao_itens', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),           -- ps, paciente, farmacia
@@ -352,11 +352,11 @@ begin
       ('scih_indicadores', 'public.pode_ver_algum(''scih'', ''overview'', ''print'')'),               -- scih, overview, print
       ('setores', 'true'),                                                                            -- todos os autenticados
       ('sigtap_procedimentos', 'true'),                                                               -- todos os autenticados
-      ('solicitacoes', 'public.pode_ver_algum(''ps'', ''leitos'')'),                                  -- ps, leitos
+      ('solicitacoes', 'public.pode_ver_algum(''ps'', ''leitos'', ''overview'')'),                    -- ps, leitos, overview
       ('sup_cotacoes', 'public.pode_ver_algum(''suprimentos'')'),                                     -- suprimentos
       ('sup_fornecedores', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                   -- suprimentos, farmacia
       ('sup_inventarios', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
-      ('sup_itens', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                          -- suprimentos, farmacia
+      ('sup_itens', 'public.pode_ver_algum(''suprimentos'', ''farmacia'', ''bloco'')'),               -- suprimentos, farmacia, bloco
       ('sup_lotes', 'public.pode_ver_algum(''suprimentos'')'),                                        -- suprimentos
       ('sup_movimentos', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
       ('sup_parametros', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
