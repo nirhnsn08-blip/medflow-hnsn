@@ -283,21 +283,21 @@ begin
       ('farm_interacoes', 'true'),                                                                    -- todos os autenticados
       ('farm_intervencoes', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                           -- farmacia, ps
       ('farm_inventarios', 'public.pode_ver_algum(''farmacia'')'),                                    -- farmacia
-      ('farm_lotes', 'public.pode_ver_algum(''farmacia'', ''suprimentos'')'),                         -- farmacia, suprimentos
+      ('farm_lotes', 'public.pode_ver_algum(''farmacia'', ''suprimentos'', ''ps'')'),                 -- farmacia, suprimentos, ps
       ('farm_medicamentos', 'true'),                                                                  -- todos os autenticados
       ('farm_movimentos', 'public.pode_ver_algum(''farmacia'', ''controlados'', ''ps'')'),            -- farmacia, controlados, ps
       ('farm_nao_padronizados', 'public.pode_ver_algum(''farmacia'')'),                               -- farmacia
       ('farm_preparo', 'public.pode_ver_algum(''farmacia'', ''ps'')'),                                -- farmacia, ps
       ('farm_validacoes', 'public.pode_ver_algum(''farmacia'', ''paciente'')'),                       -- farmacia, paciente
-      ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'', ''ps'', ''faturamento'', ''overview'')'), -- leitos, paciente, scih, ps, faturamento, overview
-      ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'', ''ps'', ''faturamento'', ''overview'')'), -- leitos, paciente, ps, faturamento, overview
+      ('leitos', 'public.pode_ver_algum(''leitos'', ''paciente'', ''scih'', ''ps'', ''faturamento'', ''overview'', ''atendimento'', ''maternidade'')'), -- leitos, paciente, scih, ps, faturamento, overview, atendimento, maternidade
+      ('leitos_saidas', 'public.pode_ver_algum(''leitos'', ''paciente'', ''ps'', ''faturamento'', ''overview'', ''atendimento'')'), -- leitos, paciente, ps, faturamento, overview, atendimento
       ('leitos_turnover', 'public.pode_ver_algum(''leitos'', ''overview'', ''print'')'),              -- leitos, overview, print
-      ('mat_admissoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
-      ('mat_alojamento', 'public.pode_ver_algum(''paciente'')'),                                      -- paciente
-      ('mat_episodios', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
-      ('mat_partos', 'public.pode_ver_algum(''paciente'')'),                                          -- paciente
-      ('mat_recem_nascidos', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
-      ('mat_trabalho_parto', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
+      ('mat_admissoes', 'public.pode_ver_algum(''paciente'', ''maternidade'')'),                      -- paciente, maternidade
+      ('mat_alojamento', 'public.pode_ver_algum(''paciente'', ''maternidade'')'),                     -- paciente, maternidade
+      ('mat_episodios', 'public.pode_ver_algum(''paciente'', ''maternidade'')'),                      -- paciente, maternidade
+      ('mat_partos', 'public.pode_ver_algum(''paciente'', ''maternidade'')'),                         -- paciente, maternidade
+      ('mat_recem_nascidos', 'public.pode_ver_algum(''paciente'', ''maternidade'')'),                 -- paciente, maternidade
+      ('mat_trabalho_parto', 'public.pode_ver_algum(''paciente'', ''maternidade'')'),                 -- paciente, maternidade
       ('migracoes_aplicadas', 'true'),                                                                -- todos os autenticados
       ('nsp_acoes', 'public.pode_ver_algum(''nsp'')'),                                                -- nsp
       ('nsp_capacitacoes', 'public.pode_ver_algum(''nsp'')'),                                         -- nsp
@@ -310,12 +310,12 @@ begin
       ('nsp_rca', 'public.pode_ver_algum(''nsp'')'),                                                  -- nsp
       ('pacientes', 'public.pode_ver_algum(''atendimento'', ''ambulatorio'', ''ps'', ''paciente'')'), -- atendimento, ambulatorio, ps, paciente
       ('pep_acessos', 'public.pode_ver_algum(''auditoria'')'),                                        -- auditoria
-      ('pep_administracoes', 'public.pode_ver_algum(''paciente'')'),                                  -- paciente
-      ('pep_alergias', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                          -- paciente, farmacia
+      ('pep_administracoes', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                    -- paciente, farmacia
+      ('pep_alergias', 'public.pode_ver_algum(''paciente'', ''farmacia'', ''ps'')'),                  -- paciente, farmacia, ps
       ('pep_anamneses', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_anotacoes_enfermagem', 'public.pode_ver_algum(''paciente'')'),                            -- paciente
       ('pep_aprazamentos', 'public.pode_ver_algum(''paciente'')'),                                    -- paciente
-      ('pep_condicoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
+      ('pep_condicoes', 'public.pode_ver_algum(''paciente'', ''farmacia'')'),                         -- paciente, farmacia
       ('pep_episodios', 'public.pode_ver_algum(''paciente'', ''farmacia'', ''leitos'')'),             -- paciente, farmacia, leitos
       ('pep_evolucoes', 'public.pode_ver_algum(''paciente'')'),                                       -- paciente
       ('pep_medicamentos_uso', 'public.pode_ver_algum(''paciente'')'),                                -- paciente
@@ -333,8 +333,8 @@ begin
       ('prot_bundle_itens', 'public.pode_ver_algum(''protocolos'', ''ps'', ''paciente'')'),           -- protocolos, ps, paciente
       ('prot_catalogo', 'true'),                                                                      -- todos os autenticados
       ('prot_setor', 'true'),                                                                         -- todos os autenticados
-      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'', ''faturamento'')'),          -- ps, paciente, faturamento
-      ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'', ''farmacia'', ''faturamento'')'), -- ps, atendimento, ambulatorio, paciente, farmacia, faturamento
+      ('ps_administracoes', 'public.pode_ver_algum(''ps'', ''paciente'', ''faturamento'', ''farmacia'')'), -- ps, paciente, faturamento, farmacia
+      ('ps_atendimentos', 'public.pode_ver_algum(''ps'', ''atendimento'', ''ambulatorio'', ''paciente'', ''farmacia'', ''faturamento'', ''maternidade'')'), -- ps, atendimento, ambulatorio, paciente, farmacia, faturamento, maternidade
       ('ps_faixas_obstetricas', 'true'),                                                              -- todos os autenticados
       ('ps_faixas_pediatricas', 'true'),                                                              -- todos os autenticados
       ('ps_prescricao_itens', 'public.pode_ver_algum(''ps'', ''paciente'', ''farmacia'')'),           -- ps, paciente, farmacia
@@ -362,7 +362,7 @@ begin
       ('sup_parametros', 'public.pode_ver_algum(''suprimentos'', ''farmacia'')'),                     -- suprimentos, farmacia
       ('sup_pedidos', 'public.pode_ver_algum(''suprimentos'')'),                                      -- suprimentos
       ('sup_requisicoes', 'public.pode_ver_algum(''suprimentos'')'),                                  -- suprimentos
-      ('tiss_guias', 'public.pode_ver_algum(''faturamento'')'),                                       -- faturamento
+      ('tiss_guias', 'public.pode_ver_algum(''faturamento'', ''atendimento'')'),                      -- faturamento, atendimento
       ('usuarios_permissoes', 'public.pode_ver_algum(''users'') or user_id = auth.uid()')             -- users, @proprio
     ) as v(tabela, cond)
   loop
@@ -489,12 +489,12 @@ begin
       ('leitos', 'public.pode_editar_algum(''leitos'', ''paciente'', ''scih'')'),                     -- leitos, paciente, scih
       ('leitos_saidas', 'public.pode_editar_algum(''leitos'', ''paciente'')'),                        -- leitos, paciente
       ('leitos_turnover', 'public.pode_editar_algum(''leitos'', ''overview'', ''print'')'),           -- leitos, overview, print
-      ('mat_admissoes', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
-      ('mat_alojamento', 'public.pode_editar_algum(''paciente'')'),                                   -- paciente
-      ('mat_episodios', 'public.pode_editar_algum(''paciente'')'),                                    -- paciente
-      ('mat_partos', 'public.pode_editar_algum(''paciente'')'),                                       -- paciente
-      ('mat_recem_nascidos', 'public.pode_editar_algum(''paciente'')'),                               -- paciente
-      ('mat_trabalho_parto', 'public.pode_editar_algum(''paciente'')'),                               -- paciente
+      ('mat_admissoes', 'public.pode_editar_algum(''paciente'', ''maternidade'')'),                   -- paciente, maternidade
+      ('mat_alojamento', 'public.pode_editar_algum(''paciente'', ''maternidade'')'),                  -- paciente, maternidade
+      ('mat_episodios', 'public.pode_editar_algum(''paciente'', ''maternidade'')'),                   -- paciente, maternidade
+      ('mat_partos', 'public.pode_editar_algum(''paciente'', ''maternidade'')'),                      -- paciente, maternidade
+      ('mat_recem_nascidos', 'public.pode_editar_algum(''paciente'', ''maternidade'')'),              -- paciente, maternidade
+      ('mat_trabalho_parto', 'public.pode_editar_algum(''paciente'', ''maternidade'')'),              -- paciente, maternidade
       ('nsp_acoes', 'public.pode_editar_algum(''nsp'')'),                                             -- nsp
       ('nsp_capacitacoes', 'public.pode_editar_algum(''nsp'')'),                                      -- nsp
       ('nsp_comunicados', 'public.pode_editar_algum(''nsp'')'),                                       -- nsp

@@ -41,21 +41,20 @@ const MODULOS_COM_TELA = [
 const CONHECIDOS = [
   // ── TORRE DE COMANDO: lê de nove módulos, por desenho ───────
   //
-  // Nenhum perfil atual é atingido: quem tem `executivo` hoje tem todos
-  // os outros. Vira defeito no dia em que a Torre for vendida sozinha — e
-  // ela é o painel da direção, onde zero se lê como "está tudo certo".
+  // Nenhum perfil atual é atingido: quem tem `executivo` hoje tem todos os
+  // outros. Vira defeito no dia em que a Torre for vendida sozinha — e ela
+  // é o painel da direção, onde zero se lê como "está tudo certo".
   //
-  // 🔒 NÃO AMPLIADO DE PROPÓSITO (20/10/2026). A Torre lê `prontuario` e
-  // `iniciais` em `cc_cirurgias` e `ag_agendamentos` — identificador de
-  // paciente — e os cartões dela são CONTAGEM. A pergunta antes de
-  // ampliar é se ela precisa da LINHA ou de um agregado. E é tela nova,
-  // da Laura, com PR aberta: mexer agora atropelaria o trabalho dela.
+  // 🔒 NÃO AMPLIADO DE PROPÓSITO. A Torre lê `prontuario` e `iniciais` em
+  // `cc_cirurgias` e `ag_agendamentos` — identificador de paciente — e os
+  // cartões dela são CONTAGEM. A pergunta antes de ampliar é se ela precisa
+  // da LINHA ou de um agregado. É tela nova, da Laura, com PR aberta.
   "executivo → ag_agendamentos (leem: atendimento)",
   "executivo → ag_grades (leem: atendimento)",
   "executivo → cc_cirurgias (leem: bloco, paciente, faturamento)",
-  "executivo → farm_lotes (leem: farmacia, suprimentos)",
-  "executivo → leitos (leem: leitos, paciente, scih, ps, faturamento, overview)",
-  "executivo → leitos_saidas (leem: leitos, paciente, ps, faturamento, overview)",
+  "executivo → farm_lotes (leem: farmacia, suprimentos, ps)",
+  "executivo → leitos (leem: leitos, paciente, scih, ps, faturamento, overview, atendimento, maternidade)",
+  "executivo → leitos_saidas (leem: leitos, paciente, ps, faturamento, overview, atendimento)",
   "executivo → sup_itens (leem: suprimentos, farmacia, bloco)",
   "executivo → sup_lotes (leem: suprimentos)",
 
@@ -66,23 +65,24 @@ const CONHECIDOS = [
   // A MESMA tabela guarda movimento de medicamento CONTROLADO (por isso
   // `controlados` está entre os leitores). Dar essa visibilidade ao
   // almoxarifado não é ajuste de permissão, é decisão de CUSTÓDIA —
-  // Portaria 344/98. Quem decide o fluxo de controlados no hospital
-  // decide esta linha.
+  // Portaria 344/98.
   "suprimentos → farm_movimentos (leem: farmacia, controlados, ps)",
 
-  // ── FARMÁCIA × IDENTIFICAÇÃO DO PACIENTE ───────────────────
+  // ── A TABELA DE IDENTIFICAÇÃO ──────────────────────────────
   //
-  // 🔴 Atinge `aux_farmacia` hoje, E TEM CONSEQUÊNCIA CLÍNICA: a farmácia
-  // lê `pacientes?select=prontuario,data_nascimento` só para ter a IDADE,
-  // que aciona dose pediátrica e critérios de Beers. Vindo vazio, a idade
-  // fica nula e as regras de criança e de idoso NÃO DISPARAM — o mesmo
-  // defeito que `contexto-internado.js` foi escrito para consertar.
+  // 🔴 `farmacia → pacientes` ATINGE `aux_farmacia` E TEM CONSEQUÊNCIA
+  // CLÍNICA: a farmácia lê `select=prontuario,data_nascimento` só para ter
+  // a IDADE, que aciona dose pediátrica e critérios de Beers. Vindo vazio,
+  // a idade fica nula e as regras de criança e de idoso NÃO DISPARAM — o
+  // mesmo defeito que `contexto-internado.js` foi escrito para consertar.
   //
-  // ⚠️ FICA NA LISTA DE PROPÓSITO. Abrir `pacientes` entregaria nome, CPF,
-  // CNS, nome da mãe e endereço para buscar UM campo. O conserto é levar
-  // `data_nascimento` para `pep_episodios`, que a farmácia já lê — e aí
-  // esta leitura SOME em vez de ser permitida.
+  // ⚠️ FICAM NA LISTA DE PROPÓSITO. RLS é por LINHA: abrir `pacientes`
+  // entregaria nome, CPF, CNS, nome da mãe e endereço para buscar UM
+  // campo. O conserto é levar `data_nascimento` para `pep_episodios`,
+  // que a farmácia já lê — e aí a leitura SOME em vez de ser permitida.
+  // É migração com backfill, não ajuste de permissão.
   "farmacia → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
+  "maternidade → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
 ];
 
 const leitores = t => (MAPA_TABELAS[t] ? leitoresDe(t, MAPA_TABELAS, LEITURA_EXTRA) : null);

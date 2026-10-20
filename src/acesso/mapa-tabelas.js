@@ -272,12 +272,18 @@ export const MAPA_TABELAS = {
   // O episódio obstétrico e a admissão são parte do prontuário da gestante:
   // quem tem o Paciente 360 lê. Quando a Fase 1 criar o módulo `maternidade`
   // próprio, ele entra nesta lista (sem tirar o `paciente`).
-  mat_episodios:            ["paciente"],
-  mat_admissoes:            ["paciente"],
-  mat_trabalho_parto:       ["paciente"],
-  mat_partos:               ["paciente"],
-  mat_recem_nascidos:       ["paciente"],
-  mat_alojamento:           ["paciente"],
+  // 🔴 O MÓDULO NÃO LIA AS PRÓPRIAS TABELAS (20/10/2026). Estas seis
+  // estavam só com `paciente`, então a tela da Maternidade — que é quem
+  // registra parto, trabalho de parto e alojamento conjunto — recebia
+  // lista vazia de quem não tivesse também o Paciente 360. Vivo hoje para
+  // o perfil `gestao`. Não é escolha de desenho, é falta: a casa que
+  // produz o dado tem de conseguir lê-lo.
+  mat_episodios:            ["paciente", "maternidade"],
+  mat_admissoes:            ["paciente", "maternidade"],
+  mat_trabalho_parto:       ["paciente", "maternidade"],
+  mat_partos:               ["paciente", "maternidade"],
+  mat_recem_nascidos:       ["paciente", "maternidade"],
+  mat_alojamento:           ["paciente", "maternidade"],
 
   // ── SCIH ──────────────────────────────────────────────────
   scih_casos:               ["scih", "paciente"],
@@ -389,11 +395,11 @@ export const SENSIVEIS = new Set([
  * entra: a análise clínica completa é do farmacêutico, que já tem acesso.
  */
 export const LEITURA_EXTRA = {
-  pep_episodios:          ["farmacia"],   // leito, setor e iniciais da fila
+  pep_episodios:          ["farmacia", "leitos"],  // leito, setor e iniciais da fila
   pep_prescricoes:        ["farmacia"],   // vigência, substituição, prescritor
   pep_prescricao_itens:   ["farmacia"],   // o que dispensar
   pep_prescricao_eventos: ["farmacia"],   // item suspenso não se dispensa
-  pep_alergias:           ["farmacia"],   // a mesma lista que imprime a pulseira
+  pep_alergias:           ["farmacia", "ps"],  // a mesma lista que imprime a pulseira
   farm_validacoes:        ["paciente"],   // o prescritor vê a avaliação da farmácia
 
   // 🔴 ANTECEDENTE CIRÚRGICO É DADO DE ANAMNESE (10/2026).
@@ -472,22 +478,40 @@ export const LEITURA_EXTRA = {
   //
   // 🔒 `pacientes` NÃO ENTRA AQUI, e isso é decisão, não esquecimento.
   // Está mais abaixo, no bloco do que ficou de fora.
-  ps_atendimentos:        ["farmacia", "faturamento"],
+  // (`ps_atendimentos` ficou numa linha só, lá embaixo, com a maternidade
+  // junto: chave repetida neste objeto sobrescreve em silêncio.)
 
   // ── PRONTO-SOCORRO ─────────────────────────────────────────
   // 🔴 Atinge `tecnico_enfermagem`, `fisioterapeuta`, `nir`, `recepcao`.
   // A intervenção do farmacêutico (trocar dose, suspender, alertar
   // interação) só vale se CHEGA a quem prescreveu e a quem administra.
   farm_intervencoes:      ["ps"],
+  // 🔴 ALERGIA — E ESTE É O MAIS GRAVE DE TODOS (20/10/2026).
+  //
+  // Vivo para `nir` e `recepcao`. O projeto construiu `alergiasIncertas`
+  // exatamente para que leitura falha NÃO vire "sem alergia" — está no
+  // cabeçalho de `clinico/contexto.js`: "silêncio é indistinguível de sem
+  // alergia (…) uma queda de rede silenciaria justamente a conferência
+  // que mata quando falha".
+  //
+  // ⚠️ MAS A GUARDA NÃO ALCANÇA A RLS. Rede caindo devolve erro; política
+  // ausente devolve `[]` com 200. `naoDeuParaLer` é falso, o alerta de
+  // "alergias não conferidas" não sai, e o motor segue como se o paciente
+  // não tivesse nenhuma. É a terceira vez nesta frente que uma guarda
+  // feita para a rede é derrotada pela permissão — foi o que mais me
+  // ensinou aqui.
+  // A tela do PS mostra saldo para dispensar na própria unidade.
+  farm_lotes:             ["suprimentos", "ps"],
   // O PS decide internação olhando leito livre; sem isso a tela mostra
   // "nenhum leito" e a decisão sai pelo telefone, fora do registro.
-  leitos:                 ["ps", "faturamento", "overview"],
-  leitos_saidas:          ["ps", "faturamento", "overview"],
+  leitos:                 ["ps", "faturamento", "overview", "atendimento", "maternidade"],
+  leitos_saidas:          ["ps", "faturamento", "overview", "atendimento"],
+  // A Maternidade acompanha a gestante que chegou pelo PS.
+  ps_atendimentos:        ["farmacia", "faturamento", "maternidade"],
 
   // ── GIRO DE LEITOS ─────────────────────────────────────────
   // 🔴 Atinge `nir`, `recepcao`, `faturamento`. Quem gere leito trabalha
   // sobre o episódio: é ele que diz quem ocupa e desde quando.
-  pep_episodios:          ["farmacia", "leitos"],
 
   // ── BLOCO CIRÚRGICO ────────────────────────────────────────
   // 🔴 Atinge `nir`. OPME e material da sala saem do catálogo de itens.
@@ -499,8 +523,24 @@ export const LEITURA_EXTRA = {
   solicitacoes:           ["overview"],
 
   // ── ESTOQUE & COMPRAS ──────────────────────────────────────
-  // Lote é saldo: o almoxarifado precisa dele para comprar.
-  farm_lotes:             ["suprimentos"],
+  // (`farm_lotes` subiu para o bloco do PS: lote é saldo, e o almoxarifado
+  // precisa dele para comprar — a lista está lá, com `suprimentos`.)
+
+  // ── A ANÁLISE CLÍNICA DA FARMÁCIA ──────────────────────────
+  // 🔴 Vivo para `aux_farmacia` e `gestao`. O farmacêutico clínico avalia
+  // a prescrição contra as CONDIÇÕES do paciente (função renal, gestação,
+  // alergia) e contra o que de fato FOI ADMINISTRADO. Sem essas duas
+  // leituras a análise roda sobre metade do quadro e não diz que está
+  // incompleta — devolve vazio com sucesso.
+  pep_condicoes:          ["farmacia"],
+  pep_administracoes:     ["farmacia"],
+  ps_administracoes:      ["farmacia"],
+
+  // ── MATERNIDADE E RECEPÇÃO: operacional ────────────────────
+  // Leito e atendimento são o chão de onde as duas telas partem. As
+  // tabelas próprias da Maternidade foram para o MAPA, não aqui: lá o
+  // módulo também ESCREVE, e é ele que produz o dado.
+  tiss_guias:             ["atendimento"],   // a guia é emitida na aba do Atendimento
 
   // ═══════════════════════════════════════════════════════════
   // 🔒 O QUE EU NÃO AMPLIEI, E POR QUÊ

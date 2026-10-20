@@ -86,6 +86,17 @@ function dentroDe(no) {
       if (t && t !== "rpc") tabelas.add(t);
     }
     if (n.type === "Identifier") refs.add(n.name);
+    // 🔴 COMPONENTE USADO EM JSX É `JSXIdentifier`, NÃO `Identifier`.
+    //
+    // Sem esta linha, `<FarmInternacaoView … />` não contava como
+    // referência, e a tela inteira por trás dele ficava invisível — com
+    // ela, a farmácia passou a enxergar `pep_condicoes`, que lê no mesmo
+    // `Promise.all` de `pacientes` e que o analisador não via.
+    //
+    // ⚠️ É a falha mais perigosa que esta ferramenta pode ter: SUB-contar
+    // deixa a catraca verde sobre um furo que existe. Sobre-contar só faz
+    // barulho.
+    if (n.type === "JSXIdentifier") refs.add(n.name);
   });
   return { tabelas, refs };
 }
