@@ -23,10 +23,17 @@ let db;
 /** A migração DE VERDADE, do arquivo, sem a parte que o PostgREST usa. */
 async function rodarMigracao() {
   const sql = fs.readFileSync(path.join(DIR, "migracao-episodio-data-nascimento.sql"), "utf8");
-  const inicio = sql.indexOf("alter table public.pep_episodios");
-  const fim = sql.indexOf("insert into public.migracoes_aplicadas");
-  expect(inicio, "a migração mudou de forma e este teste não a achou").toBeGreaterThan(0);
-  await db.exec(sql.slice(inicio, fim));
+  // 🔴 ÂNCORA NO INÍCIO DE LINHA, não no primeiro `indexOf`.
+  //
+  // O texto `alter table public.pep_episodios` aparece ANTES, dentro do
+  // comentário "COMO DESFAZER" — e o recorte ingênuo começava ali, fazendo
+  // o teste executar um `drop column` que não existe na migração. Passava
+  // mesmo assim, o que é o pior tipo de passar: provando outro texto.
+  const m = /^alter table public.pep_episodios$/m.exec(sql);
+  expect(m, "a migração mudou de forma e este teste não a achou").toBeTruthy();
+  const trecho = sql.slice(m.index, sql.indexOf("insert into public.migracoes_aplicadas"));
+  expect(trecho, "o recorte pegou o comentário de desfazer").not.toContain("drop column");
+  await db.exec(trecho);
 }
 
 /** Um paciente no cadastro. */
