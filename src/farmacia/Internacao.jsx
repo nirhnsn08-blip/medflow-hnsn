@@ -30,7 +30,7 @@ import { farmFmtQtd as _fmt } from "../clinico/alertas.js";
 import { FARM_ALERTA_TIPOS } from "./catalogo.js";
 import DispensarModal from "./DispensarModal.jsx";
 import {
-  addFarmMovimentoRemote, addFarmValidacaoRemote, loadContextoDosInternados, loadEpisodiosAbertos, loadEventosDasPrescricoes,
+  addFarmMovimentoRemote, addFarmValidacaoRemote, loadCondicoesDosInternados, loadEpisodiosAbertos, loadEventosDasPrescricoes,
   loadFarmIncompatY, loadFarmInteracoes, loadFarmLotes, loadFarmMedicamentos, loadItensDasPrescricoes,
   loadMovimentosDosEpisodios, loadPrescricoesDosEpisodios, loadValidacoesDasPrescricoes,
 } from "./dados.js";
@@ -42,12 +42,22 @@ const cartao = { background: "var(--surface)", border: "1px solid var(--border)"
 
 /**
  * Carrega tudo o que a internação precisa na farmácia.
- * `comContexto` = o usuário tem o módulo Paciente 360 (idade e condições).
+ * 🔴 `comContexto` SUMIU EM 20/10/2026.
+ *
+ * Ele existia porque idade e condições vinham de tabelas que a farmácia
+ * não lia, e a tela preferia avisar "conferência parcial" a mostrar alerta
+ * de menos — o que era a decisão certa com os dados que havia.
+ *
+ * O que mudou embaixo: a idade passou a vir no PRÓPRIO episódio
+ * (`pep_episodios.data_nascimento`, mantida por gatilho) e `pep_condicoes`
+ * entrou na leitura da farmácia. As duas chegam agora sem o módulo
+ * Paciente 360 — então o portão não protege nada, só esconde alerta de
+ * quem dispensa.
  */
-export function useInternacaoFarmacia(sb, { comContexto } = {}) {
+export function useInternacaoFarmacia(sb) {
   const [dados, setDados] = useState({ episodios: [], prescricoes: [], itens: [], eventos: [], movimentos: [], validacoes: [] });
   const [catalogo, setCatalogo] = useState({ meds: [], lotes: [], interacoes: null, incompatY: null });
-  const [contexto, setContexto] = useState({ pacientes: [], condicoes: [] });
+  const [contexto, setContexto] = useState({ condicoes: [] });
   const [carregando, setCarregando] = useState(true);
   const idxAlergias = useAlergiasDosAtendimentos(sb, dados.episodios);
 
@@ -64,9 +74,9 @@ export function useInternacaoFarmacia(sb, { comContexto } = {}) {
       loadValidacoesDasPrescricoes(sb, presIds),
     ]);
     setDados({ episodios, prescricoes, itens, eventos, movimentos, validacoes });
-    if (comContexto) setContexto(await loadContextoDosInternados(sb, episodios.map(e => e.prontuario)));
+    setContexto(await loadCondicoesDosInternados(sb, episodios.map(e => e.prontuario)));
     setCarregando(false);
-  }, [sb, comContexto]);
+  }, [sb]);
 
   useEffect(() => {
     let vivo = true;
@@ -88,7 +98,10 @@ export function useInternacaoFarmacia(sb, { comContexto } = {}) {
   const fila = useMemo(() => filaDaInternacao(dados), [dados]);
 
   const ctxDe = useCallback(ep => {
-    const paciente = contexto.pacientes.find(p => p.prontuario === ep.prontuario) || null;
+    // 🔴 A IDADE VEM DA LINHA DO EPISÓDIO, não de uma busca no cadastro.
+    // `contextoDoInternado` espera a forma de `pacientes` e usa só
+    // `data_nascimento` — ver o cabeçalho de `contexto-internado.js`.
+    const paciente = { prontuario: ep.prontuario, data_nascimento: ep.data_nascimento ?? null };
     const condicoes = contexto.condicoes.filter(c => c.prontuario === ep.prontuario);
     return contextoDoInternado({ paciente, alergias: alergiasDoPaciente(idxAlergias, ep.prontuario), condicoes });
   }, [contexto, idxAlergias]);
@@ -110,8 +123,8 @@ function SeloValidacao({ situacao }) {
   );
 }
 
-export default function FarmInternacaoView({ sb, sbCru, currentUser, canEdit, leProntuario, modo = "dispensacao" }) {
-  const ctx = useInternacaoFarmacia(sb, { comContexto: leProntuario });
+export default function FarmInternacaoView({ sb, sbCru, currentUser, canEdit, modo = "dispensacao" }) {
+  const ctx = useInternacaoFarmacia(sb);
   const { fila, medById, lotes, movimentos, carregando, recarregar, alertasDe } = ctx;
   const [busca, setBusca] = useState("");
   const [soPendentes, setSoPendentes] = useState(false);
@@ -167,11 +180,6 @@ export default function FarmInternacaoView({ sb, sbCru, currentUser, canEdit, le
   return (
     <div>
       <AvisoLeitura oQue="a prescrição da internação" listas={[ctx.episodios, ctx.prescricoes, ctx.itens, ctx.validacoes]} />
-      {!leProntuario && (
-        <div style={{ fontSize: 11.5, color: "#d97706", background: "#d9770610", border: "1px solid #d9770644", borderRadius: 8, padding: "8px 11px", marginBottom: 10, lineHeight: 1.5 }}>
-          Seu perfil não abre o prontuário: <strong>idade e condições (sonda) não entram</strong> nos alertas desta tela, e por isso a conferência aqui é parcial. A validação do farmacêutico cobre o que falta.
-        </div>
-      )}
       {algumaFalhou(ctx.validacoes) && (
         <div style={{ fontSize: 11.5, color: "#f43f5e", marginBottom: 10 }}>Não foi possível ler as validações farmacêuticas — os selos abaixo não são conclusivos.</div>
       )}

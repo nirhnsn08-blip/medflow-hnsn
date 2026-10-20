@@ -70,18 +70,30 @@ const CONHECIDOS = [
 
   // ── A TABELA DE IDENTIFICAÇÃO ──────────────────────────────
   //
-  // 🔴 `farmacia → pacientes` ATINGE `aux_farmacia` E TEM CONSEQUÊNCIA
-  // CLÍNICA: a farmácia lê `select=prontuario,data_nascimento` só para ter
-  // a IDADE, que aciona dose pediátrica e critérios de Beers. Vindo vazio,
-  // a idade fica nula e as regras de criança e de idoso NÃO DISPARAM — o
-  // mesmo defeito que `contexto-internado.js` foi escrito para consertar.
+  // 🔴 EM 20/10/2026 A IDADE SAIU DESTA LISTA, e o motivo que ficou é
+  // outro — mais sério.
   //
-  // ⚠️ FICAM NA LISTA DE PROPÓSITO. RLS é por LINHA: abrir `pacientes`
-  // entregaria nome, CPF, CNS, nome da mãe e endereço para buscar UM
-  // campo. O conserto é levar `data_nascimento` para `pep_episodios`,
-  // que a farmácia já lê — e aí a leitura SOME em vez de ser permitida.
-  // É migração com backfill, não ajuste de permissão.
+  // A idade (dose pediátrica, Beers) vinha de `pacientes`. Agora vem de
+  // `pep_episodios.data_nascimento`, mantida por gatilho, e a consulta ao
+  // cadastro sumiu do código da farmácia. Menos acesso, não mais.
+  //
+  // ⚠️ MAS A FARMÁCIA AINDA ALCANÇA `pacientes`, por `clinico/
+  // pessoa-dados.js`: ela lê `prontuario, unificado_para` para descobrir
+  // que a ficha ANTIGA do paciente foi unificada na nova — e é assim que
+  // se acha ALERGIA registrada sob o número velho.
+  //
+  // 🔴 E ESSA FALHA É SILENCIOSA. `fichasDe` usa `listaLida`, que
+  // distingue "não li" de "não tem" — mas RLS devolve `[]` com 200, e aí
+  // a conclusão vira "esta pessoa tem um número só". A alergia do
+  // prontuário antigo não é encontrada, e nada avisa.
+  //
+  // Não se conserta abrindo `pacientes`: são dois campos de uma tabela com
+  // nome, CPF, CNS, nome da mãe e endereço. O caminho é o mesmo desta
+  // migração — levar o elo de unificação para onde ele pode ser lido sem
+  // abrir o cadastro. Fica como frente própria, e é de segurança.
   "farmacia → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
+  // A Maternidade lê `nome_completo` da mãe: necessidade diferente (nome,
+  // não idade), e decisão própria.
   "maternidade → pacientes (leem: atendimento, ambulatorio, ps, paciente)",
 ];
 

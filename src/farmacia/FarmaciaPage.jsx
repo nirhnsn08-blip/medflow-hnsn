@@ -360,12 +360,12 @@ export default function FarmaciaPage({ sb, sbCru, currentUser, canEdit, podeCont
       {sub === "dispensacao" && (
         <ComOrigem
           ps={<FarmDispensacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} />}
-          internacao={<FarmInternacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} leProntuario={leProntuario} modo="dispensacao" />} />
+          internacao={<FarmInternacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} modo="dispensacao" />} />
       )}
       {sub === "analise" && (
         <ComOrigem
           ps={<FarmAnaliseView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
-          internacao={<FarmInternacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} leProntuario={leProntuario} modo="analise" />} />
+          internacao={<FarmInternacaoView sb={sb} sbCru={sbCru} currentUser={currentUser} canEdit={canEdit} modo="analise" />} />
       )}
       {sub === "intervencao" && <FarmIntervencaoView sb={sb} currentUser={currentUser} canEdit={canEdit} />}
       {sub === "controlados" && podeAbrirAba(sub, { podeControlados }) && <FarmControladosView sb={sb} />}
