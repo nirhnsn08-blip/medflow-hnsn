@@ -94,7 +94,7 @@
   "migracao-ps-salas.sql": "5d68f4ec6175b240",
   "migracao-ps-triagem-tipo.sql": "49b69f89972d9701",
   "migracao-registro-de-migracoes.sql": "f4014700f1d2df79",
-  "migracao-rls-leitura.sql": "14f12133dd9dbe35",
+  "migracao-rls-leitura.sql": "16154d8ecdbaba43",
   "migracao-sadt-catalogo-seed.sql": "2a20ae607720c1e4",
   "migracao-sadt-exames.sql": "724f38a4ed2bdff5",
   "migracao-scih-germes-seed.sql": "bf16281fbd537381",
