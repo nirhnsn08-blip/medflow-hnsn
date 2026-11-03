@@ -77,6 +77,21 @@ export default [
       // Para ligá-la depois: instale `eslint-plugin-react` e use
       // `react/jsx-uses-vars`. Uma regra por vez, e só depois de zerar a
       // anterior.
+
+      // 🔴 LIGADA em 20/10/2026, por um defeito que eu mesmo acabei de
+      // produzir e quase não vi.
+      //
+      // Editando `src/acesso/mapa-tabelas.js`, escrevi `pep_alergias`
+      // duas vezes no mesmo objeto. JavaScript aceita calado e a SEGUNDA
+      // ganha — então `["farmacia"]` virou `["ps"]`, e a farmácia perdeu
+      // a leitura da alergia sem nenhum aviso, num arquivo que decide
+      // quem enxerga o quê no prontuário.
+      //
+      // ⚠️ O estrago não aparece no teste da linha que você editou: ele
+      // aparece numa OUTRA, que você não tocou. É por isso que a regra
+      // vale mais aqui do que num objeto qualquer — estes mapas têm
+      // dezenas de chaves e crescem por acréscimo.
+      "no-dupe-keys": "error",
     },
   },
 ];
