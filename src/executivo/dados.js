@@ -30,6 +30,20 @@ function lida(r) {
   return { lista, lido: !naoDeuParaLer(lista) };
 }
 
+/**
+ * Os tetos das leituras que sustentam RÉGUA HISTÓRICA.
+ *
+ * 🔴 ESTÃO AQUI, E NÃO DENTRO DA CONSULTA, porque quem faz a média precisa
+ * saber o teto para descobrir se a leitura foi CORTADA. Uma consulta que bate
+ * no limite devolve as linhas mais recentes e cala o resto — sem erro, sem
+ * aviso — e os dias do fundo da janela chegariam pela metade. Contados como
+ * dias fracos, afundariam a média e o presente pareceria ótimo.
+ *
+ * Número escrito duas vezes é número que diverge, então a consulta e o
+ * `coberturaReal` de comparacao.js leem daqui os dois.
+ */
+export const LIMITES = { saidas: 5000, ps: 3000, cirCanceladas: 2000 };
+
 /** A data de N dias atrás, no formato do banco. */
 export function diasAtras(n, hoje = new Date()) {
   const d = new Date(hoje);
@@ -69,13 +83,13 @@ export async function carregarTorre(sb, { hoje = new Date(), janelaDias = 90 } =
     sb("setores?select=nome,ordem,alerta_amarelo,alerta_vermelho,meta_ocupacao,meta_giro,meta_permanencia&order=ordem&limit=200").catch(() => null),
     // `data_internacao` entrou para a TENDÊNCIA: sem ela não há intervalo, e
     // sem intervalo não há censo diário para reconstruir.
-    sb(`leitos_saidas?data_alta=gte.${desde}&select=data_alta,data_internacao,dias_permanencia,setor,leito,prontuario,desfecho&order=data_alta.desc&limit=5000`).catch(() => null),
+    sb(`leitos_saidas?data_alta=gte.${desde}&select=data_alta,data_internacao,dias_permanencia,setor,leito,prontuario,desfecho&order=data_alta.desc&limit=${LIMITES.saidas}`).catch(() => null),
     // O PS do dia + tudo que ainda está aberto: a fila de agora não cabe
     // num recorte de data, porque quem chegou ontem à noite e não foi
     // atendido é exatamente o caso que o painel precisa mostrar.
     sb(`ps_atendimentos?or=(chegada_em.gte.${desde},status.neq.finalizado)` +
        "&select=id,chegada_em,triagem_em,atendimento_em,desfecho_em,cancelado_em,status,classificacao,origem,origem_detalhe" +
-       "&order=chegada_em.desc&limit=3000").catch(() => null),
+       `&order=chegada_em.desc&limit=${LIMITES.ps}`).catch(() => null),
     sb(`cc_cirurgias?data=eq.${dia}&select=id,data,status,iniciais,prontuario,procedimento,sala,cirurgiao,hora_prevista,cancelamento_motivo&limit=500`).catch(() => null),
     sb("ag_grades?select=id,dia_semana,especialidade_cod,profissional_username,vagas_chegada,vagas_internas,vagas_regulacao,vigencia_inicio,vigencia_fim,ativo&limit=1000").catch(() => null),
     sb(`ag_agendamentos?data=eq.${dia}&select=id,data,hora,status,especialidade_cod,profissional_username,prontuario,cancelado_motivo&limit=2000`).catch(() => null),
@@ -91,7 +105,7 @@ export async function carregarTorre(sb, { hoje = new Date(), janelaDias = 90 } =
     // que o contrato com o banco não consegue conferir.
     sb(`cc_cirurgias?status=eq.cancelada&data=gte.${desde}` +
        "&select=id,data,status,iniciais,prontuario,procedimento,cancelamento_motivo" +
-       "&order=data.desc&limit=2000").catch(() => null),
+       `&order=data.desc&limit=${LIMITES.cirCanceladas}`).catch(() => null),
     sb(`ag_agendamentos?status=eq.cancelado&data=gte.${desde}` +
        "&select=id,data,status,prontuario,especialidade_cod,cancelado_motivo,remarcado_de" +
        "&order=data.desc&limit=4000").catch(() => null),

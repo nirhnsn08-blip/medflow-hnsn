@@ -33,11 +33,15 @@ import {
   fluxoCirurgico, ambulatorioDoDia, itensEmFalta, faltasConsolidadas,
   resumoDaTorre,
 } from "./torre.js";
-import { carregarTorre, diasAtras } from "./dados.js";
+import { carregarTorre, diasAtras, LIMITES } from "./dados.js";
 import { montarMapa } from "./mapa3d.js";
 import { intervalosDeInternacao, censoDiario, direcaoDaSerie } from "./tendencia.js";
 import { relatorioDeCancelamentos, ROTULO_ORIGEM } from "./cancelamentos.js";
 import { acaoDoCard, destinoDoItem } from "./navegacao.js";
+import {
+  TIPO, coberturaReal, inicioDaRegua, serieDiaria, serieDaFilaNaHora,
+  comparar, fraseDaComparacao,
+} from "./comparacao.js";
 import MapaIsometrico from "./MapaIsometrico.jsx";
 import GraficoTendencia from "./GraficoTendencia.jsx";
 import { HOSPITAL_SIGLA } from "../ui/base.jsx";
@@ -45,6 +49,11 @@ import { HOSPITAL_SIGLA } from "../ui/base.jsx";
 /** Quantos dias a curva de tendência mostra. Curto de propósito: a direção
  *  olha o mês, e quanto mais para trás, mais a reconstrução fica cega. */
 const DIAS_DA_CURVA = 30;
+
+/** Quantos dias a RÉGUA olha para trás. Mais longa que a curva: a curva é
+ *  para ver a forma, a régua é para ter amostra — e 30 dias de amostra num
+ *  hospital pequeno ainda é meia dúzia de dias úteis de cada tipo. */
+const DIAS_DA_REGUA = 60;
 
 const COR = {
   [NIVEL.BOM]: "#34d399",
@@ -97,7 +106,29 @@ function Anel({ pct, nivel, tamanho = 168 }) {
  * ela que sabe se foi lida — a decisão de mostrar "—" em vez de "0" mora
  * aqui, num lugar só, e não em cada chamada.
  */
-function Kpi({ m, sufixo = "", sub = null, acao = null }) {
+// ── a linha da régua ────────────────────────────────────────
+// 🔴 DE PROPÓSITO SEM COR DE FAROL. A cor do card é do limiar ("isto é
+// ruim?"); a régua responde outra coisa ("isto é estranho?"). Pintar as duas
+// com a mesma paleta faria o painel brigar consigo mesmo — um card verde com
+// linha vermelha, ou o contrário, e ninguém sabendo qual manda. Aqui a seta
+// carrega a direção e o texto carrega a régua; o juízo fica com o limiar.
+function Regua({ c, unidade = "" }) {
+  const frase = fraseDaComparacao(c, { unidade });
+  if (!frase) return null;
+  const detalhe = c?.avaliado
+    ? `régua de ${c.dias} dias (${c.de} a ${c.ate})${c.desvio != null ? ` · desvio ${c.desvio}${unidade}` : ""}`
+    : undefined;
+  return (
+    <div title={detalhe} style={{
+      fontSize: 10.5, color: "var(--text-muted)", marginTop: 4, lineHeight: 1.3,
+      fontVariantNumeric: "tabular-nums",
+    }}>
+      {frase}
+    </div>
+  );
+}
+
+function Kpi({ m, sufixo = "", sub = null, acao = null, comp = null, unidadeRegua = "" }) {
   const lido = m?.lido !== false;
   const cor = lido ? COR[m?.nivel || NIVEL.NEUTRO] : CEGO;
   const vazio = m?.valor == null;
@@ -127,6 +158,7 @@ function Kpi({ m, sufixo = "", sub = null, acao = null }) {
       <div style={{ fontSize: 11, color: lido ? "var(--text-3)" : "#fbbf24", marginTop: 5, lineHeight: 1.35 }}>
         {lido ? (sub ?? m?.detalhe ?? " ") : m?.detalhe}
       </div>
+      {lido && comp && <Regua c={comp} unidade={unidadeRegua} />}
     </div>
   );
 }
@@ -219,12 +251,20 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
     // ── A tendência: censo diário reconstruído do intervalo internação→alta ──
     // Só faz sentido com as DUAS fontes lidas; com uma só, a curva seria uma
     // metade do hospital desenhada como se fosse o todo.
+    // 🔴 A COBERTURA DE VERDADE DE CADA LEITURA, antes de qualquer média.
+    // O `dados.desde` é a janela PEDIDA; quando a consulta bateu no `limit`,
+    // o fundo dela não veio e contá-lo como dia magro afundaria a régua (e a
+    // curva da tendência, que já usava o `desde` prometido).
+    const cobSaidas = coberturaReal(dados.saidas.lista, "data_alta", { desde: dados.desde, limite: LIMITES.saidas });
+    const cobPs = coberturaReal(dados.ps.lista, "chegada_em", { desde: dados.desde, limite: LIMITES.ps });
+    const cobCanc = coberturaReal(dados.cirCanceladas.lista, "data", { desde: dados.desde, limite: LIMITES.cirCanceladas });
+
     const podeTendencia = dados.saidas.lido && lidoLeitos;
     const { itens: intervalos, semInicio } = intervalosDeInternacao(dados.saidas.lista, leitos);
     const censoSerie = podeTendencia
       ? censoDiario(intervalos, {
           de: diasAtras(DIAS_DA_CURVA, agora), ate: dados.dia,
-          operacionais: censo.operacionais, janelaDesde: dados.desde,
+          operacionais: censo.operacionais, janelaDesde: cobSaidas.desde,
         })
       : null;
     const tendencia = censoSerie ? direcaoDaSerie(censoSerie.linhas) : null;
@@ -243,10 +283,67 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
       [...dados.agCancelados.lista, ...dados.agRemarcados.lista],
       { lido: dados.cirCanceladas.lido && dados.agCancelados.lido && dados.agRemarcados.lido });
 
+    // ═══ A RÉGUA: este número é normal NESTA casa? ═══
+    //
+    // O limiar diz se o número é RUIM; a régua diz se ele é ESTRANHO. São
+    // perguntas diferentes — um hospital pode estar normalmente ruim, e é o
+    // que a direção mais precisa ouvir. Por isso a comparação NÃO mexe em
+    // cor de card, em farol nem no resumo de críticos: ela entra como uma
+    // linha de texto a mais, e quem pinta a tela continua sendo o limiar.
+    //
+    // Cada indicador entra pelo seu tipo, e é o tipo que evita a mentira das
+    // 9h da manhã (ver comparacao.js): estoque é julgado agora, fluxo é
+    // julgado no último dia FECHADO.
+    // 🔴 O começo da régua não é "60 dias atrás": é 60 dias atrás OU o dia em
+    // que este hospital passou a ter movimento aqui, o que vier depois. O
+    // HNSN entrou no sistema agora — sem esta trava, os dias anteriores à
+    // entrada entrariam como dias de zero alta e cortariam toda média pela
+    // metade, fazendo o painel dizer "acima do normal" todo dia.
+    const queria = diasAtras(DIAS_DA_REGUA, agora);
+    const inicioDoSistema = cobSaidas.maisAntigo;
+    const deMovimento = inicioDaRegua(queria, inicioDoSistema, [cobSaidas]);
+    const deCanc = inicioDaRegua(queria, inicioDoSistema, [cobCanc]);
+    const dePa = inicioDaRegua(queria, inicioDoSistema, [cobPs]);
+
+    const censoRegua = podeTendencia
+      ? censoDiario(intervalos, {
+          de: deMovimento, ate: dados.dia,
+          operacionais: censo.operacionais, janelaDesde: cobSaidas.desde,
+        })
+      : null;
+    const serieOcupacao = censoRegua
+      ? { linhas: censoRegua.linhas.map(l => ({ dia: l.dia, valor: l.pct, confiavel: l.confiavel })) }
+      : null;
+
+    const deAte = { de: deMovimento, ate: dados.dia, janelaDesde: cobSaidas.desde };
+    const serieAltas = serieDiaria(dados.saidas.lista, { campo: "data_alta", ...deAte });
+    const seriePerm = serieDiaria(dados.saidas.lista, { campo: "data_alta", ...deAte, valorDe: s => s.dias_permanencia });
+    const serieCanc = serieDiaria(dados.cirCanceladas.lista, { campo: "data", de: deCanc, ate: dados.dia, janelaDesde: cobCanc.desde });
+    const serieFila = serieDaFilaNaHora(dados.ps.lista, { de: dePa, ate: dados.dia, agora, janelaDesde: cobPs.desde });
+
+    // 🔴 A fila de hoje vem da PRÓPRIA série, não do card. O card conta todo
+    // mundo sem triagem; a série descarta a ficha abandonada há mais de um
+    // dia. Comparar uma definição com a outra inflaria o presente de graça.
+    const filaAgora = serieFila.linhas[serieFila.linhas.length - 1]?.valor ?? null;
+
+    const regua = {
+      ocupacao: comparar(censo.valor, serieOcupacao,
+        { tipo: TIPO.ESTOQUE, hoje: dados.dia, lido: podeTendencia, piso: 3 }),
+      altas: comparar(null, serieAltas,
+        { tipo: TIPO.FLUXO, hoje: dados.dia, lido: dados.saidas.lido, piso: 2, melhorQuando: "maior" }),
+      permanencia: comparar(null, seriePerm,
+        { tipo: TIPO.FLUXO, hoje: dados.dia, lido: dados.saidas.lido, piso: 1, melhorQuando: "menor" }),
+      cancelamentos: comparar(null, serieCanc,
+        { tipo: TIPO.FLUXO, hoje: dados.dia, lido: dados.cirCanceladas.lido, piso: 2, melhorQuando: "menor" }),
+      pa: comparar(filaAgora, serieFila,
+        { tipo: TIPO.ESTOQUE, hoje: dados.dia, lido: dados.ps.lido, piso: 2, melhorQuando: "menor" }),
+    };
+
     const resumo = resumoDaTorre([censo, uti, perm, pa, cirurgias, ambulatorio, falta, altas, giro, gerint]);
     return {
       censo, uti, mapa, altas, perm, giro, pa, gerint, cirurgias, ambulatorio, falta, internados, resumo,
       mapa3d, censoSerie, tendencia, metaOcupacao, semInicio, cancelamentos, podeTendencia,
+      regua, serieFila, cobSaidas, cobPs, cobCanc,
     };
   }, [dados]);
 
@@ -259,7 +356,8 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
   }
 
   const { censo, uti, mapa, altas, perm, giro, pa, gerint, cirurgias, ambulatorio, falta, internados, resumo,
-          mapa3d, censoSerie, tendencia, metaOcupacao, semInicio, cancelamentos, podeTendencia } = v;
+          mapa3d, censoSerie, tendencia, metaOcupacao, semInicio, cancelamentos, podeTendencia,
+          regua, serieFila, cobSaidas } = v;
   const idade = lidoEm ? Date.now() - lidoEm : null;
 
   return (
@@ -335,6 +433,9 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
                   base: {censo.operacionais} leitos operacionais
                 </div>
+                {/* A régua do número do topo — "82%" só vira informação ao
+                    lado do que esta casa costuma fazer. */}
+                <Regua c={regua.ocupacao} unidade="%" />
               </div>
             ) : (
               <div style={{ fontSize: 12.5, color: "#fbbf24", marginTop: 8 }}>Não consegui ler os leitos.</div>
@@ -345,10 +446,15 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 12 }}>
           <Kpi m={uti} acao={ir("uti")} sub={uti.lido ? (uti.semSetor ? "nenhum setor de UTI cadastrado" : `${uti.ocupados} de ${uti.operacionais} leitos`) : undefined} />
           <Kpi m={internados} acao={ir("internados")} />
-          <Kpi m={altas} acao={ir("altas_hoje")} sub="saídas registradas hoje" />
-          <Kpi m={perm} acao={ir("permanencia")} sub={perm.lido && perm.contadas ? `${perm.contadas} altas com permanência` : perm.lido ? "sem alta com permanência registrada" : undefined} />
+          <Kpi m={altas} acao={ir("altas_hoje")} sub="saídas registradas hoje" comp={regua.altas} />
+          <Kpi m={perm} acao={ir("permanencia")} comp={regua.permanencia} unidadeRegua="d"
+            sub={perm.lido && perm.contadas ? `${perm.contadas} altas com permanência` : perm.lido ? "sem alta com permanência registrada" : undefined} />
           <Kpi m={giro} acao={ir("giro")} sub={giro.lido ? (giro.semLeitos ? "sem leito operacional" : `${giro.altas} altas na janela`) : undefined} />
-          <Kpi m={pa} acao={ir("pa")} sub={pa.lido ? `${pa.aguardandoAtendimento} triados aguardando médico` : undefined} />
+          <Kpi m={pa} acao={ir("pa")} comp={regua.pa}
+            sub={pa.lido
+              ? `${pa.aguardandoAtendimento} triados aguardando médico`
+                + (serieFila.fantasmas ? ` · ${serieFila.fantasmas} ficha(s) sem triagem há mais de um dia` : "")
+              : undefined} />
           <Kpi m={gerint} acao={ir("gerint")} sub={gerint.lido ? `${gerint.noPeriodo} aceites na janela` : undefined} />
           <Kpi m={falta} acao={ir("falta")} sub={falta.lido ? `almoxarifado ${falta.porOrigem.estoque} · farmácia ${falta.porOrigem.farmacia}` : undefined} />
         </div>
@@ -373,6 +479,16 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
               <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "7px 0 0" }}>
                 {semInicio} internação(ões) sem data de entrada ficaram <b>fora</b> da curva — sem o começo
                 não há intervalo, e inventar um começo inventaria leito-dia.
+              </p>
+            )}
+            {/* 🔴 O aviso que só existe porque a leitura tem teto: quando ela
+                bate no limite, a janela real é menor que a pedida, e os dias
+                do fundo não são dias magros — são dias não lidos. */}
+            {cobSaidas.truncado && (
+              <p style={{ fontSize: 11, color: "#fbbf24", margin: "7px 0 0" }}>
+                A leitura das saídas de leito <b>bateu no teto</b> ({cobSaidas.linhas} linhas): a janela
+                confiável começa em <b>{cobSaidas.desde}</b>, não no início do período. O que vem antes
+                não é movimento baixo, é <b>dado não lido</b> — e está fora da curva e da régua.
               </p>
             )}
           </>
@@ -429,6 +545,13 @@ export default function TorreDeComando({ sb, verModulo = null, navegar = null })
                   <div style={{ fontFamily: MONO, fontSize: 26, fontWeight: 700, color: b.c, lineHeight: 1.2 }}>{b.n}</div>
                 </div>
               ))}
+            </div>
+
+            {/* A régua do cancelamento. Fala do último dia FECHADO, e diz
+                qual — o mapa de hoje ainda está correndo, e comparar um dia
+                pela metade com dias inteiros acusaria queda toda manhã. */}
+            <div style={{ marginBottom: cirurgias.previstas === 0 ? 10 : 0 }}>
+              <Regua c={regua.cancelamentos} />
             </div>
 
             {cirurgias.previstas === 0 && (
