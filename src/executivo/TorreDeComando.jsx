@@ -37,6 +37,7 @@ import { carregarTorre, diasAtras } from "./dados.js";
 import { montarMapa } from "./mapa3d.js";
 import { intervalosDeInternacao, censoDiario, direcaoDaSerie } from "./tendencia.js";
 import { relatorioDeCancelamentos, ROTULO_ORIGEM } from "./cancelamentos.js";
+import { acaoDoCard, destinoDoItem } from "./navegacao.js";
 import MapaIsometrico from "./MapaIsometrico.jsx";
 import GraficoTendencia from "./GraficoTendencia.jsx";
 import { HOSPITAL_SIGLA } from "../ui/base.jsx";
@@ -96,25 +97,35 @@ function Anel({ pct, nivel, tamanho = 168 }) {
  * ela que sabe se foi lida — a decisão de mostrar "—" em vez de "0" mora
  * aqui, num lugar só, e não em cada chamada.
  */
-function Kpi({ m, sufixo = "", sub = null, onClick = null }) {
+function Kpi({ m, sufixo = "", sub = null, acao = null }) {
   const lido = m?.lido !== false;
   const cor = lido ? COR[m?.nivel || NIVEL.NEUTRO] : CEGO;
   const vazio = m?.valor == null;
+  // 🔴 O card só vira porta quando há PARA ONDE ir E permissão para ir.
+  // `acaoDoCard` devolve inerte quando falta uma das duas — então aqui não
+  // há `if` de permissão espalhado pela tela, só o resultado dele.
+  const abre = !!acao?.clicavel;
   return (
-    <div onClick={onClick} role={onClick ? "button" : undefined} tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e => (e.key === "Enter" || e.key === " ") && onClick()) : undefined}
+    <div onClick={acao?.onClick} title={acao?.title}
+      role={abre ? "button" : undefined} tabIndex={abre ? 0 : undefined}
+      onKeyDown={abre ? (e => (e.key === "Enter" || e.key === " ") && acao.onClick()) : undefined}
       style={{
-        ...cx.card, padding: "13px 15px", minWidth: 0, cursor: onClick ? "pointer" : undefined,
+        ...cx.card, padding: "13px 15px", minWidth: 0, cursor: abre ? "pointer" : undefined,
         borderTop: `2px solid ${cor}`,
         borderStyle: lido ? "solid" : "dashed",
         opacity: lido ? 1 : .85,
       }}>
-      <div style={{ ...cx.rotulo, marginBottom: 6 }}>{m?.rotulo}</div>
+      <div style={{ ...cx.rotulo, marginBottom: 6, display: "flex", justifyContent: "space-between", gap: 6 }}>
+        <span>{m?.rotulo}</span>
+        {/* A setinha diz, sem texto, que este cartão leva a algum lugar — e a
+            ausência dela diz que não leva. */}
+        {abre && <span aria-hidden="true" style={{ color: "var(--text-muted)", fontWeight: 400 }}>↗</span>}
+      </div>
       <div style={{ fontFamily: MONO, fontSize: 27, fontWeight: 700, color: cor, lineHeight: 1 }}>
         {vazio ? "—" : `${m.valor}${m.unidade || sufixo}`}
       </div>
       <div style={{ fontSize: 11, color: lido ? "var(--text-3)" : "#fbbf24", marginTop: 5, lineHeight: 1.35 }}>
-        {lido ? (sub ?? m?.detalhe ?? " ") : m?.detalhe}
+        {lido ? (sub ?? m?.detalhe ?? " ") : m?.detalhe}
       </div>
     </div>
   );
@@ -140,7 +151,13 @@ function NaoLido({ oQue }) {
   );
 }
 
-export default function TorreDeComando({ sb }) {
+export default function TorreDeComando({ sb, verModulo = null, navegar = null }) {
+  // O atalho de cada card. Memorizado junto das permissões: uma função por
+  // card por render seria lixo sem ganho nenhum.
+  const ir = useCallback(
+    (chave, extra = null) => acaoDoCard(chave, { verModulo, navegar, extra }),
+    [verModulo, navegar]);
+
   const [dados, setDados] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [lidoEm, setLidoEm] = useState(null);
@@ -326,14 +343,14 @@ export default function TorreDeComando({ sb }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 12 }}>
-          <Kpi m={uti} sub={uti.lido ? (uti.semSetor ? "nenhum setor de UTI cadastrado" : `${uti.ocupados} de ${uti.operacionais} leitos`) : undefined} />
-          <Kpi m={internados} />
-          <Kpi m={altas} sub="saídas registradas hoje" />
-          <Kpi m={perm} sub={perm.lido && perm.contadas ? `${perm.contadas} altas com permanência` : perm.lido ? "sem alta com permanência registrada" : undefined} />
-          <Kpi m={giro} sub={giro.lido ? (giro.semLeitos ? "sem leito operacional" : `${giro.altas} altas na janela`) : undefined} />
-          <Kpi m={pa} sub={pa.lido ? `${pa.aguardandoAtendimento} triados aguardando médico` : undefined} />
-          <Kpi m={gerint} sub={gerint.lido ? `${gerint.noPeriodo} aceites na janela` : undefined} />
-          <Kpi m={falta} sub={falta.lido ? `almoxarifado ${falta.porOrigem.estoque} · farmácia ${falta.porOrigem.farmacia}` : undefined} />
+          <Kpi m={uti} acao={ir("uti")} sub={uti.lido ? (uti.semSetor ? "nenhum setor de UTI cadastrado" : `${uti.ocupados} de ${uti.operacionais} leitos`) : undefined} />
+          <Kpi m={internados} acao={ir("internados")} />
+          <Kpi m={altas} acao={ir("altas_hoje")} sub="saídas registradas hoje" />
+          <Kpi m={perm} acao={ir("permanencia")} sub={perm.lido && perm.contadas ? `${perm.contadas} altas com permanência` : perm.lido ? "sem alta com permanência registrada" : undefined} />
+          <Kpi m={giro} acao={ir("giro")} sub={giro.lido ? (giro.semLeitos ? "sem leito operacional" : `${giro.altas} altas na janela`) : undefined} />
+          <Kpi m={pa} acao={ir("pa")} sub={pa.lido ? `${pa.aguardandoAtendimento} triados aguardando médico` : undefined} />
+          <Kpi m={gerint} acao={ir("gerint")} sub={gerint.lido ? `${gerint.noPeriodo} aceites na janela` : undefined} />
+          <Kpi m={falta} acao={ir("falta")} sub={falta.lido ? `almoxarifado ${falta.porOrigem.estoque} · farmácia ${falta.porOrigem.farmacia}` : undefined} />
         </div>
       </div>
 
@@ -526,21 +543,36 @@ export default function TorreDeComando({ sb }) {
             </div>
           ) : (
             <div style={{ ...cx.card, display: "flex", flexDirection: "column", gap: 7 }}>
-              {falta.itens.slice(0, 12).map(i => (
-                <div key={`${i.origem}-${i.id}`} style={{
+              {falta.itens.slice(0, 12).map(i => {
+                // Cada item leva à SUA casa: o que falta na farmácia abre a
+                // Farmácia, o do almoxarifado abre o Estoque. Mandar os dois
+                // para o mesmo lugar faria metade dos cliques cair na tela
+                // errada — e quem tem só um dos dois módulos veria metade
+                // da lista virar porta fechada.
+                const abrirCasa = ir(destinoDoItem(i.origem));
+                return (
+                <div key={`${i.origem}-${i.id}`}
+                  onClick={abrirCasa.onClick} title={abrirCasa.title}
+                  role={abrirCasa.clicavel ? "button" : undefined}
+                  tabIndex={abrirCasa.clicavel ? 0 : undefined}
+                  onKeyDown={abrirCasa.clicavel ? (e => (e.key === "Enter" || e.key === " ") && abrirCasa.onClick()) : undefined}
+                  style={{
                   display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", fontSize: 12.5,
+                  cursor: abrirCasa.clicavel ? "pointer" : undefined,
                   background: "var(--surface-2)", border: "1px solid var(--border)",
                   borderLeft: `3px solid ${i.zerado ? "#fb7185" : "#fbbf24"}`, borderRadius: 8, padding: "8px 11px" }}>
                   <b>{i.nome}</b>
                   <span style={{ fontSize: 10.5, color: "var(--text-muted)", border: "1px solid var(--border-2)", borderRadius: 99, padding: "0 7px" }}>
                     {i.origem === "farmacia" ? "farmácia" : "almoxarifado"}
                   </span>
+                  {abrirCasa.clicavel && <span aria-hidden="true" style={{ color: "var(--text-muted)" }}>↗</span>}
                   {i.zerado && <span style={{ fontSize: 10.5, fontWeight: 800, color: "#fb7185" }}>ZERADO</span>}
                   <span style={{ marginLeft: "auto", fontFamily: MONO, color: "var(--text-3)" }}>
                     {i.atual}{i.unidade ? ` ${i.unidade}` : ""} <span style={{ color: "var(--text-muted)" }}>/ mín. {i.minimo}</span>
                   </span>
                 </div>
-              ))}
+                );
+              })}
               {falta.itens.length > 12 && (
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>
                   e mais {falta.itens.length - 12} item(ns) abaixo do mínimo.
@@ -611,11 +643,34 @@ export default function TorreDeComando({ sb }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {cancelamentos.reincidentes.slice(0, 15).map(p => (
+                    {cancelamentos.reincidentes.slice(0, 15).map(p => {
+                      // 🔴 O DRILL-DOWN QUE MAIS VALE DA TORRE INTEIRA: a
+                      // direção vê "cancelado 3 vezes" e abre o prontuário
+                      // dessa pessoa num clique, em vez de anotar o número e
+                      // procurar depois. Só quem alcança o Paciente 360 vê a
+                      // linha como clicável.
+                      const abrirPaciente = ir("paciente", p.prontuario);
+                      return (
                       <tr key={p.prontuario} style={{ borderTop: "1px solid var(--border)" }}>
                         <td style={{ padding: "8px" }}>
-                          <b>{p.iniciais || "—"}</b>
-                          <span style={{ fontFamily: MONO, color: "var(--text-muted)", marginLeft: 7, fontSize: 11.5 }}>{p.prontuario}</span>
+                          {abrirPaciente.clicavel ? (
+                            <button onClick={abrirPaciente.onClick} title={`Abrir o prontuário de ${p.iniciais || p.prontuario}`}
+                              style={{
+                                background: "none", border: "none", padding: 0, cursor: "pointer",
+                                font: "inherit", color: "var(--text)", textAlign: "left",
+                                textDecoration: "underline", textDecorationColor: "var(--border-2)",
+                                textUnderlineOffset: 3,
+                              }}>
+                              <b>{p.iniciais || "—"}</b>
+                              <span style={{ fontFamily: MONO, color: "var(--text-muted)", marginLeft: 7, fontSize: 11.5 }}>{p.prontuario}</span>
+                              <span aria-hidden="true" style={{ color: "var(--text-muted)", marginLeft: 6 }}>↗</span>
+                            </button>
+                          ) : (
+                            <>
+                              <b>{p.iniciais || "—"}</b>
+                              <span style={{ fontFamily: MONO, color: "var(--text-muted)", marginLeft: 7, fontSize: 11.5 }}>{p.prontuario}</span>
+                            </>
+                          )}
                         </td>
                         <td style={{ padding: "8px", textAlign: "right", fontFamily: MONO, fontWeight: 700, color: p.total >= 3 ? "#fb7185" : "#fbbf24" }}>
                           {p.total}
@@ -638,7 +693,8 @@ export default function TorreDeComando({ sb }) {
                           {p.semMotivoRegistrado ? "nenhum motivo registrado" : p.motivos.join(" · ")}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
                 {cancelamentos.reincidentes.length > 15 && (
