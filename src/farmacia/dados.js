@@ -202,7 +202,7 @@ const textoEmLista = vals => emLista(vals).map(p => `"${String(p).replace(/"/g, 
 
 export async function loadEpisodiosAbertos(sb) {
   if (!sb) return [];
-  const rows = await sb("pep_episodios?status=eq.aberto&alta_em=is.null&select=id,prontuario,iniciais,leito,setor,especialidade,admissao_em,status,alta_em&order=admissao_em.desc&limit=500");
+  const rows = await sb("pep_episodios?status=eq.aberto&alta_em=is.null&select=id,prontuario,iniciais,data_nascimento,leito,setor,especialidade,admissao_em,status,alta_em&order=admissao_em.desc&limit=500");
   return listaLida(rows);
 }
 export async function loadPrescricoesDosEpisodios(sb, episodioIds) {
@@ -238,21 +238,32 @@ export async function loadValidacoesDasPrescricoes(sb, prescricaoIds) {
 }
 
 /**
- * O que o motor de alertas precisa além das alergias: data de nascimento e
- * condições (sonda). Só quem tem o módulo Paciente 360 lê estas tabelas — o
- * auxiliar de farmácia recebe listas vazias do RLS, e por isso a tela só
- * chama isto para quem pode (e avisa os outros de que a conferência está
- * incompleta, em vez de mostrar alerta de menos).
+ * O que o motor de alertas precisa além das alergias: idade e condições
+ * (sonda).
+ *
+ * 🔴 A IDADE DEIXOU DE VIR DE `pacientes` (20/10/2026).
+ *
+ * Vinha de `pacientes?select=prontuario,data_nascimento` — UM campo de uma
+ * tabela que a farmácia não lê (ela guarda nome, CPF, CNS, nome da mãe e
+ * endereço). O efeito era honesto, não silencioso: a tela só pedia o
+ * contexto para quem tinha o módulo Paciente 360, e avisava os outros de
+ * que a conferência era PARCIAL. Mas parcial é parcial — o auxiliar que
+ * dispensa ficava sem dose pediátrica e sem Beers.
+ *
+ * Agora a data vem no próprio episódio (`pep_episodios.data_nascimento`,
+ * mantida por gatilho), que a farmácia já lê. É MENOS acesso, não mais: a
+ * consulta ao cadastro sumiu daqui.
+ *
+ * ⚠️ Por isso esta função não busca mais paciente nenhum. Quem monta a
+ * idade é a tela, a partir da linha do episódio que ela já tem em mão.
  */
-export async function loadContextoDosInternados(sb, prontuarios) {
+export async function loadCondicoesDosInternados(sb, prontuarios) {
   const lista = textoEmLista(prontuarios);
-  if (!sb || !lista) return { pacientes: [], condicoes: [] };
+  if (!sb || !lista) return { condicoes: [] };
   const q = encodeURIComponent(lista);
-  const [pacientes, condicoes] = await Promise.all([
-    sb(`pacientes?prontuario=in.(${q})&select=prontuario,data_nascimento`).catch(() => null),
-    sb(`pep_condicoes?prontuario=in.(${q})&select=prontuario,descricao,situacao,corrige_id,id`).catch(() => null),
-  ]);
-  return { pacientes: listaLida(pacientes), condicoes: listaLida(condicoes) };
+  const r = await sb(`pep_condicoes?prontuario=in.(${q})&select=prontuario,descricao,situacao,corrige_id,id`)
+    .catch(() => null);
+  return { condicoes: listaLida(r) };
 }
 
 /**

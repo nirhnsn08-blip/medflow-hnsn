@@ -379,3 +379,53 @@ describe("🔴 toda escrita da tela tem política que a receba", () => {
     ).toEqual([]);
   }, 60_000);
 });
+
+// ═══════════════════════════════════════════════════════════
+// A CONFERÊNCIA RODA, E DIZ A VERDADE NUM BANCO QUE NASCEU CERTO
+//
+// `conferencia-leitura-por-modulo.sql` é o que o usuário roda à mão para
+// saber se as leituras chegaram. Ela já teve dois furos: contava POLÍTICAS
+// em vez de tabelas (três tabelas com duas políticas davam "6") e procurava
+// `ps` sem aspas, como substring. Conferência que não é testada vira mais um
+// ✅ em que ninguém deveria confiar.
+// ═══════════════════════════════════════════════════════════
+describe("a conferência da leitura por módulo", () => {
+  const sql = () => fs.readFileSync(path.join(DIR, "conferencia-leitura-por-modulo.sql"), "utf8");
+
+  it("roda, e num banco novo não acusa nada", async () => {
+    const r = await db.query(sql());
+    expect(r.rows.length).toBe(23);       // 22 tabelas + a checagem de escrita
+    const ruins = r.rows.filter(l => l.situacao !== "✅").map(l => `${l.tabela}: ${l.situacao}`);
+    expect(ruins).toEqual([]);
+  });
+
+  it("🔴 acusa a política que NÃO cita o módulo", async () => {
+    // Prova que o ✅ acima significa alguma coisa: tira `ps` da alergia.
+    await db.exec(`
+      begin;
+      drop policy pep_alergias_leitura on public.pep_alergias;
+      create policy pep_alergias_leitura on public.pep_alergias
+        for select to authenticated using (public.pode_ver_algum('paciente', 'farmacia'));`);
+    try {
+      const r = await db.query(sql());
+      const linha = r.rows.find(l => l.tabela === "pep_alergias");
+      expect(linha.situacao).toMatch(/NÃO CHEGOU/);
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+
+  it("🔴 tabela sem escrita do módulo derruba a linha de escrita", async () => {
+    await db.exec(`
+      begin;
+      drop policy mat_partos_mod_ins on public.mat_partos;
+      drop policy mat_partos_mod_upd on public.mat_partos;`);
+    try {
+      const r = await db.query(sql());
+      const linha = r.rows.find(l => l.tabela === "ESCRITA da maternidade");
+      expect(linha.situacao).toBe("❌");
+    } finally {
+      await db.exec("rollback");
+    }
+  });
+});

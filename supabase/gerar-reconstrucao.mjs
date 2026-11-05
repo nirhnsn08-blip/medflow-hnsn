@@ -351,6 +351,10 @@ const ORDEM = [
   "migracao-perfis-executivo.sql",
   // Acrescenta colunas em `pep_aprazamentos`, que vem da pep-fase1.
   "migracao-aprazamento-cancelar.sql",
+  // Copia a data de nascimento para `pep_episodios`: precisa de
+  // `pacientes` (com `data_nascimento`, da migração de identificação) e do
+  // episódio, os dois já criados acima.
+  "migracao-episodio-data-nascimento.sql",
   // Por último de propósito: reescreve as políticas de SELECT de TODAS as
   // tabelas criadas acima — inclusive as da Laura, que subiram SEM RLS. Num
   // banco novo, é o que impede o hospital de nascer com a leitura aberta.
