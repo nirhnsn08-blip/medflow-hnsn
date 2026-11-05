@@ -45,7 +45,7 @@ atual as (
      and policyname = tablename || '_leitura'
 )
 select case when a.condicao is null then '⚠️ sem política de leitura'
-            when position(e.modulo_novo in a.condicao) > 0 then '✅'
+            when position('''' || e.modulo_novo || '''' in a.condicao) > 0 then '✅'
             else '❌ NÃO CHEGOU' end as situacao,
        e.tabela, e.modulo_novo, e.leitores_no_mapa
   from esperado e left join atual a on a.tabela = e.tabela
@@ -55,9 +55,9 @@ union all
 -- 🔴 E A ESCRITA NÃO PODE TER ENCOLHIDO. Só a Maternidade ganhou
 -- escrita (o módulo produz o próprio dado); ninguém pode ter PERDIDO —
 -- foi assim que o PR #60 trancou 18 tabelas ao vivo.
-select case when count(*) >= 6 then '✅' else '❌' end,
+select case when count(distinct tablename) = 6 then '✅' else '❌' end,
        'ESCRITA da maternidade', 'maternidade',
-       count(*) || ' de 6 políticas'
+       count(distinct tablename) || ' de 6 tabelas'
   from pg_policies
  where schemaname = 'public'
    and tablename like 'mat\_%'

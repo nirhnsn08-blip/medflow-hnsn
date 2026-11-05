@@ -18045,20 +18045,18 @@ select count(*) as aprazamentos_ja_existentes from public.pep_aprazamentos;
 -- │ 115/116 — migracao-episodio-data-nascimento.sql
 -- └────────────────────────────────────────────────────────────
 -- ═══════════════════════════════════════════════════════════
--- A IDADE CHEGA AO EPISÓDIO — e a farmácia para de ler o cadastro
+-- A IDADE CHEGA AO EPISÓDIO — sem a farmácia buscá-la no cadastro
 --
--- 🔴 O DEFEITO QUE ISTO CONSERTA É CLÍNICO, não de tela.
+-- O QUE MUDA: a conferência do auxiliar de farmácia deixa de ser PARCIAL.
 --
--- A farmácia lê `pacientes?select=prontuario,data_nascimento` para UMA
+-- A farmácia lia `pacientes?select=prontuario,data_nascimento` para UMA
 -- coisa: a idade, que aciona dose pediátrica e os critérios de Beers. Mas
--- `pacientes` é lida por atendimento / ambulatorio / ps / paciente — e NÃO
--- pela farmácia. Para o perfil `aux_farmacia` a consulta volta `[]` com
--- 200, a idade fica nula, e as duas regras NÃO DISPARAM.
+-- `pacientes` não é lida pelo módulo `farmacia`, então a tela só pedia esse
+-- contexto a quem tinha também o Paciente 360, e avisava os demais:
+-- "idade e condições (sonda) não entram nos alertas desta tela".
 --
--- ⚠️ É EXATAMENTE O DEFEITO QUE `prontuario/contexto-internado.js` FOI
--- ESCRITO PARA CONSERTAR — está no cabeçalho dele: "alertas à mão, em DOIS
--- lugares, e os dois escreviam `idade: null` (…) as regras de criança e de
--- idoso nunca disparavam". Voltou por outra porta: a permissão.
+-- ⚠️ ERA HONESTO, NÃO SILENCIOSO. Não havia defeito escondido; havia uma
+-- limitação declarada. Quem dispensa ficava sem as regras de idade e sabia.
 --
 -- 💡 POR QUE NÃO ABRIR `pacientes` PARA A FARMÁCIA
 --
@@ -18066,8 +18064,12 @@ select count(*) as aprazamentos_ja_existentes from public.pep_aprazamentos;
 -- endereço para buscar UM campo. A decisão de manter o cadastro fechado à
 -- farmácia é antiga e deliberada, e tem teste guardando.
 --
--- Então a data vem para onde a farmácia JÁ LÊ. Depois disto a consulta a
--- `pacientes` SOME do código da farmácia — é menos acesso, não mais.
+-- Então a data vem para onde a farmácia JÁ LÊ, e a busca da IDADE em
+-- `pacientes` sai do código dela.
+--
+-- ⚠️ A FARMÁCIA AINDA TOCA `pacientes` por OUTRO caminho: `clinico/
+-- pessoa-dados.js`, que resolve fichas unificadas para achar alergia. Esta
+-- migração não resolve isso — ver a dívida em `leitura-por-modulo.test.js`.
 --
 -- ═══════════════════════════════════════════════════════════
 -- 🔴 POR QUE GATILHO, E NÃO CAMPO PREENCHIDO PELO APP

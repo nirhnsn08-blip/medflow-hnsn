@@ -75,7 +75,7 @@ const CONHECIDOS = [
   //
   // A idade (dose pediátrica, Beers) vinha de `pacientes`. Agora vem de
   // `pep_episodios.data_nascimento`, mantida por gatilho, e a consulta ao
-  // cadastro sumiu do código da farmácia. Menos acesso, não mais.
+  // cadastro para buscar idade saiu da farmácia. Menos acesso, não mais.
   //
   // ⚠️ MAS A FARMÁCIA AINDA ALCANÇA `pacientes`, por `clinico/
   // pessoa-dados.js`: ela lê `prontuario, unificado_para` para descobrir

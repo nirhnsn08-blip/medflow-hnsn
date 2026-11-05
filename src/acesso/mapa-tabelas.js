@@ -545,25 +545,18 @@ export const LEITURA_EXTRA = {
   // ═══════════════════════════════════════════════════════════
   // 🔒 O QUE EU NÃO AMPLIEI, E POR QUÊ
   //
-  // 🔴 `farmacia → pacientes` — E ESTE TEM CONSEQUÊNCIA CLÍNICA.
+  // 🔴 `farmacia → pacientes`: A TABELA DE IDENTIFICAÇÃO CONTINUA FECHADA.
   //
-  // A farmácia lê `pacientes?select=prontuario,data_nascimento`: só a
-  // IDADE, que é o que aciona dose pediátrica e os critérios de Beers.
-  // Para `aux_farmacia` a leitura volta vazia, a idade fica nula, e as
-  // regras de criança e de idoso NÃO DISPARAM — exatamente o defeito que
-  // `prontuario/contexto-internado.js` foi escrito para consertar
-  // ("os dois escreviam idade: null"), reintroduzido pela permissão.
+  // RLS é por LINHA: dar `pacientes` à farmácia entrega nome, CPF, CNS, nome
+  // da mãe e endereço para buscar um ou dois campos. A decisão de manter essa
+  // tabela fechada à farmácia é antiga e deliberada, e há teste guardando-a.
   //
-  // ⚠️ E MESMO ASSIM NÃO AMPLIEI. RLS é por LINHA: dar `pacientes` à
-  // farmácia entrega nome, CPF, CNS, nome da mãe e endereço para buscar
-  // UM campo. A decisão de manter essa tabela fechada à farmácia é
-  // antiga e deliberada — há teste guardando-a — e a farmácia identifica
-  // o paciente por leito e iniciais via `pep_episodios`.
+  // A IDADE saiu desta conta: vem de `pep_episodios.data_nascimento`. Antes
+  // a tela avisava que a conferência era parcial — limitação declarada, não
+  // defeito silencioso.
   //
-  // O conserto certo é levar a idade para onde a farmácia JÁ LÊ:
-  // `data_nascimento` em `pep_episodios`, como `iniciais` já está. Isso é
-  // migração com backfill, não ajuste de permissão — e some com a leitura
-  // de `pacientes` em vez de ampliá-la, que é estritamente melhor.
+  // ⚠️ O QUE SOBROU É `clinico/pessoa-dados.js` (`prontuario, unificado_para`),
+  // que acha alergia registrada na ficha antiga de um paciente unificado.
   //
   // `suprimentos → farm_movimentos`: a MESMA tabela guarda movimento de
   // medicamento CONTROLADO (por isso `controlados` está entre os

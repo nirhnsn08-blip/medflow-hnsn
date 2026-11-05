@@ -11,7 +11,7 @@
 // ficava sem as duas regras que dependem de idade.
 //
 // Agora a data vem no próprio episódio, mantida por gatilho. É MENOS
-// acesso, não mais: a consulta ao cadastro sumiu do código da farmácia.
+// acesso, não mais: a busca da idade em `pacientes` saiu da farmácia.
 //
 // ⚠️ ESTE ARQUIVO NÃO TESTA O GATILHO — isso é `supabase/
 // episodio-data-nascimento.test.js`, que roda o SQL num Postgres de
